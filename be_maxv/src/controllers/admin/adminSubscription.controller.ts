@@ -5,7 +5,7 @@ import {
   updatePlanSchema,
   listSubscriptionsQuerySchema,
   changePlanSchema,
-} from '../validators/admin.validator';
+} from '../../validators/admin.validator';
 import {
   adminListPlans,
   adminCreatePlan,
@@ -14,13 +14,13 @@ import {
   adminChangePlan,
   adminCancelSubscription,
   adminListSubscriptionHistory,
-} from '../services/adminSubscription.service';
+} from '../../services/admin/adminSubscription.service';
 import {
   validateBody,
   validateQuery,
   validateParams,
-} from '../utils/validate';
-import { sendOk, sendCreated } from '../helpers/response';
+} from '../../utils/validate';
+import { sendOk, sendCreated } from '../../helpers/response';
 
 // ---- Gói dịch vụ ----
 
@@ -38,7 +38,10 @@ export async function createPlan(req: FastifyRequest, reply: FastifyReply) {
 /** PATCH /api/v1/admin/plans/:id */
 export async function updatePlan(req: FastifyRequest, reply: FastifyReply) {
   const { id } = validateParams(idParamSchema, req.params);
-  const data = await adminUpdatePlan(id, validateBody(updatePlanSchema, req.body));
+  const data = await adminUpdatePlan(
+    id,
+    validateBody(updatePlanSchema, req.body),
+  );
   return sendOk(reply, data);
 }
 

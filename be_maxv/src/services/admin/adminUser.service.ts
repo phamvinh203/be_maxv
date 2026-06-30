@@ -1,10 +1,10 @@
-import { sysPrisma } from '../config/db.sys';
-import { generatePassword, hashPassword } from '../utils/password';
-import { writeLog } from './syslog.service';
-import { ConflictError, NotFoundError } from '../helpers/errors';
-import { MESSAGES } from '../constants/messages';
-import type { Prisma, Role } from '../generated/sys';
-import type { ListUsersQuery } from '../validators/admin.validator';
+import { sysPrisma } from '../../config/db.sys';
+import { generatePassword, hashPassword } from '../../utils/password';
+import { writeLog } from '../shared/syslog.service';
+import { ConflictError, NotFoundError } from '../../helpers/errors';
+import { MESSAGES } from '../../constants/messages';
+import type { Prisma, Role } from '../../generated/sys';
+import type { ListUsersQuery } from '../../validators/admin.validator';
 
 // KHÔNG bao giờ trả password. Kèm đơn vị để hiển thị.
 const USER_SELECT = {

@@ -1,6 +1,6 @@
-import { sysPrisma } from '../config/db.sys';
-import { env } from '../config/env';
-import type { SubscriptionPlan } from '../generated/sys';
+import { sysPrisma } from '../../config/db.sys';
+import { env } from '../../config/env';
+import type { SubscriptionPlan } from '../../generated/sys';
 
 /**
  * Đảm bảo có gói TRIAL trong DB (idempotent).

@@ -1,6 +1,6 @@
-import { sysPrisma } from '../config/db.sys';
-import type { Prisma } from '../generated/sys';
-import type { ListLogsQuery } from '../validators/admin.validator';
+import { sysPrisma } from '../../config/db.sys';
+import type { Prisma } from '../../generated/sys';
+import type { ListLogsQuery } from '../../validators/admin.validator';
 
 /**
  * GET /admin/logs — nhật ký hệ thống (bảng syslog), phân trang + lọc.

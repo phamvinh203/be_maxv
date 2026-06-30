@@ -1,16 +1,16 @@
 import type { FastifyRequest, FastifyReply } from 'fastify';
-import { registerSchema, loginSchema } from '../validators/auth.validator';
+import { registerSchema, loginSchema } from '../../validators/auth.validator';
 import {
   registerUser,
   loginUser,
   loadUserForRefresh,
-} from '../services/auth.service';
-import { validateBody } from '../utils/validate';
-import { sendCreated, sendOk } from '../helpers/response';
-import { UnauthorizedError } from '../helpers/errors';
-import { MESSAGES } from '../constants/messages';
-import { REFRESH_COOKIE, REFRESH_PATH } from '../constants/auth';
-import { env } from '../config/env';
+} from '../../services/client/auth.service';
+import { validateBody } from '../../utils/validate';
+import { sendCreated, sendOk } from '../../helpers/response';
+import { UnauthorizedError } from '../../helpers/errors';
+import { MESSAGES } from '../../constants/messages';
+import { REFRESH_COOKIE, REFRESH_PATH } from '../../constants/auth';
+import { env } from '../../config/env';
 
 const refreshCookieOptions = {
   httpOnly: true,
@@ -42,7 +42,9 @@ export async function register(req: FastifyRequest, reply: FastifyReply) {
 
 /** POST /api/v1/auth/login — đăng nhập, trả access token + context công ty. */
 export async function login(req: FastifyRequest, reply: FastifyReply) {
-  const { user, company } = await loginUser(validateBody(loginSchema, req.body));
+  const { user, company } = await loginUser(
+    validateBody(loginSchema, req.body),
+  );
   const accessToken = await issueTokens(reply, {
     userId: user.id,
     donViId: user.donViId,

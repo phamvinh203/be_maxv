@@ -1,11 +1,11 @@
-import { sysPrisma } from '../config/db.sys';
-import { tenantSlug } from '../utils/dbName';
-import { provisionTenant } from './provisioning.service';
-import { createTrialSubscription } from './subscription.service';
-import { writeLog } from './syslog.service';
-import { ConflictError, NotFoundError } from '../helpers/errors';
-import { MESSAGES } from '../constants/messages';
-import type { RegisterCompanyInput } from '../validators/auth.validator';
+import { sysPrisma } from '../../config/db.sys';
+import { tenantSlug } from '../../utils/dbName';
+import { provisionTenant } from '../shared/provisioning.service';
+import { createTrialSubscription } from '../shared/subscription.service';
+import { writeLog } from '../shared/syslog.service';
+import { ConflictError, NotFoundError } from '../../helpers/errors';
+import { MESSAGES } from '../../constants/messages';
+import type { RegisterCompanyInput } from '../../validators/auth.validator';
 
 /**
  * BƯỚC 2 — Đăng ký công ty cho một người dùng đã có tài khoản.

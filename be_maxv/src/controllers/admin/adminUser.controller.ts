@@ -3,19 +3,19 @@ import {
   idParamSchema,
   listUsersQuerySchema,
   changeRoleSchema,
-} from '../validators/admin.validator';
+} from '../../validators/admin.validator';
 import {
   adminListUsers,
   adminSetUserActive,
   adminChangeUserRole,
   adminResetPassword,
-} from '../services/adminUser.service';
+} from '../../services/admin/adminUser.service';
 import {
   validateBody,
   validateQuery,
   validateParams,
-} from '../utils/validate';
-import { sendOk } from '../helpers/response';
+} from '../../utils/validate';
+import { sendOk } from '../../helpers/response';
 
 /** GET /api/v1/admin/users */
 export async function listUsers(req: FastifyRequest, reply: FastifyReply) {

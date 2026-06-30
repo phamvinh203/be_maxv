@@ -2,7 +2,7 @@ import type { FastifyRequest, FastifyReply } from 'fastify';
 import {
   idParamSchema,
   listCompaniesQuerySchema,
-} from '../validators/admin.validator';
+} from '../../validators/admin.validator';
 import {
   adminListCompanies,
   adminGetCompany,
@@ -10,9 +10,9 @@ import {
   adminRetryProvision,
   adminSuspendCompany,
   adminResumeCompany,
-} from '../services/adminCompany.service';
-import { validateQuery, validateParams } from '../utils/validate';
-import { sendOk } from '../helpers/response';
+} from '../../services/admin/adminCompany.service';
+import { validateQuery, validateParams } from '../../utils/validate';
+import { sendOk } from '../../helpers/response';
 
 /** GET /api/v1/admin/companies */
 export async function listCompanies(req: FastifyRequest, reply: FastifyReply) {

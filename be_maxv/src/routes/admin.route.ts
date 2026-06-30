@@ -6,8 +6,11 @@ import {
   retryProvision,
   suspendCompany,
   resumeCompany,
-} from '../controllers/adminCompany.controller';
-import { listLogs, listLogActions } from '../controllers/adminLog.controller';
+} from '../controllers/admin/adminCompany.controller';
+import {
+  listLogs,
+  listLogActions,
+} from '../controllers/admin/adminLog.controller';
 import {
   listPlans,
   createPlan,
@@ -16,14 +19,14 @@ import {
   changePlan,
   cancelSubscription,
   listSubscriptionHistory,
-} from '../controllers/adminSubscription.controller';
+} from '../controllers/admin/adminSubscription.controller';
 import {
   listUsers,
   activateUser,
   deactivateUser,
   changeUserRole,
   resetUserPassword,
-} from '../controllers/adminUser.controller';
+} from '../controllers/admin/adminUser.controller';
 
 /**
  * Nhóm route quản trị (control plane maxv2_sys).
