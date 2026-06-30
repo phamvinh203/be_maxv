@@ -12,6 +12,8 @@ import {
   Paper,
 } from '@mui/material';
 import { StatusChip } from '@/components/StatusChip';
+import { tableCardSx, tableHeadRowSx } from '@/components/tableStyles';
+import { formatDate } from '@/lib/format';
 import { useCompanies } from '@/features/companies/hooks/useCompanies';
 import type { ListCompaniesParams } from '@/features/companies/types/company';
 
@@ -31,33 +33,11 @@ export function CompaniesTable({
   const { data } = useCompanies(params);
 
   return (
-    <Paper
-      elevation={0}
-      sx={{
-        border: '1px solid',
-        borderColor: 'divider',
-        borderRadius: 3,
-        overflow: 'hidden',
-        boxShadow: '0 1px 2px rgba(16,24,40,0.04), 0 1px 3px rgba(16,24,40,0.06)',
-      }}
-    >
+    <Paper elevation={0} sx={tableCardSx}>
       <TableContainer>
         <Table>
           <TableHead>
-            <TableRow
-              sx={{
-                '& th': {
-                  bgcolor: '#f8fafc',
-                  color: 'text.secondary',
-                  fontSize: 12,
-                  fontWeight: 700,
-                  textTransform: 'uppercase',
-                  letterSpacing: '0.04em',
-                  borderBottom: '1px solid',
-                  borderColor: 'divider',
-                },
-              }}
-            >
+            <TableRow sx={tableHeadRowSx}>
               <TableCell>Mã số thuế</TableCell>
               <TableCell>Tên đơn vị</TableCell>
               <TableCell>Trạng thái</TableCell>
@@ -100,7 +80,7 @@ export function CompaniesTable({
                   </Box>
                 </TableCell>
                 <TableCell sx={{ color: 'text.secondary' }}>
-                  {new Date(c.createdAt).toLocaleDateString('vi-VN')}
+                  {formatDate(c.createdAt)}
                 </TableCell>
               </TableRow>
             ))}

@@ -4,10 +4,10 @@ import { loginRoute } from './login.route';
 import { adminRoute } from './admin.route';
 import { companiesRoute, companyDetailRoute } from './companies.route';
 import { logsRoute } from './logs.route';
+import { subscriptionsRoute } from './subscriptions.route';
 import {
   dashboardRoute,
   invitesRoute,
-  subscriptionsRoute,
   usersRoute,
   opsRoute,
 } from './stubs.route';

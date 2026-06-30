@@ -8,6 +8,15 @@ import {
   resumeCompany,
 } from '../controllers/adminCompany.controller';
 import { listLogs, listLogActions } from '../controllers/adminLog.controller';
+import {
+  listPlans,
+  createPlan,
+  updatePlan,
+  listSubscriptions,
+  changePlan,
+  cancelSubscription,
+  listSubscriptionHistory,
+} from '../controllers/adminSubscription.controller';
 
 /**
  * Nhóm route quản trị (control plane maxv2_sys).
@@ -29,4 +38,15 @@ export async function adminRoutes(app: FastifyInstance) {
   // Nhật ký hệ thống
   app.get('/logs', listLogs);
   app.get('/logs/actions', listLogActions);
+
+  // Gói dịch vụ
+  app.get('/plans', listPlans);
+  app.post('/plans', createPlan);
+  app.patch('/plans/:id', updatePlan);
+
+  // Thuê bao
+  app.get('/subscriptions', listSubscriptions);
+  app.post('/subscriptions/:id/change-plan', changePlan);
+  app.post('/subscriptions/:id/cancel', cancelSubscription);
+  app.get('/subscriptions/:id/history', listSubscriptionHistory);
 }

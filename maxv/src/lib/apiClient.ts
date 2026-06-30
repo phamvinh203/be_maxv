@@ -21,6 +21,8 @@ export const api = {
     apiClient.get<ApiResponse<T>>(url, config).then((r) => r.data.data),
   post: <T>(url: string, body?: unknown, config?: AxiosRequestConfig) =>
     apiClient.post<ApiResponse<T>>(url, body, config).then((r) => r.data.data),
+  patch: <T>(url: string, body?: unknown, config?: AxiosRequestConfig) =>
+    apiClient.patch<ApiResponse<T>>(url, body, config).then((r) => r.data.data),
 };
 
 // Gắn Bearer access token vào mọi request.

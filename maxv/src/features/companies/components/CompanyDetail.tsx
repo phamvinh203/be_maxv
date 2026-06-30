@@ -14,6 +14,7 @@ import {
 } from '@mui/material';
 import { StatusChip } from '@/components/StatusChip';
 import { Loading } from '@/components/Loading';
+import { formatDate } from '@/lib/format';
 import { useCompany } from '@/features/companies/hooks/useCompanies';
 import { CompanyActions } from './CompanyActions';
 import { CompanyOverview } from './CompanyOverview';
@@ -59,10 +60,7 @@ export function CompanyDetail({ id }: { id: string }): JSX.Element {
             <Chip label={data.subscription.plan.ten} color="primary" />
             <Typography>{data.subscription.status}</Typography>
             <Typography color="text.secondary">
-              Hết hạn:{' '}
-              {data.subscription.ketThuc
-                ? new Date(data.subscription.ketThuc).toLocaleDateString('vi-VN')
-                : '—'}
+              Hết hạn: {formatDate(data.subscription.ketThuc)}
             </Typography>
           </Stack>
         ) : (

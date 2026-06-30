@@ -1,6 +1,7 @@
 import type { JSX } from 'react';
 import { Box, Card, CardContent, Stack, Typography } from '@mui/material';
 import { useCompanyOverview } from '@/features/companies/hooks/useCompanies';
+import { formatDateTime } from '@/lib/format';
 
 const COUNT_LABELS: Record<string, string> = {
   taiKhoan: 'Tài khoản',
@@ -47,10 +48,7 @@ export function CompanyOverview({ id }: { id: string }): JSX.Element {
       </Box>
 
       <Typography variant="body2" color="text.secondary">
-        Chứng từ gần nhất:{' '}
-        {data.lastChungTuAt
-          ? new Date(data.lastChungTuAt).toLocaleString('vi-VN')
-          : '—'}
+        Chứng từ gần nhất: {formatDateTime(data.lastChungTuAt)}
         {' · '}DB: {data.company.dbName ?? '—'}
       </Typography>
     </Stack>
