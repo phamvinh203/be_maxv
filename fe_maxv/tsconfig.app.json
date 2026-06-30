@@ -7,6 +7,9 @@
     "types": ["vite/client"],
     "skipLibCheck": true,
 
+    /* Path alias: @/ -> src/ */
+    "paths": { "@/*": ["./src/*"] },
+
     /* Bundler mode */
     "moduleResolution": "bundler",
     "allowImportingTsExtensions": true,
