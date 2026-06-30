@@ -1,0 +1,16 @@
+/* Reset tối giản — mọi style do MUI CssBaseline + theme điều khiển. */
+:root {
+  color-scheme: light;
+}
+
+html,
+body,
+#root {
+  margin: 0;
+  padding: 0;
+  height: 100%;
+}
+
+#root {
+  min-height: 100vh;
+}
