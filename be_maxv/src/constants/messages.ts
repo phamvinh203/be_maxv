@@ -28,6 +28,8 @@ export const MESSAGES = {
     SUSPEND_NOT_READY: 'Chỉ tạm khóa được công ty đang hoạt động (READY)',
     RESUME_NOT_SUSPENDED: 'Chỉ mở lại được công ty đang bị khóa (SUSPENDED)',
     NO_TENANT_DB: 'Công ty chưa được cấp DB (provisioning chưa hoàn tất)',
+    TENANT_DB_MISSING:
+      'DB tenant không tồn tại (đã bị xóa hoặc cấp chưa xong). Đã đánh dấu FAILED — hãy cấp lại DB.',
   },
 
   VALIDATION: {

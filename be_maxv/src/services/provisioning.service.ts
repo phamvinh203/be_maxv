@@ -77,6 +77,17 @@ async function pushTenantSchema(dbName: string): Promise<void> {
   );
 }
 
+/** Kiểm tra DB tenant có tồn tại thật trong PostgreSQL (dùng cho reconcile/guard). */
+export async function tenantDbExists(dbName: string): Promise<boolean> {
+  return withAdminClient(async (admin) => {
+    const res = await admin.query(
+      'SELECT 1 FROM pg_database WHERE datname = $1',
+      [dbName],
+    );
+    return (res.rowCount ?? 0) > 0;
+  });
+}
+
 /** Dùng cho GC: xóa hẳn DB của 1 công ty đã hết hạn. */
 export async function dropTenant(dbName: string): Promise<void> {
   await withAdminClient((admin) =>

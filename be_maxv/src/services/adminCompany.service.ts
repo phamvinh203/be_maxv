@@ -1,6 +1,6 @@
 import { sysPrisma } from '../config/db.sys';
 import { getTenantDb } from '../helpers/tenantClient';
-import { provisionTenant } from './provisioning.service';
+import { provisionTenant, tenantDbExists } from './provisioning.service';
 import { writeLog } from './syslog.service';
 import { ConflictError, NotFoundError } from '../helpers/errors';
 import { MESSAGES } from '../constants/messages';
@@ -144,6 +144,20 @@ export async function adminGetCompanyOverview(id: string, adminId: string) {
   const company = await getOrThrow(id);
   if (!company.dbName) {
     throw new ConflictError(MESSAGES.COMPANY.NO_TENANT_DB);
+  }
+
+  // Đối soát-khi-đọc: sys ghi READY nhưng DB thật có thể đã bị xóa.
+  // Tự sửa trạng thái về FAILED + báo lỗi rõ ràng thay vì để 500 khi kết nối.
+  if (!(await tenantDbExists(company.dbName))) {
+    await sysPrisma.donVi.update({ where: { id }, data: { status: 'FAILED' } });
+    await writeLog({
+      level: 'ERROR',
+      hanhDong: 'TENANT_DB_MISSING',
+      userId: adminId,
+      donViId: id,
+      chiTiet: { dbName: company.dbName },
+    });
+    throw new ConflictError(MESSAGES.COMPANY.TENANT_DB_MISSING);
   }
 
   const db = getTenantDb(company.dbName);
