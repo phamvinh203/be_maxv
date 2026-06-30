@@ -1,0 +1,61 @@
+### =============================================================
+###  Test API admin maxv2 — dùng với extension "REST Client" (VS Code)
+###  Bấm "Send Request" phía trên mỗi block.
+###  Chạy LOGIN trước (token tự được tham chiếu cho các request sau).
+### =============================================================
+
+@base = http://localhost:4000/api/v1
+
+# Sửa thành tài khoản ADMIN bạn đã tạo:
+@adminEmail = admin@gmail.com
+@adminPassword = Vinhpham981@
+
+# Copy 1 id công ty từ kết quả "List companies" dán vào đây:
+@companyId = 4417aff5-8ae9-4cfe-9199-67c09fdb3595
+
+### Đăng nhập admin -> lấy access token
+# @name login
+POST {{base}}/auth/login
+Content-Type: application/json
+
+{ "email": "{{adminEmail}}", "password": "{{adminPassword}}" }
+
+### Token rút ra từ response của request "login" ở trên
+@token = {{login.response.body.$.data.accessToken}}
+
+### Danh sách công ty (phân trang)
+GET {{base}}/admin/companies?page=1&pageSize=20
+Authorization: Bearer {{token}}
+
+### Lọc theo trạng thái + tìm theo MST/tên
+GET {{base}}/admin/companies?status=READY&q=010
+Authorization: Bearer {{token}}
+
+### Chi tiết 1 công ty (kèm users + gói)
+GET {{base}}/admin/companies/{{companyId}}
+Authorization: Bearer {{token}}
+
+### Tổng quan dữ liệu trong DB tenant (đếm bảng + dung lượng)
+GET {{base}}/admin/companies/{{companyId}}/overview
+Authorization: Bearer {{token}}
+
+### Tạm khóa công ty (READY -> SUSPENDED)
+POST {{base}}/admin/companies/{{companyId}}/suspend
+Authorization: Bearer {{token}}
+
+### Mở lại công ty (SUSPENDED -> READY)
+POST {{base}}/admin/companies/{{companyId}}/resume
+Authorization: Bearer {{token}}
+
+### Cấp lại DB cho công ty FAILED
+POST {{base}}/admin/companies/{{companyId}}/retry-provision
+Authorization: Bearer {{token}}
+
+### --- Kiểm tra guard (kỳ vọng lỗi) ---
+
+### Không token -> 401
+GET {{base}}/admin/companies
+
+### Token sai -> 401
+GET {{base}}/admin/companies
+Authorization: Bearer faketoken

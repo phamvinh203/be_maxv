@@ -1,0 +1,99 @@
+// ============================================================
+//  TEMPLATE DB CÔNG TY (db_<MST>)
+//  Mỗi công ty 1 DB riêng, cùng schema này. URL được ghi đè động.
+//  Chứa toàn bộ nghiệp vụ: thiết lập, danh mục, chứng từ, bút toán.
+// ============================================================
+
+generator client {
+  provider = "prisma-client-js"
+  output   = "../../src/generated/tenant"
+}
+
+// Prisma 7: URL không còn trong schema. Tenant push dùng `--url` động
+// (xem provisioning.service.ts); runtime dùng driver adapter @prisma/adapter-pg.
+datasource db {
+  provider = "postgresql"
+}
+
+// --- Thiết lập (menu "Hệ thống") — 1 dòng duy nhất ---
+model ThietLap {
+  id             Int      @id @default(1)
+  ngayBatDauNTC  DateTime // Ngày bắt đầu năm tài chính
+  ngayBatDauNhap DateTime
+  tenCongTy      String
+  maSoThue       String?
+  diaChi         String?
+  thamSo         Json     @default("{}") // Tham số tùy chọn
+  updatedAt      DateTime @updatedAt
+
+  @@map("thiet_lap")
+}
+
+// --- Danh mục cơ bản (mở rộng dần) ---
+model TaiKhoan {
+  id       String  @id @default(uuid())
+  ma       String  @unique // số hiệu TK (vd "111","131")
+  ten      String
+  capCha   String? // mã TK cha (cây tài khoản)
+  isActive Boolean @default(true)
+
+  @@index([capCha])
+  @@map("tai_khoan")
+}
+
+model DoiTuong {
+  id      String  @id @default(uuid())
+  ma      String  @unique // mã KH/NCC
+  ten     String
+  loai    String // "KH" | "NCC"
+  maSoThue String?
+
+  @@map("doi_tuong")
+}
+
+// --- Chứng từ + Bút toán (trái tim hệ thống) ---
+model ChungTu {
+  id        String        @id @default(uuid())
+  loaiCt    String // "PHIEU_THU","HD_BAN","NHAP_KHO"...
+  soCt      String
+  ngayCt    DateTime
+  dienGiai  String?
+  trangThai String        @default("GHI_SO") // để Khóa sổ / đóng kỳ
+  dongs     ChungTuDong[]
+  butToans  ButToan[]
+  createdAt DateTime      @default(now())
+
+  @@unique([loaiCt, soCt])
+  @@index([ngayCt])
+  @@index([loaiCt, ngayCt])
+  @@map("chung_tu")
+}
+
+model ChungTuDong {
+  id        String   @id @default(uuid())
+  chungTuId String
+  maVatTu   String?
+  soLuong   Decimal? @db.Decimal(18, 4)
+  donGia    Decimal? @db.Decimal(18, 2)
+  thanhTien Decimal? @db.Decimal(18, 2)
+  chungTu   ChungTu  @relation(fields: [chungTuId], references: [id], onDelete: Cascade)
+
+  @@index([chungTuId])
+  @@map("chung_tu_dong")
+}
+
+model ButToan {
+  id        String   @id @default(uuid())
+  chungTuId String
+  ngayCt    DateTime
+  tkNo      String // tài khoản Nợ
+  tkCo      String // tài khoản Có
+  soTien    Decimal  @db.Decimal(18, 2)
+  doiTuong  String?
+  chungTu   ChungTu  @relation(fields: [chungTuId], references: [id], onDelete: Cascade)
+
+  @@index([ngayCt])
+  @@index([tkNo])
+  @@index([tkCo])
+  @@map("but_toan")
+}

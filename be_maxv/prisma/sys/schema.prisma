@@ -1,0 +1,186 @@
+// ============================================================
+//  maxv2_sys — CONTROL PLANE (nguồn sự thật duy nhất)
+//  Người dùng, công ty (tenant), gói thuê bao, lời mời, nhật ký.
+//  KHÔNG chứa dữ liệu nghiệp vụ/chứng từ.
+// ============================================================
+
+generator client {
+  provider = "prisma-client-js"
+  output   = "../../src/generated/sys"
+}
+
+// Prisma 7: URL kết nối chuyển sang prisma.config.ts (Migrate/CLI)
+// và driver adapter @prisma/adapter-pg (runtime client).
+datasource db {
+  provider = "postgresql"
+}
+
+// ---------------- Người dùng ----------------
+model User {
+  id       String     @id @default(uuid())
+  email    String     @unique
+  sdt      String? // số điện thoại
+  password String // hash bcrypt
+  hoTen    String
+  role     Role       @default(OWNER) // OWNER = người mua gói; còn lại là nhân viên
+  status   UserStatus @default(ACTIVE)
+  isActive Boolean    @default(false) // true sau khi xác thực email / được duyệt
+
+  donViId String? // user thuộc ĐÚNG 1 công ty (n:1); ADMIN hệ thống = null
+  donVi   DonVi?  @relation(fields: [donViId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([donViId])
+  @@map("users")
+}
+
+// ---------------- Công ty (tenant) ----------------
+model DonVi {
+  id       String @id @default(uuid())
+  maSoThue String @unique // 1 MST = 1 công ty (1 gói)
+  slug     String @unique
+  tenDonVi String
+
+  // Trạng thái VÒNG ĐỜI DB (tách khỏi billing — billing nằm ở Subscription)
+  status        TenantStatus @default(PROVISIONING)
+  dbName        String?      @unique // "maxv2_<MST>_app"
+  provisionedAt DateTime?
+
+  users        User[]
+  subscription Subscription?
+  invites      InviteRequest[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("don_vi")
+}
+
+// ---------------- Gói thuê bao (danh mục) ----------------
+model SubscriptionPlan {
+  id           String   @id @default(uuid())
+  ma           String   @unique // "TRIAL","BASIC","PRO"
+  ten          String
+  gia          Decimal  @default(0) @db.Decimal(18, 2)
+  chuKyThang   Int      @default(1) // chu kỳ tính bằng tháng (0 = trial)
+  soNguoiToiDa Int? // giới hạn số user; null = không giới hạn
+  features     Json     @default("{}")
+  isActive     Boolean  @default(true)
+  createdAt    DateTime @default(now())
+
+  subscriptions Subscription[]
+  histories     SubscriptionHistory[]
+
+  @@map("subscription_plans")
+}
+
+// ---------------- Thuê bao hiện hành của 1 công ty ----------------
+model Subscription {
+  id        String             @id @default(uuid())
+  donViId   String             @unique // mỗi công ty 1 thuê bao hiện hành
+  planId    String
+  status    SubscriptionStatus @default(TRIALING)
+  batDau    DateTime           @default(now())
+  ketThuc   DateTime? // hết hạn kỳ hiện tại (trial/định kỳ)
+  autoRenew Boolean            @default(false)
+  createdAt DateTime           @default(now())
+  updatedAt DateTime           @updatedAt
+
+  donVi     DonVi                 @relation(fields: [donViId], references: [id], onDelete: Cascade)
+  plan      SubscriptionPlan      @relation(fields: [planId], references: [id])
+  histories SubscriptionHistory[]
+
+  @@map("subscription")
+}
+
+// ---------------- Lịch sử thuê bao (audit billing) ----------------
+model SubscriptionHistory {
+  id             String   @id @default(uuid())
+  subscriptionId String?
+  donViId        String
+  planId         String?
+  hanhDong       String // "CREATE_TRIAL","UPGRADE","RENEW","CANCEL","EXPIRE"
+  giaTri         Decimal? @db.Decimal(18, 2)
+  ghiChu         String?
+  createdAt      DateTime @default(now())
+
+  subscription Subscription?     @relation(fields: [subscriptionId], references: [id], onDelete: SetNull)
+  plan         SubscriptionPlan? @relation(fields: [planId], references: [id])
+
+  @@index([donViId])
+  @@map("subscription_history")
+}
+
+// ---------------- Lời mời nhân viên ----------------
+model InviteRequest {
+  id            String       @id @default(uuid())
+  donViId       String // công ty mời
+  email         String // email người được mời
+  role          Role         @default(KE_TOAN)
+  status        InviteStatus @default(PENDING)
+  requestedById String // owner gửi yêu cầu
+  approvedById  String? // admin duyệt
+  createdAt     DateTime     @default(now())
+  resolvedAt    DateTime?
+
+  donVi DonVi @relation(fields: [donViId], references: [id], onDelete: Cascade)
+
+  @@index([donViId])
+  @@index([status])
+  @@map("invite_requests")
+}
+
+// ---------------- Nhật ký hệ thống ----------------
+model SysLog {
+  id        String   @id @default(uuid())
+  level     String   @default("INFO") // INFO/WARN/ERROR
+  hanhDong  String // "REGISTER","CREATE_COMPANY","LOGIN"...
+  userId    String?
+  donViId   String?
+  chiTiet   Json?
+  ip        String?
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+  @@index([donViId])
+  @@index([hanhDong])
+  @@map("syslog")
+}
+
+enum Role {
+  ADMIN
+  OWNER
+  KE_TOAN_TRUONG
+  KE_TOAN
+  XEM
+}
+
+enum UserStatus {
+  PENDING
+  ACTIVE
+  REJECTED
+}
+
+// Vòng đời DB của tenant (KHÔNG phải billing)
+enum TenantStatus {
+  PROVISIONING
+  READY
+  FAILED
+  SUSPENDED
+}
+
+enum SubscriptionStatus {
+  TRIALING
+  ACTIVE
+  PAST_DUE
+  CANCELED
+  EXPIRED
+}
+
+enum InviteStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
