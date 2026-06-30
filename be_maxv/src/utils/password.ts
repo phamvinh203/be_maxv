@@ -1,6 +1,12 @@
 import bcrypt from 'bcrypt';
+import { randomBytes } from 'node:crypto';
 
 const SALT_ROUNDS = 10;
+
+/** Sinh mật khẩu ngẫu nhiên (~12 ký tự) cho admin đặt lại hộ người dùng. */
+export function generatePassword(): string {
+  return randomBytes(9).toString('base64url');
+}
 
 export function hashPassword(plain: string): Promise<string> {
   return bcrypt.hash(plain, SALT_ROUNDS);

@@ -1,6 +1,6 @@
-import { sysPrisma } from '../config/db.sys';
-import { getRequestIp } from '../helpers/requestContext';
-import type { Prisma } from '../generated/sys';
+import { sysPrisma } from '../../config/db.sys';
+import { getRequestIp } from '../../helpers/requestContext';
+import type { Prisma } from '../../generated/sys';
 
 interface LogInput {
   level?: 'INFO' | 'WARN' | 'ERROR';

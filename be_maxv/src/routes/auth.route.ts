@@ -4,7 +4,7 @@ import {
   login,
   refresh,
   logout,
-} from '../controllers/auth.controller';
+} from '../controllers/client/auth.controller';
 
 export async function authRoutes(app: FastifyInstance) {
   app.post('/register', register);

@@ -1,9 +1,9 @@
-import { sysPrisma } from '../config/db.sys';
-import { hashPassword, verifyPassword, DUMMY_HASH } from '../utils/password';
-import { writeLog } from './syslog.service';
-import { ConflictError, UnauthorizedError } from '../helpers/errors';
-import { MESSAGES } from '../constants/messages';
-import type { RegisterInput, LoginInput } from '../validators/auth.validator';
+import { sysPrisma } from '../../config/db.sys';
+import { hashPassword, verifyPassword, DUMMY_HASH } from '../../utils/password';
+import { writeLog } from '../shared/syslog.service';
+import { ConflictError, UnauthorizedError } from '../../helpers/errors';
+import { MESSAGES } from '../../constants/messages';
+import type { RegisterInput, LoginInput } from '../../validators/auth.validator';
 
 /**
  * BƯỚC 1 — Đăng ký người dùng.

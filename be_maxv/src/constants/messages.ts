@@ -32,6 +32,22 @@ export const MESSAGES = {
       'DB tenant không tồn tại (đã bị xóa hoặc cấp chưa xong). Đã đánh dấu FAILED — hãy cấp lại DB.',
   },
 
+  USER: {
+    NOT_FOUND: 'Người dùng không tồn tại',
+    CANNOT_DEACTIVATE_SELF: 'Không thể vô hiệu hóa chính tài khoản của bạn',
+    CANNOT_CHANGE_OWN_ROLE: 'Không thể đổi vai trò của chính bạn',
+    CANNOT_CHANGE_ADMIN:
+      'Không thể đổi vai trò tài khoản quản trị hệ thống (thực hiện qua DB)',
+  },
+
+  SUBSCRIPTION: {
+    PLAN_NOT_FOUND: 'Gói dịch vụ không tồn tại',
+    PLAN_CODE_TAKEN: 'Mã gói đã tồn tại',
+    SUB_NOT_FOUND: 'Thuê bao không tồn tại',
+    SAME_PLAN: 'Thuê bao đang dùng đúng gói này',
+    ALREADY_CANCELED: 'Thuê bao đã bị hủy',
+  },
+
   VALIDATION: {
     INVALID_MST: 'Mã số thuế không hợp lệ',
     INVALID_PHONE: 'Số điện thoại không hợp lệ',

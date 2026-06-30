@@ -4,13 +4,9 @@ import { loginRoute } from './login.route';
 import { adminRoute } from './admin.route';
 import { companiesRoute, companyDetailRoute } from './companies.route';
 import { logsRoute } from './logs.route';
-import {
-  dashboardRoute,
-  invitesRoute,
-  subscriptionsRoute,
-  usersRoute,
-  opsRoute,
-} from './stubs.route';
+import { subscriptionsRoute } from './subscriptions.route';
+import { usersRoute } from './users.route';
+import { dashboardRoute, invitesRoute, opsRoute } from './stubs.route';
 import { isAuthenticated } from '@/features/auth/hooks/useAuth';
 
 // "/" -> điều hướng theo trạng thái đăng nhập.

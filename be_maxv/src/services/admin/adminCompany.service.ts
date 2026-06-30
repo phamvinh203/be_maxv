@@ -1,11 +1,11 @@
-import { sysPrisma } from '../config/db.sys';
-import { getTenantDb } from '../helpers/tenantClient';
-import { provisionTenant, tenantDbExists } from './provisioning.service';
-import { writeLog } from './syslog.service';
-import { ConflictError, NotFoundError } from '../helpers/errors';
-import { MESSAGES } from '../constants/messages';
-import type { Prisma } from '../generated/sys';
-import type { ListCompaniesQuery } from '../validators/admin.validator';
+import { sysPrisma } from '../../config/db.sys';
+import { getTenantDb } from '../../helpers/tenantClient';
+import { provisionTenant, tenantDbExists } from '../shared/provisioning.service';
+import { writeLog } from '../shared/syslog.service';
+import { ConflictError, NotFoundError } from '../../helpers/errors';
+import { MESSAGES } from '../../constants/messages';
+import type { Prisma } from '../../generated/sys';
+import type { ListCompaniesQuery } from '../../validators/admin.validator';
 
 // Cột công khai cho danh sách (không kéo quan hệ -> nhẹ).
 const LIST_SELECT = {

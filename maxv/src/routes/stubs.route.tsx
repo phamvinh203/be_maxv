@@ -27,27 +27,6 @@ export const invitesRoute = createRoute({
   component: StubPage,
 });
 
-export const subscriptionsRoute = createRoute({
-  getParentRoute: () => adminRoute,
-  path: '/subscriptions',
-  staticData: {
-    title: 'Thuê bao',
-    description: 'Quản lý gói & thuê bao của các đơn vị: đổi gói, gia hạn, hủy.',
-  },
-  component: StubPage,
-});
-
-export const usersRoute = createRoute({
-  getParentRoute: () => adminRoute,
-  path: '/users',
-  staticData: {
-    title: 'Người dùng',
-    description:
-      'Danh sách người dùng toàn hệ thống: kích hoạt, đặt lại mật khẩu.',
-  },
-  component: StubPage,
-});
-
 export const opsRoute = createRoute({
   getParentRoute: () => adminRoute,
   path: '/ops',

@@ -6,8 +6,27 @@ import {
   retryProvision,
   suspendCompany,
   resumeCompany,
-} from '../controllers/adminCompany.controller';
-import { listLogs, listLogActions } from '../controllers/adminLog.controller';
+} from '../controllers/admin/adminCompany.controller';
+import {
+  listLogs,
+  listLogActions,
+} from '../controllers/admin/adminLog.controller';
+import {
+  listPlans,
+  createPlan,
+  updatePlan,
+  listSubscriptions,
+  changePlan,
+  cancelSubscription,
+  listSubscriptionHistory,
+} from '../controllers/admin/adminSubscription.controller';
+import {
+  listUsers,
+  activateUser,
+  deactivateUser,
+  changeUserRole,
+  resetUserPassword,
+} from '../controllers/admin/adminUser.controller';
 
 /**
  * Nhóm route quản trị (control plane maxv2_sys).
@@ -29,4 +48,22 @@ export async function adminRoutes(app: FastifyInstance) {
   // Nhật ký hệ thống
   app.get('/logs', listLogs);
   app.get('/logs/actions', listLogActions);
+
+  // Gói dịch vụ
+  app.get('/plans', listPlans);
+  app.post('/plans', createPlan);
+  app.patch('/plans/:id', updatePlan);
+
+  // Thuê bao
+  app.get('/subscriptions', listSubscriptions);
+  app.post('/subscriptions/:id/change-plan', changePlan);
+  app.post('/subscriptions/:id/cancel', cancelSubscription);
+  app.get('/subscriptions/:id/history', listSubscriptionHistory);
+
+  // Người dùng
+  app.get('/users', listUsers);
+  app.post('/users/:id/activate', activateUser);
+  app.post('/users/:id/deactivate', deactivateUser);
+  app.patch('/users/:id/role', changeUserRole);
+  app.post('/users/:id/reset-password', resetUserPassword);
 }

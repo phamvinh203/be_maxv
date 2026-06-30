@@ -2,9 +2,9 @@ import { Client } from 'pg';
 import { exec } from 'node:child_process';
 import { promisify } from 'node:util';
 import path from 'node:path';
-import { env } from '../config/env';
-import { sysPrisma } from '../config/db.sys';
-import { tenantDbName, tenantUrl } from '../utils/dbName';
+import { env } from '../../config/env';
+import { sysPrisma } from '../../config/db.sys';
+import { tenantDbName, tenantUrl } from '../../utils/dbName';
 
 const execAsync = promisify(exec);
 
