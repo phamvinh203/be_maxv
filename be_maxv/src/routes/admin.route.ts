@@ -17,6 +17,13 @@ import {
   cancelSubscription,
   listSubscriptionHistory,
 } from '../controllers/adminSubscription.controller';
+import {
+  listUsers,
+  activateUser,
+  deactivateUser,
+  changeUserRole,
+  resetUserPassword,
+} from '../controllers/adminUser.controller';
 
 /**
  * Nhóm route quản trị (control plane maxv2_sys).
@@ -49,4 +56,11 @@ export async function adminRoutes(app: FastifyInstance) {
   app.post('/subscriptions/:id/change-plan', changePlan);
   app.post('/subscriptions/:id/cancel', cancelSubscription);
   app.get('/subscriptions/:id/history', listSubscriptionHistory);
+
+  // Người dùng
+  app.get('/users', listUsers);
+  app.post('/users/:id/activate', activateUser);
+  app.post('/users/:id/deactivate', deactivateUser);
+  app.patch('/users/:id/role', changeUserRole);
+  app.post('/users/:id/reset-password', resetUserPassword);
 }

@@ -68,7 +68,26 @@ export const changePlanSchema = z.object({
   ghiChu: z.string().trim().optional(),
 });
 
+// ---- Người dùng (users) ----
+const ROLES = ['ADMIN', 'OWNER', 'KE_TOAN_TRUONG', 'KE_TOAN', 'XEM'] as const;
+// Vai trò admin có thể GÁN qua UI — KHÔNG gồm ADMIN (gán/gỡ admin chỉ qua DB,
+// tránh leo thang đặc quyền bằng dropdown).
+const ASSIGNABLE_ROLES = ['OWNER', 'KE_TOAN_TRUONG', 'KE_TOAN', 'XEM'] as const;
+
+export const listUsersQuerySchema = z.object({
+  role: z.enum(ROLES).optional(),
+  status: z.enum(['PENDING', 'ACTIVE', 'REJECTED']).optional(),
+  donViId: z.string().uuid().optional(),
+  q: z.string().trim().min(1).optional(), // tìm theo email / họ tên / sđt
+  page: z.coerce.number().int().min(1).default(1),
+  pageSize: z.coerce.number().int().min(1).max(100).default(20),
+});
+
+export const changeRoleSchema = z.object({ role: z.enum(ASSIGNABLE_ROLES) });
+
 export type IdParam = z.infer<typeof idParamSchema>;
+export type ListUsersQuery = z.infer<typeof listUsersQuerySchema>;
+export type ChangeRoleInput = z.infer<typeof changeRoleSchema>;
 export type ListCompaniesQuery = z.infer<typeof listCompaniesQuerySchema>;
 export type ListLogsQuery = z.infer<typeof listLogsQuerySchema>;
 export type CreatePlanInput = z.infer<typeof createPlanSchema>;
