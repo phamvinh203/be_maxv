@@ -7,6 +7,7 @@ import {
   suspendCompany,
   resumeCompany,
 } from '../controllers/adminCompany.controller';
+import { listLogs, listLogActions } from '../controllers/adminLog.controller';
 
 /**
  * Nhóm route quản trị (control plane maxv2_sys).
@@ -24,4 +25,8 @@ export async function adminRoutes(app: FastifyInstance) {
   app.post('/companies/:id/retry-provision', retryProvision);
   app.post('/companies/:id/suspend', suspendCompany);
   app.post('/companies/:id/resume', resumeCompany);
+
+  // Nhật ký hệ thống
+  app.get('/logs', listLogs);
+  app.get('/logs/actions', listLogActions);
 }

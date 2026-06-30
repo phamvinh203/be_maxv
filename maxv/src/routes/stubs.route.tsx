@@ -48,16 +48,6 @@ export const usersRoute = createRoute({
   component: StubPage,
 });
 
-export const logsRoute = createRoute({
-  getParentRoute: () => adminRoute,
-  path: '/logs',
-  staticData: {
-    title: 'Nhật ký hệ thống',
-    description: 'Tra cứu nhật ký theo đơn vị, người dùng, hành động, thời gian.',
-  },
-  component: StubPage,
-});
-
 export const opsRoute = createRoute({
   getParentRoute: () => adminRoute,
   path: '/ops',

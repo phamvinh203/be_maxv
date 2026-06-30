@@ -18,6 +18,8 @@ const pgBase = `postgresql://${APP_USER}:${APP_PASS}@${APP_HOST}:${APP_PORT}`;
 export const env = {
   port: Number(process.env.PORT ?? 4000),
   nodeEnv: process.env.NODE_ENV ?? 'development',
+  // Bật khi chạy sau reverse proxy để đọc IP thật từ X-Forwarded-For.
+  trustProxy: process.env.TRUST_PROXY === 'true',
 
   // Control plane (maxv2_sys) — Prisma client đọc qua DB_SYS_URL
   sysUrl: required('DB_SYS_URL'),
