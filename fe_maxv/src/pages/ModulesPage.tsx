@@ -1,4 +1,5 @@
 import { useState, type JSX } from 'react';
+import { useNavigate } from 'react-router-dom';
 import AppHeader from '../components/AppHeader';
 import AppSidebar from '../components/AppSidebar';
 import ModulePage from '../components/ModulePage';
@@ -9,12 +10,13 @@ interface Props {
 }
 
 export default function ModulesPage({ onLogout }: Props): JSX.Element {
+  const navigate = useNavigate();
   const [active, setActive] = useState<string>(MODULE_ORDER[0].slug);
   const config = MODULES[active];
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100vh', overflow: 'hidden' }}>
-      <AppHeader onLogout={onLogout} />
+      <AppHeader onLogout={onLogout} onSettings={() => navigate('/app/settings')} />
       <div style={{ display: 'flex', flex: 1, minHeight: 0 }}>
         <AppSidebar active={active} onSelect={setActive} />
         <div style={{ flex: 1, minWidth: 0 }}>

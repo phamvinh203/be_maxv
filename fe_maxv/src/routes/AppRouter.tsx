@@ -4,6 +4,7 @@ import App from '../App';
 import LoginPage from '../pages/LoginPage';
 import RegisterPage from '../pages/RegisterPage';
 import ModulesPage from '../pages/ModulesPage';
+import SettingsPage from '../pages/settings/SettingsPage';
 import ProtectedRoute from './ProtectedRoute';
 import { isAuthenticated } from '@/features/auth/hooks/useAuth';
 
@@ -44,6 +45,14 @@ export default function AppRouter(): JSX.Element {
             element={
               <ProtectedRoute>
                 <AppRoute />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="app/settings"
+            element={
+              <ProtectedRoute>
+                <SettingsPage />
               </ProtectedRoute>
             }
           />
