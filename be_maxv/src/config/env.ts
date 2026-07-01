@@ -43,5 +43,4 @@ export const env = {
   smtpPort: Number(process.env.SMTP_PORT ?? 587),
   smtpUser: required('SMTP_USER'),
   smtpPassword: required('SMTP_PASSWORD'),
-  smtpFrom: required('SMTP_FROM'),
 };
