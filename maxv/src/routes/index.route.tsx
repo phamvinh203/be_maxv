@@ -6,7 +6,8 @@ import { companiesRoute, companyDetailRoute } from './companies.route';
 import { logsRoute } from './logs.route';
 import { subscriptionsRoute } from './subscriptions.route';
 import { usersRoute } from './users.route';
-import { dashboardRoute, invitesRoute, opsRoute } from './stubs.route';
+import { dashboardRoute, opsRoute } from './stubs.route';
+import { invitesRoute } from './invites.route';
 import { isAuthenticated } from '@/features/auth/hooks/useAuth';
 
 // "/" -> điều hướng theo trạng thái đăng nhập.
