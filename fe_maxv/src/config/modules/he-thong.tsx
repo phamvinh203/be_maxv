@@ -15,6 +15,7 @@ export const heThongConfig: ModuleConfig = {
   ],
 
   danhMuc: [
+    { left:  { label: 'Quản lý nhân viên', path: '/he-thong/nhan-vien' } },
     { left:  { label: 'Danh mục quyền chứng từ',                         path: '/he-thong/danh_muc/quyen-chung-tu' },
       right: { label: 'Phân quyền NSD quyền chứng từ',                   path: '/he-thong/danh_muc/phan-quyen-nsd' } },
     { left:  { label: 'Khóa số liệu',                                    path: '/he-thong/danh_muc/khoa-so-lieu' },
