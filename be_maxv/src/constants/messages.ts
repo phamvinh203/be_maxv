@@ -34,6 +34,10 @@ export const MESSAGES = {
     INVITE_ALREADY_PENDING: 'Email này đã có lời mời đang chờ duyệt',
     INVITE_NOTIFY_FAILED:
       'Không thể gửi email thông báo cho quản trị viên, vui lòng thử lại',
+    INVITE_NOT_FOUND: 'Lời mời không tồn tại',
+    INVITE_NOT_PENDING: 'Lời mời này đã được xử lý (không còn ở trạng thái chờ duyệt)',
+    INVITE_WELCOME_MAIL_FAILED:
+      'Không thể gửi email mật khẩu cho nhân viên, vui lòng thử lại',
   },
 
   USER: {

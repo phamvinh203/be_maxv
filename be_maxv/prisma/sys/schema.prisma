@@ -22,6 +22,7 @@ model User {
   sdt      String? // số điện thoại
   password String // hash bcrypt
   hoTen    String
+  chucVu   String? // chức vụ tự do (chỉ có ý nghĩa với OWNER_EMPLOYEE, sao chép từ InviteRequest lúc duyệt)
   role     Role       @default(OWNER) // OWNER = người mua gói; còn lại là nhân viên
   status   UserStatus @default(ACTIVE)
   isActive Boolean    @default(false) // true sau khi xác thực email / được duyệt
