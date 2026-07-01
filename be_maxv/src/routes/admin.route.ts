@@ -27,6 +27,11 @@ import {
   changeUserRole,
   resetUserPassword,
 } from '../controllers/admin/adminUser.controller';
+import {
+  listInvites,
+  approveInvite,
+  rejectInvite,
+} from '../controllers/admin/adminInvite.controller';
 
 /**
  * Nhóm route quản trị (control plane maxv2_sys).
@@ -48,6 +53,11 @@ export async function adminRoutes(app: FastifyInstance) {
   // Nhật ký hệ thống
   app.get('/logs', listLogs);
   app.get('/logs/actions', listLogActions);
+
+  // Mời & duyệt nhân viên
+  app.get('/nhan-vien', listInvites);
+  app.post('/nhan-vien/:id/approve', approveInvite);
+  app.post('/nhan-vien/:id/reject', rejectInvite);
 
   // Gói dịch vụ
   app.get('/plans', listPlans);
