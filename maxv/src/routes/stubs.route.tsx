@@ -17,16 +17,6 @@ export const dashboardRoute = createRoute({
   component: StubPage,
 });
 
-export const invitesRoute = createRoute({
-  getParentRoute: () => adminRoute,
-  path: '/invites',
-  staticData: {
-    title: 'Nhân viên',
-    description: 'Duyệt/từ chối lời mời nhân viên do chủ đơn vị gửi.',
-  },
-  component: StubPage,
-});
-
 export const opsRoute = createRoute({
   getParentRoute: () => adminRoute,
   path: '/ops',
