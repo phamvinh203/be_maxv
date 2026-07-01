@@ -43,6 +43,10 @@ model DonVi {
   slug     String @unique
   tenDonVi String
 
+  diaChi            String? // địa chỉ trụ sở
+  sdt               String? // số điện thoại công ty
+  loaiHinhKinhDoanh String? // loại hình kinh doanh (hộ KD, công ty TNHH, CP...)
+
   // Trạng thái VÒNG ĐỜI DB (tách khỏi billing — billing nằm ở Subscription)
   status        TenantStatus @default(PROVISIONING)
   dbName        String?      @unique // "maxv2_<MST>_app"

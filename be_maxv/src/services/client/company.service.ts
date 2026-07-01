@@ -13,7 +13,7 @@ import type { RegisterCompanyInput } from '../../validators/auth.validator';
  * (Mỗi user chỉ gắn 1 công ty.)
  */
 export async function registerCompany(input: RegisterCompanyInput) {
-  const { userId, tenCongTy, maSoThue } = input;
+  const { userId, tenCongTy, maSoThue, diaChi, sdt, loaiHinhKinhDoanh } = input;
 
   const [user, mstExists] = await Promise.all([
     sysPrisma.user.findUnique({ where: { id: userId } }),
@@ -31,6 +31,9 @@ export async function registerCompany(input: RegisterCompanyInput) {
         maSoThue,
         slug: tenantSlug(maSoThue),
         tenDonVi: tenCongTy,
+        diaChi,
+        sdt,
+        loaiHinhKinhDoanh,
         status: 'PROVISIONING',
       },
     });
@@ -50,5 +53,13 @@ export async function registerCompany(input: RegisterCompanyInput) {
     chiTiet: { maSoThue, dbName },
   });
 
-  return { id: donVi.id, maSoThue, tenDonVi: tenCongTy, dbName };
+  return {
+    id: donVi.id,
+    maSoThue,
+    tenDonVi: tenCongTy,
+    diaChi,
+    sdt,
+    loaiHinhKinhDoanh,
+    dbName,
+  };
 }
