@@ -1,5 +1,5 @@
 import { sysPrisma } from '../../config/db.sys';
-import { generatePassword, hashPassword } from '../../utils/password';
+import { DUMMY_HASH } from '../../utils/password';
 import { sendInviteNotifyToAdmins } from '../shared/mailer.service';
 import { writeLog } from '../shared/syslog.service';
 import { ConflictError } from '../../helpers/errors';
@@ -39,15 +39,15 @@ export async function inviteEmployee(
   if (existing) throw new ConflictError(MESSAGES.NHAN_VIEN.EMAIL_TAKEN);
 
   const hoTen = email.split('@')[0].toUpperCase();
-  // Hash ngẫu nhiên KHÔNG dùng được — chỉ để chỗ cho tới khi admin duyệt.
-  const dummyPassword = await hashPassword(generatePassword());
 
   const invite = await sysPrisma.$transaction(async (tx) => {
     await tx.user.create({
       data: {
         email,
         hoTen,
-        password: dummyPassword,
+        // Hash cố định KHÔNG ai biết mật khẩu gốc — chỉ để chỗ cho tới khi
+        // admin duyệt (tránh tốn 1 lượt hash bcrypt cho giá trị sẽ bị ghi đè).
+        password: DUMMY_HASH,
         role,
         status: 'PENDING',
         isActive: false,
@@ -65,20 +65,23 @@ export async function inviteEmployee(
     sysPrisma.user.findMany({ where: { role: 'ADMIN' }, select: { email: true } }),
   ]);
 
-  await sendInviteNotifyToAdmins({
-    adminEmails: admins.map((a) => a.email),
-    companyName: donVi?.tenDonVi ?? 'Không rõ',
-    ownerName: owner?.hoTen ?? 'Không rõ',
-    inviteEmail: email,
-    roleLabel: ROLE_LABELS[role] ?? role,
-  }).catch(() => undefined);
-
-  await writeLog({
-    hanhDong: 'CREATE_INVITE',
-    userId: ownerId,
-    donViId,
-    chiTiet: { email, role },
-  });
+  // Gửi mail (best-effort, không throw — xem mailer.service.ts) và ghi log
+  // độc lập với nhau -> chạy song song thay vì nối tiếp.
+  await Promise.all([
+    sendInviteNotifyToAdmins({
+      adminEmails: admins.map((a) => a.email),
+      companyName: donVi?.tenDonVi ?? 'Không rõ',
+      ownerName: owner?.hoTen ?? 'Không rõ',
+      inviteEmail: email,
+      roleLabel: ROLE_LABELS[role] ?? role,
+    }),
+    writeLog({
+      hanhDong: 'CREATE_INVITE',
+      userId: ownerId,
+      donViId,
+      chiTiet: { email, role },
+    }),
+  ]);
 
   return {
     id: invite.id,
