@@ -29,6 +29,12 @@ export const registerCompanySchema = z.object({
   userId: z.string().uuid(),
   tenCongTy: z.string().min(1),
   maSoThue: z.string().regex(MST_REGEX, MESSAGES.VALIDATION.INVALID_MST),
+  diaChi: z.string().min(1),
+  sdt: z
+    .string()
+    .regex(/^[0-9]{9,11}$/, MESSAGES.VALIDATION.INVALID_PHONE)
+    .optional(),
+  loaiHinhKinhDoanh: z.string().min(1),
 });
 
 export type RegisterInput = z.infer<typeof registerSchema>;
