@@ -93,7 +93,7 @@ Content-Type: application/json
 
 ### --- Kiểm tra guard ---
 
-### Nhân viên (không phải OWNER) gọi /nhan-vien/invite -> 403
+### Token giả (không hợp lệ) gọi /nhan-vien/invite -> 401 (auth thất bại trước khi kiểm tra role)
 POST {{base}}/nhan-vien/invite
 Authorization: Bearer faketoken
 Content-Type: application/json
