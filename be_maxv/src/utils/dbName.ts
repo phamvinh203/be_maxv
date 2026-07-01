@@ -16,7 +16,7 @@ export function tenantDbName(mst: string): string {
 }
 
 export function tenantSlug(mst: string): string {
-  return `maxv-${normalize(mst)}`;
+  return normalize(mst);
 }
 
 export function tenantUrl(dbName: string): string {
