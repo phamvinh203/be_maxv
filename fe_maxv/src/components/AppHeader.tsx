@@ -1,7 +1,45 @@
-import type { JSX } from 'react';
+import { useEffect, useRef, useState, type JSX } from 'react';
 import logo from '../assets/Logo-Maxv.png';
+import { getUser } from '@/features/auth/token';
+import { useLogout } from '@/features/auth/hooks/useAuth';
 
-export default function AppHeader(): JSX.Element {
+interface Props {
+  onLogout: () => void;
+  onSettings?: () => void;
+}
+
+function getInitial(hoTen: string | undefined): string {
+  const trimmed = hoTen?.trim();
+  return trimmed ? trimmed.charAt(0).toUpperCase() : '?';
+}
+
+export default function AppHeader({ onLogout, onSettings }: Props): JSX.Element {
+  const user = getUser();
+  const [menuOpen, setMenuOpen] = useState(false);
+  const menuRef = useRef<HTMLDivElement>(null);
+  const logoutMutation = useLogout();
+
+  useEffect(() => {
+    if (!menuOpen) return;
+    function handleClickOutside(e: MouseEvent) {
+      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
+        setMenuOpen(false);
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [menuOpen]);
+
+  function handleLogout() {
+    setMenuOpen(false);
+    logoutMutation.mutate(undefined, { onSettled: onLogout });
+  }
+
+  function handleSettings() {
+    setMenuOpen(false);
+    onSettings?.();
+  }
+
   return (
     <header
       style={{
@@ -33,15 +71,73 @@ export default function AppHeader(): JSX.Element {
 
       <div style={{ flex: 1 }} />
 
-      {/* Avatar tĩnh (chưa nối logic người dùng) */}
-      <div
-        style={{
-          width: 26, height: 26, borderRadius: '50%', background: '#4ab3f4',
-          display: 'flex', alignItems: 'center', justifyContent: 'center',
-          fontSize: 12, fontWeight: 700, color: 'white',
-        }}
-      >
-        K
+      {user && (
+        <span style={{ color: 'rgba(255,255,255,0.85)', fontSize: 13, fontWeight: 500 }}>
+          {user.hoTen}
+        </span>
+      )}
+
+      <div ref={menuRef} style={{ position: 'relative' }}>
+        <button
+          type="button"
+          onClick={() => setMenuOpen((v) => !v)}
+          title={user?.hoTen ?? 'Chưa đăng nhập'}
+          style={{
+            width: 26, height: 26, borderRadius: '50%', background: '#4ab3f4',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            fontSize: 12, fontWeight: 700, color: 'white',
+            border: 'none', cursor: 'pointer', padding: 0,
+          }}
+        >
+          {getInitial(user?.hoTen)}
+        </button>
+
+        {menuOpen && (
+          <div
+            style={{
+              position: 'absolute',
+              top: 'calc(100% + 8px)',
+              right: 0,
+              minWidth: 160,
+              background: 'white',
+              borderRadius: 8,
+              boxShadow: '0 4px 16px rgba(0,0,0,0.18)',
+              overflow: 'hidden',
+              zIndex: 20,
+            }}
+          >
+            <button
+              type="button"
+              onClick={handleSettings}
+              style={{
+                display: 'block', width: '100%', textAlign: 'left',
+                padding: '10px 14px', fontSize: 13, color: '#1a3a5c',
+                background: 'none', border: 'none', cursor: 'pointer',
+              }}
+              onMouseEnter={(e) => (e.currentTarget.style.background = '#f1f5f9')}
+              onMouseLeave={(e) => (e.currentTarget.style.background = 'none')}
+            >
+              Cài đặt
+            </button>
+            <div style={{ height: 1, background: '#e5e7eb' }} />
+            <button
+              type="button"
+              onClick={handleLogout}
+              disabled={logoutMutation.isPending}
+              style={{
+                display: 'block', width: '100%', textAlign: 'left',
+                padding: '10px 14px', fontSize: 13, color: '#dc2626',
+                background: 'none', border: 'none',
+                cursor: logoutMutation.isPending ? 'default' : 'pointer',
+                opacity: logoutMutation.isPending ? 0.6 : 1,
+              }}
+              onMouseEnter={(e) => (e.currentTarget.style.background = '#fef2f2')}
+              onMouseLeave={(e) => (e.currentTarget.style.background = 'none')}
+            >
+              {logoutMutation.isPending ? 'Đang đăng xuất...' : 'Đăng xuất'}
+            </button>
+          </div>
+        )}
       </div>
     </header>
   );

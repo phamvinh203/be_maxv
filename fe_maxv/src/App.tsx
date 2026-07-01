@@ -20,7 +20,7 @@ function App() {
   if (view === 'register') {
     return <RegisterPage onLogin={() => setView('login')} />;
   }
-  return <ModulesPage />;
+  return <ModulesPage onLogout={() => setView('login')} />;
 }
 
 export default App;

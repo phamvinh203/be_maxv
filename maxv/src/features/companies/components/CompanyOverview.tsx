@@ -3,13 +3,6 @@ import { Box, Card, CardContent, Stack, Typography } from '@mui/material';
 import { useCompanyOverview } from '@/features/companies/hooks/useCompanies';
 import { formatDateTime } from '@/lib/format';
 
-const COUNT_LABELS: Record<string, string> = {
-  taiKhoan: 'Tài khoản',
-  doiTuong: 'Đối tượng',
-  chungTu: 'Chứng từ',
-  chungTuDong: 'Dòng chứng từ',
-  butToan: 'Bút toán',
-};
 
 function StatCard({
   label,
@@ -41,9 +34,6 @@ export function CompanyOverview({ id }: { id: string }): JSX.Element {
       <Typography variant="h6">Tổng quan dữ liệu (DB tenant)</Typography>
 
       <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap' }}>
-        {Object.entries(data.counts).map(([key, value]) => (
-          <StatCard key={key} label={COUNT_LABELS[key] ?? key} value={value} />
-        ))}
         <StatCard label="Dung lượng DB" value={data.dbSize} />
       </Box>
 
