@@ -7,13 +7,14 @@ import ModulesPage from '../pages/ModulesPage';
 import SettingsPage from '../pages/settings/SettingsPage';
 import ProtectedRoute from './ProtectedRoute';
 import { isAuthenticated } from '@/features/auth/hooks/useAuth';
+import { MODULE_ORDER } from '../config/modules';
 
 function LoginRoute() {
   const navigate = useNavigate();
   return (
     <LoginPage
       onRegister={() => navigate('/register')}
-      onLoggedIn={() => navigate('/app')}
+      onLoggedIn={() => navigate('/')}
     />
   );
 }
@@ -36,12 +37,21 @@ export default function AppRouter(): JSX.Element {
         <Route element={<App />}>
           <Route
             index
-            element={<Navigate to={isAuthenticated() ? '/app' : '/login'} replace />}
+            element={
+              <Navigate
+                to={isAuthenticated() ? `/${MODULE_ORDER[0].slug}` : '/login'}
+                replace
+              />
+            }
           />
           <Route path="login" element={<LoginRoute />} />
           <Route path="register" element={<RegisterRoute />} />
           <Route
             path="app"
+            element={<Navigate to={`/${MODULE_ORDER[0].slug}`} replace />}
+          />
+          <Route
+            path=":moduleSlug"
             element={
               <ProtectedRoute>
                 <AppRoute />
@@ -49,7 +59,7 @@ export default function AppRouter(): JSX.Element {
             }
           />
           <Route
-            path="app/settings"
+            path="settings"
             element={
               <ProtectedRoute>
                 <SettingsPage />
