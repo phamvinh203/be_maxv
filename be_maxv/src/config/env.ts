@@ -37,4 +37,10 @@ export const env = {
   refreshTtlSec: Number(process.env.REFRESH_TOKEN_TTL_SEC ?? 60 * 60 * 24 * 7),
 
   trialDays: Number(process.env.TRIAL_DAYS ?? 7),
+
+  // SMTP (thông báo qua email — vd báo admin khi có lời mời nhân viên mới)
+  smtpHost: required('SMTP_HOST'),
+  smtpPort: Number(process.env.SMTP_PORT ?? 587),
+  smtpUser: required('SMTP_USER'),
+  smtpPassword: required('SMTP_PASSWORD'),
 };

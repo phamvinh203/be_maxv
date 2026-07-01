@@ -69,10 +69,10 @@ export const changePlanSchema = z.object({
 });
 
 // ---- Người dùng (users) ----
-const ROLES = ['ADMIN', 'OWNER', 'KE_TOAN_TRUONG', 'KE_TOAN', 'XEM'] as const;
+const ROLES = ['ADMIN', 'OWNER', 'OWNER_EMPLOYEE'] as const;
 // Vai trò admin có thể GÁN qua UI — KHÔNG gồm ADMIN (gán/gỡ admin chỉ qua DB,
 // tránh leo thang đặc quyền bằng dropdown).
-const ASSIGNABLE_ROLES = ['OWNER', 'KE_TOAN_TRUONG', 'KE_TOAN', 'XEM'] as const;
+const ASSIGNABLE_ROLES = ['OWNER', 'OWNER_EMPLOYEE'] as const;
 
 export const listUsersQuerySchema = z.object({
   role: z.enum(ROLES).optional(),
@@ -85,7 +85,21 @@ export const listUsersQuerySchema = z.object({
 
 export const changeRoleSchema = z.object({ role: z.enum(ASSIGNABLE_ROLES) });
 
+// ---- Lời mời nhân viên (invite_requests) ----
+export const listInvitesQuerySchema = z.object({
+  status: z.enum(['PENDING', 'APPROVED', 'REJECTED']).optional(),
+  donViId: z.string().uuid().optional(),
+  page: z.coerce.number().int().min(1).default(1),
+  pageSize: z.coerce.number().int().min(1).max(100).default(20),
+});
+
+export const rejectInviteSchema = z.object({
+  lyDoTuChoi: z.string().trim().min(1).max(255).optional(),
+});
+
 export type IdParam = z.infer<typeof idParamSchema>;
+export type ListInvitesQuery = z.infer<typeof listInvitesQuerySchema>;
+export type RejectInviteInput = z.infer<typeof rejectInviteSchema>;
 export type ListUsersQuery = z.infer<typeof listUsersQuerySchema>;
 export type ChangeRoleInput = z.infer<typeof changeRoleSchema>;
 export type ListCompaniesQuery = z.infer<typeof listCompaniesQuerySchema>;

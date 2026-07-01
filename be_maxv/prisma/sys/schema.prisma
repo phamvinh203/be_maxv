@@ -22,6 +22,7 @@ model User {
   sdt      String? // số điện thoại
   password String // hash bcrypt
   hoTen    String
+  chucVu   String? // chức vụ tự do (chỉ có ý nghĩa với OWNER_EMPLOYEE, sao chép từ InviteRequest lúc duyệt)
   role     Role       @default(OWNER) // OWNER = người mua gói; còn lại là nhân viên
   status   UserStatus @default(ACTIVE)
   isActive Boolean    @default(false) // true sau khi xác thực email / được duyệt
@@ -122,10 +123,13 @@ model InviteRequest {
   id            String       @id @default(uuid())
   donViId       String // công ty mời
   email         String // email người được mời
-  role          Role         @default(KE_TOAN)
+  hoTen         String // tên do owner đặt cho người được mời (chưa chắc đã có tài khoản)
+  chucVu        String // chức vụ tự do, không ràng buộc enum (vd "Kế toán trưởng")
+  role          Role         @default(OWNER_EMPLOYEE)
   status        InviteStatus @default(PENDING)
   requestedById String // owner gửi yêu cầu
-  approvedById  String? // admin duyệt
+  approvedById  String? // admin duyệt (duyệt HOẶC từ chối)
+  lyDoTuChoi    String? // lý do admin từ chối, hiển thị cho owner
   createdAt     DateTime     @default(now())
   resolvedAt    DateTime?
 
@@ -156,9 +160,7 @@ model SysLog {
 enum Role {
   ADMIN
   OWNER
-  KE_TOAN_TRUONG
-  KE_TOAN
-  XEM
+  OWNER_EMPLOYEE // nhân viên do owner mời; chức vụ cụ thể nằm ở field chucVu (text tự do)
 }
 
 enum UserStatus {
