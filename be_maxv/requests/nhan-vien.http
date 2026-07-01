@@ -1,0 +1,105 @@
+### =============================================================
+###  Test API mời/duyệt nhân viên — dùng với extension "REST Client" (VS Code)
+###  Chạy LOGIN OWNER + LOGIN ADMIN trước.
+### =============================================================
+
+@base = http://localhost:4000/api/v1
+
+# Tài khoản OWNER đã có công ty:
+@ownerEmail = sdd-owner-test@maxv.local
+@ownerPassword = Sdd123456
+
+# Tài khoản ADMIN đã có sẵn trong DB:
+@adminEmail = sdd-admin-test@maxv.local
+@adminPassword = SddAdmin123
+
+### Đăng nhập owner
+# @name loginOwner
+POST {{base}}/auth/login
+Content-Type: application/json
+
+{ "email": "{{ownerEmail}}", "password": "{{ownerPassword}}" }
+
+### Token owner
+@ownerToken = {{loginOwner.response.body.$.data.accessToken}}
+
+### Owner mời nhân viên
+# @name invite
+POST {{base}}/nhan-vien/invite
+Authorization: Bearer {{ownerToken}}
+Content-Type: application/json
+
+{ "email": "nv-smoke@maxv.local", "role": "KE_TOAN" }
+
+### Owner xem danh sách nhân viên (kỳ vọng có nv-smoke@maxv.local, status=PENDING)
+GET {{base}}/nhan-vien
+Authorization: Bearer {{ownerToken}}
+
+### Owner mời lại đúng email vừa mời -> 409 (email đã tồn tại)
+POST {{base}}/nhan-vien/invite
+Authorization: Bearer {{ownerToken}}
+Content-Type: application/json
+
+{ "email": "nv-smoke@maxv.local", "role": "KE_TOAN" }
+
+### Đăng nhập admin
+# @name loginAdmin
+POST {{base}}/auth/login
+Content-Type: application/json
+
+{ "email": "{{adminEmail}}", "password": "{{adminPassword}}" }
+
+### Token admin
+@adminToken = {{loginAdmin.response.body.$.data.accessToken}}
+
+### Admin xem danh sách lời mời (kỳ vọng thấy nv-smoke@maxv.local, status=PENDING)
+GET {{base}}/admin/nhan-vien?status=PENDING
+Authorization: Bearer {{adminToken}}
+
+### Admin duyệt lời mời — copy "id" từ response trên vào đây
+@inviteId = PASTE_INVITE_ID_HERE
+POST {{base}}/admin/nhan-vien/{{inviteId}}/approve
+Authorization: Bearer {{adminToken}}
+
+### Nhân viên đăng nhập bằng mật khẩu vừa được trả về ở bước approve
+POST {{base}}/auth/login
+Content-Type: application/json
+
+{ "email": "nv-smoke@maxv.local", "password": "PASTE_PASSWORD_HERE" }
+
+### --- Luồng từ chối (tạo 1 invite khác để test) ---
+
+### Owner mời nhân viên thứ 2
+# @name invite2
+POST {{base}}/nhan-vien/invite
+Authorization: Bearer {{ownerToken}}
+Content-Type: application/json
+
+{ "email": "nv-tuchoi@maxv.local", "role": "XEM" }
+
+### Admin từ chối — copy "id" từ response invite2 vào đây
+@inviteId2 = PASTE_INVITE2_ID_HERE
+POST {{base}}/admin/nhan-vien/{{inviteId2}}/reject
+Authorization: Bearer {{adminToken}}
+Content-Type: application/json
+
+{ "reason": "Không đúng đối tượng" }
+
+### Nhân viên bị từ chối đăng nhập -> 401 (isActive vẫn false)
+POST {{base}}/auth/login
+Content-Type: application/json
+
+{ "email": "nv-tuchoi@maxv.local", "password": "bat-ky" }
+
+### --- Kiểm tra guard ---
+
+### Nhân viên (không phải OWNER) gọi /nhan-vien/invite -> 403
+POST {{base}}/nhan-vien/invite
+Authorization: Bearer faketoken
+Content-Type: application/json
+
+{ "email": "x@x.com", "role": "XEM" }
+
+### User thường gọi /admin/nhan-vien -> 403
+GET {{base}}/admin/nhan-vien
+Authorization: Bearer {{ownerToken}}
