@@ -5,16 +5,26 @@ import LoginPage from '../pages/LoginPage';
 import RegisterPage from '../pages/RegisterPage';
 import ModulesPage from '../pages/ModulesPage';
 import SettingsPage from '../pages/settings/SettingsPage';
+import SetupCompanyPage from '../pages/SetupCompanyPage';
 import ProtectedRoute from './ProtectedRoute';
-import { isAuthenticated } from '@/features/auth/hooks/useAuth';
+import RequireTenant from './RequireTenant';
+import { isAuthenticated, getCurrentCompany } from '@/features/auth/hooks/useAuth';
 import { MODULE_ORDER } from '../config/modules';
+
+/** Chưa login -> /login; login nhưng chưa có công ty -> /setup-company; có công ty -> /:slug/:moduleSlug đầu tiên. */
+function homePath(): string {
+  if (!isAuthenticated()) return '/login';
+  const company = getCurrentCompany();
+  if (!company) return '/setup-company';
+  return `/${company.slug}/${MODULE_ORDER[0].slug}`;
+}
 
 function LoginRoute() {
   const navigate = useNavigate();
   return (
     <LoginPage
       onRegister={() => navigate('/register')}
-      onLoggedIn={() => navigate('/')}
+      onLoggedIn={() => navigate(homePath())}
     />
   );
 }
@@ -35,35 +45,31 @@ export default function AppRouter(): JSX.Element {
     <BrowserRouter>
       <Routes>
         <Route element={<App />}>
-          <Route
-            index
-            element={
-              <Navigate
-                to={isAuthenticated() ? `/${MODULE_ORDER[0].slug}` : '/login'}
-                replace
-              />
-            }
-          />
+          <Route index element={<Navigate to={homePath()} replace />} />
           <Route path="login" element={<LoginRoute />} />
           <Route path="register" element={<RegisterRoute />} />
           <Route
-            path="app"
-            element={<Navigate to={`/${MODULE_ORDER[0].slug}`} replace />}
-          />
-          <Route
-            path=":moduleSlug"
+            path="setup-company"
             element={
               <ProtectedRoute>
-                <AppRoute />
+                <SetupCompanyPage />
               </ProtectedRoute>
             }
           />
           <Route
-            path="settings"
+            path=":slug/:moduleSlug"
             element={
-              <ProtectedRoute>
+              <RequireTenant>
+                <AppRoute />
+              </RequireTenant>
+            }
+          />
+          <Route
+            path=":slug/settings"
+            element={
+              <RequireTenant>
                 <SettingsPage />
-              </ProtectedRoute>
+              </RequireTenant>
             }
           />
           {/* Bắt mọi path không khớp, tránh màn hình trắng khi gõ sai URL */}

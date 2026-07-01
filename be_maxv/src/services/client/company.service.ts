@@ -64,6 +64,7 @@ export async function registerCompany(input: RegisterCompanyInput) {
     diaChi,
     sdt,
     loaiHinhKinhDoanh,
+    status: donVi.status,
     dbName,
   };
 }
