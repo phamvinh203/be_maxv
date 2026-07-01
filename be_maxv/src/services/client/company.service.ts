@@ -161,3 +161,45 @@ export async function inviteUserToCompany(input: InviteUserToCompanyInput) {
     createdAt: invite.createdAt,
   };
 }
+
+/** GET /companies/employees — danh sách nhân viên (kèm owner) của công ty đang đăng nhập. */
+export async function listCompanyEmployees(donViId: string | null) {
+  if (!donViId) throw new NotFoundError(MESSAGES.COMPANY.NOT_FOUND);
+
+  return sysPrisma.user.findMany({
+    where: { donViId },
+    orderBy: { createdAt: 'asc' },
+    select: {
+      id: true,
+      hoTen: true,
+      email: true,
+      sdt: true,
+      chucVu: true,
+      role: true,
+      status: true,
+      isActive: true,
+      createdAt: true,
+    },
+  });
+}
+
+/** GET /companies/invites — toàn bộ lời mời (mọi trạng thái) của công ty đang đăng nhập. */
+export async function listCompanyInvites(donViId: string | null) {
+  if (!donViId) throw new NotFoundError(MESSAGES.COMPANY.NOT_FOUND);
+
+  return sysPrisma.inviteRequest.findMany({
+    where: { donViId },
+    orderBy: { createdAt: 'desc' },
+    select: {
+      id: true,
+      email: true,
+      hoTen: true,
+      chucVu: true,
+      role: true,
+      status: true,
+      lyDoTuChoi: true,
+      createdAt: true,
+      resolvedAt: true,
+    },
+  });
+}

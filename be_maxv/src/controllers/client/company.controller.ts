@@ -1,9 +1,14 @@
 import type { FastifyRequest, FastifyReply } from 'fastify';
 import { registerCompanySchema } from '../../validators/company.validator';
 import { inviteUserSchema } from '../../validators/company.validator';
-import { inviteUserToCompany, registerCompany } from '../../services/client/company.service';
+import {
+  inviteUserToCompany,
+  listCompanyEmployees,
+  listCompanyInvites,
+  registerCompany,
+} from '../../services/client/company.service';
 import { validateBody } from '../../utils/validate';
-import { sendCreated } from '../../helpers/response';
+import { sendCreated, sendOk } from '../../helpers/response';
 
 /** POST /api/v1/companies — Step 2: register company + provision DB maxv2_<mst>_app. */
 export async function createCompany(req: FastifyRequest, reply: FastifyReply) {
@@ -23,4 +28,14 @@ export async function inviteUser(req: FastifyRequest, reply: FastifyReply) {
   return sendCreated(reply, data);
 }
 
+// GET /api/v1/companies/employees - xem danh sách nhân viên của công ty mình (owner + nhân viên đều xem được)
+export async function listEmployees(req: FastifyRequest, reply: FastifyReply) {
+  const data = await listCompanyEmployees(req.user.donViId);
+  return sendOk(reply, data);
+}
 
+// GET /api/v1/companies/invites - xem toàn bộ lời mời (mọi trạng thái) của công ty mình
+export async function listInvites(req: FastifyRequest, reply: FastifyReply) {
+  const data = await listCompanyInvites(req.user.donViId);
+  return sendOk(reply, data);
+}
