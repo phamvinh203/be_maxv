@@ -16,22 +16,22 @@ export type {
 
 /** Tra cứu module theo slug (khớp path /:slug ở client). */
 export const MODULES: Record<string, ModuleConfig> = {
-  'he-thong': heThongConfig,
-  'tong-hop': tongHopConfig,
-  tien: tienConfig,
-  'ban-hang': banHangConfig,
-  'mua-hang': muaHangConfig,
-  'ton-kho': tonKhoConfig,
-  'gia-thanh': giaThanhConfig,
+  'he_thong': heThongConfig,
+  'tong_hop': tongHopConfig,
+  'tien': tienConfig,
+  'ban_hang': banHangConfig,
+  'mua_hang': muaHangConfig,
+  'ton_kho': tonKhoConfig,
+  'gia_thanh': giaThanhConfig,
 };
 
 /** Thứ tự hiển thị module (menu khách hàng). */
 export const MODULE_ORDER: { slug: string; title: string }[] = [
-  { slug: 'he-thong', title: heThongConfig.title },
-  { slug: 'tong-hop', title: tongHopConfig.title },
+  { slug: 'he_thong', title: heThongConfig.title },
+  { slug: 'tong_hop', title: tongHopConfig.title },
   { slug: 'tien', title: tienConfig.title },
-  { slug: 'ban-hang', title: banHangConfig.title },
-  { slug: 'mua-hang', title: muaHangConfig.title },
-  { slug: 'ton-kho', title: tonKhoConfig.title },
-  { slug: 'gia-thanh', title: giaThanhConfig.title },
+  { slug: 'ban_hang', title: banHangConfig.title },
+  { slug: 'mua_hang', title: muaHangConfig.title },
+  { slug: 'ton_kho', title: tonKhoConfig.title },
+  { slug: 'gia_thanh', title: giaThanhConfig.title },
 ];
