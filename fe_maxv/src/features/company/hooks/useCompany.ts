@@ -3,7 +3,12 @@ import {
   inviteEmployee,
   listEmployees,
   listInvites,
+  registerCompany,
 } from '@/features/company/api/companyApi';
+
+export function useRegisterCompany() {
+  return useMutation({ mutationFn: registerCompany });
+}
 
 export function useEmployees() {
   return useQuery({ queryKey: ['company', 'employees'], queryFn: listEmployees });

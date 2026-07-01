@@ -29,3 +29,24 @@ export interface InviteEmployeeInput {
   hoTen: string;
   chucVu: string;
 }
+
+export interface RegisterCompanyInput {
+  userId: string;
+  tenCongTy: string;
+  maSoThue: string;
+  diaChi: string;
+  sdt?: string;
+  loaiHinhKinhDoanh?: string;
+}
+
+export interface RegisterCompanyResult {
+  id: string;
+  maSoThue: string;
+  slug: string;
+  tenDonVi: string;
+  diaChi: string;
+  sdt?: string | null;
+  loaiHinhKinhDoanh?: string | null;
+  status: string;
+  dbName: string | null;
+}

@@ -59,10 +59,12 @@ export async function registerCompany(input: RegisterCompanyInput) {
   return {
     id: donVi.id,
     maSoThue,
+    slug: donVi.slug,
     tenDonVi: tenCongTy,
     diaChi,
     sdt,
     loaiHinhKinhDoanh,
+    status: donVi.status,
     dbName,
   };
 }

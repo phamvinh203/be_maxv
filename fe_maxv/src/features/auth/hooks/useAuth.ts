@@ -1,7 +1,15 @@
 import { useMutation } from '@tanstack/react-query';
 import { login, register, logout } from '@/features/auth/api/authApi';
-import { getToken, getUser, setToken, setUser, clearSession } from '@/features/auth/token';
-import type { AuthUser } from '@/features/auth/types/auth';
+import {
+  getToken,
+  getUser,
+  getCompany,
+  setToken,
+  setUser,
+  setCompany,
+  clearSession,
+} from '@/features/auth/token';
+import type { AuthCompany, AuthUser } from '@/features/auth/types/auth';
 
 export function useLogin() {
   return useMutation({
@@ -9,6 +17,7 @@ export function useLogin() {
     onSuccess: (data) => {
       setToken(data.accessToken);
       setUser(data.user);
+      setCompany(data.company);
     },
   });
 }
@@ -30,4 +39,15 @@ export function isAuthenticated(): boolean {
 
 export function getCurrentUser(): AuthUser | null {
   return getUser();
+}
+
+export function getCurrentCompany(): AuthCompany | null {
+  return getCompany();
+}
+
+/** Sau khi tạo công ty (registerCompany) thành công: gắn donViId cho user hiện tại + lưu company. */
+export function attachCompanyToSession(company: AuthCompany): void {
+  const user = getUser();
+  if (user) setUser({ ...user, donViId: company.id });
+  setCompany(company);
 }

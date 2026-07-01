@@ -57,7 +57,7 @@ export async function loginUser(input: LoginInput) {
   const company = user.donViId
     ? await sysPrisma.donVi.findUnique({
         where: { id: user.donViId },
-        select: { id: true, maSoThue: true, tenDonVi: true, status: true },
+        select: { id: true, maSoThue: true, slug: true, tenDonVi: true, status: true },
       })
     : null;
 

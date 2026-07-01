@@ -56,7 +56,7 @@ apiClient.interceptors.response.use(
   },
 );
 
-async function refreshAccessToken(): Promise<string | null> {
+export async function refreshAccessToken(): Promise<string | null> {
   try {
     const res = await axios.post<{ data: { accessToken: string } }>(
       `${env.apiUrl}/auth/refresh`,

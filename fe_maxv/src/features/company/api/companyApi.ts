@@ -3,7 +3,15 @@ import type {
   CompanyInvite,
   Employee,
   InviteEmployeeInput,
+  RegisterCompanyInput,
+  RegisterCompanyResult,
 } from '@/features/company/types/company';
+
+export function registerCompany(
+  input: RegisterCompanyInput,
+): Promise<RegisterCompanyResult> {
+  return api.post<RegisterCompanyResult>('/companies', input);
+}
 
 export function listEmployees(): Promise<Employee[]> {
   return api.get<Employee[]>('/companies/employees');

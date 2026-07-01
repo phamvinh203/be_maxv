@@ -6,6 +6,14 @@ export interface AuthUser {
   donViId: string | null;
 }
 
+export interface AuthCompany {
+  id: string;
+  maSoThue: string;
+  slug: string;
+  tenDonVi: string;
+  status: string;
+}
+
 export interface LoginInput {
   email: string;
   password: string;
@@ -14,12 +22,7 @@ export interface LoginInput {
 export interface LoginResult {
   accessToken: string;
   user: AuthUser;
-  company: {
-    id: string;
-    maSoThue: string;
-    tenDonVi: string;
-    status: string;
-  } | null;
+  company: AuthCompany | null;
 }
 
 export interface RegisterInput {

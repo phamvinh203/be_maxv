@@ -1,9 +1,10 @@
-import type { AuthUser } from './types/auth';
+import type { AuthCompany, AuthUser } from './types/auth';
 
 // Access token (15') ở localStorage. Refresh token nằm trong cookie httpOnly
 // nên FE không (và không cần) đụng tới — chỉ cần withCredentials khi gọi /auth/refresh.
 const TOKEN_KEY = 'maxv_client_access_token';
 const USER_KEY = 'maxv_client_user';
+const COMPANY_KEY = 'maxv_client_company';
 
 export function getToken(): string | null {
   return localStorage.getItem(TOKEN_KEY);
@@ -22,7 +23,21 @@ export function setUser(user: AuthUser): void {
   localStorage.setItem(USER_KEY, JSON.stringify(user));
 }
 
+export function getCompany(): AuthCompany | null {
+  const raw = localStorage.getItem(COMPANY_KEY);
+  return raw ? (JSON.parse(raw) as AuthCompany) : null;
+}
+
+export function setCompany(company: AuthCompany | null): void {
+  if (company) {
+    localStorage.setItem(COMPANY_KEY, JSON.stringify(company));
+  } else {
+    localStorage.removeItem(COMPANY_KEY);
+  }
+}
+
 export function clearSession(): void {
   localStorage.removeItem(TOKEN_KEY);
   localStorage.removeItem(USER_KEY);
+  localStorage.removeItem(COMPANY_KEY);
 }
