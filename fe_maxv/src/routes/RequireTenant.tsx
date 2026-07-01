@@ -1,23 +1,16 @@
 import type { JSX, ReactNode } from 'react';
 import { Navigate, useLocation, useParams } from 'react-router-dom';
-import { isAuthenticated, getCurrentCompany } from '@/features/auth/hooks/useAuth';
+import { getCurrentCompany } from '@/features/auth/hooks/useAuth';
+import ProtectedRoute from './ProtectedRoute';
 
 interface Props {
   children: ReactNode;
 }
 
-/**
- * Bọc quanh route /:slug/... — cần đăng nhập, cần đã có công ty (donVi), và :slug
- * trên URL phải khớp slug công ty đang đăng nhập. Gõ nhầm/sai slug -> tự đưa về
- * đúng slug của mình (giữ nguyên phần path còn lại).
- */
-export default function RequireTenant({ children }: Props): JSX.Element {
+/** Cần đã có công ty (donVi), và :slug trên URL phải khớp slug công ty đang đăng nhập. */
+function TenantGuard({ children }: Props): JSX.Element {
   const location = useLocation();
   const { slug } = useParams<{ slug: string }>();
-
-  if (!isAuthenticated()) {
-    return <Navigate to="/login" replace />;
-  }
 
   const company = getCurrentCompany();
   if (!company) {
@@ -25,10 +18,19 @@ export default function RequireTenant({ children }: Props): JSX.Element {
   }
 
   if (slug !== company.slug) {
-    return (
-      <Navigate to={location.pathname.replace(`/${slug}`, `/${company.slug}`)} replace />
-    );
+    // Giữ nguyên phần path sau :slug (segment đầu tiên), chỉ thay slug sai bằng slug đúng.
+    const rest = location.pathname.split('/').slice(2).join('/');
+    return <Navigate to={`/${company.slug}${rest ? `/${rest}` : ''}`} replace />;
   }
 
   return <>{children}</>;
+}
+
+/** Bọc quanh route /:slug/... — cần đăng nhập (ProtectedRoute) và đúng tenant (TenantGuard). */
+export default function RequireTenant({ children }: Props): JSX.Element {
+  return (
+    <ProtectedRoute>
+      <TenantGuard>{children}</TenantGuard>
+    </ProtectedRoute>
+  );
 }

@@ -61,26 +61,22 @@ export function SetupCompanyForm(): JSX.Element {
       return;
     }
 
+    const sdt = form.sdt.trim();
+    const loaiHinhKinhDoanh = form.loaiHinhKinhDoanh.trim();
+
     mutate(
       {
         userId: user.id,
         tenCongTy: form.tenCongTy.trim(),
         maSoThue: form.maSoThue.trim(),
         diaChi: form.diaChi.trim(),
-        ...(form.sdt.trim() ? { sdt: form.sdt.trim() } : {}),
-        ...(form.loaiHinhKinhDoanh.trim()
-          ? { loaiHinhKinhDoanh: form.loaiHinhKinhDoanh.trim() }
-          : {}),
+        sdt: sdt || undefined,
+        loaiHinhKinhDoanh: loaiHinhKinhDoanh || undefined,
       },
       {
         onSuccess: async (result) => {
-          attachCompanyToSession({
-            id: result.id,
-            maSoThue: result.maSoThue,
-            slug: result.slug,
-            tenDonVi: result.tenDonVi,
-            status: result.status,
-          });
+          // result đã có đủ field của AuthCompany (id/maSoThue/slug/tenDonVi/status).
+          attachCompanyToSession(result);
           // JWT hiện tại vẫn mang donViId cũ (null) vì ký lúc login trước khi có công ty.
           await refreshAccessToken();
           navigate(`/${result.slug}/${MODULE_ORDER[0].slug}`, { replace: true });
