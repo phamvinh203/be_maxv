@@ -11,6 +11,7 @@
     "migrate:sys": "dotenv -e .env.local -- prisma migrate dev --schema=prisma/sys/schema.prisma",
     "migrate:sys:deploy": "dotenv -e .env.local -- prisma migrate deploy --schema=prisma/sys/schema.prisma",
     "setup:test-app": "tsx src/scripts/setup-test-app.ts",
+    "mail:test": "dotenv -e .env.local -- tsx src/scripts/send-test-mail.ts",
     "typecheck": "tsc --noEmit",
     "lint": "eslint src",
     "lint:fix": "eslint src --fix",
@@ -31,6 +32,7 @@
     "dotenv": "^16.4.7",
     "fastify": "^5.9.0",
     "fastify-plugin": "^5.0.1",
+    "nodemailer": "^9.0.3",
     "pg": "^8.13.1",
     "zod": "^3.24.1"
   },
@@ -38,6 +40,7 @@
     "@eslint/js": "^9.39.4",
     "@types/bcrypt": "^5.0.2",
     "@types/node": "^22.10.5",
+    "@types/nodemailer": "^8.0.1",
     "@types/pg": "^8.11.10",
     "dotenv-cli": "^8.0.0",
     "eslint": "^9.39.4",

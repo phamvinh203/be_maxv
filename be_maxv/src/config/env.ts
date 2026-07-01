@@ -37,4 +37,14 @@ export const env = {
   refreshTtlSec: Number(process.env.REFRESH_TOKEN_TTL_SEC ?? 60 * 60 * 24 * 7),
 
   trialDays: Number(process.env.TRIAL_DAYS ?? 7),
+
+  // SMTP gửi email (mời/duyệt nhân viên) — không bắt buộc để server khởi động
+  // được; mailer tự bỏ qua khi thiếu cấu hình (xem mailer.service.ts).
+  smtpHost: process.env.SMTP_HOST ?? 'smtp.gmail.com',
+  smtpPort: Number(process.env.SMTP_PORT ?? 587),
+  smtpUser: process.env.SMTP_USER ?? '',
+  smtpPassword: process.env.SMTP_PASSWORD ?? '',
+  smtpFrom: process.env.SMTP_FROM ?? 'noreply@maxv.local',
+  // Base URL của fe_maxv — dùng ghép link đăng nhập trong email nhân viên.
+  appUrl: process.env.APP_URL ?? 'http://localhost:5173',
 };
