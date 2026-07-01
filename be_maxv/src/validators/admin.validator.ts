@@ -69,10 +69,10 @@ export const changePlanSchema = z.object({
 });
 
 // ---- Người dùng (users) ----
-const ROLES = ['ADMIN', 'OWNER', 'KE_TOAN_TRUONG', 'KE_TOAN', 'XEM'] as const;
+const ROLES = ['ADMIN', 'OWNER', 'OWNER_EMPLOYEE'] as const;
 // Vai trò admin có thể GÁN qua UI — KHÔNG gồm ADMIN (gán/gỡ admin chỉ qua DB,
 // tránh leo thang đặc quyền bằng dropdown).
-const ASSIGNABLE_ROLES = ['OWNER', 'KE_TOAN_TRUONG', 'KE_TOAN', 'XEM'] as const;
+const ASSIGNABLE_ROLES = ['OWNER', 'OWNER_EMPLOYEE'] as const;
 
 export const listUsersQuerySchema = z.object({
   role: z.enum(ROLES).optional(),

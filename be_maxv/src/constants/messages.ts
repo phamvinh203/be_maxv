@@ -30,6 +30,8 @@ export const MESSAGES = {
     NO_TENANT_DB: 'Công ty chưa được cấp DB (provisioning chưa hoàn tất)',
     TENANT_DB_MISSING:
       'DB tenant không tồn tại (đã bị xóa hoặc cấp chưa xong). Đã đánh dấu FAILED — hãy cấp lại DB.',
+    EMAIL_ALREADY_MEMBER: 'Email này đã thuộc một công ty khác',
+    INVITE_ALREADY_PENDING: 'Email này đã có lời mời đang chờ duyệt',
   },
 
   USER: {
