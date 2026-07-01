@@ -219,3 +219,76 @@ Assignee: BE / FE / DB
 ## E. Bước tiếp theo
 
 Sau khi auth pass toàn bộ test case ở mục C, mới chuyển sang module chứng từ (xem danh mục tại [KIEN-TRUC-DATABASE.md](KIEN-TRUC-DATABASE.md) mục 8), bắt đầu từ **Phiếu thu / Phiếu chi** (đơn giản nhất, đủ để xác thực luồng `chung_tu` → `but_toan`).
+
+---
+
+## F. THIẾT KẾ KỸ THUẬT — Mời & duyệt nhân viên (US-04, US-05)
+
+> Chốt ngày 2026-07-01. Bổ sung chi tiết triển khai cho US-04/US-05 đã có ở mục A.3.
+
+### F.1. Luồng dữ liệu
+
+Owner mời nhân viên → tạo **NGAY** 2 bản ghi trong 1 transaction:
+- `User` (`status=PENDING`, `isActive=false`, `donViId`=công ty owner, `role` do owner chọn, `password`=hash ngẫu nhiên **không dùng được** — chỉ để chỗ, không gửi/không dùng cho tới khi admin duyệt).
+- `InviteRequest` (`status=PENDING`, `donViId`, `email`, `role`, `requestedById`=owner) — dùng làm hàng đợi/audit cho admin, KHÔNG có FK trực tiếp tới `User` (tra theo `email` vì `email` là unique).
+
+Sở dĩ tạo `User` ngay (không đợi admin duyệt) vì `isActive=false` đã đủ chặn đăng nhập (`loginUser` hiện có ném `ACCOUNT_INACTIVE` khi `!user.isActive` — không cần sửa `auth.service.ts`). `status` (PENDING/ACTIVE/REJECTED) chỉ mang tính hiển thị/audit.
+
+Admin **duyệt**: sinh mật khẩu ngẫu nhiên thật (`generatePassword()` + `hashPassword()`), cập nhật `User.password/status=ACTIVE/isActive=true` + `InviteRequest.status=APPROVED/approvedById/resolvedAt` trong 1 transaction, gửi email mật khẩu cho nhân viên (best-effort).
+
+Admin **từ chối**: `User.status=REJECTED` (giữ `isActive=false` vĩnh viễn — email này không mời lại được nữa, chấp nhận giới hạn này ở MVP), `InviteRequest.status=REJECTED/lyDoTuChoi/approvedById/resolvedAt`. Không gửi email.
+
+### F.2. Đổi schema (`prisma/sys/schema.prisma`)
+
+Thêm 1 field vào `InviteRequest`:
+```prisma
+model InviteRequest {
+  ...
+  lyDoTuChoi String? // lý do admin từ chối (hiển thị cho owner)
+  ...
+}
+```
+`User` giữ nguyên (đã có đủ `status`, `isActive`, `role`, `donViId`).
+
+### F.3. API contract (đổi tên theo đúng mục A.6 đã chốt)
+
+| Method | Endpoint | Auth | Body/Params | Response |
+|--------|----------|------|-------------|----------|
+| POST | `/api/v1/nhan-vien/invite` | OWNER | `{ email, role }` (`role` ∈ KE_TOAN_TRUONG/KE_TOAN/XEM) | 201: `{ id, email, role, status, createdAt }` |
+| GET  | `/api/v1/nhan-vien` | OWNER | — | Danh sách `User` của công ty mình (id, email, hoTen, role, status, isActive, createdAt) — không có password |
+| GET  | `/api/v1/admin/nhan-vien` | ADMIN | — | Danh sách `InviteRequest` (kèm tên công ty, người yêu cầu), PENDING trước |
+| POST | `/api/v1/admin/nhan-vien/:id/approve` | ADMIN | — | `{ email, password }` (hiện 1 lần) |
+| POST | `/api/v1/admin/nhan-vien/:id/reject` | ADMIN | `{ reason? }` | InviteRequest đã cập nhật |
+
+Validate ở `POST invite`: role phải thuộc {KE_TOAN_TRUONG, KE_TOAN, XEM} (không cho mời OWNER/ADMIN); email chưa tồn tại trong `User` toàn hệ thống (409 nếu trùng — áp dụng luôn cho email thuộc công ty khác lẫn email chưa có công ty, theo đúng ràng buộc 1 user = 1 công ty).
+
+`hoTen` mặc định lấy từ phần trước `@` của email, viết hoa (giống quy ước bản v1); nhân viên có thể tự đổi tên sau khi đăng nhập (tính năng đổi tên chưa có, ngoài phạm vi).
+
+### F.4. Mailer (mới)
+
+Thêm `nodemailer`, file `src/services/shared/mailer.service.ts`, 2 hàm:
+- `sendInviteNotifyToAdmins({ companyName, ownerName, inviteEmail, roleLabel })` — gửi tới **tất cả** email của user `role=ADMIN` (query lúc gửi, không hardcode).
+- `sendApprovedToEmployee({ email, companyName, tempPassword, loginUrl })`.
+
+Biến môi trường mới trong `.env.local`: `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASSWORD`, `SMTP_FROM`, `APP_URL` (base URL fe_maxv dùng để ghép link đăng nhập, dev = `http://localhost:5173`). Lỗi gửi mail không chặn response (theo đúng pattern `writeLog` hiện có — nuốt lỗi, chỉ log).
+
+### F.5. Vị trí file (theo cấu trúc hiện có)
+
+**be_maxv:**
+- `validators/nhanVien.validator.ts` (invite schema), thêm `rejectInviteSchema` vào `validators/admin.validator.ts`.
+- `services/client/nhanVien.service.ts`, `services/admin/adminInvite.service.ts`.
+- `controllers/client/nhanVien.controller.ts`, `controllers/admin/adminInvite.controller.ts`.
+- `routes/nhanVien.route.ts` (mount prefix `/api/v1/nhan-vien`), thêm 3 route vào `routes/admin.route.ts`.
+- `services/shared/mailer.service.ts`.
+
+**fe_maxv (owner):**
+- `features/employees/{api,hooks,types}` (theo đúng pattern `features/auth`).
+- Trang danh sách nhân viên + form mời, gắn vào tile mới "Quản lý nhân viên" trong `config/modules/he-thong.tsx` (path `/he-thong/nhan-vien`). `ModulesPage` thêm state chuyển giữa lưới tile và trang nhân viên (có nút quay lại) — chưa cần sửa React Router vì các tile khác cũng chưa nối điều hướng thật.
+
+**maxv (admin panel):**
+- `features/invites/{api,components,hooks,types}` (theo đúng pattern `features/users`).
+- `pages/invites/InvitesPage.tsx` thay cho `StubPage` ở route `/invites` (`routes/stubs.route.tsx`).
+
+### F.6. Test case liên quan
+
+Đã có sẵn TC-NV-001 → TC-NV-006 ở mục C — áp dụng nguyên, không đổi vì hành vi quan sát được (status, email, 403/409) không đổi so với thiết kế kỹ thuật này.
