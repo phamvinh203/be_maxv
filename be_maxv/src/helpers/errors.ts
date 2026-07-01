@@ -37,3 +37,10 @@ export class ValidationError extends AppError {
     super('ValidationError', MESSAGES.COMMON.VALIDATION_FAILED);
   }
 }
+
+/** Gửi email (thông báo nghiệp vụ) thất bại — errorHandler ánh xạ -> 502. */
+export class MailError extends AppError {
+  constructor(message: string) {
+    super('MailError', message);
+  }
+}

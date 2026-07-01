@@ -3,8 +3,10 @@ import { tenantSlug } from '../../utils/dbName';
 import { provisionTenant } from '../shared/provisioning.service';
 import { createTrialSubscription } from '../shared/subscription.service';
 import { writeLog } from '../shared/syslog.service';
-import { ConflictError, NotFoundError } from '../../helpers/errors';
+import { sendMail } from '../shared/mailer.service';
+import { ConflictError, MailError, NotFoundError } from '../../helpers/errors';
 import { MESSAGES } from '../../constants/messages';
+import type { DonVi, InviteRequest } from '../../generated/sys';
 import type { RegisterCompanyInput } from '../../validators/company.validator';
 import type { InviteUserInput } from '../../validators/company.validator';
 
@@ -70,6 +72,34 @@ interface InviteUserToCompanyInput extends InviteUserInput {
   requestedById: string; // userId của owner gửi lời mời
 }
 
+/** Báo cho tất cả admin hệ thống có 1 lời mời nhân viên mới đang chờ duyệt. */
+async function notifyAdminsOfNewInvite(
+  donVi: DonVi,
+  invite: InviteRequest,
+  ownerHoTen: string,
+): Promise<void> {
+  const admins = await sysPrisma.user.findMany({
+    where: { role: 'ADMIN' },
+    select: { email: true },
+  });
+  if (admins.length === 0) return; // không có admin nào để báo -> coi như xong
+
+  try {
+    await sendMail({
+      to: admins.map((a) => a.email),
+      subject: 'Yêu cầu duyệt lời mời nhân viên mới',
+      text: [
+        `Công ty: ${donVi.tenDonVi} (MST: ${donVi.maSoThue})`,
+        `Người gửi mời: ${ownerHoTen}`,
+        `Nhân viên được mời: ${invite.hoTen} <${invite.email}>`,
+        `Chức vụ: ${invite.chucVu}`,
+      ].join('\n'),
+    });
+  } catch {
+    throw new MailError(MESSAGES.COMPANY.INVITE_NOTIFY_FAILED);
+  }
+}
+
 // BƯỚC 3 — Mời user vào công ty (owner gửi yêu cầu, admin duyệt)
 // Mọi lời mời đều gán role = OWNER_EMPLOYEE; chức vụ cụ thể là text tự do (chucVu).
 export async function inviteUserToCompany(input: InviteUserToCompanyInput) {
@@ -77,8 +107,9 @@ export async function inviteUserToCompany(input: InviteUserToCompanyInput) {
 
   if (!donViId) throw new NotFoundError(MESSAGES.COMPANY.NOT_FOUND);
 
-  const [donVi, existingUser, pendingInvite] = await Promise.all([
+  const [donVi, owner, existingUser, pendingInvite] = await Promise.all([
     sysPrisma.donVi.findUnique({ where: { id: donViId } }),
+    sysPrisma.user.findUnique({ where: { id: requestedById } }),
     sysPrisma.user.findUnique({ where: { email } }),
     sysPrisma.inviteRequest.findFirst({
       where: { donViId, email, status: 'PENDING' },
@@ -104,6 +135,14 @@ export async function inviteUserToCompany(input: InviteUserToCompanyInput) {
       requestedById,
     },
   });
+
+  // Báo admin là yêu cầu bắt buộc — mail lỗi thì hủy luôn lời mời vừa tạo.
+  try {
+    await notifyAdminsOfNewInvite(donVi, invite, owner?.hoTen ?? '');
+  } catch (err) {
+    await sysPrisma.inviteRequest.delete({ where: { id: invite.id } });
+    throw err;
+  }
 
   await writeLog({
     hanhDong: 'INVITE_USER',

@@ -22,3 +22,5 @@ export async function inviteUser(req: FastifyRequest, reply: FastifyReply) {
   });
   return sendCreated(reply, data);
 }
+
+

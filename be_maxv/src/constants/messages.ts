@@ -32,6 +32,8 @@ export const MESSAGES = {
       'DB tenant không tồn tại (đã bị xóa hoặc cấp chưa xong). Đã đánh dấu FAILED — hãy cấp lại DB.',
     EMAIL_ALREADY_MEMBER: 'Email này đã thuộc một công ty khác',
     INVITE_ALREADY_PENDING: 'Email này đã có lời mời đang chờ duyệt',
+    INVITE_NOTIFY_FAILED:
+      'Không thể gửi email thông báo cho quản trị viên, vui lòng thử lại',
   },
 
   USER: {

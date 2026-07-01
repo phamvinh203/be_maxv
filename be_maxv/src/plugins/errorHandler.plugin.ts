@@ -5,6 +5,7 @@ import {
   UnauthorizedError,
   ForbiddenError,
   ValidationError,
+  MailError,
 } from '../helpers/errors';
 import { HttpStatus } from '../constants/httpStatus';
 import { MESSAGES } from '../constants/messages';
@@ -39,6 +40,12 @@ export default fp(
       if (err instanceof ForbiddenError) {
         return reply
           .status(HttpStatus.FORBIDDEN)
+          .send({ success: false, message: err.message });
+      }
+      if (err instanceof MailError) {
+        req.log.error(err);
+        return reply
+          .status(HttpStatus.BAD_GATEWAY)
           .send({ success: false, message: err.message });
       }
       req.log.error(err);
