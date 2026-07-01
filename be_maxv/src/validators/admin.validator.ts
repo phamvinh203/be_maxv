@@ -85,6 +85,17 @@ export const listUsersQuerySchema = z.object({
 
 export const changeRoleSchema = z.object({ role: z.enum(ASSIGNABLE_ROLES) });
 
+// ---- Mời & duyệt nhân viên (invite_requests) ----
+export const listInvitesQuerySchema = z.object({
+  status: z.enum(['PENDING', 'APPROVED', 'REJECTED']).optional(),
+  page: z.coerce.number().int().min(1).default(1),
+  pageSize: z.coerce.number().int().min(1).max(100).default(20),
+});
+
+export const rejectInviteSchema = z.object({
+  reason: z.string().trim().min(1).optional(),
+});
+
 export type IdParam = z.infer<typeof idParamSchema>;
 export type ListUsersQuery = z.infer<typeof listUsersQuerySchema>;
 export type ChangeRoleInput = z.infer<typeof changeRoleSchema>;
@@ -94,3 +105,5 @@ export type CreatePlanInput = z.infer<typeof createPlanSchema>;
 export type UpdatePlanInput = z.infer<typeof updatePlanSchema>;
 export type ListSubscriptionsQuery = z.infer<typeof listSubscriptionsQuerySchema>;
 export type ChangePlanInput = z.infer<typeof changePlanSchema>;
+export type ListInvitesQuery = z.infer<typeof listInvitesQuerySchema>;
+export type RejectInviteInput = z.infer<typeof rejectInviteSchema>;

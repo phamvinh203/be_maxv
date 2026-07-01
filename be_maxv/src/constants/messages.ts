@@ -48,6 +48,15 @@ export const MESSAGES = {
     ALREADY_CANCELED: 'Thuê bao đã bị hủy',
   },
 
+  NHAN_VIEN: {
+    EMAIL_TAKEN: 'Email này đã có tài khoản trong hệ thống',
+    NO_COMPANY: 'Bạn chưa tạo công ty',
+    INVITE_NOT_FOUND: 'Không tìm thấy lời mời',
+    INVITE_NOT_PENDING: 'Lời mời đã được xử lý',
+    PENDING_USER_MISSING:
+      'Không tìm thấy tài khoản nhân viên tương ứng (dữ liệu không nhất quán)',
+  },
+
   VALIDATION: {
     INVALID_MST: 'Mã số thuế không hợp lệ',
     INVALID_PHONE: 'Số điện thoại không hợp lệ',
