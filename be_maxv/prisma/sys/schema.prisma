@@ -125,7 +125,8 @@ model InviteRequest {
   role          Role         @default(KE_TOAN)
   status        InviteStatus @default(PENDING)
   requestedById String // owner gửi yêu cầu
-  approvedById  String? // admin duyệt
+  approvedById  String? // admin duyệt (duyệt HOẶC từ chối)
+  lyDoTuChoi    String? // lý do admin từ chối, hiển thị cho owner
   createdAt     DateTime     @default(now())
   resolvedAt    DateTime?
 
