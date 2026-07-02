@@ -180,7 +180,7 @@ model dmthuenk {
 /// Danh mục phân nhóm vật tư (loai_nh = 1|2|3)
 model dmnhvt {
   loai_nh Int
-  ma_nh   String  @db.VarChar(16)
+  ma_nh   String  @db.VarChar(24)
   ten_nh  String  @db.VarChar(128)
   ten_nh2 String? @db.VarChar(128)
   status  String  @default("1") @db.VarChar(1)

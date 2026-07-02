@@ -62,6 +62,8 @@ export const MESSAGES = {
     DOI_MA_MISSING: 'Vui lòng nhập đầy đủ mã cũ và mã mới',
     DOI_MA_SAME: 'Mã mới phải khác mã cũ',
     DVT_NOT_FOUND: 'Không tìm thấy đơn vị tính',
+    NHOM_NOT_FOUND: 'Không tìm thấy nhóm hàng hóa, vật tư',
+    NHOM_LOAI_INVALID: 'Loại nhóm phải là 1, 2 hoặc 3',
   },
 
   VALIDATION: {

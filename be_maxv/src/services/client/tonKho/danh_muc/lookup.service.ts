@@ -52,17 +52,4 @@ export function listThueNk(db: PrismaClient) {
   });
 }
 
-/** Phân nhóm vật tư (dmnhvt) — lọc theo loai_nh (1|2|3). */
-export function listPhanNhom(db: PrismaClient, loaiNh?: number) {
-  return db.dmnhvt.findMany({
-    where: loaiNh ? { loai_nh: loaiNh } : undefined,
-    select: {
-      loai_nh: true,
-      ma_nh: true,
-      ten_nh: true,
-      ten_nh2: true,
-      status: true,
-    },
-    orderBy: [{ loai_nh: 'asc' }, { ma_nh: 'asc' }],
-  });
-}
+// Phân nhóm (dmnhvt) do phanNhom.service.ts sở hữu (GET /ton-kho/phan-nhom).
