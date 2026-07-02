@@ -37,7 +37,7 @@ export async function list(req: FastifyRequest, reply: FastifyReply) {
   const db = await resolveTenantDb(req);
   const q = validateQuery(hangHoaListQuerySchema, req.query);
   const result = await listHangHoa(db, q);
-  return reply.send({ success: true, ...result });
+  return sendOk(reply, result); // { data, total, page, limit }
 }
 
 // GET /api/v1/ton-kho/hang-hoa/:ma_vt

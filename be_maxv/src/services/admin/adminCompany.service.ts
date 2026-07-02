@@ -171,18 +171,18 @@ const MENU_MODULES: MenuModule[] = [
         key: 'danhMuc',
         title: 'Danh mục',
         items: [
-          { label: 'Danh mục hàng hóa, vật tư', path: '/ton_kho/dm/hang_hoa', table: 'dmvt' },
-          { label: 'Danh mục phân nhóm hàng hóa, vật tư', path: '/ton_kho/dm/phan_nhom', table: 'dmnhvt' },
-          { label: 'Danh mục đơn vị tính', path: '/ton_kho/dm/dvt', table: 'dmdvt' },
-          { label: 'Danh mục quy đổi đơn vị tính', path: '/ton_kho/dm/quy_doi_dvt', table: 'dmqddvt' },
-          { label: 'Danh mục lô', path: '/ton_kho/dm/lo' }, // dmlo: chưa dựng
-          { label: 'Danh mục kho hàng', path: '/ton_kho/dm/kho', table: 'dmkho' },
-          { label: 'Danh mục nhóm kho hàng', path: '/ton_kho/dm/nhom_kho', table: 'dmnhkho' },
-          { label: 'Danh mục vị trí kho hàng', path: '/ton_kho/dm/vi_tri_kho', table: 'dmvitri' },
-          { label: 'Danh mục mã giao dịch', path: '/ton_kho/dm/ma_gd' }, // chưa dựng
-          { label: 'Nhập tồn kho ban đầu hàng hóa, vật tư', path: '/ton_kho/dm/ton_bd' },
-          { label: 'Nhập chi tiết tồn kho ban đầu nhập trước xuất trước', path: '/ton_kho/dm/ton_bd_fifo' },
-          { label: 'Chuyển tồn kho sang năm sau', path: '/ton_kho/dm/chuyen_nam' },
+          { label: 'Danh mục hàng hóa, vật tư', path: '/ton_kho/danh_muc/hang_hoa', table: 'dmvt' },
+          { label: 'Danh mục phân nhóm hàng hóa, vật tư', path: '/ton_kho/danh_muc/phan_nhom', table: 'dmnhvt' },
+          { label: 'Danh mục đơn vị tính', path: '/ton_kho/danh_muc/dvt', table: 'dmdvt' },
+          { label: 'Danh mục quy đổi đơn vị tính', path: '/ton_kho/danh_muc/quy_doi_dvt', table: 'dmqddvt' },
+          { label: 'Danh mục lô', path: '/ton_kho/danh_muc/lo' }, // dmlo: chưa dựng
+          { label: 'Danh mục kho hàng', path: '/ton_kho/danh_muc/kho', table: 'dmkho' },
+          { label: 'Danh mục nhóm kho hàng', path: '/ton_kho/danh_muc/nhom_kho', table: 'dmnhkho' },
+          { label: 'Danh mục vị trí kho hàng', path: '/ton_kho/danh_muc/vi_tri_kho', table: 'dmvitri' },
+          { label: 'Danh mục mã giao dịch', path: '/ton_kho/danh_muc/ma_gd' }, // chưa dựng
+          { label: 'Nhập tồn kho ban đầu hàng hóa, vật tư', path: '/ton_kho/danh_muc/ton_bd' },
+          { label: 'Nhập chi tiết tồn kho ban đầu nhập trước xuất trước', path: '/ton_kho/danh_muc/ton_bd_fifo' },
+          { label: 'Chuyển tồn kho sang năm sau', path: '/ton_kho/danh_muc/chuyen_nam' },
         ],
       },
       {
