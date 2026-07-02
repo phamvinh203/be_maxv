@@ -56,7 +56,6 @@ export function doiMaHangHoa(
 interface DvtRow {
   dvt: string;
   dvt2: string | null;
-  ten_dvt: string;
 }
 interface LoaiVtRow {
   ma_loai_vt: string;

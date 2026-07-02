@@ -10,6 +10,7 @@ import {
   updateDvt,
 } from '@/features/ton_kho/danh_muc/dvt/api/dvtApi';
 import type { DvtForm } from '@/features/ton_kho/danh_muc/dvt/types';
+import { hangHoaKeys } from '@/features/ton_kho/danh_muc/hang_hoa/hooks/useHangHoa';
 
 export const dvtKeys = {
   all: ['dvt'] as const,
@@ -29,7 +30,7 @@ function useInvalidate() {
   const qc = useQueryClient();
   return () => {
     void qc.invalidateQueries({ queryKey: dvtKeys.all });
-    void qc.invalidateQueries({ queryKey: ['hang-hoa', 'lookups'] });
+    void qc.invalidateQueries({ queryKey: hangHoaKeys.lookups });
   };
 }
 
