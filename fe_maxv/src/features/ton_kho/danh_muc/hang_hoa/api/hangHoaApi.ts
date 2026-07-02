@@ -55,6 +55,7 @@ export function doiMaHangHoa(
 
 interface DvtRow {
   dvt: string;
+  dvt2: string | null;
   ten_dvt: string;
 }
 interface LoaiVtRow {
@@ -93,7 +94,8 @@ export async function fetchLookups() {
   ]);
 
   return {
-    dvtList: toLookup(dvt, (r) => r.dvt, (r) => `${r.dvt} — ${r.ten_dvt}`),
+    dvtList: toLookup(dvt, (r) => r.dvt, (r) => r.dvt),
+    dvtRaw: dvt.map((r) => ({ dvt: r.dvt, dvt2: r.dvt2 })),
     loaiList: toLookup(loai, (r) => r.ma_loai_vt, (r) => r.ten_loai_vt),
     khoList: toLookup(kho, (r) => r.ma_kho, (r) => `${r.ma_kho} — ${r.ten_kho}`),
     thueList: toLookup(thue, (r) => r.ma_thue, (r) => r.ten_thue),
