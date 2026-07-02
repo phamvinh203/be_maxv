@@ -20,6 +20,7 @@ export const MESSAGES = {
   },
 
   COMPANY: {
+    NO_COMPANY: 'Tài khoản chưa gắn với công ty nào',
     USER_NOT_FOUND: 'Người dùng không tồn tại',
     USER_HAS_COMPANY: 'Người dùng này đã có công ty',
     MST_TAKEN: 'Mã số thuế đã được đăng ký',
@@ -54,6 +55,12 @@ export const MESSAGES = {
     SUB_NOT_FOUND: 'Thuê bao không tồn tại',
     SAME_PLAN: 'Thuê bao đang dùng đúng gói này',
     ALREADY_CANCELED: 'Thuê bao đã bị hủy',
+  },
+
+  TON_KHO: {
+    VT_NOT_FOUND: 'Không tìm thấy mặt hàng',
+    DOI_MA_MISSING: 'Vui lòng nhập đầy đủ mã cũ và mã mới',
+    DOI_MA_SAME: 'Mã mới phải khác mã cũ',
   },
 
   VALIDATION: {

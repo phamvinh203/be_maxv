@@ -5,6 +5,7 @@ import { writeLog } from '../shared/syslog.service';
 import { ConflictError, NotFoundError } from '../../helpers/errors';
 import { MESSAGES } from '../../constants/messages';
 import type { Prisma } from '../../generated/sys';
+import type { PrismaClient as TenantClient } from '../../generated/tenant';
 import type { ListCompaniesQuery } from '../../validators/admin.validator';
 
 // Cột công khai cho danh sách (không kéo quan hệ -> nhẹ).
@@ -135,9 +136,144 @@ function formatBytes(bytes: number): string {
   return `${n.toFixed(i === 0 ? 0 : 1)} ${units[i]}`;
 }
 
+// ============================================================
+//  Tổng quan DB tenant theo cấu trúc MENU:
+//    Module (tab)  ->  Section (Danh mục / Chứng từ / Báo cáo)  ->  Item
+//  Mỗi item khai báo `table` (nếu có dữ liệu để đếm). Item chưa có bảng
+//  (tính năng chưa dựng) -> rows/size = null, exists = false (KHÔNG bịa số).
+//
+//  MỞ RỘNG: thêm module/section/item mới = thêm entry vào MENU_MODULES
+//  và map `table` khi bảng đã tồn tại. Không phải sửa logic bên dưới.
+// ============================================================
+
+interface MenuItem {
+  label: string;
+  path?: string;
+  table?: string; // tên bảng trong tenant schema (nếu item có dữ liệu để đếm)
+}
+interface MenuSection {
+  key: string;
+  title: string;
+  items: MenuItem[];
+}
+interface MenuModule {
+  key: string;
+  title: string;
+  sections: MenuSection[];
+}
+
+const MENU_MODULES: MenuModule[] = [
+  {
+    key: 'tonKho',
+    title: 'Tồn kho',
+    sections: [
+      {
+        key: 'danhMuc',
+        title: 'Danh mục',
+        items: [
+          { label: 'Danh mục hàng hóa, vật tư', path: '/ton_kho/dm/hang_hoa', table: 'dmvt' },
+          { label: 'Danh mục phân nhóm hàng hóa, vật tư', path: '/ton_kho/dm/phan_nhom', table: 'dmnhvt' },
+          { label: 'Danh mục đơn vị tính', path: '/ton_kho/dm/dvt', table: 'dmdvt' },
+          { label: 'Danh mục quy đổi đơn vị tính', path: '/ton_kho/dm/quy_doi_dvt', table: 'dmqddvt' },
+          { label: 'Danh mục lô', path: '/ton_kho/dm/lo' }, // dmlo: chưa dựng
+          { label: 'Danh mục kho hàng', path: '/ton_kho/dm/kho', table: 'dmkho' },
+          { label: 'Danh mục nhóm kho hàng', path: '/ton_kho/dm/nhom_kho', table: 'dmnhkho' },
+          { label: 'Danh mục vị trí kho hàng', path: '/ton_kho/dm/vi_tri_kho', table: 'dmvitri' },
+          { label: 'Danh mục mã giao dịch', path: '/ton_kho/dm/ma_gd' }, // chưa dựng
+          { label: 'Nhập tồn kho ban đầu hàng hóa, vật tư', path: '/ton_kho/dm/ton_bd' },
+          { label: 'Nhập chi tiết tồn kho ban đầu nhập trước xuất trước', path: '/ton_kho/dm/ton_bd_fifo' },
+          { label: 'Chuyển tồn kho sang năm sau', path: '/ton_kho/dm/chuyen_nam' },
+        ],
+      },
+      {
+        key: 'chungTu',
+        title: 'Chứng từ',
+        items: [
+          { label: 'Phiếu nhập kho', path: '/ton_kho/chung_tu/nhap_kho' },
+          { label: 'Phiếu xuất kho', path: '/ton_kho/chung_tu/xuat_kho' },
+          { label: 'Phiếu xuất điều chuyển', path: '/ton_kho/chung_tu/dieu_chuyen' },
+          { label: 'Tính giá trung bình', path: '/ton_kho/chung_tu/gia_tb' },
+          { label: 'Tính giá trung bình di động theo ngày', path: '/ton_kho/chung_tu/gia_tb-dd' },
+          { label: 'Tính giá nhập trước xuất trước', path: '/ton_kho/chung_tu/fifo' },
+          { label: 'Tính lại tồn kho tức thời', path: '/ton_kho/chung_tu/ton_tuc_thoi' },
+        ],
+      },
+      {
+        key: 'baoCao',
+        title: 'Báo cáo',
+        items: [
+          { label: 'Bảng kê phiếu nhập' },
+          { label: 'Tổng hợp hàng nhập kho' },
+          { label: 'Bảng kê phiếu xuất' },
+          { label: 'Tổng hợp hàng xuất kho' },
+          { label: 'Thẻ kho/Sổ chi tiết vật tư' },
+          { label: 'Tổng hợp nhập xuất tồn' },
+          { label: 'Báo cáo tồn kho' },
+          { label: 'In Phiếu nhập kho' },
+          { label: 'In Phiếu xuất kho' },
+        ],
+      },
+    ],
+  },
+  // Ví dụ sau này: { key: 'banHang', title: 'Bán hàng', sections: [...] },
+];
+
+interface TableStat {
+  table: string;
+  rows: number;
+  bytes: number;
+  size: string;
+}
+
+/**
+ * Đếm số bản ghi + kích thước cho các bảng CÓ THẬT trong DB tenant.
+ * - Lọc-tồn-tại & kích thước: pg_stat_user_tables.
+ * - Đếm bản ghi: count(*) CHÍNH XÁC qua UNION ALL.
+ * Chỉ trả về bảng thực sự tồn tại -> caller phân biệt được item "chưa có bảng".
+ * Tên bảng lấy từ hằng số nội bộ (không phải input người dùng) -> nội suy an toàn.
+ */
+async function collectTableStats(
+  db: TenantClient,
+  tables: string[],
+): Promise<Map<string, TableStat>> {
+  const result = new Map<string, TableStat>();
+  if (tables.length === 0) return result;
+
+  const inList = tables.map((t) => `'${t}'`).join(', ');
+  const sizeRows = await db.$queryRawUnsafe<
+    Array<{ table: string; bytes: bigint }>
+  >(
+    `SELECT relname AS table, pg_total_relation_size(relid) AS bytes
+     FROM pg_stat_user_tables
+     WHERE relname IN (${inList})`,
+  );
+  if (sizeRows.length === 0) return result;
+
+  const existing = sizeRows.map((r) => r.table);
+  const unionSql = existing
+    .map((t) => `SELECT '${t}' AS t, count(*)::bigint AS c FROM "${t}"`)
+    .join(' UNION ALL ');
+  const countRows = await db.$queryRawUnsafe<Array<{ t: string; c: bigint }>>(
+    unionSql,
+  );
+  const countMap = new Map(countRows.map((r) => [r.t, Number(r.c)]));
+
+  for (const r of sizeRows) {
+    const bytes = Number(r.bytes);
+    result.set(r.table, {
+      table: r.table,
+      rows: countMap.get(r.table) ?? 0,
+      bytes,
+      size: formatBytes(bytes),
+    });
+  }
+  return result;
+}
+
 /**
  * GET /admin/companies/:id/overview — tổng quan dữ liệu trong DB RIÊNG của tenant.
- * CHỈ ĐỌC: đếm bản ghi mỗi bảng nghiệp vụ + dung lượng DB + hoạt động gần nhất.
+ * CHỈ ĐỌC: trả cây menu (module -> section -> item) kèm số bản ghi + size
+ * mỗi item (item chưa có bảng -> null) và tổng dung lượng DB tenant.
  * Mọi truy cập đều ghi audit (admin xem data khách = thao tác nhạy cảm).
  */
 export async function adminGetCompanyOverview(id: string, adminId: string) {
@@ -162,36 +298,62 @@ export async function adminGetCompanyOverview(id: string, adminId: string) {
 
   const db = getTenantDb(company.dbName);
 
-  // Các đọc độc lập trên DB tenant -> chạy song song.
-  const [
-    taiKhoan,
-    doiTuong,
-    chungTu,
-    chungTuDong,
-    butToan,
-    thietLap,
-    lastChungTu,
-    sizeRows,
-  ] = await Promise.all([
-    db.taiKhoan.count(),
-    db.doiTuong.count(),
-    db.chungTu.count(),
-    db.chungTuDong.count(),
-    db.butToan.count(),
-    db.thietLap.findUnique({
-      where: { id: 1 },
-      select: { tenCongTy: true, maSoThue: true, ngayBatDauNTC: true },
-    }),
-    db.chungTu.findFirst({
-      orderBy: { createdAt: 'desc' },
-      select: { createdAt: true },
-    }),
+  // Gom toàn bộ bảng (có thật) được khai báo trong menu -> đếm 1 lượt.
+  const allTables = Array.from(
+    new Set(
+      MENU_MODULES.flatMap((m) =>
+        m.sections.flatMap((s) =>
+          s.items.map((i) => i.table).filter((t): t is string => !!t),
+        ),
+      ),
+    ),
+  );
+
+  const [statByTable, sizeRows] = await Promise.all([
+    collectTableStats(db, allTables),
     db.$queryRaw<
       { size: bigint }[]
     >`SELECT pg_database_size(current_database()) AS size`,
   ]);
 
-  // bigint không serialize JSON -> ép Number.
+  // Lắp ráp cây menu + số liệu (bigint đã ép Number trong collectTableStats).
+  const modules = MENU_MODULES.map((m) => {
+    const sections = m.sections.map((s) => {
+      const items = s.items.map((i) => {
+        const stat = i.table ? statByTable.get(i.table) : undefined;
+        return {
+          label: i.label,
+          path: i.path ?? null,
+          table: i.table ?? null,
+          exists: !!stat, // bảng đã có trong DB tenant chưa
+          rows: stat ? stat.rows : null, // null = chưa có bảng / không phải dữ liệu
+          bytes: stat ? stat.bytes : null,
+          size: stat ? stat.size : null,
+        };
+      });
+      const totalRows = items.reduce((acc, it) => acc + (it.rows ?? 0), 0);
+      const totalBytes = items.reduce((acc, it) => acc + (it.bytes ?? 0), 0);
+      return {
+        key: s.key,
+        title: s.title,
+        totalRows,
+        totalBytes,
+        totalSize: formatBytes(totalBytes),
+        items,
+      };
+    });
+    const totalRows = sections.reduce((acc, s) => acc + s.totalRows, 0);
+    const totalBytes = sections.reduce((acc, s) => acc + s.totalBytes, 0);
+    return {
+      key: m.key,
+      title: m.title,
+      totalRows,
+      totalBytes,
+      totalSize: formatBytes(totalBytes),
+      sections,
+    };
+  });
+
   const dbSizeBytes = Number(sizeRows[0]?.size ?? 0);
 
   await writeLog({
@@ -208,10 +370,8 @@ export async function adminGetCompanyOverview(id: string, adminId: string) {
       status: company.status,
       dbName: company.dbName,
     },
-    thietLap, // null nếu tenant chưa khởi tạo thiết lập
-    counts: { taiKhoan, doiTuong, chungTu, chungTuDong, butToan },
     dbSizeBytes,
     dbSize: formatBytes(dbSizeBytes),
-    lastChungTuAt: lastChungTu?.createdAt ?? null,
+    modules, // [{ key,title,totalRows,totalSize, sections:[{ key,title,items:[{label,path,rows,size,exists}] }] }]
   };
 }
