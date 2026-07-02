@@ -18,7 +18,6 @@ import {
   updateHangHoa,
 } from '../../../../services/client/tonKho/danh_muc/hangHoa.service';
 import {
-  listKho,
   listLoaiVt,
   listThue,
   listThueNk,
@@ -92,12 +91,6 @@ export async function doiMa(req: FastifyRequest, reply: FastifyReply) {
 export async function loaiVt(req: FastifyRequest, reply: FastifyReply) {
   const db = await resolveTenantDb(req);
   return sendOk(reply, await listLoaiVt(db));
-}
-
-// GET /api/v1/ton-kho/kho
-export async function kho(req: FastifyRequest, reply: FastifyReply) {
-  const db = await resolveTenantDb(req);
-  return sendOk(reply, await listKho(db));
 }
 
 // GET /api/v1/ton-kho/thue
