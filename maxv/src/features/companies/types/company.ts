@@ -27,23 +27,42 @@ export interface CompanyDetail extends Company {
   } | null;
 }
 
+/** 1 mục trong menu (vd "Danh mục hàng hóa, vật tư"). rows/size null = chưa có bảng. */
+export interface OverviewItem {
+  label: string;
+  path: string | null;
+  table: string | null;
+  exists: boolean;
+  rows: number | null;
+  bytes: number | null;
+  size: string | null;
+}
+
+/** 1 nhóm chức năng (Danh mục / Chứng từ / Báo cáo). */
+export interface OverviewSection {
+  key: string;
+  title: string;
+  totalRows: number;
+  totalBytes: number;
+  totalSize: string;
+  items: OverviewItem[];
+}
+
+/** 1 module/tab nghiệp vụ (Tồn kho, ...). */
+export interface OverviewModule {
+  key: string;
+  title: string;
+  totalRows: number;
+  totalBytes: number;
+  totalSize: string;
+  sections: OverviewSection[];
+}
+
 export interface CompanyOverview {
   company: Pick<Company, 'id' | 'maSoThue' | 'tenDonVi' | 'status' | 'dbName'>;
-  thietLap: {
-    tenCongTy: string;
-    maSoThue: string | null;
-    ngayBatDauNTC: string;
-  } | null;
-  counts: {
-    taiKhoan: number;
-    doiTuong: number;
-    chungTu: number;
-    chungTuDong: number;
-    butToan: number;
-  };
   dbSizeBytes: number;
   dbSize: string;
-  lastChungTuAt: string | null;
+  modules: OverviewModule[];
 }
 
 export interface ListCompaniesParams {
