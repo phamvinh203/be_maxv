@@ -8,6 +8,8 @@ import SettingsPage from '../pages/settings/SettingsPage';
 import SetupCompanyPage from '../pages/SetupCompanyPage';
 import HangHoaPage from '../pages/ton_kho/HangHoaPage';
 import DvtPage from '../pages/ton_kho/DvtPage';
+import PhanNhomPage from '../pages/ton_kho/PhanNhomPage';
+import MaGdPage from '../pages/ton_kho/MaGdPage';
 import ProtectedRoute from './ProtectedRoute';
 import RequireTenant from './RequireTenant';
 import { isAuthenticated, getCurrentCompany } from '@/features/auth/hooks/useAuth';
@@ -72,6 +74,22 @@ export default function AppRouter(): JSX.Element {
             element={
               <RequireTenant>
                 <DvtPage />
+              </RequireTenant>
+            }
+          />
+          <Route
+            path=":slug/ton_kho/danh_muc/phan_nhom"
+            element={
+              <RequireTenant>
+                <PhanNhomPage />
+              </RequireTenant>
+            }
+          />
+          <Route
+            path=":slug/ton_kho/danh_muc/ma_gd"
+            element={
+              <RequireTenant>
+                <MaGdPage />
               </RequireTenant>
             }
           />

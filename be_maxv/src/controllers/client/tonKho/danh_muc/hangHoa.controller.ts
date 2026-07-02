@@ -1,5 +1,4 @@
 import type { FastifyRequest, FastifyReply } from 'fastify';
-import { z } from 'zod';
 import {
   validateBody,
   validateParams,
@@ -19,9 +18,7 @@ import {
   updateHangHoa,
 } from '../../../../services/client/tonKho/danh_muc/hangHoa.service';
 import {
-  listKho,
   listLoaiVt,
-  listPhanNhom,
   listThue,
   listThueNk,
 } from '../../../../services/client/tonKho/danh_muc/lookup.service';
@@ -90,20 +87,10 @@ export async function doiMa(req: FastifyRequest, reply: FastifyReply) {
 
 // ---------- Lookup danh mục cho form hàng hóa ----------
 
-const phanNhomQuerySchema = z.object({
-  loai_nh: z.coerce.number().int().optional(),
-});
-
 // GET /api/v1/ton-kho/loai-vt
 export async function loaiVt(req: FastifyRequest, reply: FastifyReply) {
   const db = await resolveTenantDb(req);
   return sendOk(reply, await listLoaiVt(db));
-}
-
-// GET /api/v1/ton-kho/kho
-export async function kho(req: FastifyRequest, reply: FastifyReply) {
-  const db = await resolveTenantDb(req);
-  return sendOk(reply, await listKho(db));
 }
 
 // GET /api/v1/ton-kho/thue
@@ -116,11 +103,4 @@ export async function thue(req: FastifyRequest, reply: FastifyReply) {
 export async function thueNk(req: FastifyRequest, reply: FastifyReply) {
   const db = await resolveTenantDb(req);
   return sendOk(reply, await listThueNk(db));
-}
-
-// GET /api/v1/ton-kho/phan-nhom?loai_nh=1|2|3
-export async function phanNhom(req: FastifyRequest, reply: FastifyReply) {
-  const db = await resolveTenantDb(req);
-  const { loai_nh } = validateQuery(phanNhomQuerySchema, req.query);
-  return sendOk(reply, await listPhanNhom(db, loai_nh));
 }
