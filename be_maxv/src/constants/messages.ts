@@ -61,6 +61,7 @@ export const MESSAGES = {
     VT_NOT_FOUND: 'Không tìm thấy mặt hàng',
     DOI_MA_MISSING: 'Vui lòng nhập đầy đủ mã cũ và mã mới',
     DOI_MA_SAME: 'Mã mới phải khác mã cũ',
+    DVT_NOT_FOUND: 'Không tìm thấy đơn vị tính',
   },
 
   VALIDATION: {

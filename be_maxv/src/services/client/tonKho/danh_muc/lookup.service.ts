@@ -1,12 +1,6 @@
-import type { PrismaClient } from '../../../generated/tenant';
+import type { PrismaClient } from '../../../../generated/tenant';
 
-/** Đơn vị tính (dmdvt). */
-export function listDvt(db: PrismaClient) {
-  return db.dmdvt.findMany({
-    select: { dvt: true, ten_dvt: true, ten_dvt2: true, status: true },
-    orderBy: { dvt: 'asc' },
-  });
-}
+// Đơn vị tính (dmdvt) do dvt.service.ts sở hữu (GET /ton-kho/dvt).
 
 /** Loại vật tư (dmloaivt) — chỉ bản ghi đang dùng. */
 export function listLoaiVt(db: PrismaClient) {

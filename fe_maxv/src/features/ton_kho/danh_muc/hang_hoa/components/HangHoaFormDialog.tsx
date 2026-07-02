@@ -5,6 +5,7 @@ import {
   type JSX,
   type ReactNode,
 } from 'react';
+import { Drawer } from '@mui/material';
 import CloseIcon from '@mui/icons-material/Close';
 import {
   useCreateHangHoa,
@@ -29,6 +30,8 @@ interface Props {
   /** Mã nguồn cho edit/copy/view (null khi thêm mới). */
   maVt: string | null;
   onClose: () => void;
+  /** Chuyển từ chế độ Xem sang Sửa (hiện nút "Sửa" trong footer view). */
+  onEdit?: () => void;
 }
 
 type Setter = (k: keyof HangHoaForm, v: unknown) => void;
@@ -125,7 +128,8 @@ export function HangHoaFormDialog({
   mode,
   maVt,
   onClose,
-}: Props): JSX.Element | null {
+  onEdit,
+}: Props): JSX.Element {
   const ro = mode === 'view';
   const isCreate = mode === 'new' || mode === 'copy';
   const needDetail = open && mode !== 'new' && !!maVt;
@@ -169,33 +173,20 @@ export function HangHoaFormDialog({
     }
   }
 
-  if (!open) return null;
-
   return (
-    <div
-      style={{
-        position: 'fixed',
-        inset: 0,
-        background: 'rgba(0,0,0,0.45)',
-        zIndex: 1300,
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-      }}
-      onClick={onClose}
+    <Drawer
+      anchor="right"
+      open={open}
+      onClose={onClose}
+      slotProps={{ paper: { sx: { width: 'min(860px, 96vw)', maxWidth: '100vw' } } }}
     >
       <div
-        onClick={(e) => e.stopPropagation()}
         style={{
           background: 'white',
-          width: 'min(860px, 96vw)',
-          // Cố định chiều cao theo tab lớn nhất -> không co giãn khi đổi tab.
-          height: 'min(700px, 92vh)',
+          width: '100%',
+          height: '100%',
           display: 'flex',
           flexDirection: 'column',
-          boxShadow: '0 6px 28px rgba(0,0,0,0.28)',
-          border: '1px solid #7abadd',
-          borderRadius: 4,
         }}
       >
         {/* Title bar */}
@@ -295,6 +286,14 @@ export function HangHoaFormDialog({
               {pending ? 'Đang lưu...' : 'Lưu'}
             </button>
           )}
+          {ro && onEdit && (
+            <button
+              onClick={onEdit}
+              style={{ padding: '5px 18px', background: '#4a9fd4', color: 'white', border: 'none', borderRadius: 3, fontWeight: 600, fontSize: 13, cursor: 'pointer' }}
+            >
+              Sửa
+            </button>
+          )}
           <button
             onClick={onClose}
             style={{ padding: '5px 14px', background: 'white', color: '#333', border: '1px solid #b0c4d8', borderRadius: 3, fontSize: 13, cursor: 'pointer' }}
@@ -303,7 +302,7 @@ export function HangHoaFormDialog({
           </button>
         </div>
       </div>
-    </div>
+    </Drawer>
   );
 }
 

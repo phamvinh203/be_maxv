@@ -112,6 +112,7 @@ model dmqddvt {
 /// Danh mục đơn vị tính
 model dmdvt {
   dvt      String  @id @db.VarChar(16)
+  dvt2     String? @db.VarChar(16)
   ten_dvt  String  @db.VarChar(128)
   ten_dvt2 String? @db.VarChar(128)
   status   String  @default("1") @db.VarChar(1)

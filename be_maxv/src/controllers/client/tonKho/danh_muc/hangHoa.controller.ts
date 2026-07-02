@@ -4,9 +4,12 @@ import {
   validateBody,
   validateParams,
   validateQuery,
-} from '../../../utils/validate';
-import { sendCreated, sendOk } from '../../../helpers/response';
-import { currentUserId, resolveTenantDb } from '../../../helpers/resolveTenantDb';
+} from '../../../../utils/validate';
+import { sendCreated, sendOk } from '../../../../helpers/response';
+import {
+  currentUserId,
+  resolveTenantDb,
+} from '../../../../helpers/resolveTenantDb';
 import {
   createHangHoa,
   deleteHangHoa,
@@ -14,21 +17,20 @@ import {
   getHangHoa,
   listHangHoa,
   updateHangHoa,
-} from '../../../services/client/tonKho/hangHoa.service';
+} from '../../../../services/client/tonKho/danh_muc/hangHoa.service';
 import {
-  listDvt,
   listKho,
   listLoaiVt,
   listPhanNhom,
   listThue,
   listThueNk,
-} from '../../../services/client/tonKho/lookup.service';
+} from '../../../../services/client/tonKho/danh_muc/lookup.service';
 import {
   doiMaSchema,
   hangHoaBodySchema,
   hangHoaListQuerySchema,
   maVtParamSchema,
-} from '../../../validators/tonKho/hangHoa.validator';
+} from '../../../../validators/tonKho/hangHoa.validator';
 
 // ---------- Hàng hóa (dmvt) ----------
 
@@ -91,12 +93,6 @@ export async function doiMa(req: FastifyRequest, reply: FastifyReply) {
 const phanNhomQuerySchema = z.object({
   loai_nh: z.coerce.number().int().optional(),
 });
-
-// GET /api/v1/ton-kho/dvt
-export async function dvt(req: FastifyRequest, reply: FastifyReply) {
-  const db = await resolveTenantDb(req);
-  return sendOk(reply, await listDvt(db));
-}
 
 // GET /api/v1/ton-kho/loai-vt
 export async function loaiVt(req: FastifyRequest, reply: FastifyReply) {

@@ -1,11 +1,11 @@
-import type { Prisma, PrismaClient } from '../../../generated/tenant';
-import { ConflictError, NotFoundError } from '../../../helpers/errors';
-import { MESSAGES } from '../../../constants/messages';
+import type { Prisma, PrismaClient } from '../../../../generated/tenant';
+import { ConflictError, NotFoundError } from '../../../../helpers/errors';
+import { MESSAGES } from '../../../../constants/messages';
 import type {
   DoiMaInput,
   HangHoaBodyInput,
   HangHoaListQuery,
-} from '../../../validators/tonKho/hangHoa.validator';
+} from '../../../../validators/tonKho/hangHoa.validator';
 
 /**
  * Bảng có tồn tại trong DB tenant không (một số bảng tham chiếu như ct70/cdlo

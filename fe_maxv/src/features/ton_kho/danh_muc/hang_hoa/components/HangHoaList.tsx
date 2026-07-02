@@ -1,69 +1,63 @@
-import { useMemo, useState, type CSSProperties, type JSX } from 'react';
-import { Alert } from '@mui/material';
+import { useEffect, useMemo, useState, type JSX } from 'react';
+import {
+  Alert,
+  Box,
+  Button,
+  Chip,
+  Divider,
+  IconButton,
+  InputAdornment,
+  Menu,
+  MenuItem,
+  Paper,
+  Stack,
+  Table,
+  TableBody,
+  TableCell,
+  TableContainer,
+  TableHead,
+  TablePagination,
+  TableRow,
+  TextField,
+  Tooltip,
+  Typography,
+} from '@mui/material';
 import AddIcon from '@mui/icons-material/Add';
 import EditIcon from '@mui/icons-material/Edit';
 import ContentCopyIcon from '@mui/icons-material/ContentCopy';
 import DeleteIcon from '@mui/icons-material/Delete';
 import SwapHorizIcon from '@mui/icons-material/SwapHoriz';
 import VisibilityIcon from '@mui/icons-material/Visibility';
+import RefreshIcon from '@mui/icons-material/Refresh';
+import SearchIcon from '@mui/icons-material/Search';
+import MoreVertIcon from '@mui/icons-material/MoreVert';
 import GridOnIcon from '@mui/icons-material/GridOn';
 import UploadFileIcon from '@mui/icons-material/UploadFile';
 import FileDownloadIcon from '@mui/icons-material/FileDownload';
 import LockIcon from '@mui/icons-material/Lock';
-import RefreshIcon from '@mui/icons-material/Refresh';
-import SearchIcon from '@mui/icons-material/Search';
-import GridToolbar from '@/components/GridToolbar';
-import DeleteDialog from '@/components/DeleteDialog';
 import { getApiError } from '@/lib/apiClient';
 import {
   useDeleteHangHoa,
   useHangHoaList,
 } from '@/features/ton_kho/danh_muc/hang_hoa/hooks/useHangHoa';
-import {
-  COLS,
-  GIA_TON,
-  type HangHoa,
-} from '@/features/ton_kho/danh_muc/hang_hoa/types';
+import { GIA_TON, type HangHoa } from '@/features/ton_kho/danh_muc/hang_hoa/types';
+import DeleteDialog from '@/components/DeleteDialog';
 import { HangHoaFormDialog, type FormMode } from './HangHoaFormDialog';
 import { DoiMaDialog } from './DoiMaDialog';
 
-const ICO = { fontSize: 15 } as const;
-
-const th: CSSProperties = {
-  padding: '4px 6px',
-  textAlign: 'left',
-  fontWeight: 600,
-  fontSize: 12,
-  borderRight: '1px solid #c8d4e0',
-  borderBottom: '1px solid #c8d4e0',
-  whiteSpace: 'nowrap',
-};
-const td: CSSProperties = {
-  padding: '3px 6px',
-  borderRight: '1px solid #edf2f7',
-  whiteSpace: 'nowrap',
-  overflow: 'hidden',
-  textOverflow: 'ellipsis',
-  maxWidth: 260,
-};
-
-/** Giá trị hiển thị 1 ô theo cột. */
-function cellValue(row: HangHoa, key: keyof HangHoa): string {
-  if (key === 'gia_ton') return GIA_TON[Number(row.gia_ton)] ?? String(row.gia_ton);
-  if (key === 'he_so2') return row.dvt2 ? String(row.he_so2) : '—';
-  if (key === 'dvt2') return row.dvt2 || '—';
-  const v = (row as unknown as Record<string, unknown>)[key];
-  return v == null || v === '' ? '' : String(v);
-}
+const giaTon = (v: number): string => GIA_TON[v] ?? String(v);
 
 export function HangHoaList(): JSX.Element {
-  const { data, isLoading, isError, error, refetch } = useHangHoaList({
-    limit: 500,
-  });
+  const { data, isLoading, isError, error, refetch } =
+    useHangHoaList({ limit: 500 });
   const del = useDeleteHangHoa();
 
   const [selected, setSelected] = useState<HangHoa | null>(null);
-  const [filters, setFilters] = useState<Record<string, string>>({});
+  const [searchInput, setSearchInput] = useState('');
+  const [search, setSearch] = useState('');
+  const [page, setPage] = useState(0);
+  const [rpp, setRpp] = useState(25);
+  const [moreEl, setMoreEl] = useState<null | HTMLElement>(null);
 
   const [form, setForm] = useState<{ open: boolean; mode: FormMode; maVt: string | null }>({
     open: false,
@@ -74,18 +68,28 @@ export function HangHoaList(): JSX.Element {
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [actionError, setActionError] = useState('');
 
-  const allRows = useMemo(() => data?.data ?? [], [data]);
+  useEffect(() => {
+    const t = setTimeout(() => {
+      setSearch(searchInput.trim().toLowerCase());
+      setPage(0);
+    }, 350);
+    return () => clearTimeout(t);
+  }, [searchInput]);
 
-  // Lọc theo từng cột (client-side, giống maxv_v1).
+  const allRows = useMemo(() => data?.data ?? [], [data]);
   const rows = useMemo(() => {
-    return allRows.filter((row) =>
-      COLS.every((col) => {
-        const f = filters[col.key]?.toLowerCase().trim();
-        if (!f) return true;
-        return cellValue(row, col.key).toLowerCase().includes(f);
-      }),
+    if (!search) return allRows;
+    return allRows.filter(
+      (r) =>
+        r.ma_vt.toLowerCase().includes(search) ||
+        r.ten_vt.toLowerCase().includes(search),
     );
-  }, [allRows, filters]);
+  }, [allRows, search]);
+
+  const paged = useMemo(
+    () => rows.slice(page * rpp, page * rpp + rpp),
+    [rows, page, rpp],
+  );
 
   const sel = selected;
   const openForm = (mode: FormMode, maVt: string | null) =>
@@ -103,154 +107,218 @@ export function HangHoaList(): JSX.Element {
     });
   }
 
+  const closeMore = () => setMoreEl(null);
+
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', height: '100%', background: 'white' }}>
-      <GridToolbar
-        actions={[
-          { label: 'Mới', icon: <AddIcon sx={ICO} />, act: () => openForm('new', null) },
-          { label: 'Sửa', icon: <EditIcon sx={ICO} />, act: () => sel && openForm('edit', sel.ma_vt), dis: !sel },
-          { label: 'Copy', icon: <ContentCopyIcon sx={ICO} />, act: () => sel && openForm('copy', sel.ma_vt), dis: !sel },
-          { label: 'Xóa', icon: <DeleteIcon sx={ICO} />, act: () => setDeleteOpen(true), dis: !sel, variant: 'danger' },
-          { label: 'Đổi mã', icon: <SwapHorizIcon sx={ICO} />, act: () => sel && setDoiMa(sel.ma_vt), dis: !sel },
-          { label: 'Xem', icon: <VisibilityIcon sx={ICO} />, act: () => sel && openForm('view', sel.ma_vt), dis: !sel },
-          { label: 'Xuất Excel', icon: <GridOnIcon sx={ICO} />, act: () => {} },
-          { label: 'Lấy dữ liệu từ tệp...', icon: <UploadFileIcon sx={ICO} />, act: () => {} },
-          { label: 'Tải tệp mẫu...', icon: <FileDownloadIcon sx={ICO} />, act: () => {} },
-          { label: 'Khóa cột', icon: <LockIcon sx={ICO} />, act: () => {} },
-          { label: 'Làm tươi', icon: <RefreshIcon sx={ICO} />, act: () => void refetch() },
-        ]}
-      />
+    <Box sx={{ display: 'flex', flexDirection: 'column', height: '100%', bgcolor: 'background.default' }}>
+      {/* Toolbar */}
+      <Paper
+        elevation={0}
+        square
+        sx={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: 1,
+          px: 1.5,
+          py: 1,
+          borderBottom: 1,
+          borderColor: 'divider',
+          flexWrap: 'wrap',
+        }}
+      >
+        <Button variant="contained" size="small" startIcon={<AddIcon />} onClick={() => openForm('new', null)}>
+          Thêm hàng hóa
+        </Button>
+
+        <Divider orientation="vertical" flexItem sx={{ mx: 0.5 }} />
+
+        <Tooltip title="Sửa">
+          <span>
+            <IconButton size="small" disabled={!sel} onClick={() => sel && openForm('edit', sel.ma_vt)}>
+              <EditIcon fontSize="small" />
+            </IconButton>
+          </span>
+        </Tooltip>
+        <Tooltip title="Copy">
+          <span>
+            <IconButton size="small" disabled={!sel} onClick={() => sel && openForm('copy', sel.ma_vt)}>
+              <ContentCopyIcon fontSize="small" />
+            </IconButton>
+          </span>
+        </Tooltip>
+        <Tooltip title="Xem">
+          <span>
+            <IconButton size="small" disabled={!sel} onClick={() => sel && openForm('view', sel.ma_vt)}>
+              <VisibilityIcon fontSize="small" />
+            </IconButton>
+          </span>
+        </Tooltip>
+        <Tooltip title="Đổi mã">
+          <span>
+            <IconButton size="small" disabled={!sel} onClick={() => sel && setDoiMa(sel.ma_vt)}>
+              <SwapHorizIcon fontSize="small" />
+            </IconButton>
+          </span>
+        </Tooltip>
+        <Tooltip title="Xóa">
+          <span>
+            <IconButton size="small" color="error" disabled={!sel} onClick={() => setDeleteOpen(true)}>
+              <DeleteIcon fontSize="small" />
+            </IconButton>
+          </span>
+        </Tooltip>
+
+        <Box sx={{ flex: 1 }} />
+
+        <TextField
+          size="small"
+          placeholder="Tìm mã / tên hàng…"
+          value={searchInput}
+          onChange={(e) => setSearchInput(e.target.value)}
+          sx={{ minWidth: 240 }}
+          slotProps={{
+            input: {
+              startAdornment: (
+                <InputAdornment position="start">
+                  <SearchIcon fontSize="small" />
+                </InputAdornment>
+              ),
+            },
+          }}
+        />
+        <Tooltip title="Làm tươi">
+          <IconButton size="small" onClick={() => void refetch()}>
+            <RefreshIcon fontSize="small" />
+          </IconButton>
+        </Tooltip>
+        <Tooltip title="Thêm thao tác">
+          <IconButton size="small" onClick={(e) => setMoreEl(e.currentTarget)}>
+            <MoreVertIcon fontSize="small" />
+          </IconButton>
+        </Tooltip>
+        <Menu anchorEl={moreEl} open={!!moreEl} onClose={closeMore}>
+          <MenuItem onClick={closeMore}><GridOnIcon fontSize="small" sx={{ mr: 1 }} />Xuất Excel</MenuItem>
+          <MenuItem onClick={closeMore}><UploadFileIcon fontSize="small" sx={{ mr: 1 }} />Lấy dữ liệu từ tệp…</MenuItem>
+          <MenuItem onClick={closeMore}><FileDownloadIcon fontSize="small" sx={{ mr: 1 }} />Tải tệp mẫu…</MenuItem>
+          <MenuItem onClick={closeMore}><LockIcon fontSize="small" sx={{ mr: 1 }} />Khóa cột</MenuItem>
+        </Menu>
+      </Paper>
 
       {/* Info bar */}
-      <div style={{ padding: '2px 10px', borderBottom: '1px solid #e8edf4', fontSize: 12, color: '#888', flexShrink: 0, background: '#fafcff' }}>
-        Danh mục hàng hóa, vật tư &nbsp;·&nbsp;{' '}
-        {isLoading ? 'đang tải…' : `${rows.length} mặt hàng`}
-      </div>
+      <Stack direction="row" sx={{ alignItems: 'center', px: 2, py: 0.5, gap: 1 }}>
+        <Typography variant="body2" color="text.secondary">
+          Danh mục hàng hóa, vật tư
+        </Typography>
+        
+      </Stack>
 
       {(isError || actionError) && (
-        <Alert severity="error" sx={{ m: 1, py: 0 }}>
+        <Alert severity="error" sx={{ mx: 2, mb: 1, py: 0 }}>
           {actionError || getApiError(error, 'Không tải được danh sách.')}
         </Alert>
       )}
 
-      {/* Grid */}
-      <div style={{ flex: 1, overflow: 'auto' }}>
-        <table style={{ width: '100%', minWidth: 1100, borderCollapse: 'collapse', fontSize: 12.5 }}>
-          <thead>
-            <tr>
-              {COLS.map((c, i) => (
-                <th
-                  key={c.key}
-                  style={{
-                    ...th,
-                    width: c.w,
-                    background: '#dce8f5',
-                    position: 'sticky',
-                    top: 0,
-                    zIndex: 3,
-                    ...(i === 0 ? { minWidth: 90 } : {}),
-                  }}
-                >
-                  {c.label}
-                </th>
-              ))}
-            </tr>
-            <tr>
-              {COLS.map((c) => (
-                <th
-                  key={c.key}
-                  style={{
-                    ...th,
-                    padding: '2px 4px',
-                    fontWeight: 'normal',
-                    background: '#fffde7',
-                    position: 'sticky',
-                    top: 27,
-                    zIndex: 3,
-                  }}
-                >
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-                    <SearchIcon sx={{ fontSize: 13, color: '#9bb3cc', flexShrink: 0 }} />
-                    <input
-                      value={filters[c.key] || ''}
-                      onChange={(e) =>
-                        setFilters((prev) => ({ ...prev, [c.key]: e.target.value }))
-                      }
-                      style={{ width: '100%', border: 'none', outline: 'none', background: 'transparent', fontSize: 11, padding: '1px 0' }}
-                    />
-                  </div>
-                </th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {isLoading && (
-              <tr>
-                <td colSpan={COLS.length} style={{ textAlign: 'center', padding: 24, color: '#888' }}>
-                  Đang tải...
-                </td>
-              </tr>
-            )}
-            {!isLoading && rows.length === 0 && (
-              <tr>
-                <td colSpan={COLS.length} style={{ textAlign: 'center', padding: 32, color: '#aaa' }}>
-                  Chưa có dữ liệu
-                </td>
-              </tr>
-            )}
-            {rows.map((row, idx) => {
-              const isSel = sel?.ma_vt === row.ma_vt;
-              const rowBg = isSel ? '#cce5ff' : idx % 2 === 0 ? 'white' : '#f5f9ff';
+      {/* Table */}
+      <TableContainer sx={{ flex: 1, minHeight: 0 }}>
+        <Table size="small" stickyHeader>
+          <TableHead>
+            <TableRow>
+              <TableCell>Mã hàng</TableCell>
+              <TableCell>Tên mặt hàng</TableCell>
+              <TableCell>ĐVT</TableCell>
+              <TableCell>ĐVT 2</TableCell>
+              <TableCell >Số lượng 2</TableCell>
+              <TableCell>Số lượng nhập</TableCell>
+              <TableCell>Giá</TableCell>
+              <TableCell>Tiền</TableCell>
+              <TableCell>Dự án</TableCell>
+              <TableCell>Phòng ban</TableCell>
+              <TableCell>Mã kho</TableCell>
+              <TableCell>Tài khoản vật tư</TableCell>
+              <TableCell>Tài khoản có</TableCell>
+            </TableRow>
+          </TableHead>
+          <TableBody>
+            {paged.map((r) => {
+              const isSel = sel?.ma_vt === r.ma_vt;
               return (
-                <tr
-                  key={row.ma_vt}
-                  onClick={() => setSelected(isSel ? null : row)}
-                  onDoubleClick={() => openForm('edit', row.ma_vt)}
-                  style={{
-                    background: rowBg,
-                    cursor: 'pointer',
-                    borderBottom: '1px solid #edf2f7',
-                    color: row.status === '0' ? '#aaa' : '#222',
-                  }}
+                <TableRow
+                  key={r.ma_vt}
+                  hover
+                  selected={isSel}
+                  onClick={() => setSelected(isSel ? null : r)}
+                  onDoubleClick={() => openForm('edit', r.ma_vt)}
+                  sx={{ cursor: 'pointer', opacity: r.status === '0' ? 0.55 : 1 }}
                 >
-                  {COLS.map((c) => (
-                    <td
-                      key={c.key}
-                      style={{
-                        ...td,
-                        background: rowBg,
-                        textAlign: c.align ?? 'left',
-                        ...(c.key === 'ma_vt' ? { fontWeight: 600 } : {}),
-                        ...(c.key === 'dvt2' && !row.dvt2 ? { color: '#ccc' } : {}),
-                      }}
-                    >
-                      {cellValue(row, c.key)}
-                    </td>
-                  ))}
-                </tr>
+                  <TableCell sx={{ fontWeight: 600 }}>{r.ma_vt}</TableCell>
+                  <TableCell>{r.ten_vt}</TableCell>
+                  <TableCell>{r.dvt}</TableCell>
+                  <TableCell>{r.dvt2 || '—'}</TableCell>
+                  <TableCell align="right">{r.dvt2 ? String(r.he_so2) : '—'}</TableCell>
+                  <TableCell align="right">{r.sl_nhap}</TableCell>
+                  <TableCell align="right">{r.gia}</TableCell>
+                  <TableCell align="right">{r.tien}</TableCell>
+                  <TableCell>{r.ma_du_an || '—'}</TableCell>
+                  <TableCell>{r.ma_phong_ban || '—'}</TableCell>
+                  <TableCell>{r.ma_kho || '—'}</TableCell>
+                  <TableCell>{r.tk_vt || '—'}</TableCell>
+                  <TableCell>{r.tk_co || '—'}</TableCell>
+                </TableRow>
               );
             })}
-          </tbody>
-        </table>
-      </div>
+            {!isLoading && rows.length === 0 && (
+              <TableRow>
+                <TableCell colSpan={13} align="center" sx={{ py: 6, color: 'text.secondary' }}>
+                  {search ? 'Không tìm thấy hàng hóa phù hợp' : 'Chưa có hàng hóa nào'}
+                </TableCell>
+              </TableRow>
+            )}
+          </TableBody>
+        </Table>
+      </TableContainer>
+                  <TableCell>{r.loai_vt || '—'}</TableCell>
+                  <TableCell>{giaTon(Number(r.gia_ton))}</TableCell>
+                  <TableCell>{r.nh_vt1 || '—'}</TableCell>
+                </TableRow>
+              );
+            })}
+            {!isLoading && rows.length === 0 && (
+              <TableRow>
+                <TableCell colSpan={9} align="center" sx={{ py: 6, color: 'text.secondary' }}>
+                  {search ? 'Không tìm thấy hàng hóa phù hợp' : 'Chưa có hàng hóa nào'}
+                </TableCell>
+              </TableRow>
+            )}
+          </TableBody>
+        </Table>
+      </TableContainer>
 
-      {/* Dialogs */}
+      <TablePagination
+        component="div"
+        count={rows.length}
+        page={page}
+        onPageChange={(_, p) => setPage(p)}
+        rowsPerPage={rpp}
+        onRowsPerPageChange={(e) => {
+          setRpp(Number(e.target.value));
+          setPage(0);
+        }}
+        rowsPerPageOptions={[25, 50, 100]}
+        labelRowsPerPage="Số dòng/trang"
+      />
+
+      {/* Drawer form + dialogs */}
       <HangHoaFormDialog
         open={form.open}
         mode={form.mode}
         maVt={form.maVt}
-        onClose={() => {
-          setForm((f) => ({ ...f, open: false }));
-          setSelected(null);
-        }}
+        onClose={() => setForm((f) => ({ ...f, open: false }))}
+        onEdit={() => setForm((f) => ({ ...f, mode: 'edit' }))}
       />
       <DoiMaDialog
         open={doiMa !== null}
         maCu={doiMa ?? ''}
-        onClose={() => {
-          setDoiMa(null);
-          setSelected(null);
-        }}
+        onClose={() => setDoiMa(null)}
       />
       <DeleteDialog
         open={deleteOpen}
@@ -264,6 +332,6 @@ export function HangHoaList(): JSX.Element {
         onConfirm={confirmDelete}
         onClose={() => setDeleteOpen(false)}
       />
-    </div>
+    </Box>
   );
 }

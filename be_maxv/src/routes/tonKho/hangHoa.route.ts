@@ -1,5 +1,5 @@
 import type { FastifyInstance } from 'fastify';
-import * as ctrl from '../../controllers/client/tonKho/hangHoa.controller';
+import * as ctrl from '../../controllers/client/tonKho/danh_muc/hangHoa.controller';
 
 /**
  * Tồn kho › Danh mục › Hàng hóa (+ lookup cho form).
@@ -18,8 +18,7 @@ export async function tonKhoRoutes(app: FastifyInstance) {
   app.put('/hang-hoa/:ma_vt', ctrl.update);
   app.delete('/hang-hoa/:ma_vt', ctrl.remove);
 
-  // --- Lookup danh mục ---
-  app.get('/dvt', ctrl.dvt);
+  // --- Lookup danh mục (dvt do dvt.route.ts sở hữu) ---
   app.get('/loai-vt', ctrl.loaiVt);
   app.get('/kho', ctrl.kho);
   app.get('/thue', ctrl.thue);
