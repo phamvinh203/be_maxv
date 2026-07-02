@@ -114,8 +114,16 @@ export interface Lookup {
   label: string;
 }
 
+/** Dữ liệu thô 1 đơn vị tính (để auto-điền ĐVT 2 theo ĐVT đã chọn). */
+export interface DvtRaw {
+  dvt: string;
+  dvt2: string | null;
+}
+
 export interface Lookups {
   dvtList: Lookup[];
+  /** Bản ghi đvt gốc (kèm dvt2) — dùng để auto-fill ĐVT 2. */
+  dvtRaw: DvtRaw[];
   loaiList: Lookup[];
   khoList: Lookup[];
   thueList: Lookup[];

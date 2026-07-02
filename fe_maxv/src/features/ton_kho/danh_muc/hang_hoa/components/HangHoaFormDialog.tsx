@@ -38,6 +38,7 @@ type Setter = (k: keyof HangHoaForm, v: unknown) => void;
 
 const EMPTY_LOOKUPS: Lookups = {
   dvtList: [],
+  dvtRaw: [],
   loaiList: [],
   khoList: [],
   thueList: [],
@@ -380,7 +381,17 @@ function TabThongTin({
         <FRow label="Đơn vị tính" required>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
             <div style={{ flex: 1 }}>
-              <SelectField list={lk.dvtList} value={form.dvt} onChange={(v) => set('dvt', v)} disabled={ro} />
+              <SelectField
+                list={lk.dvtList}
+                value={form.dvt}
+                onChange={(v) => {
+                  set('dvt', v);
+                  // Auto-điền ĐVT 2 theo dvt2 khai báo trong danh mục đơn vị tính.
+                  const rec = lk.dvtRaw.find((d) => d.dvt === v);
+                  set('dvt2', rec?.dvt2 ?? '');
+                }}
+                disabled={ro}
+              />
             </div>
             {cbox('nhieu_dvt', 'Nhiều đvt')}
           </div>

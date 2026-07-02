@@ -3,7 +3,6 @@ import {
   Alert,
   Box,
   Button,
-  Chip,
   Divider,
   IconButton,
   InputAdornment,
@@ -220,22 +219,31 @@ export function HangHoaList(): JSX.Element {
 
       {/* Table */}
       <TableContainer sx={{ flex: 1, minHeight: 0 }}>
-        <Table size="small" stickyHeader>
+        <Table
+          size="small"
+          stickyHeader
+          sx={{ '& td, & th': { whiteSpace: 'nowrap' } }}
+        >
           <TableHead>
             <TableRow>
               <TableCell>Mã hàng</TableCell>
               <TableCell>Tên mặt hàng</TableCell>
-              <TableCell>ĐVT</TableCell>
-              <TableCell>ĐVT 2</TableCell>
-              <TableCell >Số lượng 2</TableCell>
-              <TableCell>Số lượng nhập</TableCell>
-              <TableCell>Giá</TableCell>
-              <TableCell>Tiền</TableCell>
-              <TableCell>Dự án</TableCell>
-              <TableCell>Phòng ban</TableCell>
-              <TableCell>Mã kho</TableCell>
-              <TableCell>Tài khoản vật tư</TableCell>
-              <TableCell>Tài khoản có</TableCell>
+              <TableCell>Đvt2</TableCell>
+              <TableCell>Đvt</TableCell>
+              <TableCell align="right">Hệ số</TableCell>
+              <TableCell>Loại</TableCell>
+              <TableCell>Phương pháp tính giá</TableCell>
+              <TableCell>Tài khoản kho</TableCell>
+              <TableCell>Tài khoản doanh thu</TableCell>
+              <TableCell>Tài khoản doanh thu Nội bộ</TableCell>
+              <TableCell>Tài khoản hàng bán bị trả lại</TableCell>
+              <TableCell>Tài khoản giá vốn</TableCell>
+              <TableCell>Tài khoản Khuyến mại</TableCell>
+              <TableCell>Tài khoản chênh lệch giá vốn</TableCell>
+              <TableCell>Kho Hàng</TableCell>
+              <TableCell>Nhóm 1</TableCell>
+              <TableCell>Nhóm 2</TableCell>
+              <TableCell>Nhóm 3</TableCell>
             </TableRow>
           </TableHead>
           <TableBody>
@@ -252,39 +260,28 @@ export function HangHoaList(): JSX.Element {
                 >
                   <TableCell sx={{ fontWeight: 600 }}>{r.ma_vt}</TableCell>
                   <TableCell>{r.ten_vt}</TableCell>
-                  <TableCell>{r.dvt}</TableCell>
                   <TableCell>{r.dvt2 || '—'}</TableCell>
+                  <TableCell>{r.dvt}</TableCell>
                   <TableCell align="right">{r.dvt2 ? String(r.he_so2) : '—'}</TableCell>
-                  <TableCell align="right">{r.sl_nhap}</TableCell>
-                  <TableCell align="right">{r.gia}</TableCell>
-                  <TableCell align="right">{r.tien}</TableCell>
-                  <TableCell>{r.ma_du_an || '—'}</TableCell>
-                  <TableCell>{r.ma_phong_ban || '—'}</TableCell>
-                  <TableCell>{r.ma_kho || '—'}</TableCell>
-                  <TableCell>{r.tk_vt || '—'}</TableCell>
-                  <TableCell>{r.tk_co || '—'}</TableCell>
-                </TableRow>
-              );
-            })}
-            {!isLoading && rows.length === 0 && (
-              <TableRow>
-                <TableCell colSpan={13} align="center" sx={{ py: 6, color: 'text.secondary' }}>
-                  {search ? 'Không tìm thấy hàng hóa phù hợp' : 'Chưa có hàng hóa nào'}
-                </TableCell>
-              </TableRow>
-            )}
-          </TableBody>
-        </Table>
-      </TableContainer>
                   <TableCell>{r.loai_vt || '—'}</TableCell>
                   <TableCell>{giaTon(Number(r.gia_ton))}</TableCell>
+                  <TableCell>{r.tk_vt || '—'}</TableCell>
+                  <TableCell>{r.tk_dt || '—'}</TableCell>
+                  <TableCell>{r.tk_dtnb || '—'}</TableCell>
+                  <TableCell>{r.tk_tl || '—'}</TableCell>
+                  <TableCell>{r.tk_gv || '—'}</TableCell>
+                  <TableCell>{r.tk_cpbh || '—'}</TableCell>
+                  <TableCell>{r.tk_cl_vt || '—'}</TableCell>
+                  <TableCell>{r.ma_kho || '—'}</TableCell>
                   <TableCell>{r.nh_vt1 || '—'}</TableCell>
+                  <TableCell>{r.nh_vt2 || '—'}</TableCell>
+                  <TableCell>{r.nh_vt3 || '—'}</TableCell>
                 </TableRow>
               );
             })}
             {!isLoading && rows.length === 0 && (
               <TableRow>
-                <TableCell colSpan={9} align="center" sx={{ py: 6, color: 'text.secondary' }}>
+                <TableCell colSpan={18} align="center" sx={{ py: 6, color: 'text.secondary' }}>
                   {search ? 'Không tìm thấy hàng hóa phù hợp' : 'Chưa có hàng hóa nào'}
                 </TableCell>
               </TableRow>

@@ -24,11 +24,11 @@ datasource db {
 
 /// Danh mục vật tư / hàng hóa
 model dmvt {
-  ma_vt      String  @id @db.VarChar(16)
+  ma_vt      String  @id @db.VarChar(32)
   ten_vt     String  @db.VarChar(254)
   ten_vt2    String? @db.VarChar(254)
-  dvt        String  @db.VarChar(16)
-  dvt2       String? @db.VarChar(16)
+  dvt        String  @db.VarChar(24)
+  dvt2       String? @db.VarChar(24)
   he_so      Decimal @default(1) @db.Decimal(18, 4)
   he_so2     Decimal @default(1) @db.Decimal(18, 4)
   nhieu_dvt  Boolean @default(false)
@@ -37,28 +37,28 @@ model dmvt {
   kk_yn      Boolean @default(false)
   gia_ton    Int     @default(1) // PP tính giá (mã phương pháp)
 
-  loai_vt String? @db.VarChar(16)
-  nh_vt1  String? @db.VarChar(16)
-  nh_vt2  String? @db.VarChar(16)
-  nh_vt3  String? @db.VarChar(16)
+  loai_vt String? @db.VarChar(24)
+  nh_vt1  String? @db.VarChar(24)
+  nh_vt2  String? @db.VarChar(24)
+  nh_vt3  String? @db.VarChar(24)
 
-  ma_kho     String? @db.VarChar(16)
-  ma_vi_tri  String? @db.VarChar(16)
-  ma_thue    String? @db.VarChar(16)
-  ma_thue_nk String? @db.VarChar(16)
+  ma_kho     String? @db.VarChar(24)
+  ma_vi_tri  String? @db.VarChar(24)
+  ma_thue    String? @db.VarChar(24)
+  ma_thue_nk String? @db.VarChar(24)
 
   // Tài khoản hạch toán
-  tk_vt     String? @db.VarChar(16)
+  tk_vt     String? @db.VarChar(24)
   sua_tk_vt Boolean @default(false)
-  tk_gv     String? @db.VarChar(16)
-  tk_dt     String? @db.VarChar(16)
-  tk_dtnb   String? @db.VarChar(16)
-  tk_tl     String? @db.VarChar(16)
-  tk_dl     String? @db.VarChar(16)
-  tk_spdd   String? @db.VarChar(16)
-  tk_cl_vt  String? @db.VarChar(16)
-  tk_ck     String? @db.VarChar(16)
-  tk_cpbh   String? @db.VarChar(16)
+  tk_gv     String? @db.VarChar(24)
+  tk_dt     String? @db.VarChar(24)
+  tk_dtnb   String? @db.VarChar(24)
+  tk_tl     String? @db.VarChar(24)
+  tk_dl     String? @db.VarChar(24)
+  tk_spdd   String? @db.VarChar(24)
+  tk_cl_vt  String? @db.VarChar(24)
+  tk_ck     String? @db.VarChar(24)
+  tk_cpbh   String? @db.VarChar(24)
 
   // Quản lý lô / hạn dùng
   kieu_lo    Int     @default(1)
@@ -71,17 +71,17 @@ model dmvt {
   sl_min    Decimal @default(0) @db.Decimal(18, 4)
   sl_max    Decimal @default(0) @db.Decimal(18, 4)
   volume    Decimal @default(0) @db.Decimal(18, 4)
-  dvtvolume String? @db.VarChar(16)
+  dvtvolume String? @db.VarChar(24)
   weight    Decimal @default(0) @db.Decimal(18, 4)
-  dvtweight String? @db.VarChar(16)
+  dvtweight String? @db.VarChar(24)
 
   ghi_chu String? @db.VarChar(512)
   status  String  @default("1") @db.VarChar(1)
 
   datetime0 DateTime @default(now())
   datetime2 DateTime @default(now())
-  user_id0  String?  @db.VarChar(16)
-  user_id2  String?  @db.VarChar(16)
+  user_id0  String?  @db.VarChar(64)
+  user_id2  String?  @db.VarChar(64)
 
   qddvt dmqddvt[]
 
@@ -95,14 +95,14 @@ model dmvt {
 
 /// Quy đổi đơn vị tính của vật tư (nhiều ĐVT)
 model dmqddvt {
-  ma_vt  String  @db.VarChar(16)
-  dvt    String  @db.VarChar(16)
+  ma_vt  String  @db.VarChar(32)
+  dvt    String  @db.VarChar(24)
   he_so  Decimal @default(1) @db.Decimal(18, 4)
   xtype  String  @default("S") @db.VarChar(1)
   status String  @default("1") @db.VarChar(1)
 
-  user_id0 String? @db.VarChar(16)
-  user_id2 String? @db.VarChar(16)
+  user_id0 String? @db.VarChar(64)
+  user_id2 String? @db.VarChar(64)
 
   vt dmvt @relation(fields: [ma_vt], references: [ma_vt], onDelete: Cascade, onUpdate: Cascade)
 
@@ -111,8 +111,8 @@ model dmqddvt {
 
 /// Danh mục đơn vị tính
 model dmdvt {
-  dvt      String  @id @db.VarChar(16)
-  dvt2     String? @db.VarChar(16)
+  dvt      String  @id @db.VarChar(24)
+  dvt2     String? @db.VarChar(24)
   ten_dvt  String  @db.VarChar(128)
   ten_dvt2 String? @db.VarChar(128)
   status   String  @default("1") @db.VarChar(1)
