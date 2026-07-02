@@ -17,6 +17,7 @@ import EditIcon from '@mui/icons-material/Edit';
 import ContentCopyIcon from '@mui/icons-material/ContentCopy';
 import DeleteIcon from '@mui/icons-material/Delete';
 import { getApiError } from '@/lib/apiClient';
+import { getCurrentCompany } from '@/features/auth/hooks/useAuth';
 import DeleteDialog from '@/components/DeleteDialog';
 import { CatalogToolbar } from '@/components/catalog/CatalogToolbar';
 import { useCatalogList } from '@/components/catalog/useCatalogList';
@@ -33,6 +34,7 @@ export function KhoList(): JSX.Element {
   const { data, isLoading, isFetching, isError, error, refetch } = useKhoList();
   const del = useDeleteKho();
 
+  const tenDonVi = getCurrentCompany()?.tenDonVi ?? '';
   const rows = useMemo(() => data ?? [], [data]);
   const list = useCatalogList<Kho>({
     rows,
@@ -110,7 +112,7 @@ export function KhoList(): JSX.Element {
           <TableBody>
             {isLoading && (
               <TableRow>
-                <TableCell colSpan={7} align="center" sx={{ py: 4, color: 'text.secondary' }}>
+                <TableCell colSpan={4} align="center" sx={{ py: 4, color: 'text.secondary' }}>
                   Đang tải…
                 </TableCell>
               </TableRow>
@@ -124,7 +126,7 @@ export function KhoList(): JSX.Element {
                 onDoubleClick={() => openForm('edit', r)}
                 sx={{ cursor: 'pointer', opacity: r.status === '0' ? 0.55 : 1 }}
               >
-                <TableCell>{r.ma_dvcs}</TableCell>
+                <TableCell>{tenDonVi || r.ma_dvcs}</TableCell>
                 <TableCell sx={{ fontWeight: 600 }}>{r.ma_kho}</TableCell>
                 <TableCell>{r.ten_kho}</TableCell>
                 <TableCell align="center">
@@ -139,7 +141,7 @@ export function KhoList(): JSX.Element {
             ))}
             {!isLoading && list.filtered.length === 0 && (
               <TableRow>
-                <TableCell colSpan={7} align="center" sx={{ py: 6, color: 'text.secondary' }}>
+                <TableCell colSpan={4} align="center" sx={{ py: 6, color: 'text.secondary' }}>
                   {list.searchInput ? 'Không tìm thấy kho phù hợp' : 'Chưa có kho nào'}
                 </TableCell>
               </TableRow>

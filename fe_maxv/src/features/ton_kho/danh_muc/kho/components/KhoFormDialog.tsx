@@ -14,6 +14,7 @@ import {
   TextField,
 } from '@mui/material';
 import { getApiError } from '@/lib/apiClient';
+import { getCurrentCompany } from '@/features/auth/hooks/useAuth';
 import {
   useCreateKho,
   useUpdateKho,
@@ -62,6 +63,7 @@ export function KhoFormDialog({ open, mode, current, onClose }: Props): JSX.Elem
   }
 
   const pending = create.isPending || update.isPending;
+  const tenDonVi = getCurrentCompany()?.tenDonVi ?? '';
 
   function handleSubmit(e: FormEvent) {
     e.preventDefault();
@@ -85,18 +87,18 @@ export function KhoFormDialog({ open, mode, current, onClose }: Props): JSX.Elem
             {error && <Alert severity="error">{error}</Alert>}
             <Stack direction="row" spacing={2}>
               <TextField
+                label="Đơn vị"
+                value={tenDonVi}
+                disabled
+                sx={{ flex: 1 }}
+              />
+              <TextField
                 label="Mã kho"
                 required
                 autoFocus
                 value={form.ma_kho}
                 onChange={(e) => setField('ma_kho', e.target.value.toUpperCase())}
                 disabled={mode === 'edit'}
-                sx={{ flex: 1 }}
-              />
-              <TextField
-                label="Đơn vị"
-                value={form.ma_dvcs}
-                onChange={(e) => setField('ma_dvcs', e.target.value)}
                 sx={{ width: 120 }}
               />
             </Stack>
