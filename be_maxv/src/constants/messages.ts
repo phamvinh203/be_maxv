@@ -64,6 +64,7 @@ export const MESSAGES = {
     DVT_NOT_FOUND: 'Không tìm thấy đơn vị tính',
     NHOM_NOT_FOUND: 'Không tìm thấy nhóm hàng hóa, vật tư',
     NHOM_LOAI_INVALID: 'Loại nhóm phải là 1, 2 hoặc 3',
+    MAGD_NOT_FOUND: 'Không tìm thấy mã giao dịch',
   },
 
   VALIDATION: {

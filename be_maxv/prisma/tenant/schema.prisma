@@ -187,3 +187,18 @@ model dmnhvt {
 
   @@id([loai_nh, ma_nh])
 }
+
+/// Danh mục mã giao dịch (theo chứng từ)
+model dmmagd {
+  ma_ct   String  @db.VarChar(24)
+  loai_ct String? @db.VarChar(24)
+  ma_gd   String  @db.VarChar(24)
+  ten_gd  String  @db.VarChar(254)
+  ten_gd2 String? @db.VarChar(254)
+  status  String  @default("1") @db.VarChar(1)
+
+  datetime0 DateTime @default(now())
+  datetime2 DateTime @default(now())
+
+  @@id([ma_ct, ma_gd])
+}
