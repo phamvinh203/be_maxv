@@ -6,6 +6,7 @@ import RegisterPage from '../pages/RegisterPage';
 import ModulesPage from '../pages/ModulesPage';
 import SettingsPage from '../pages/settings/SettingsPage';
 import SetupCompanyPage from '../pages/SetupCompanyPage';
+import HangHoaPage from '../pages/ton_kho/HangHoaPage';
 import ProtectedRoute from './ProtectedRoute';
 import RequireTenant from './RequireTenant';
 import { isAuthenticated, getCurrentCompany } from '@/features/auth/hooks/useAuth';
@@ -54,6 +55,15 @@ export default function AppRouter(): JSX.Element {
               <ProtectedRoute>
                 <SetupCompanyPage />
               </ProtectedRoute>
+            }
+          />
+          {/* Trang danh mục hàng hóa (khai báo trước :moduleSlug để khớp path sâu hơn) */}
+          <Route
+            path=":slug/ton_kho/danh_muc/hang_hoa"
+            element={
+              <RequireTenant>
+                <HangHoaPage />
+              </RequireTenant>
             }
           />
           <Route

@@ -14,26 +14,37 @@ export function setToken(token: string): void {
   localStorage.setItem(TOKEN_KEY, token);
 }
 
+/** Slot localStorage JSON có type, dùng chung cho mọi giá trị object (user, company, ...). */
+function createStorageSlot<T>(key: string) {
+  return {
+    get(): T | null {
+      const raw = localStorage.getItem(key);
+      return raw ? (JSON.parse(raw) as T) : null;
+    },
+    set(value: T | null): void {
+      if (value) localStorage.setItem(key, JSON.stringify(value));
+      else localStorage.removeItem(key);
+    },
+  };
+}
+
+const userSlot = createStorageSlot<AuthUser>(USER_KEY);
+const companySlot = createStorageSlot<AuthCompany>(COMPANY_KEY);
+
 export function getUser(): AuthUser | null {
-  const raw = localStorage.getItem(USER_KEY);
-  return raw ? (JSON.parse(raw) as AuthUser) : null;
+  return userSlot.get();
 }
 
 export function setUser(user: AuthUser): void {
-  localStorage.setItem(USER_KEY, JSON.stringify(user));
+  userSlot.set(user);
 }
 
 export function getCompany(): AuthCompany | null {
-  const raw = localStorage.getItem(COMPANY_KEY);
-  return raw ? (JSON.parse(raw) as AuthCompany) : null;
+  return companySlot.get();
 }
 
 export function setCompany(company: AuthCompany | null): void {
-  if (company) {
-    localStorage.setItem(COMPANY_KEY, JSON.stringify(company));
-  } else {
-    localStorage.removeItem(COMPANY_KEY);
-  }
+  companySlot.set(company);
 }
 
 export function clearSession(): void {

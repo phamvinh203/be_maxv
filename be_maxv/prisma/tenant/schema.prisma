@@ -15,85 +15,175 @@ datasource db {
   provider = "postgresql"
 }
 
-// --- Thiết lập (menu "Hệ thống") — 1 dòng duy nhất ---
-model ThietLap {
-  id             Int      @id @default(1)
-  ngayBatDauNTC  DateTime // Ngày bắt đầu năm tài chính
-  ngayBatDauNhap DateTime
-  tenCongTy      String
-  maSoThue       String?
-  diaChi         String?
-  thamSo         Json     @default("{}") // Tham số tùy chọn
-  updatedAt      DateTime @updatedAt
+// ============================================================
+//  TỒN KHO › DANH MỤC › HÀNG HÓA (ton-kho/dm/hang-hoa)
+//  Bảng chính: dmvt + dmqddvt.
+//  Lookup: dmdvt, dmloaivt, dmkho, dmnhkho, dmvitri,
+//          dmthue, dmthuenk, dmnhvt.
+// ============================================================
 
-  @@map("thiet_lap")
+/// Danh mục vật tư / hàng hóa
+model dmvt {
+  ma_vt      String  @id @db.VarChar(16)
+  ten_vt     String  @db.VarChar(254)
+  ten_vt2    String? @db.VarChar(254)
+  dvt        String  @db.VarChar(16)
+  dvt2       String? @db.VarChar(16)
+  he_so      Decimal @default(1) @db.Decimal(18, 4)
+  he_so2     Decimal @default(1) @db.Decimal(18, 4)
+  nhieu_dvt  Boolean @default(false)
+  vt_ton_kho Boolean @default(true)
+  lo_yn      Boolean @default(false)
+  kk_yn      Boolean @default(false)
+  gia_ton    Int     @default(1) // PP tính giá (mã phương pháp)
+
+  loai_vt String? @db.VarChar(16)
+  nh_vt1  String? @db.VarChar(16)
+  nh_vt2  String? @db.VarChar(16)
+  nh_vt3  String? @db.VarChar(16)
+
+  ma_kho     String? @db.VarChar(16)
+  ma_vi_tri  String? @db.VarChar(16)
+  ma_thue    String? @db.VarChar(16)
+  ma_thue_nk String? @db.VarChar(16)
+
+  // Tài khoản hạch toán
+  tk_vt     String? @db.VarChar(16)
+  sua_tk_vt Boolean @default(false)
+  tk_gv     String? @db.VarChar(16)
+  tk_dt     String? @db.VarChar(16)
+  tk_dtnb   String? @db.VarChar(16)
+  tk_tl     String? @db.VarChar(16)
+  tk_dl     String? @db.VarChar(16)
+  tk_spdd   String? @db.VarChar(16)
+  tk_cl_vt  String? @db.VarChar(16)
+  tk_ck     String? @db.VarChar(16)
+  tk_cpbh   String? @db.VarChar(16)
+
+  // Quản lý lô / hạn dùng
+  kieu_lo    Int     @default(1)
+  cach_xuat  Int     @default(1)
+  so_ngay_sp Int     @default(0)
+  so_ngay_bh Int     @default(0)
+  tao_lo     Boolean @default(false)
+
+  // Định mức tồn & quy cách
+  sl_min    Decimal @default(0) @db.Decimal(18, 4)
+  sl_max    Decimal @default(0) @db.Decimal(18, 4)
+  volume    Decimal @default(0) @db.Decimal(18, 4)
+  dvtvolume String? @db.VarChar(16)
+  weight    Decimal @default(0) @db.Decimal(18, 4)
+  dvtweight String? @db.VarChar(16)
+
+  ghi_chu String? @db.VarChar(512)
+  status  String  @default("1") @db.VarChar(1)
+
+  datetime0 DateTime @default(now())
+  datetime2 DateTime @default(now())
+  user_id0  String?  @db.VarChar(16)
+  user_id2  String?  @db.VarChar(16)
+
+  qddvt dmqddvt[]
+
+  @@index([loai_vt])
+  @@index([ma_kho])
+  @@index([nh_vt1])
+  @@index([nh_vt2])
+  @@index([nh_vt3])
+  @@index([status])
 }
 
-// --- Danh mục cơ bản (mở rộng dần) ---
-model TaiKhoan {
-  id       String  @id @default(uuid())
-  ma       String  @unique // số hiệu TK (vd "111","131")
-  ten      String
-  capCha   String? // mã TK cha (cây tài khoản)
-  isActive Boolean @default(true)
+/// Quy đổi đơn vị tính của vật tư (nhiều ĐVT)
+model dmqddvt {
+  ma_vt  String  @db.VarChar(16)
+  dvt    String  @db.VarChar(16)
+  he_so  Decimal @default(1) @db.Decimal(18, 4)
+  xtype  String  @default("S") @db.VarChar(1)
+  status String  @default("1") @db.VarChar(1)
 
-  @@index([capCha])
-  @@map("tai_khoan")
+  user_id0 String? @db.VarChar(16)
+  user_id2 String? @db.VarChar(16)
+
+  vt dmvt @relation(fields: [ma_vt], references: [ma_vt], onDelete: Cascade, onUpdate: Cascade)
+
+  @@id([ma_vt, dvt])
 }
 
-model DoiTuong {
-  id      String  @id @default(uuid())
-  ma      String  @unique // mã KH/NCC
-  ten     String
-  loai    String // "KH" | "NCC"
-  maSoThue String?
-
-  @@map("doi_tuong")
+/// Danh mục đơn vị tính
+model dmdvt {
+  dvt      String  @id @db.VarChar(16)
+  dvt2     String? @db.VarChar(16)
+  ten_dvt  String  @db.VarChar(128)
+  ten_dvt2 String? @db.VarChar(128)
+  status   String  @default("1") @db.VarChar(1)
 }
 
-// --- Chứng từ + Bút toán (trái tim hệ thống) ---
-model ChungTu {
-  id        String        @id @default(uuid())
-  loaiCt    String // "PHIEU_THU","HD_BAN","NHAP_KHO"...
-  soCt      String
-  ngayCt    DateTime
-  dienGiai  String?
-  trangThai String        @default("GHI_SO") // để Khóa sổ / đóng kỳ
-  dongs     ChungTuDong[]
-  butToans  ButToan[]
-  createdAt DateTime      @default(now())
-
-  @@unique([loaiCt, soCt])
-  @@index([ngayCt])
-  @@index([loaiCt, ngayCt])
-  @@map("chung_tu")
+/// Danh mục loại vật tư
+model dmloaivt {
+  ma_loai_vt  String @id @db.VarChar(16)
+  ten_loai_vt String @db.VarChar(128)
+  status      String @default("1") @db.VarChar(1)
 }
 
-model ChungTuDong {
-  id        String   @id @default(uuid())
-  chungTuId String
-  maVatTu   String?
-  soLuong   Decimal? @db.Decimal(18, 4)
-  donGia    Decimal? @db.Decimal(18, 2)
-  thanhTien Decimal? @db.Decimal(18, 2)
-  chungTu   ChungTu  @relation(fields: [chungTuId], references: [id], onDelete: Cascade)
+/// Danh mục kho
+model dmkho {
+  ma_kho    String  @id @db.VarChar(16)
+  ma_dvcs   String  @default("001") @db.VarChar(16)
+  ten_kho   String  @db.VarChar(128)
+  ten_kho2  String? @db.VarChar(128)
+  dai_ly_yn Boolean @default(false)
+  ma_nh     String? @db.VarChar(16)
+  ghi_chu   String? @db.VarChar(512)
+  status    String  @default("1") @db.VarChar(1)
 
-  @@index([chungTuId])
-  @@map("chung_tu_dong")
+  @@index([ma_nh])
 }
 
-model ButToan {
-  id        String   @id @default(uuid())
-  chungTuId String
-  ngayCt    DateTime
-  tkNo      String // tài khoản Nợ
-  tkCo      String // tài khoản Có
-  soTien    Decimal  @db.Decimal(18, 2)
-  doiTuong  String?
-  chungTu   ChungTu  @relation(fields: [chungTuId], references: [id], onDelete: Cascade)
+/// Danh mục nhóm kho
+model dmnhkho {
+  ma_nh  String @id @db.VarChar(16)
+  ten_nh String @db.VarChar(128)
+  status String @default("1") @db.VarChar(1)
+}
 
-  @@index([ngayCt])
-  @@index([tkNo])
-  @@index([tkCo])
-  @@map("but_toan")
+/// Danh mục vị trí trong kho
+model dmvitri {
+  ma_kho      String  @db.VarChar(16)
+  ma_vi_tri   String  @db.VarChar(16)
+  ten_vi_tri  String  @db.VarChar(128)
+  ten_vi_tri2 String? @db.VarChar(128)
+  status      String  @default("1") @db.VarChar(1)
+
+  @@id([ma_kho, ma_vi_tri])
+}
+
+/// Danh mục thuế GTGT
+model dmthue {
+  ma_thue   String   @id @db.VarChar(16)
+  ten_thue  String   @db.VarChar(128)
+  ten_thue2 String?  @db.VarChar(128)
+  ty_le     Decimal? @db.Decimal(9, 4)
+  tk_thue   String?  @db.VarChar(16)
+  status    String   @default("1") @db.VarChar(1)
+}
+
+/// Danh mục thuế nhập khẩu
+model dmthuenk {
+  ma_thue   String   @id @db.VarChar(16)
+  ten_thue  String   @db.VarChar(128)
+  ten_thue2 String?  @db.VarChar(128)
+  thue_suat Decimal? @db.Decimal(9, 4)
+  tk_thue   String?  @db.VarChar(16)
+  status    String   @default("1") @db.VarChar(1)
+}
+
+/// Danh mục phân nhóm vật tư (loai_nh = 1|2|3)
+model dmnhvt {
+  loai_nh Int
+  ma_nh   String  @db.VarChar(16)
+  ten_nh  String  @db.VarChar(128)
+  ten_nh2 String? @db.VarChar(128)
+  status  String  @default("1") @db.VarChar(1)
+
+  @@id([loai_nh, ma_nh])
 }

@@ -21,7 +21,7 @@ export const env = {
   // Bật khi chạy sau reverse proxy để đọc IP thật từ X-Forwarded-For.
   trustProxy: process.env.TRUST_PROXY === 'true',
 
-  // Control plane (maxv2_sys) — Prisma client đọc qua DB_SYS_URL
+  // Control plane (maxv2_sys) - Prisma client đọc qua DB_SYS_URL
   sysUrl: required('DB_SYS_URL'),
 
   // Kết nối quản trị để CREATE/DROP DATABASE (dùng DB bảo trì "postgres")
@@ -29,6 +29,10 @@ export const env = {
 
   // Base để ghép URL từng DB tenant: ${tenantBaseUrl}/db_<MST>
   tenantBaseUrl: pgBase,
+
+  // Dev: DB tenant cố định để build tính năng khi chưa có luồng auth/tenant thật.
+  // Chỉ set ở môi trường dev; production để trống.
+  devTenantDb: process.env.DEV_TENANT_DB,
 
   jwtAccessSecret: required('JWT_ACCESS_SECRET'),
   jwtRefreshSecret: required('JWT_REFRESH_SECRET'),
@@ -38,7 +42,7 @@ export const env = {
 
   trialDays: Number(process.env.TRIAL_DAYS ?? 7),
 
-  // SMTP (thông báo qua email — vd báo admin khi có lời mời nhân viên mới)
+  // SMTP (thông báo qua email - vd báo admin khi có lời mời nhân viên mới)
   smtpHost: required('SMTP_HOST'),
   smtpPort: Number(process.env.SMTP_PORT ?? 587),
   smtpUser: required('SMTP_USER'),
