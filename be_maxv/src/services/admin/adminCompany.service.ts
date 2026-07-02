@@ -7,6 +7,7 @@ import { MESSAGES } from '../../constants/messages';
 import type { Prisma } from '../../generated/sys';
 import type { PrismaClient as TenantClient } from '../../generated/tenant';
 import type { ListCompaniesQuery } from '../../validators/admin.validator';
+import { MENU_MODULES } from '../../config/modules';
 
 // Cột công khai cho danh sách (không kéo quan hệ -> nhẹ).
 const LIST_SELECT = {
@@ -136,87 +137,8 @@ function formatBytes(bytes: number): string {
   return `${n.toFixed(i === 0 ? 0 : 1)} ${units[i]}`;
 }
 
-// ============================================================
-//  Tổng quan DB tenant theo cấu trúc MENU:
-//    Module (tab)  ->  Section (Danh mục / Chứng từ / Báo cáo)  ->  Item
-//  Mỗi item khai báo `table` (nếu có dữ liệu để đếm). Item chưa có bảng
-//  (tính năng chưa dựng) -> rows/size = null, exists = false (KHÔNG bịa số).
-//
-//  MỞ RỘNG: thêm module/section/item mới = thêm entry vào MENU_MODULES
-//  và map `table` khi bảng đã tồn tại. Không phải sửa logic bên dưới.
-// ============================================================
-
-interface MenuItem {
-  label: string;
-  path?: string;
-  table?: string; // tên bảng trong tenant schema (nếu item có dữ liệu để đếm)
-}
-interface MenuSection {
-  key: string;
-  title: string;
-  items: MenuItem[];
-}
-interface MenuModule {
-  key: string;
-  title: string;
-  sections: MenuSection[];
-}
-
-const MENU_MODULES: MenuModule[] = [
-  {
-    key: 'tonKho',
-    title: 'Tồn kho',
-    sections: [
-      {
-        key: 'danhMuc',
-        title: 'Danh mục',
-        items: [
-          { label: 'Danh mục hàng hóa, vật tư', path: '/ton_kho/danh_muc/hang_hoa', table: 'dmvt' },
-          { label: 'Danh mục phân nhóm hàng hóa, vật tư', path: '/ton_kho/danh_muc/phan_nhom', table: 'dmnhvt' },
-          { label: 'Danh mục đơn vị tính', path: '/ton_kho/danh_muc/dvt', table: 'dmdvt' },
-          { label: 'Danh mục quy đổi đơn vị tính', path: '/ton_kho/danh_muc/quy_doi_dvt', table: 'dmqddvt' },
-          { label: 'Danh mục lô', path: '/ton_kho/danh_muc/lo' }, // dmlo: chưa dựng
-          { label: 'Danh mục kho hàng', path: '/ton_kho/danh_muc/kho', table: 'dmkho' },
-          { label: 'Danh mục nhóm kho hàng', path: '/ton_kho/danh_muc/nhom_kho', table: 'dmnhkho' },
-          { label: 'Danh mục vị trí kho hàng', path: '/ton_kho/danh_muc/vi_tri_kho', table: 'dmvitri' },
-          { label: 'Danh mục mã giao dịch', path: '/ton_kho/danh_muc/ma_gd' }, // chưa dựng
-          { label: 'Nhập tồn kho ban đầu hàng hóa, vật tư', path: '/ton_kho/danh_muc/ton_bd' },
-          { label: 'Nhập chi tiết tồn kho ban đầu nhập trước xuất trước', path: '/ton_kho/danh_muc/ton_bd_fifo' },
-          { label: 'Chuyển tồn kho sang năm sau', path: '/ton_kho/danh_muc/chuyen_nam' },
-        ],
-      },
-      {
-        key: 'chungTu',
-        title: 'Chứng từ',
-        items: [
-          { label: 'Phiếu nhập kho', path: '/ton_kho/chung_tu/nhap_kho' },
-          { label: 'Phiếu xuất kho', path: '/ton_kho/chung_tu/xuat_kho' },
-          { label: 'Phiếu xuất điều chuyển', path: '/ton_kho/chung_tu/dieu_chuyen' },
-          { label: 'Tính giá trung bình', path: '/ton_kho/chung_tu/gia_tb' },
-          { label: 'Tính giá trung bình di động theo ngày', path: '/ton_kho/chung_tu/gia_tb-dd' },
-          { label: 'Tính giá nhập trước xuất trước', path: '/ton_kho/chung_tu/fifo' },
-          { label: 'Tính lại tồn kho tức thời', path: '/ton_kho/chung_tu/ton_tuc_thoi' },
-        ],
-      },
-      {
-        key: 'baoCao',
-        title: 'Báo cáo',
-        items: [
-          { label: 'Bảng kê phiếu nhập' },
-          { label: 'Tổng hợp hàng nhập kho' },
-          { label: 'Bảng kê phiếu xuất' },
-          { label: 'Tổng hợp hàng xuất kho' },
-          { label: 'Thẻ kho/Sổ chi tiết vật tư' },
-          { label: 'Tổng hợp nhập xuất tồn' },
-          { label: 'Báo cáo tồn kho' },
-          { label: 'In Phiếu nhập kho' },
-          { label: 'In Phiếu xuất kho' },
-        ],
-      },
-    ],
-  },
-  // Ví dụ sau này: { key: 'banHang', title: 'Bán hàng', sections: [...] },
-];
+// Cấu trúc menu tổng quan (module -> section -> item + table) tách sang
+// src/config/modules để service chỉ còn logic đo dữ liệu.
 
 interface TableStat {
   table: string;
