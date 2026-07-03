@@ -311,7 +311,7 @@ export const MENU_MODULES: MenuModule[] = [
           { label: 'Danh mục kho hàng', path: '/ton_kho/danh_muc/kho', table: 'dmkho' },
           { label: 'Danh mục nhóm kho hàng', path: '/ton_kho/danh_muc/nhom_kho', table: 'dmnhkho' },
           { label: 'Danh mục vị trí kho hàng', path: '/ton_kho/danh_muc/vi_tri_kho', table: 'dmvitri' },
-          { label: 'Danh mục mã giao dịch', path: '/ton_kho/danh_muc/ma_gd' },
+          { label: 'Danh mục mã giao dịch', path: '/ton_kho/danh_muc/ma_gd', table: 'dmmagd' },
           { label: 'Nhập tồn kho ban đầu hàng hóa, vật tư', path: '/ton_kho/danh_muc/ton_bd' },
           { label: 'Nhập chi tiết tồn kho ban đầu nhập trước xuất trước', path: '/ton_kho/danh_muc/ton_bd_fifo' },
           { label: 'Chuyển tồn kho sang năm sau', path: '/ton_kho/danh_muc/chuyen_nam' },
