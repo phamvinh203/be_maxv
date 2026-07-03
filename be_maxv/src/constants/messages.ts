@@ -78,6 +78,7 @@ export const MESSAGES = {
 
   BAN_HANG: {
     KHACH_HANG_NOT_FOUND: 'Không tìm thấy khách hàng',
+    HOA_DON_NOT_FOUND: 'Không tìm thấy hóa đơn bán hàng',
   },
 
   VALIDATION: {
