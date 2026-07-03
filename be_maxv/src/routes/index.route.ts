@@ -9,6 +9,7 @@ import { maGdRoutes } from './tonKho/maGd.route';
 import { khoRoutes } from './tonKho/kho.route';
 import { nhomKhoRoutes } from './tonKho/nhomKho.route';
 import { viTriKhoRoutes } from './tonKho/viTriKho.route';
+import { loaiVtRoutes } from './tonKho/loaiVt.route';
 
 export async function registerRoutes(app: FastifyInstance) {
   await app.register(authRoutes, { prefix: '/api/v1/auth' });
@@ -21,4 +22,5 @@ export async function registerRoutes(app: FastifyInstance) {
   await app.register(khoRoutes, { prefix: '/api/v1/ton-kho' });
   await app.register(nhomKhoRoutes, { prefix: '/api/v1/ton-kho' });
   await app.register(viTriKhoRoutes, { prefix: '/api/v1/ton-kho' });
+  await app.register(loaiVtRoutes, { prefix: '/api/v1/ton-kho' });
 }

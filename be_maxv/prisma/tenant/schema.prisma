@@ -120,9 +120,10 @@ model dmdvt {
 
 /// Danh mục loại vật tư
 model dmloaivt {
-  ma_loai_vt  String @id @db.VarChar(16)
-  ten_loai_vt String @db.VarChar(128)
-  status      String @default("1") @db.VarChar(1)
+  ma_loai_vt   String  @id @db.VarChar(24)
+  ten_loai_vt  String  @db.VarChar(128)
+  ten_loai_vt2 String? @db.VarChar(128)
+  status       String  @default("1") @db.VarChar(1)
 }
 
 /// Danh mục kho

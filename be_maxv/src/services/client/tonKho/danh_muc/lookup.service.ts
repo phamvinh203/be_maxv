@@ -2,14 +2,7 @@ import type { PrismaClient } from '../../../../generated/tenant';
 
 // Đơn vị tính (dmdvt) do dvt.service.ts sở hữu (GET /ton-kho/dvt).
 
-/** Loại vật tư (dmloaivt) — chỉ bản ghi đang dùng. */
-export function listLoaiVt(db: PrismaClient) {
-  return db.dmloaivt.findMany({
-    where: { status: '1' },
-    select: { ma_loai_vt: true, ten_loai_vt: true },
-    orderBy: { ma_loai_vt: 'asc' },
-  });
-}
+// Loại vật tư (dmloaivt) do loaiVt.service.ts sở hữu (GET /ton-kho/loai-vt).
 
 // Kho (dmkho) do kho.service.ts sở hữu (GET /ton-kho/kho).
 
