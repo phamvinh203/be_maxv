@@ -71,6 +71,11 @@ export const MESSAGES = {
     LOAI_VT_NOT_FOUND: 'Không tìm thấy loại vật tư',
   },
 
+  TONG_HOP: {
+    TIEN_TE_NOT_FOUND: 'Không tìm thấy ngoại tệ',
+    TAI_KHOAN_NOT_FOUND: 'Không tìm thấy tài khoản',
+  },
+
   VALIDATION: {
     INVALID_MST: 'Mã số thuế không hợp lệ',
     INVALID_PHONE: 'Số điện thoại không hợp lệ',

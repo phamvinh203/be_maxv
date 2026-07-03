@@ -204,3 +204,37 @@ model dmmagd {
 
   @@id([ma_ct, ma_gd])
 }
+
+// ============================================================
+//  TỔNG HỢP › DANH MỤC
+// ============================================================
+
+/// Danh mục ngoại tệ / tiền tệ
+model dmnt {
+  ma_nt   String  @id @db.VarChar(24)
+  ten_nt  String  @db.VarChar(128)
+  ten_nt2 String? @db.VarChar(128)
+
+  // Tài khoản chênh lệch tỷ giá
+  tk_pscl_no String? @db.VarChar(24)
+  tk_pscl_co String? @db.VarChar(24)
+  tk_dgcl_no String? @db.VarChar(24)
+  tk_dgcl_co String? @db.VarChar(24)
+
+  // Cấu hình làm tròn / định dạng số
+  ra_ndec Int     @default(0)
+  ra_1    String? @db.VarChar(64)
+  ra_2    String? @db.VarChar(64)
+  ra_3    String? @db.VarChar(64)
+  ra_4    String? @db.VarChar(64)
+  ra_5    String? @db.VarChar(64)
+  ra_12   String? @db.VarChar(64)
+  ra_22   String? @db.VarChar(64)
+  ra_32   String? @db.VarChar(64)
+  ra_42   String? @db.VarChar(64)
+  ra_52   String? @db.VarChar(64)
+
+  status    String   @default("1") @db.VarChar(1)
+  datetime0 DateTime @default(now())
+  datetime2 DateTime @default(now())
+}
