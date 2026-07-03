@@ -77,6 +77,8 @@ export const hoaDonChiTietSchema = z.object({
   tien_no: num,
 
   ma_dhb: optText,
+  ma_du_an: optText,
+  ma_phong_ban: optText,
 });
 
 /** Thân request tạo/sửa 1 hóa đơn bán hàng (header m81 + mảng chi tiết d81). */
