@@ -67,6 +67,7 @@ export const MESSAGES = {
     MAGD_NOT_FOUND: 'Không tìm thấy mã giao dịch',
     KHO_NOT_FOUND: 'Không tìm thấy kho hàng',
     NHOM_KHO_NOT_FOUND: 'Không tìm thấy nhóm kho',
+    VI_TRI_NOT_FOUND: 'Không tìm thấy vị trí kho',
   },
 
   VALIDATION: {

@@ -127,7 +127,7 @@ model dmloaivt {
 
 /// Danh mục kho
 model dmkho {
-  ma_kho    String  @id @db.VarChar(16)
+  ma_kho    String  @id @db.VarChar(24)
   ma_dvcs   String  @default("001") @db.VarChar(16)
   ten_kho   String  @db.VarChar(128)
   ten_kho2  String? @db.VarChar(128)
@@ -149,8 +149,8 @@ model dmnhkho {
 
 /// Danh mục vị trí trong kho
 model dmvitri {
-  ma_kho      String  @db.VarChar(16)
-  ma_vi_tri   String  @db.VarChar(16)
+  ma_kho      String  @db.VarChar(24)
+  ma_vi_tri   String  @db.VarChar(24)
   ten_vi_tri  String  @db.VarChar(128)
   ten_vi_tri2 String? @db.VarChar(128)
   status      String  @default("1") @db.VarChar(1)
