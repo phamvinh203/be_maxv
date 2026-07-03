@@ -238,3 +238,34 @@ model dmnt {
   datetime0 DateTime @default(now())
   datetime2 DateTime @default(now())
 }
+
+/// Danh mục tài khoản (hệ thống tài khoản kế toán)
+model dmtk {
+  tk        String  @id @db.VarChar(24)
+  ten_tk    String  @db.VarChar(254)
+  ten_tk2   String? @db.VarChar(254)
+  ten_ngan  String? @db.VarChar(128)
+  ten_ngan2 String? @db.VarChar(128)
+
+  ma_nt   String? @db.VarChar(24) // ngoại tệ (dmnt)
+  loai_tk String? @db.VarChar(8)
+  tk_me   String? @db.VarChar(24) // tài khoản mẹ (tự tham chiếu)
+  bac_tk  Int?
+  tk_sc   String  @default("1") @db.VarChar(2)
+  loai_cn String? @db.VarChar(8)
+  tk_w    String? @db.VarChar(8)
+  tk_td1  String? @db.VarChar(24)
+  tk_cn   String  @default("0") @db.VarChar(2)
+
+  nh_tk0     String? @db.VarChar(24)
+  nh_tk2     String? @db.VarChar(24)
+  loai_cl_no String? @db.VarChar(8)
+  loai_cl_co String? @db.VarChar(8)
+
+  status    String   @default("1") @db.VarChar(1)
+  datetime0 DateTime @default(now())
+  datetime2 DateTime @default(now())
+
+  @@index([tk_me])
+  @@index([ma_nt])
+}

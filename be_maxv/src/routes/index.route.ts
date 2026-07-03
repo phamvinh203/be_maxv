@@ -12,6 +12,7 @@ import { viTriKhoRoutes } from './tonKho/viTriKho.route';
 import { loaiVtRoutes } from './tonKho/loaiVt.route';
 import { thueRoutes } from './tonKho/thue.route';
 import { tienTeRoutes } from './tongHop/tienTe.route';
+import { taiKhoanRoutes } from './tongHop/taiKhoan.route';
 
 export async function registerRoutes(app: FastifyInstance) {
   await app.register(authRoutes, { prefix: '/api/v1/auth' });
@@ -29,4 +30,5 @@ export async function registerRoutes(app: FastifyInstance) {
 
   // Tổng hợp
   await app.register(tienTeRoutes, { prefix: '/api/v1/tong-hop' });
+  await app.register(taiKhoanRoutes, { prefix: '/api/v1/tong-hop' });
 }
