@@ -132,7 +132,7 @@ model dmkho {
   ten_kho   String  @db.VarChar(128)
   ten_kho2  String? @db.VarChar(128)
   dai_ly_yn Boolean @default(false)
-  ma_nh     String? @db.VarChar(16)
+  ma_nh     String? @db.VarChar(24)
   ghi_chu   String? @db.VarChar(512)
   status    String  @default("1") @db.VarChar(1)
 
@@ -141,9 +141,10 @@ model dmkho {
 
 /// Danh mục nhóm kho
 model dmnhkho {
-  ma_nh  String @id @db.VarChar(16)
-  ten_nh String @db.VarChar(128)
-  status String @default("1") @db.VarChar(1)
+  ma_nh   String  @id @db.VarChar(24)
+  ten_nh  String  @db.VarChar(128)
+  ten_nh2 String? @db.VarChar(128)
+  status  String  @default("1") @db.VarChar(1)
 }
 
 /// Danh mục vị trí trong kho

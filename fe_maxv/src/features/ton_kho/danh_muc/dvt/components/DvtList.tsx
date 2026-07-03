@@ -104,7 +104,6 @@ export function DvtList(): JSX.Element {
               <TableCell>Mã ĐVT</TableCell>
               <TableCell>ĐVT 2</TableCell>
               <TableCell>Tên đơn vị tính</TableCell>
-              <TableCell>Tên khác</TableCell>
               <TableCell align="center">Trạng thái</TableCell>
             </TableRow>
           </TableHead>
@@ -128,7 +127,6 @@ export function DvtList(): JSX.Element {
                 <TableCell sx={{ fontWeight: 600 }}>{r.dvt}</TableCell>
                 <TableCell>{r.dvt2 || '—'}</TableCell>
                 <TableCell>{r.ten_dvt}</TableCell>
-                <TableCell>{r.ten_dvt2 || '—'}</TableCell>
                 <TableCell align="center">
                   <Chip
                     size="small"
