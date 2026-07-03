@@ -14,6 +14,7 @@ import KhoPage from '../pages/ton_kho/KhoPage';
 import NhomKhoPage from '../pages/ton_kho/NhomKhoPage';
 import ViTriKhoPage from '../pages/ton_kho/ViTriKhoPage';
 import LoaiVtPage from '../pages/ton_kho/LoaiVtPage';
+import TienTePage from '../pages/tong_hop/TienTePage';
 import ProtectedRoute from './ProtectedRoute';
 import RequireTenant from './RequireTenant';
 import { isAuthenticated, getCurrentCompany } from '@/features/auth/hooks/useAuth';
@@ -126,6 +127,14 @@ export default function AppRouter(): JSX.Element {
             element={
               <RequireTenant>
                 <LoaiVtPage />
+              </RequireTenant>
+            }
+          />
+          <Route
+            path=":slug/tong_hop/danh_muc/tien-te"
+            element={
+              <RequireTenant>
+                <TienTePage />
               </RequireTenant>
             }
           />
