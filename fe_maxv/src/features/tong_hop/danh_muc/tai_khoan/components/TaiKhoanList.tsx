@@ -25,6 +25,7 @@ import {
   useTaiKhoanList,
 } from '@/features/tong_hop/danh_muc/tai_khoan/hooks/useTaiKhoan';
 import type { TaiKhoan } from '@/features/tong_hop/danh_muc/tai_khoan/types';
+import { isTopLevelAccount, topLevelRowSx } from '@/features/tong_hop/danh_muc/tai_khoan/rowStyle';
 import { TaiKhoanFormDialog, type TaiKhoanMode } from './TaiKhoanFormDialog';
 
 const SEARCH_KEYS = ['tk', 'ten_tk'];
@@ -121,7 +122,6 @@ export function TaiKhoanList(): JSX.Element {
             )}
             {list.paged.map((r) => {
               const level = Math.max(0, (r.bac_tk ?? 1) - 1);
-              const isTopLevel = r.bac_tk === 1;
               return (
                 <TableRow
                   key={r.tk}
@@ -132,10 +132,7 @@ export function TaiKhoanList(): JSX.Element {
                   sx={{
                     cursor: 'pointer',
                     opacity: r.status === '0' ? 0.55 : 1,
-                    ...(isTopLevel && {
-                      bgcolor: 'action.selected',
-                      '& > .MuiTableCell-root': { fontWeight: 700 },
-                    }),
+                    ...(isTopLevelAccount(r) && topLevelRowSx),
                   }}
                 >
                   <TableCell sx={{ fontWeight: 600, pl: `${16 + level * 20}px` }}>{r.tk}</TableCell>
