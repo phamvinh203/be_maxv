@@ -8,17 +8,22 @@ import {
   DialogContent,
   DialogTitle,
   Divider,
+  IconButton,
+  InputAdornment,
   MenuItem,
   Stack,
   TextField,
+  Tooltip,
   Typography,
 } from '@mui/material';
+import SearchIcon from '@mui/icons-material/Search';
 import { getApiError } from '@/lib/apiClient';
 import { useTienTeList } from '@/features/tong_hop/danh_muc/tien_te/hooks/useTienTe';
 import {
   useCreateTaiKhoan,
   useUpdateTaiKhoan,
 } from '@/features/tong_hop/danh_muc/tai_khoan/hooks/useTaiKhoan';
+import { TaiKhoanPickerDialog } from '@/features/tong_hop/danh_muc/tai_khoan/components/TaiKhoanPickerDialog';
 import {
   EMPTY_TAI_KHOAN,
   taiKhoanToForm,
@@ -57,6 +62,8 @@ export function TaiKhoanFormDialog({ open, mode, current, onClose }: Props): JSX
   const { data: currencies } = useTienTeList();
   const [form, setForm] = useState<TaiKhoanForm>(EMPTY_TAI_KHOAN);
   const [error, setError] = useState('');
+  /** Mở dialog chọn tài khoản mẹ. */
+  const [pickerOpen, setPickerOpen] = useState(false);
 
   useEffect(() => {
     if (!open) return;
@@ -100,19 +107,33 @@ export function TaiKhoanFormDialog({ open, mode, current, onClose }: Props): JSX
               <TextField
                 label="Tài khoản"
                 required
-                autoFocus
+                autoFocus={mode !== 'edit'}
                 value={form.tk}
                 onChange={(e) => setField('tk', e.target.value.toUpperCase())}
-                disabled={mode === 'edit'}
                 sx={{ width: 160 }}
                 placeholder="VD: 1111"
+                
+                
               />
               <TextField
                 label="Tài khoản mẹ"
                 value={form.tk_me}
                 onChange={(e) => setField('tk_me', e.target.value.toUpperCase())}
-                sx={{ width: 160 }}
+                sx={{ width: 200 }}
                 placeholder="VD: 111"
+                slotProps={{
+                  input: {
+                    endAdornment: (
+                      <InputAdornment position="end">
+                        <Tooltip title="Chọn tài khoản mẹ">
+                          <IconButton edge="end" size="small" onClick={() => setPickerOpen(true)}>
+                            <SearchIcon fontSize="small" />
+                          </IconButton>
+                        </Tooltip>
+                      </InputAdornment>
+                    ),
+                  },
+                }}
               />
               <TextField
                 label="Bậc"
@@ -245,6 +266,13 @@ export function TaiKhoanFormDialog({ open, mode, current, onClose }: Props): JSX
           </Button>
         </DialogActions>
       </Box>
+
+      <TaiKhoanPickerDialog
+        open={pickerOpen}
+        title="Chọn tài khoản mẹ"
+        onClose={() => setPickerOpen(false)}
+        onSelect={(r) => setField('tk_me', r.tk)}
+      />
     </Dialog>
   );
 }

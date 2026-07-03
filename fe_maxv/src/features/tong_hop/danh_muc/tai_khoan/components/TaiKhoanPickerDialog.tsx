@@ -98,18 +98,27 @@ export function TaiKhoanPickerDialog({
                   </TableCell>
                 </TableRow>
               )}
-              {filtered.map((r) => (
-                <TableRow
-                  key={r.tk}
-                  hover
-                  onClick={() => pick(r)}
-                  onDoubleClick={() => pick(r)}
-                  sx={{ cursor: 'pointer' }}
-                >
-                  <TableCell sx={{ fontWeight: 600 }}>{r.tk}</TableCell>
-                  <TableCell>{r.ten_tk}</TableCell>
-                </TableRow>
-              ))}
+              {filtered.map((r) => {
+                const isTopLevel = r.bac_tk === 1;
+                return (
+                  <TableRow
+                    key={r.tk}
+                    hover
+                    onClick={() => pick(r)}
+                    onDoubleClick={() => pick(r)}
+                    sx={{
+                      cursor: 'pointer',
+                      ...(isTopLevel && {
+                        bgcolor: 'action.selected',
+                        '& > .MuiTableCell-root': { fontWeight: 700 },
+                      }),
+                    }}
+                  >
+                    <TableCell sx={{ fontWeight: 600 }}>{r.tk}</TableCell>
+                    <TableCell>{r.ten_tk}</TableCell>
+                  </TableRow>
+                );
+              })}
               {!isLoading && filtered.length === 0 && (
                 <TableRow>
                   <TableCell colSpan={2} align="center" sx={{ py: 4, color: 'text.secondary' }}>

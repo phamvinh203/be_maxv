@@ -121,6 +121,7 @@ export function TaiKhoanList(): JSX.Element {
             )}
             {list.paged.map((r) => {
               const level = Math.max(0, (r.bac_tk ?? 1) - 1);
+              const isTopLevel = r.bac_tk === 1;
               return (
                 <TableRow
                   key={r.tk}
@@ -128,7 +129,14 @@ export function TaiKhoanList(): JSX.Element {
                   selected={list.isSelected(r)}
                   onClick={() => list.toggleSelect(r)}
                   onDoubleClick={() => openForm('edit', r)}
-                  sx={{ cursor: 'pointer', opacity: r.status === '0' ? 0.55 : 1 }}
+                  sx={{
+                    cursor: 'pointer',
+                    opacity: r.status === '0' ? 0.55 : 1,
+                    ...(isTopLevel && {
+                      bgcolor: 'action.selected',
+                      '& > .MuiTableCell-root': { fontWeight: 700 },
+                    }),
+                  }}
                 >
                   <TableCell sx={{ fontWeight: 600, pl: `${16 + level * 20}px` }}>{r.tk}</TableCell>
                   <TableCell>{r.ten_tk}</TableCell>

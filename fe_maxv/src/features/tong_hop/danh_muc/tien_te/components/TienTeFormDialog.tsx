@@ -132,13 +132,14 @@ export function TienTeFormDialog({
               <TextField
                 label="Mã ngoại tệ"
                 required
-                autoFocus
+                autoFocus={mode !== "edit"}
                 value={form.ma_nt}
                 onChange={(e) =>
                   setField("ma_nt", e.target.value.toUpperCase())
                 }
-                disabled={mode === "edit"}
-                sx={{ width: 160 }}
+                sx={{ flex: 1 }}
+                helperText={mode === "edit" ? "Không đổi được mã khi sửa" : undefined}
+                slotProps={{ input: { readOnly: mode === "edit" } }}
               />
               <TextField
                 select
