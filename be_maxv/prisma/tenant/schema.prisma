@@ -394,6 +394,7 @@ model d81 {
 
   ma_dhb   String? @db.VarChar(32)
   ma_du_an String? @db.VarChar(24) // dự án
+  ma_pb    String? @db.VarChar(24) // phòng ban (dmpb.ma_pb)
 
   @@index([stt_rec])
 }

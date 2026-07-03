@@ -1,15 +1,19 @@
-import type { JSX } from 'react';
+import { useState, type JSX } from 'react';
 import {
   Box,
   IconButton,
+  InputAdornment,
   Table,
   TableBody,
   TableCell,
   TableHead,
   TableRow,
   TextField,
+  Tooltip,
 } from '@mui/material';
 import DeleteOutlineIcon from '@mui/icons-material/Delete';
+import SearchIcon from '@mui/icons-material/Search';
+import { PhongBanPickerDialog } from '@/components/PhongBanPickerDialog';
 import { computeLine, fmt } from '@/features/ban_hang/chung_tu/hoa_don_ban_hang/calc';
 import type { LineForm } from '@/features/ban_hang/chung_tu/hoa_don_ban_hang/types';
 
@@ -57,7 +61,7 @@ const COLS_C: Col[] = [
   { key: 'ma_thue', label: 'Mã Thuế', kind: 'upper', w: 70 },
   { key: 'thue_nt', label: 'Tiền thuế', kind: 'num', w: 100 },
   { key: 'ma_du_an', label: 'Dự án', kind: 'upper', w: 90 },
-  { key: 'ma_phong_ban', label: 'Phòng ban', kind: 'upper', w: 90 },
+  { key: 'ma_pb', label: 'Phòng ban', kind: 'upper', w: 110 },
   { key: 'ma_kho', label: 'Mã kho', kind: 'upper', w: 80 },
   { key: 'tk_dt', label: 'Tài khoản doanh thu', kind: 'upper', w: 110 },
   { key: 'tk_ck', label: 'Tài khoản chiết khấu', kind: 'upper', w: 110 },
@@ -67,6 +71,9 @@ const COLS_C: Col[] = [
 
 /** Bảng nhập chi tiết dòng hàng bán (Tiền hàng & Chiết khấu tính tự động). */
 export function DetailGrid({ lines, ro, onLineChange, onRemove }: Props): JSX.Element {
+  /** Dòng đang mở dialog chọn phòng ban (null = đóng). */
+  const [pickPbRow, setPickPbRow] = useState<number | null>(null);
+
   const headCells = (cols: Col[]) =>
     cols.map((c) => (
       <TableCell key={c.key} align={c.kind === 'num' ? 'right' : 'left'} sx={{ minWidth: c.w }}>
@@ -97,7 +104,39 @@ export function DetailGrid({ lines, ro, onLineChange, onRemove }: Props): JSX.El
     </TableCell>
   );
 
+  /** Ô Phòng ban: nhập tay + icon chọn từ danh mục phòng ban (dmpb). */
+  const phongBanCell = (l: LineForm, idx: number): JSX.Element => (
+    <TableCell key="ma_pb">
+      <TextField
+        variant="standard"
+        value={l.ma_pb}
+        onChange={(e) => onLineChange(idx, { ma_pb: e.target.value.toUpperCase() })}
+        disabled={ro}
+        slotProps={{
+          input: {
+            disableUnderline: ro,
+            endAdornment: !ro && (
+              <InputAdornment position="end" sx={{ ml: 0 }}>
+                <Tooltip title="Chọn phòng ban">
+                  <IconButton size="small" sx={{ p: 0.25 }} onClick={() => setPickPbRow(idx)}>
+                    <SearchIcon sx={{ fontSize: 15 }} />
+                  </IconButton>
+                </Tooltip>
+              </InputAdornment>
+            ),
+          },
+        }}
+        sx={{ width: '100%', '& input': { fontSize: 12.5, p: 0.25 } }}
+      />
+    </TableCell>
+  );
+
+  /** Render 1 ô theo cột (đặc biệt hóa cột phòng ban). */
+  const renderCell = (l: LineForm, idx: number, c: Col): JSX.Element =>
+    c.key === 'ma_pb' ? phongBanCell(l, idx) : inputCell(l, idx, c);
+
   return (
+    <>
     <Box sx={{ overflowX: 'auto', border: 1, borderColor: 'divider', borderRadius: 1 }}>
       <Table size="small" sx={{ minWidth: 2600, '& td, & th': { px: 0.5, py: 0.25, whiteSpace: 'nowrap' } }}>
         <TableHead>
@@ -121,7 +160,7 @@ export function DetailGrid({ lines, ro, onLineChange, onRemove }: Props): JSX.El
                 <TableCell align="right" sx={{ fontSize: 12.5 }}>{fmt(c.tien_nt2)}</TableCell>
                 {COLS_B.map((col) => inputCell(l, i, col))}
                 <TableCell align="right" sx={{ fontSize: 12.5 }}>{fmt(c.ck_nt)}</TableCell>
-                {COLS_C.map((col) => inputCell(l, i, col))}
+                {COLS_C.map((col) => renderCell(l, i, col))}
                 {!ro && (
                   <TableCell>
                     <IconButton size="small" onClick={() => onRemove(i)} disabled={lines.length <= 1}>
@@ -135,5 +174,14 @@ export function DetailGrid({ lines, ro, onLineChange, onRemove }: Props): JSX.El
         </TableBody>
       </Table>
     </Box>
+
+    <PhongBanPickerDialog
+      open={pickPbRow !== null}
+      onClose={() => setPickPbRow(null)}
+      onSelect={(pb) => {
+        if (pickPbRow !== null) onLineChange(pickPbRow, { ma_pb: pb.ma_pb });
+      }}
+    />
+    </>
   );
 }

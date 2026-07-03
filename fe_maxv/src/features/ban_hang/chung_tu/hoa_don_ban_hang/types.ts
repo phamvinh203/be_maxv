@@ -55,7 +55,7 @@ export interface HoaDonChiTiet {
   thue_suat: string | number;
   thue_nt: string | number;
   ma_du_an: string | null;
-  ma_phong_ban: string | null;
+  ma_pb: string | null;
   ma_kho: string | null;
   tk_dt: string | null;
   tk_ck: string | null;
@@ -87,7 +87,7 @@ export interface LineForm {
   thue_suat: number;
   thue_nt: number;
   ma_du_an: string;
-  ma_phong_ban: string;
+  ma_pb: string;
   ma_kho: string;
   tk_dt: string;
   tk_ck: string;
@@ -151,7 +151,7 @@ export const EMPTY_LINE: LineForm = {
   thue_suat: 0,
   thue_nt: 0,
   ma_du_an: '',
-  ma_phong_ban: '',
+  ma_pb: '',
   ma_kho: '',
   tk_dt: '',
   tk_ck: '',
@@ -236,7 +236,7 @@ export function chiTietToLine(d: HoaDonChiTiet): LineForm {
     thue_suat: num(d.thue_suat),
     thue_nt: num(d.thue_nt),
     ma_du_an: str(d.ma_du_an),
-    ma_phong_ban: str(d.ma_phong_ban),
+    ma_pb: str(d.ma_pb),
     ma_kho: str(d.ma_kho),
     tk_dt: str(d.tk_dt),
     tk_ck: str(d.tk_ck),
