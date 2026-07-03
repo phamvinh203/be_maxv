@@ -14,6 +14,7 @@ import {
 import DeleteOutlineIcon from '@mui/icons-material/Delete';
 import SearchIcon from '@mui/icons-material/Search';
 import { PhongBanPickerDialog } from '@/components/PhongBanPickerDialog';
+import { VatTuPickerDialog } from '@/components/VatTuPickerDialog';
 import { computeLine, fmt } from '@/features/ban_hang/chung_tu/hoa_don_ban_hang/calc';
 import type { LineForm } from '@/features/ban_hang/chung_tu/hoa_don_ban_hang/types';
 
@@ -71,8 +72,9 @@ const COLS_C: Col[] = [
 
 /** Bảng nhập chi tiết dòng hàng bán (Tiền hàng & Chiết khấu tính tự động). */
 export function DetailGrid({ lines, ro, onLineChange, onRemove }: Props): JSX.Element {
-  /** Dòng đang mở dialog chọn phòng ban (null = đóng). */
+  /** Dòng đang mở dialog chọn phòng ban / hàng hóa (null = đóng). */
   const [pickPbRow, setPickPbRow] = useState<number | null>(null);
+  const [pickVtRow, setPickVtRow] = useState<number | null>(null);
 
   const headCells = (cols: Col[]) =>
     cols.map((c) => (
@@ -104,21 +106,27 @@ export function DetailGrid({ lines, ro, onLineChange, onRemove }: Props): JSX.El
     </TableCell>
   );
 
-  /** Ô Phòng ban: nhập tay + icon chọn từ danh mục phòng ban (dmpb). */
-  const phongBanCell = (l: LineForm, idx: number): JSX.Element => (
-    <TableCell key="ma_pb">
+  /** Ô nhập mã kèm icon mở dialog chọn (dùng cho Mã hàng / Phòng ban). */
+  const pickerCell = (
+    l: LineForm,
+    idx: number,
+    field: 'ma_vt' | 'ma_pb',
+    tip: string,
+    onPick: (idx: number) => void,
+  ): JSX.Element => (
+    <TableCell key={field}>
       <TextField
         variant="standard"
-        value={l.ma_pb}
-        onChange={(e) => onLineChange(idx, { ma_pb: e.target.value.toUpperCase() })}
+        value={l[field]}
+        onChange={(e) => onLineChange(idx, { [field]: e.target.value.toUpperCase() } as Partial<LineForm>)}
         disabled={ro}
         slotProps={{
           input: {
             disableUnderline: ro,
             endAdornment: !ro && (
               <InputAdornment position="end" sx={{ ml: 0 }}>
-                <Tooltip title="Chọn phòng ban">
-                  <IconButton size="small" sx={{ p: 0.25 }} onClick={() => setPickPbRow(idx)}>
+                <Tooltip title={tip}>
+                  <IconButton size="small" sx={{ p: 0.25 }} onClick={() => onPick(idx)}>
                     <SearchIcon sx={{ fontSize: 15 }} />
                   </IconButton>
                 </Tooltip>
@@ -131,9 +139,12 @@ export function DetailGrid({ lines, ro, onLineChange, onRemove }: Props): JSX.El
     </TableCell>
   );
 
-  /** Render 1 ô theo cột (đặc biệt hóa cột phòng ban). */
-  const renderCell = (l: LineForm, idx: number, c: Col): JSX.Element =>
-    c.key === 'ma_pb' ? phongBanCell(l, idx) : inputCell(l, idx, c);
+  /** Render 1 ô theo cột (đặc biệt hóa cột Mã hàng & Phòng ban). */
+  const renderCell = (l: LineForm, idx: number, c: Col): JSX.Element => {
+    if (c.key === 'ma_vt') return pickerCell(l, idx, 'ma_vt', 'Chọn hàng hóa', setPickVtRow);
+    if (c.key === 'ma_pb') return pickerCell(l, idx, 'ma_pb', 'Chọn phòng ban', setPickPbRow);
+    return inputCell(l, idx, c);
+  };
 
   return (
     <>
@@ -156,7 +167,7 @@ export function DetailGrid({ lines, ro, onLineChange, onRemove }: Props): JSX.El
             return (
               <TableRow key={i} hover>
                 <TableCell sx={{ color: 'text.secondary' }}>{i + 1}</TableCell>
-                {COLS_A.map((col) => inputCell(l, i, col))}
+                {COLS_A.map((col) => renderCell(l, i, col))}
                 <TableCell align="right" sx={{ fontSize: 12.5 }}>{fmt(c.tien_nt2)}</TableCell>
                 {COLS_B.map((col) => inputCell(l, i, col))}
                 <TableCell align="right" sx={{ fontSize: 12.5 }}>{fmt(c.ck_nt)}</TableCell>
@@ -180,6 +191,23 @@ export function DetailGrid({ lines, ro, onLineChange, onRemove }: Props): JSX.El
       onClose={() => setPickPbRow(null)}
       onSelect={(pb) => {
         if (pickPbRow !== null) onLineChange(pickPbRow, { ma_pb: pb.ma_pb });
+      }}
+    />
+
+    <VatTuPickerDialog
+      open={pickVtRow !== null}
+      onClose={() => setPickVtRow(null)}
+      onSelect={(vt) => {
+        if (pickVtRow === null) return;
+        onLineChange(pickVtRow, {
+          ma_vt: vt.ma_vt,
+          ten_vt: vt.ten_vt,
+          dvt: vt.dvt,
+          dvt2: vt.dvt2 ?? '',
+          tk_vt: vt.tk_vt ?? '',
+          tk_dt: vt.tk_dt ?? '',
+          tk_gv: vt.tk_gv ?? '',
+        });
       }}
     />
     </>
