@@ -18,10 +18,6 @@ import {
   updateHangHoa,
 } from '../../../../services/client/tonKho/danh_muc/hangHoa.service';
 import {
-  listThue,
-  listThueNk,
-} from '../../../../services/client/tonKho/danh_muc/lookup.service';
-import {
   doiMaSchema,
   hangHoaBodySchema,
   hangHoaListQuerySchema,
@@ -84,16 +80,3 @@ export async function doiMa(req: FastifyRequest, reply: FastifyReply) {
   return sendOk(reply, data);
 }
 
-// ---------- Lookup danh mục cho form hàng hóa ----------
-
-// GET /api/v1/ton-kho/thue
-export async function thue(req: FastifyRequest, reply: FastifyReply) {
-  const db = await resolveTenantDb(req);
-  return sendOk(reply, await listThue(db));
-}
-
-// GET /api/v1/ton-kho/thue-nk
-export async function thueNk(req: FastifyRequest, reply: FastifyReply) {
-  const db = await resolveTenantDb(req);
-  return sendOk(reply, await listThueNk(db));
-}
