@@ -19,6 +19,7 @@ import {
   useCreateKho,
   useUpdateKho,
 } from '@/features/ton_kho/danh_muc/kho/hooks/useKho';
+import { useNhomKhoList } from '@/features/ton_kho/danh_muc/nhom_kho/hooks/useNhomKho';
 import {
   EMPTY_KHO,
   khoToForm,
@@ -64,6 +65,8 @@ export function KhoFormDialog({ open, mode, current, onClose }: Props): JSX.Elem
 
   const pending = create.isPending || update.isPending;
   const tenDonVi = getCurrentCompany()?.tenDonVi ?? '';
+  const { data: nhomKhoData } = useNhomKhoList();
+  const nhomKhos = nhomKhoData ?? [];
 
   function handleSubmit(e: FormEvent) {
     e.preventDefault();
@@ -117,11 +120,25 @@ export function KhoFormDialog({ open, mode, current, onClose }: Props): JSX.Elem
             />
             <Stack direction="row" spacing={2}>
               <TextField
+                select
                 label="Nhóm kho"
                 value={form.ma_nh}
                 onChange={(e) => setField('ma_nh', e.target.value)}
                 sx={{ flex: 1 }}
-              />
+              >
+                <MenuItem value="">
+                  <em>— Không chọn —</em>
+                </MenuItem>
+                {form.ma_nh !== '' &&
+                  !nhomKhos.some((n) => n.ma_nh === form.ma_nh) && (
+                    <MenuItem value={form.ma_nh}>{form.ma_nh}</MenuItem>
+                  )}
+                {nhomKhos.map((n) => (
+                  <MenuItem key={n.ma_nh} value={n.ma_nh}>
+                    {n.ma_nh} — {n.ten_nh}
+                  </MenuItem>
+                ))}
+              </TextField>
               <TextField
                 select
                 label="Trạng thái"

@@ -21,40 +21,40 @@ import DeleteDialog from '@/components/DeleteDialog';
 import { CatalogToolbar } from '@/components/catalog/CatalogToolbar';
 import { useCatalogList } from '@/components/catalog/useCatalogList';
 import {
-  useDeleteDvt,
-  useDvtList,
-} from '@/features/ton_kho/danh_muc/dvt/hooks/useDvt';
-import type { Dvt } from '@/features/ton_kho/danh_muc/dvt/types';
-import { DvtFormDialog, type DvtMode } from './DvtFormDialog';
+  useDeleteNhomKho,
+  useNhomKhoList,
+} from '@/features/ton_kho/danh_muc/nhom_kho/hooks/useNhomKho';
+import type { NhomKho } from '@/features/ton_kho/danh_muc/nhom_kho/types';
+import { NhomKhoFormDialog, type NhomKhoMode } from './NhomKhoFormDialog';
 
-const SEARCH_KEYS = ['dvt', 'ten_dvt'];
+const SEARCH_KEYS = ['ma_nh', 'ten_nh'];
 
-export function DvtList(): JSX.Element {
-  const { data, isLoading, isFetching, isError, error, refetch } = useDvtList();
-  const del = useDeleteDvt();
+export function NhomKhoList(): JSX.Element {
+  const { data, isLoading, isFetching, isError, error, refetch } = useNhomKhoList();
+  const del = useDeleteNhomKho();
 
   const rows = useMemo(() => data ?? [], [data]);
-  const list = useCatalogList<Dvt>({
+  const list = useCatalogList<NhomKho>({
     rows,
-    getId: (r) => r.dvt,
+    getId: (r) => r.ma_nh,
     searchKeys: SEARCH_KEYS,
   });
   const { selected, setSelected } = list;
 
-  const [form, setForm] = useState<{ open: boolean; mode: DvtMode; current: Dvt | null }>({
+  const [form, setForm] = useState<{ open: boolean; mode: NhomKhoMode; current: NhomKho | null }>({
     open: false,
     mode: 'new',
     current: null,
   });
   const [deleteOpen, setDeleteOpen] = useState(false);
 
-  const openForm = (mode: DvtMode, current: Dvt | null) =>
+  const openForm = (mode: NhomKhoMode, current: NhomKho | null) =>
     setForm({ open: true, mode, current });
 
   function confirmDelete() {
     if (!selected) return;
     list.setActionError('');
-    del.mutate(selected.dvt, {
+    del.mutate(selected.ma_nh, {
       onSuccess: () => {
         setDeleteOpen(false);
         setSelected(null);
@@ -66,11 +66,11 @@ export function DvtList(): JSX.Element {
   return (
     <Box sx={{ display: 'flex', flexDirection: 'column', height: '100%', bgcolor: 'background.default' }}>
       <CatalogToolbar
-        addLabel="Thêm đơn vị tính"
+        addLabel="Thêm nhóm kho"
         onAdd={() => openForm('new', null)}
         searchValue={list.searchInput}
         onSearchChange={list.setSearchInput}
-        searchPlaceholder="Tìm mã / tên ĐVT…"
+        searchPlaceholder="Tìm mã / tên nhóm…"
         onRefresh={() => void refetch()}
         actions={[
           { title: 'Sửa', icon: <EditIcon fontSize="small" />, disabled: !selected, onClick: () => selected && openForm('edit', selected) },
@@ -82,10 +82,10 @@ export function DvtList(): JSX.Element {
       {/* Info bar */}
       <Stack direction="row" sx={{ alignItems: 'center', px: 2, py: 0.5, gap: 1 }}>
         <Typography variant="body2" color="text.secondary">
-          Danh mục đơn vị tính
+          Danh mục nhóm kho hàng
         </Typography>
         <Typography variant="caption" color="text.secondary" sx={{ ml: 'auto' }}>
-          {isLoading ? 'đang tải…' : `${list.filtered.length} đơn vị`}
+          {isLoading ? 'đang tải…' : `${list.filtered.length} nhóm`}
           {isFetching && !isLoading ? ' · đang cập nhật…' : ''}
         </Typography>
       </Stack>
@@ -101,32 +101,32 @@ export function DvtList(): JSX.Element {
         <Table size="small" stickyHeader>
           <TableHead>
             <TableRow>
-              <TableCell>Mã ĐVT</TableCell>
-              <TableCell>ĐVT 2</TableCell>
-              <TableCell>Tên đơn vị tính</TableCell>
+              <TableCell>Mã nhóm</TableCell>
+              <TableCell>Tên nhóm</TableCell>
+              <TableCell>Tên khác</TableCell>
               <TableCell align="center">Trạng thái</TableCell>
             </TableRow>
           </TableHead>
           <TableBody>
             {isLoading && (
               <TableRow>
-                <TableCell colSpan={5} align="center" sx={{ py: 4, color: 'text.secondary' }}>
+                <TableCell colSpan={4} align="center" sx={{ py: 4, color: 'text.secondary' }}>
                   Đang tải…
                 </TableCell>
               </TableRow>
             )}
             {list.paged.map((r) => (
               <TableRow
-                key={r.dvt}
+                key={r.ma_nh}
                 hover
                 selected={list.isSelected(r)}
                 onClick={() => list.toggleSelect(r)}
                 onDoubleClick={() => openForm('edit', r)}
                 sx={{ cursor: 'pointer', opacity: r.status === '0' ? 0.55 : 1 }}
               >
-                <TableCell sx={{ fontWeight: 600 }}>{r.dvt}</TableCell>
-                <TableCell>{r.dvt2 || '—'}</TableCell>
-                <TableCell>{r.ten_dvt}</TableCell>
+                <TableCell sx={{ fontWeight: 600 }}>{r.ma_nh}</TableCell>
+                <TableCell>{r.ten_nh}</TableCell>
+                <TableCell>{r.ten_nh2 || '—'}</TableCell>
                 <TableCell align="center">
                   <Chip
                     size="small"
@@ -139,8 +139,8 @@ export function DvtList(): JSX.Element {
             ))}
             {!isLoading && list.filtered.length === 0 && (
               <TableRow>
-                <TableCell colSpan={5} align="center" sx={{ py: 6, color: 'text.secondary' }}>
-                  {list.searchInput ? 'Không tìm thấy đơn vị tính phù hợp' : 'Chưa có đơn vị tính nào'}
+                <TableCell colSpan={4} align="center" sx={{ py: 6, color: 'text.secondary' }}>
+                  {list.searchInput ? 'Không tìm thấy nhóm phù hợp' : 'Chưa có nhóm kho nào'}
                 </TableCell>
               </TableRow>
             )}
@@ -163,7 +163,7 @@ export function DvtList(): JSX.Element {
       />
 
       {/* Dialogs */}
-      <DvtFormDialog
+      <NhomKhoFormDialog
         open={form.open}
         mode={form.mode}
         current={form.current}
@@ -171,10 +171,10 @@ export function DvtList(): JSX.Element {
       />
       <DeleteDialog
         open={deleteOpen}
-        title="Xóa đơn vị tính"
+        title="Xóa nhóm kho"
         message={
           selected
-            ? `Bạn có chắc chắn muốn xóa đơn vị tính "${selected.dvt} - ${selected.ten_dvt}"? Hành động này không thể hoàn tác.`
+            ? `Bạn có chắc chắn muốn xóa nhóm kho "${selected.ma_nh} - ${selected.ten_nh}"? Hành động này không thể hoàn tác.`
             : ''
         }
         deleting={del.isPending}

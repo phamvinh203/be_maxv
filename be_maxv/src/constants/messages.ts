@@ -66,6 +66,8 @@ export const MESSAGES = {
     NHOM_LOAI_INVALID: 'Loại nhóm phải là 1, 2 hoặc 3',
     MAGD_NOT_FOUND: 'Không tìm thấy mã giao dịch',
     KHO_NOT_FOUND: 'Không tìm thấy kho hàng',
+    NHOM_KHO_NOT_FOUND: 'Không tìm thấy nhóm kho',
+    VI_TRI_NOT_FOUND: 'Không tìm thấy vị trí kho',
   },
 
   VALIDATION: {
