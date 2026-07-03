@@ -25,7 +25,8 @@ import {
   useUpdateHoaDon,
 } from '@/features/ban_hang/chung_tu/hoa_don_ban_hang/hooks/useHoaDonBanHang';
 import { nextSoCt } from '@/features/ban_hang/chung_tu/hoa_don_ban_hang/api/hoaDonBanHangApi';
-import { computeLine, computeTotals, fmt, round } from '@/features/ban_hang/chung_tu/hoa_don_ban_hang/calc';
+import { fmt } from '@/utils/format';
+import { computeLine, computeTotals, round } from '@/features/ban_hang/chung_tu/hoa_don_ban_hang/calc';
 import { ChiTietTab } from '@/features/ban_hang/chung_tu/hoa_don_ban_hang/components/tabs/ChiTietTab';
 import { KhacTab } from '@/features/ban_hang/chung_tu/hoa_don_ban_hang/components/tabs/KhacTab';
 import { XuatKhauTab } from '@/features/ban_hang/chung_tu/hoa_don_ban_hang/components/tabs/XuatKhauTab';
@@ -130,12 +131,17 @@ export function HoaDonFormDialog({ open, mode, current, onClose }: Props): JSX.E
           ...l,
           tien_nt2: c.tien_nt2,
           ck_nt: c.ck_nt,
+          thue_nt: c.thue_nt,
+          tien_khay_nt: c.tien_khay_nt,
+          tien_no_nt: c.tien_no_nt,
           gia: round(l.gia_nt2 * tg),
           tien: round(c.tien_nt2 * tg),
           ck: round(c.ck_nt * tg),
-          thue: round(l.thue_nt * tg),
+          thue: round(c.thue_nt * tg),
           gia2: round(l.gia_nt2 * tg),
           tien2: round(c.tien_nt2 * tg),
+          tien_khay: round(c.tien_khay_nt * tg),
+          tien_no: round(c.tien_no_nt * tg),
         };
       });
 

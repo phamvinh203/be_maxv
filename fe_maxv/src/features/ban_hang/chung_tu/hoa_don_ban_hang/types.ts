@@ -38,6 +38,7 @@ export interface HoaDonChiTiet {
   ten_vt: string;
   dvt2: string | null;
   dvt: string | null;
+  he_so2: string | number;
   so_luong2: string | number;
   so_luong2_nl: string | number;
   so_luong_giao: string | number;
@@ -70,6 +71,7 @@ export interface LineForm {
   ten_vt: string;
   dvt2: string;
   dvt: string;
+  he_so2: number;
   so_luong2: number;
   so_luong2_nl: number;
   so_luong_giao: number;
@@ -134,6 +136,7 @@ export const EMPTY_LINE: LineForm = {
   ten_vt: '',
   dvt2: '',
   dvt: '',
+  he_so2: 0,
   so_luong2: 0,
   so_luong2_nl: 0,
   so_luong_giao: 0,
@@ -219,6 +222,7 @@ export function chiTietToLine(d: HoaDonChiTiet): LineForm {
     ten_vt: d.ten_vt,
     dvt2: str(d.dvt2),
     dvt: str(d.dvt),
+    he_so2: num(d.he_so2),
     so_luong2: num(d.so_luong2),
     so_luong2_nl: num(d.so_luong2_nl),
     so_luong_giao: num(d.so_luong_giao),

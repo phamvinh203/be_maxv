@@ -18,6 +18,7 @@ import ContentCopyIcon from '@mui/icons-material/ContentCopy';
 import VisibilityIcon from '@mui/icons-material/Visibility';
 import DeleteIcon from '@mui/icons-material/Delete';
 import { getApiError } from '@/lib/apiClient';
+import { fmt } from '@/utils/format';
 import DeleteDialog from '@/components/DeleteDialog';
 import { CatalogToolbar } from '@/components/catalog/CatalogToolbar';
 import { useCatalogList } from '@/components/catalog/useCatalogList';
@@ -30,8 +31,7 @@ import { HoaDonFormDialog, type HoaDonMode } from './HoaDonFormDialog';
 
 const SEARCH_KEYS = ['so_ct', 'ma_kh', 'ten_kh', 'dien_giai'];
 
-const money = (v: string | number): string =>
-  (Number(v) || 0).toLocaleString('vi-VN');
+const money = (v: string | number): string => fmt(Number(v) || 0);
 const day = (v: string | null): string =>
   v ? new Date(v).toLocaleDateString('vi-VN') : '—';
 
