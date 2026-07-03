@@ -16,6 +16,7 @@ import ViTriKhoPage from '../pages/ton_kho/ViTriKhoPage';
 import LoaiVtPage from '../pages/ton_kho/LoaiVtPage';
 import TienTePage from '../pages/tong_hop/TienTePage';
 import TaiKhoanPage from '../pages/tong_hop/TaiKhoanPage';
+import PhongBanPage from '../pages/tong_hop/PhongBanPage';
 import DanhMucKHPage from '../pages/ban_hang/DanhMucKHPage';
 import HoaDonBanHangPage from '../pages/ban_hang/HoaDonBanHangPage';
 import ProtectedRoute from './ProtectedRoute';
@@ -146,6 +147,14 @@ export default function AppRouter(): JSX.Element {
             element={
               <RequireTenant>
                 <TienTePage />
+              </RequireTenant>
+            }
+          />
+          <Route
+            path=":slug/tong_hop/danh_muc/phong-ban"
+            element={
+              <RequireTenant>
+                <PhongBanPage />
               </RequireTenant>
             }
           />
