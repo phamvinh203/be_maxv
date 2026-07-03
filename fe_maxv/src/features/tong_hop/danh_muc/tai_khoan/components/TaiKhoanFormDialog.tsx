@@ -23,7 +23,7 @@ import {
   useCreateTaiKhoan,
   useUpdateTaiKhoan,
 } from '@/features/tong_hop/danh_muc/tai_khoan/hooks/useTaiKhoan';
-import { TaiKhoanPickerDialog } from '@/features/tong_hop/danh_muc/tai_khoan/components/TaiKhoanPickerDialog';
+import { TaiKhoanPickerDialog } from '@/components/TaiKhoanPickerDialog';
 import {
   EMPTY_TAI_KHOAN,
   taiKhoanToForm,

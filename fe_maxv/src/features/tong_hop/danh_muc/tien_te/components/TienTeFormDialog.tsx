@@ -18,7 +18,7 @@ import {
 } from "@mui/material";
 import SearchIcon from "@mui/icons-material/Search";
 import { getApiError } from "@/lib/apiClient";
-import { TaiKhoanPickerDialog } from "@/features/tong_hop/danh_muc/tai_khoan/components/TaiKhoanPickerDialog";
+import { TaiKhoanPickerDialog } from "@/components/TaiKhoanPickerDialog";
 import {
   useCreateTienTe,
   useUpdateTienTe,

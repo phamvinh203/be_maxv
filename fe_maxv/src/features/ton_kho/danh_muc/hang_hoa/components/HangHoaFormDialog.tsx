@@ -7,6 +7,8 @@ import {
 } from 'react';
 import { Drawer } from '@mui/material';
 import CloseIcon from '@mui/icons-material/Close';
+import SearchIcon from '@mui/icons-material/Search';
+import { TaiKhoanPickerDialog } from '@/components/TaiKhoanPickerDialog';
 import {
   useCreateHangHoa,
   useHangHoaDetail,
@@ -63,6 +65,23 @@ const tabTable: CSSProperties = {
   width: '100%',
   tableLayout: 'fixed',
   borderCollapse: 'collapse',
+};
+/** Nút search nằm bên trong ô input (góc phải). */
+const inputIconBtn: CSSProperties = {
+  position: 'absolute',
+  right: 4,
+  top: '50%',
+  transform: 'translateY(-50%)',
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+  width: 22,
+  height: 22,
+  border: 'none',
+  background: 'none',
+  color: '#4a6b8a',
+  cursor: 'pointer',
+  padding: 0,
 };
 
 const TITLES: Record<FormMode, string> = {
@@ -474,26 +493,53 @@ const TK_FIELDS: [keyof HangHoaForm, string][] = [
 ];
 
 function TabTaiKhoan({ form, set, ro }: { form: HangHoaForm; set: Setter; ro: boolean }): JSX.Element {
+  /** Field TK đang mở dialog chọn tài khoản (null = đóng). */
+  const [pickerField, setPickerField] = useState<keyof HangHoaForm | null>(null);
+  const pickerLabel = TK_FIELDS.find(([k]) => k === pickerField)?.[1];
+
   return (
-    <table style={tabTable}>
-      <colgroup>
-        <col style={{ width: 170 }} />
-        <col />
-      </colgroup>
-      <tbody>
-        {TK_FIELDS.map(([k, lbl]) => (
-          <FRow key={k} label={lbl}>
-            <input
-              value={String(form[k] ?? '')}
-              onChange={(e) => set(k, e.target.value)}
-              disabled={ro}
-              style={fi}
-              placeholder="Mã tk"
-            />
-          </FRow>
-        ))}
-      </tbody>
-    </table>
+    <>
+      <table style={tabTable}>
+        <colgroup>
+          <col style={{ width: 170 }} />
+          <col />
+        </colgroup>
+        <tbody>
+          {TK_FIELDS.map(([k, lbl]) => (
+            <FRow key={k} label={lbl}>
+              <div style={{ position: 'relative', width: '100%' }}>
+                <input
+                  value={String(form[k] ?? '')}
+                  onChange={(e) => set(k, e.target.value.toUpperCase())}
+                  disabled={ro}
+                  style={{ ...fi, paddingRight: ro ? undefined : 30 }}
+                  placeholder="Mã tk"
+                />
+                {!ro && (
+                  <button
+                    type="button"
+                    onClick={() => setPickerField(k)}
+                    title="Chọn tài khoản"
+                    style={inputIconBtn}
+                  >
+                    <SearchIcon sx={{ fontSize: 16 }} />
+                  </button>
+                )}
+              </div>
+            </FRow>
+          ))}
+        </tbody>
+      </table>
+
+      <TaiKhoanPickerDialog
+        open={pickerField !== null}
+        title={pickerLabel ? `Chọn ${pickerLabel.toLowerCase()}` : 'Chọn tài khoản'}
+        onClose={() => setPickerField(null)}
+        onSelect={(r) => {
+          if (pickerField) set(pickerField, r.tk);
+        }}
+      />
+    </>
   );
 }
 

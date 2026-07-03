@@ -95,7 +95,7 @@ export const MENU_MODULES: MenuModule[] = [
         items: [
           { label: 'Danh mục tài khoản', path: '/tong_hop/danh_muc/tai-khoan' },
           { label: 'Danh mục tiền tệ', path: '/tong_hop/danh_muc/tien-te' },
-          { label: 'Danh mục phòng ban', path: '/tong_hop/danh_muc/phong-ban' },
+          { label: 'Danh mục phòng ban', path: '/tong_hop/danh_muc/phong-ban', table: 'dmpb' },
           { label: 'Danh mục phí', path: '/tong_hop/danh_muc/phi' },
           { label: 'Danh mục nhóm phí', path: '/tong_hop/danh_muc/nhom-phi' },
           { label: 'Nhập số dư ban đầu tài khoản', path: '/tong_hop/danh_muc/so-du-ban-dau' },
@@ -190,7 +190,7 @@ export const MENU_MODULES: MenuModule[] = [
         key: 'danhMuc',
         title: 'Danh mục',
         items: [
-          { label: 'Danh mục khách hàng', path: '/ban-hang/dm/khach-hang' },
+          { label: 'Danh mục khách hàng', path: '/ban-hang/dm/khach-hang', table: 'dmkh' },
           { label: 'Danh mục phân nhóm khách hàng', path: '/ban-hang/dm/phan-nhom-kh' },
           { label: 'Danh mục thanh toán', path: '/ban-hang/dm/thanh-toan' },
           { label: 'Danh mục hợp đồng', path: '/ban-hang/dm/hop-dong' },
