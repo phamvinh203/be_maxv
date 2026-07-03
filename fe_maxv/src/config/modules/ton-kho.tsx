@@ -26,6 +26,7 @@ export const tonKhoConfig: ModuleConfig = {
       right: { label: 'Nhập tồn kho ban đầu hàng hóa, vật tư',              path: '/ton_kho/danh_muc/ton_bd' } },
     { left:  { label: 'Nhập chi tiết tồn kho ban đầu nhập trước xuất trước', path: '/ton_kho/danh_muc/ton_bd_fifo' },
       right: { label: 'Chuyển tồn kho sang năm sau',                         path: '/ton_kho/danh_muc/chuyen_nam' } },
+    { left:  { label: 'Danh mục loại vật tư',                                path: '/ton_kho/danh_muc/loai_vt' } },
   ],
 
   baoCao: [

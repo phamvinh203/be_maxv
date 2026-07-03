@@ -17,9 +17,5 @@ export async function tonKhoRoutes(app: FastifyInstance) {
   app.get('/hang-hoa/:ma_vt', ctrl.getOne);
   app.put('/hang-hoa/:ma_vt', ctrl.update);
   app.delete('/hang-hoa/:ma_vt', ctrl.remove);
-
-  // --- Lookup danh mục (dvt, phan-nhom, kho do route riêng sở hữu) ---
-  app.get('/loai-vt', ctrl.loaiVt);
-  app.get('/thue', ctrl.thue);
-  app.get('/thue-nk', ctrl.thueNk);
+  // Lookup (dvt, phan-nhom, kho, loai-vt, thue, thue-nk) do route riêng sở hữu.
 }
