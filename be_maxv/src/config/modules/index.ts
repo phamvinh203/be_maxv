@@ -95,7 +95,7 @@ export const MENU_MODULES: MenuModule[] = [
         items: [
           { label: 'Danh mục tài khoản', path: '/tong_hop/danh_muc/tai-khoan' },
           { label: 'Danh mục tiền tệ', path: '/tong_hop/danh_muc/tien-te' },
-          { label: 'Danh mục phòng ban', path: '/tong_hop/danh_muc/phong-ban' },
+          { label: 'Danh mục phòng ban', path: '/tong_hop/danh_muc/phong-ban', table: 'dmpb' },
           { label: 'Danh mục phí', path: '/tong_hop/danh_muc/phi' },
           { label: 'Danh mục nhóm phí', path: '/tong_hop/danh_muc/nhom-phi' },
           { label: 'Nhập số dư ban đầu tài khoản', path: '/tong_hop/danh_muc/so-du-ban-dau' },

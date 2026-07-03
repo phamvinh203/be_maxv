@@ -13,6 +13,7 @@ import { loaiVtRoutes } from './tonKho/loaiVt.route';
 import { thueRoutes } from './tonKho/thue.route';
 import { tienTeRoutes } from './tongHop/tienTe.route';
 import { taiKhoanRoutes } from './tongHop/taiKhoan.route';
+import { phongBanRoutes } from './tongHop/phongBan.route';
 import { khachHangRoutes } from './banHang/khachHang.route';
 import { hoaDonBanHangRoutes } from './banHang/hoaDonBanHang.route';
 
@@ -33,6 +34,7 @@ export async function registerRoutes(app: FastifyInstance) {
   // Tổng hợp
   await app.register(tienTeRoutes, { prefix: '/api/v1/tong-hop' });
   await app.register(taiKhoanRoutes, { prefix: '/api/v1/tong-hop' });
+  await app.register(phongBanRoutes, { prefix: '/api/v1/tong-hop' });
 
   // Bán hàng
   await app.register(khachHangRoutes, { prefix: '/api/v1/ban-hang' });

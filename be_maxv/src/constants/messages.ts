@@ -74,6 +74,7 @@ export const MESSAGES = {
   TONG_HOP: {
     TIEN_TE_NOT_FOUND: 'Không tìm thấy ngoại tệ',
     TAI_KHOAN_NOT_FOUND: 'Không tìm thấy tài khoản',
+    PHONG_BAN_NOT_FOUND: 'Không tìm thấy phòng ban',
   },
 
   BAN_HANG: {

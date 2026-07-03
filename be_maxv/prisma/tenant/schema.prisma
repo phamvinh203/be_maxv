@@ -392,9 +392,24 @@ model d81 {
   tien_no_nt   Decimal @default(0) @db.Decimal(18, 4)
   tien_no      Decimal @default(0) @db.Decimal(18, 4)
 
-  ma_dhb       String? @db.VarChar(32)
-  ma_du_an     String? @db.VarChar(24) // dự án
-  ma_phong_ban String? @db.VarChar(24) // phòng ban
+  ma_dhb   String? @db.VarChar(32)
+  ma_du_an String? @db.VarChar(24) // dự án
 
   @@index([stt_rec])
+}
+
+/// Danh mục phòng ban (dmpb) — thuộc Tổng hợp.
+model dmpb {
+  ma_pb      String  @id @db.VarChar(24)
+  ten_pb     String  @db.VarChar(254)
+  ten_pb2    String? @db.VarChar(254) // tên khác
+  dia_chi    String? @db.VarChar(254)
+  dien_thoai String? @db.VarChar(32)
+  ma_td1     String? @db.VarChar(24) // TK chi phí (dmtk)
+  ten_tk     String? @db.VarChar(254) // tên tài khoản
+  ghi_chu    String? @db.VarChar(512)
+
+  status    String   @default("1") @db.VarChar(1)
+  datetime0 DateTime @default(now())
+  datetime2 DateTime @default(now())
 }
