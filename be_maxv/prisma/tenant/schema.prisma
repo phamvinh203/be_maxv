@@ -269,3 +269,130 @@ model dmtk {
   @@index([tk_me])
   @@index([ma_nt])
 }
+
+/// Danh mục khách hàng (dmkh) — dùng cho chứng từ bán hàng (m81.ma_kh).
+model dmkh {
+  ma_kh      String  @id @db.VarChar(24)
+  ten_kh     String  @db.VarChar(254)
+  ten_kh2    String? @db.VarChar(254)
+  dia_chi    String? @db.VarChar(254)
+  ma_so_thue String? @db.VarChar(24)
+
+  status    String   @default("1") @db.VarChar(1)
+  datetime0 DateTime @default(now())
+  datetime2 DateTime @default(now())
+}
+
+/// Hóa đơn bán hàng — header (m81). Chi tiết dòng ở d81.
+model m81 {
+  stt_rec String @id @db.VarChar(32)
+
+  ma_dvcs String? @db.VarChar(24) // đơn vị cơ sở
+  ma_ct   String  @default("HB1") @db.VarChar(24) // loại chứng từ
+
+  ngay_ct  DateTime?
+  ngay_lct DateTime?
+  so_ct    String    @db.VarChar(24)
+  so_seri  String?   @db.VarChar(64)
+
+  ma_kh     String  @db.VarChar(24) // khách hàng (dmkh)
+  ma_kh2    String? @db.VarChar(24)
+  ong_ba    String? @db.VarChar(254)
+  dien_giai String? @db.VarChar(512)
+
+  tk      String? @db.VarChar(24)
+  ma_nt   String  @default("VND") @db.VarChar(24)
+  ty_gia  Decimal @default(1) @db.Decimal(18, 4)
+  ma_gd   String? @db.VarChar(24)
+  loai_ct String? @db.VarChar(8)
+
+  ma_nvbh    String? @db.VarChar(24) // nhân viên bán hàng
+  ma_tt      String? @db.VarChar(24) // thanh toán
+  ma_ht_tt   String? @db.VarChar(24) // hình thức thanh toán
+  tk_thue_no String? @db.VarChar(24)
+  tk_thue_co String? @db.VarChar(24)
+
+  // Tổng hợp (nt = ngoại tệ)
+  t_so_luong Decimal @default(0) @db.Decimal(18, 4)
+  t_tien_nt2 Decimal @default(0) @db.Decimal(18, 4)
+  t_tien2    Decimal @default(0) @db.Decimal(18, 4)
+  t_ck_nt    Decimal @default(0) @db.Decimal(18, 4)
+  t_ck       Decimal @default(0) @db.Decimal(18, 4)
+  t_thue_nt  Decimal @default(0) @db.Decimal(18, 4)
+  t_thue     Decimal @default(0) @db.Decimal(18, 4)
+  t_tt_nt    Decimal @default(0) @db.Decimal(18, 4)
+  t_tt       Decimal @default(0) @db.Decimal(18, 4)
+
+  status    String   @default("2") @db.VarChar(1)
+  user_id0  String?  @db.VarChar(64)
+  user_id2  String?  @db.VarChar(64)
+  datetime0 DateTime @default(now())
+  datetime2 DateTime @default(now())
+
+  @@index([ma_kh])
+  @@index([so_ct])
+  @@index([ngay_ct])
+}
+
+/// Hóa đơn bán hàng — chi tiết dòng (d81).
+model d81 {
+  stt_rec0 String @id @db.VarChar(32) // khóa dòng
+  stt_rec  String @db.VarChar(32) // -> m81.stt_rec
+  line_nbr Int
+
+  ma_vt     String  @db.VarChar(32)
+  dvt       String? @db.VarChar(24)
+  km_yn     Int     @default(0) // hàng khuyến mãi
+  ma_kho    String? @db.VarChar(24)
+  ma_vi_tri String? @db.VarChar(24)
+  ma_lo     String? @db.VarChar(24)
+
+  so_luong Decimal @default(0) @db.Decimal(18, 4)
+  gia_nt2  Decimal @default(0) @db.Decimal(18, 4)
+  tien_nt2 Decimal @default(0) @db.Decimal(18, 4)
+  tl_ck    Decimal @default(0) @db.Decimal(18, 4)
+  ck_nt    Decimal @default(0) @db.Decimal(18, 4)
+
+  ma_thue   String? @db.VarChar(24)
+  thue_suat Decimal @default(0) @db.Decimal(18, 4)
+  thue_nt   Decimal @default(0) @db.Decimal(18, 4)
+
+  tk_dt   String? @db.VarChar(24)
+  tk_ck   String? @db.VarChar(24)
+  tk_thue String? @db.VarChar(24)
+
+  px_gia_dd Boolean @default(false)
+  gia_nt    Decimal @default(0) @db.Decimal(18, 4)
+  tien_nt   Decimal @default(0) @db.Decimal(18, 4)
+
+  tk_vt   String? @db.VarChar(24)
+  tk_gv   String? @db.VarChar(24)
+  tk_cpbh String? @db.VarChar(24)
+
+  gia2 Decimal @default(0) @db.Decimal(18, 4)
+  tien2 Decimal @default(0) @db.Decimal(18, 4)
+  ck    Decimal @default(0) @db.Decimal(18, 4)
+  thue  Decimal @default(0) @db.Decimal(18, 4)
+  gia   Decimal @default(0) @db.Decimal(18, 4)
+  tien  Decimal @default(0) @db.Decimal(18, 4)
+
+  dvt2   String? @db.VarChar(24)
+  he_so2 Decimal @default(0) @db.Decimal(18, 4)
+
+  so_luong2     Decimal @default(0) @db.Decimal(18, 4)
+  so_luong2_nl  Decimal @default(0) @db.Decimal(18, 4)
+  so_luong_giao Decimal @default(0) @db.Decimal(18, 4)
+  so_luong_hh   Decimal @default(0) @db.Decimal(18, 4)
+  ty_le_hh      Decimal @default(0) @db.Decimal(18, 4)
+
+  gia_khay_nt  Decimal @default(0) @db.Decimal(18, 4)
+  gia_khay     Decimal @default(0) @db.Decimal(18, 4)
+  tien_khay_nt Decimal @default(0) @db.Decimal(18, 4)
+  tien_khay    Decimal @default(0) @db.Decimal(18, 4)
+  tien_no_nt   Decimal @default(0) @db.Decimal(18, 4)
+  tien_no      Decimal @default(0) @db.Decimal(18, 4)
+
+  ma_dhb String? @db.VarChar(32)
+
+  @@index([stt_rec])
+}

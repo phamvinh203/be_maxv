@@ -76,6 +76,10 @@ export const MESSAGES = {
     TAI_KHOAN_NOT_FOUND: 'Không tìm thấy tài khoản',
   },
 
+  BAN_HANG: {
+    KHACH_HANG_NOT_FOUND: 'Không tìm thấy khách hàng',
+  },
+
   VALIDATION: {
     INVALID_MST: 'Mã số thuế không hợp lệ',
     INVALID_PHONE: 'Số điện thoại không hợp lệ',

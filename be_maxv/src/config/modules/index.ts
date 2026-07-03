@@ -190,7 +190,7 @@ export const MENU_MODULES: MenuModule[] = [
         key: 'danhMuc',
         title: 'Danh mục',
         items: [
-          { label: 'Danh mục khách hàng', path: '/ban-hang/dm/khach-hang' },
+          { label: 'Danh mục khách hàng', path: '/ban-hang/dm/khach-hang', table: 'dmkh' },
           { label: 'Danh mục phân nhóm khách hàng', path: '/ban-hang/dm/phan-nhom-kh' },
           { label: 'Danh mục thanh toán', path: '/ban-hang/dm/thanh-toan' },
           { label: 'Danh mục hợp đồng', path: '/ban-hang/dm/hop-dong' },
