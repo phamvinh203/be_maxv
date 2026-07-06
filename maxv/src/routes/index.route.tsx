@@ -3,6 +3,7 @@ import { rootRoute } from './root.route';
 import { loginRoute } from './login.route';
 import { adminRoute } from './admin.route';
 import { companiesRoute, companyDetailRoute } from './companies.route';
+import { ownersRoute, ownerDetailRoute } from './owners.route';
 import { logsRoute } from './logs.route';
 import { subscriptionsRoute } from './subscriptions.route';
 import { usersRoute } from './users.route';
@@ -24,6 +25,8 @@ const routeTree = rootRoute.addChildren([
   loginRoute,
   adminRoute.addChildren([
     dashboardRoute,
+    ownersRoute,
+    ownerDetailRoute,
     companiesRoute,
     companyDetailRoute,
     invitesRoute,

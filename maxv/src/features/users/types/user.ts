@@ -1,10 +1,10 @@
-export type Role = 'ADMIN' | 'OWNER' | 'KE_TOAN_TRUONG' | 'KE_TOAN' | 'XEM';
+export type Role = 'ADMIN' | 'OWNER' | 'OWNER_EMPLOYEE';
 export type UserStatus = 'PENDING' | 'ACTIVE' | 'REJECTED';
 
-interface CompanyRef {
+interface OwnerRef {
   id: string;
-  maSoThue: string;
-  tenDonVi: string;
+  hoTen: string;
+  email: string;
 }
 
 export interface AdminUser {
@@ -15,9 +15,10 @@ export interface AdminUser {
   role: Role;
   status: UserStatus;
   isActive: boolean;
-  donViId: string | null;
+  ownerId: string | null; // nhân viên -> chủ tài khoản; owner/admin = null
   createdAt: string;
-  donVi: CompanyRef | null;
+  owner: OwnerRef | null; // chủ tài khoản (nếu là nhân viên)
+  _count: { ownedDonVi: number; donViAccess: number };
 }
 
 export interface ListUsersParams {
@@ -29,26 +30,13 @@ export interface ListUsersParams {
   pageSize?: number;
 }
 
-export const ROLES: Role[] = [
-  'ADMIN',
-  'OWNER',
-  'KE_TOAN_TRUONG',
-  'KE_TOAN',
-  'XEM',
-];
+export const ROLES: Role[] = ['ADMIN', 'OWNER', 'OWNER_EMPLOYEE'];
 
 // Vai trò có thể GÁN qua UI — KHÔNG gồm ADMIN (gán/gỡ admin chỉ qua DB).
-export const ASSIGNABLE_ROLES: Role[] = [
-  'OWNER',
-  'KE_TOAN_TRUONG',
-  'KE_TOAN',
-  'XEM',
-];
+export const ASSIGNABLE_ROLES: Role[] = ['OWNER', 'OWNER_EMPLOYEE'];
 
 export const ROLE_LABELS: Record<Role, string> = {
   ADMIN: 'Quản trị',
-  OWNER: 'Chủ đơn vị',
-  KE_TOAN_TRUONG: 'Kế toán trưởng',
-  KE_TOAN: 'Kế toán',
-  XEM: 'Chỉ xem',
+  OWNER: 'Chủ tài khoản',
+  OWNER_EMPLOYEE: 'Nhân viên',
 };

@@ -26,6 +26,7 @@ import {
   Typography,
 } from '@mui/material';
 import SpaceDashboardRoundedIcon from '@mui/icons-material/SpaceDashboardRounded';
+import ManageAccountsRoundedIcon from '@mui/icons-material/ManageAccountsRounded';
 import ApartmentRoundedIcon from '@mui/icons-material/ApartmentRounded';
 import GroupRoundedIcon from '@mui/icons-material/GroupRounded';
 import CreditCardRoundedIcon from '@mui/icons-material/CreditCardRounded';
@@ -50,6 +51,7 @@ const NAV_GROUPS: { heading: string; items: NavItem[] }[] = [
     heading: 'Quản lý',
     items: [
       { to: '/dashboard', label: 'Tổng quan', icon: <SpaceDashboardRoundedIcon /> },
+      { to: '/owners', label: 'Tài khoản', icon: <ManageAccountsRoundedIcon /> },
       { to: '/companies', label: 'Đơn vị', icon: <ApartmentRoundedIcon /> },
       { to: '/invites', label: 'Nhân viên', icon: <GroupRoundedIcon /> },
       { to: '/subscriptions', label: 'Thuê bao', icon: <CreditCardRoundedIcon /> },

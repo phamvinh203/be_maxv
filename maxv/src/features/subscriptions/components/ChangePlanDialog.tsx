@@ -53,7 +53,7 @@ export function ChangePlanDialog({
         <Stack spacing={2} sx={{ mt: 0.5 }}>
           {subscription && (
             <Typography variant="body2" color="text.secondary">
-              Đơn vị: <b>{subscription.donVi.tenDonVi}</b> — gói hiện tại:{' '}
+              Tài khoản: <b>{subscription.owner.hoTen}</b> — gói hiện tại:{' '}
               <b>{subscription.plan.ten}</b>
             </Typography>
           )}
