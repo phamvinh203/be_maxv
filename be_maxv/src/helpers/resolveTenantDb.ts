@@ -1,7 +1,7 @@
 import type { FastifyRequest } from 'fastify';
 import { sysPrisma } from '../config/db.sys';
 import { getTenantDb } from './tenantClient';
-import { canAccessDonVi } from './access';
+import { accessibleDonViWhere } from './access';
 import { ForbiddenError, NotFoundError } from './errors';
 import { MESSAGES } from '../constants/messages';
 import type { PrismaClient } from '../generated/tenant';
@@ -24,17 +24,19 @@ export async function resolveTenantDb(
     throw new ForbiddenError(MESSAGES.COMPANY.NO_COMPANY);
   }
 
-  // Phòng thủ: token có thể cũ (quyền vào MST đã bị thu hồi sau khi cấp token).
-  const allowed = await canAccessDonVi(req.user.userId, req.user.role, donViId);
-  if (!allowed) {
+  // 1 query: vừa kiểm tra quyền (token có thể cũ, quyền đã bị thu hồi) vừa lấy dbName.
+  const scope = accessibleDonViWhere(req.user.userId, req.user.role);
+  if (!scope) {
     throw new ForbiddenError(MESSAGES.COMPANY.NO_ACCESS);
   }
-
-  const company = await sysPrisma.donVi.findUnique({
-    where: { id: donViId },
+  const company = await sysPrisma.donVi.findFirst({
+    where: { ...scope, id: donViId },
     select: { dbName: true },
   });
-  if (!company?.dbName) {
+  if (!company) {
+    throw new ForbiddenError(MESSAGES.COMPANY.NO_ACCESS);
+  }
+  if (!company.dbName) {
     throw new NotFoundError(MESSAGES.COMPANY.NO_TENANT_DB);
   }
 

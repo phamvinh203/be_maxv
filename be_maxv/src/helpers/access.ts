@@ -1,35 +1,36 @@
 import { sysPrisma } from '../config/db.sys';
+import type { Prisma } from '../generated/sys';
 
 /**
- * Nguồn quy tắc DUY NHẤT: user có quyền thao tác trên 1 công ty (MST) hay không.
+ * Nguồn DUY NHẤT của quy tắc "user được thao tác trên những MST nào".
+ * Trả về điều kiện lọc DonVi theo vai trò; null = không có phạm vi tenant (ADMIN…).
+ *   - OWNER          -> các DonVi mình sở hữu (ownerId = self).
+ *   - OWNER_EMPLOYEE -> các DonVi được cấp qua DonViAccess.
  *
- *   - OWNER          -> sở hữu công ty (DonVi.ownerId === userId); thấy hết MST của mình.
- *   - OWNER_EMPLOYEE -> phải có dòng trong DonViAccess (được owner cấp).
- *   - ADMIN (hệ thống) -> không dùng luồng tenant này -> false.
- *
- * Dùng ở: POST /companies/:id/switch (trước khi cấp lại token) và resolveTenantDb
- * (phòng thủ khi token cũ, quyền đã bị thu hồi).
+ * Dùng chung cho: canAccessDonVi (1 MST), listAccessibleCompanies (tất cả),
+ * và resolveTenantDb (chọn DB tenant) — thêm role mới chỉ sửa 1 chỗ.
  */
+export function accessibleDonViWhere(
+  userId: string,
+  role: string,
+): Prisma.DonViWhereInput | null {
+  if (role === 'OWNER') return { ownerId: userId };
+  if (role === 'OWNER_EMPLOYEE') return { access: { some: { userId } } };
+  return null;
+}
+
+/** user có quyền thao tác trên 1 công ty (MST) cụ thể hay không. */
 export async function canAccessDonVi(
   userId: string,
   role: string,
   donViId: string,
 ): Promise<boolean> {
-  if (role === 'OWNER') {
-    const dv = await sysPrisma.donVi.findFirst({
-      where: { id: donViId, ownerId: userId },
-      select: { id: true },
-    });
-    return dv !== null;
-  }
+  const scope = accessibleDonViWhere(userId, role);
+  if (!scope) return false;
 
-  if (role === 'OWNER_EMPLOYEE') {
-    const access = await sysPrisma.donViAccess.findUnique({
-      where: { userId_donViId: { userId, donViId } },
-      select: { id: true },
-    });
-    return access !== null;
-  }
-
-  return false;
+  const dv = await sysPrisma.donVi.findFirst({
+    where: { ...scope, id: donViId },
+    select: { id: true },
+  });
+  return dv !== null;
 }

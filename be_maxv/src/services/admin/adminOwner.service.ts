@@ -1,6 +1,10 @@
 import { sysPrisma } from '../../config/db.sys';
 import { writeLog } from '../shared/syslog.service';
-import { computeEffectiveLimits } from '../shared/limits.service';
+import {
+  computeEffectiveLimits,
+  extractOverride,
+  SUBSCRIPTION_LIMITS_SELECT,
+} from '../shared/limits.service';
 import { ConflictError, NotFoundError } from '../../helpers/errors';
 import { MESSAGES } from '../../constants/messages';
 import type { Prisma } from '../../generated/sys';
@@ -76,10 +80,7 @@ export async function adminListOwners(query: ListOwnersQuery) {
       ? { ma: o.subscription.plan.ma, ten: o.subscription.plan.ten }
       : null,
     gioiHan: computeEffectiveLimits(o.subscription),
-    override: {
-      soMstToiDa: o.subscription?.soMstToiDaOverride ?? null,
-      soNguoiToiDa: o.subscription?.soNguoiToiDaOverride ?? null,
-    },
+    override: extractOverride(o.subscription),
   }));
 
   return { data, total, page, pageSize };
@@ -161,10 +162,7 @@ export async function adminGetOwner(id: string) {
     createdAt: owner.createdAt,
     subscription: owner.subscription,
     gioiHan: computeEffectiveLimits(owner.subscription),
-    override: {
-      soMstToiDa: owner.subscription?.soMstToiDaOverride ?? null,
-      soNguoiToiDa: owner.subscription?.soNguoiToiDaOverride ?? null,
-    },
+    override: extractOverride(owner.subscription),
     soCongTy: congTy.length,
     soNhanVien: owner.employees.length,
     tongDbBytes,
@@ -203,11 +201,7 @@ export async function adminSetOwnerLimits(
   const updated = await sysPrisma.subscription.update({
     where: { ownerId: id },
     data,
-    select: {
-      soMstToiDaOverride: true,
-      soNguoiToiDaOverride: true,
-      plan: { select: { soMstToiDa: true, soNguoiToiDa: true } },
-    },
+    select: SUBSCRIPTION_LIMITS_SELECT,
   });
 
   const chiTiet = {
@@ -223,10 +217,7 @@ export async function adminSetOwnerLimits(
 
   return {
     ownerId: id,
-    override: {
-      soMstToiDa: updated.soMstToiDaOverride,
-      soNguoiToiDa: updated.soNguoiToiDaOverride,
-    },
+    override: extractOverride(updated),
     gioiHan: computeEffectiveLimits(updated),
   };
 }

@@ -2,7 +2,7 @@ import { sysPrisma } from '../../config/db.sys';
 import { tenantSlug } from '../../utils/dbName';
 import { provisionTenant } from '../shared/provisioning.service';
 import { createTrialSubscription } from '../shared/subscription.service';
-import { getEffectiveLimits } from '../shared/limits.service';
+import { assertMstLimit, assertUserLimit } from '../shared/limits.service';
 import { writeLog } from '../shared/syslog.service';
 import { sendMail } from '../shared/mailer.service';
 import {
@@ -26,19 +26,14 @@ type RegisterCompanyArgs = RegisterCompanyInput & { ownerId: string };
 export async function registerCompany(input: RegisterCompanyArgs) {
   const { ownerId, tenCongTy, maSoThue, diaChi, sdt, loaiHinhKinhDoanh } = input;
 
-  // Đếm MST hiện có + kiểm tra MST trùng + lấy giới hạn hiệu lực (override ?? gói).
-  const [existingCount, mstExists, limits] = await Promise.all([
+  // Đếm MST hiện có + kiểm tra MST trùng.
+  const [existingCount, mstExists] = await Promise.all([
     sysPrisma.donVi.count({ where: { ownerId } }),
     sysPrisma.donVi.findUnique({ where: { maSoThue } }),
-    getEffectiveLimits(ownerId),
   ]);
 
   if (mstExists) throw new ConflictError(MESSAGES.COMPANY.MST_TAKEN);
-
-  // Giới hạn số MST (bỏ qua khi null = không giới hạn / chưa có gói ở MST đầu tiên).
-  if (limits.soMstToiDa !== null && existingCount >= limits.soMstToiDa) {
-    throw new ForbiddenError(MESSAGES.SUBSCRIPTION.MST_LIMIT_REACHED);
-  }
+  await assertMstLimit(ownerId, existingCount); // trần MST (override ?? gói)
 
   const donVi = await sysPrisma.donVi.create({
     data: {
@@ -86,14 +81,16 @@ interface InviteEmployeeInput extends InviteUserInput {
   requestedById: string; // userId của owner gửi lời mời
 }
 
+interface NewInviteNotice {
+  ownerHoTen: string;
+  email: string;
+  hoTen: string;
+  chucVu: string;
+  congTy: { tenDonVi: string; maSoThue: string }[];
+}
+
 /** Báo cho tất cả admin hệ thống có 1 lời mời nhân viên mới đang chờ duyệt. */
-async function notifyAdminsOfNewInvite(
-  ownerHoTen: string,
-  email: string,
-  hoTen: string,
-  chucVu: string,
-  congTy: { tenDonVi: string; maSoThue: string }[],
-): Promise<void> {
+async function notifyAdminsOfNewInvite(n: NewInviteNotice): Promise<void> {
   const admins = await sysPrisma.user.findMany({
     where: { role: 'ADMIN' },
     select: { email: true },
@@ -105,10 +102,10 @@ async function notifyAdminsOfNewInvite(
       to: admins.map((a) => a.email),
       subject: 'Yêu cầu duyệt lời mời nhân viên mới',
       text: [
-        `Người gửi mời: ${ownerHoTen}`,
-        `Nhân viên được mời: ${hoTen} <${email}>`,
-        `Chức vụ: ${chucVu}`,
-        `Công ty được cấp: ${congTy
+        `Người gửi mời: ${n.ownerHoTen}`,
+        `Nhân viên được mời: ${n.hoTen} <${n.email}>`,
+        `Chức vụ: ${n.chucVu}`,
+        `Công ty được cấp: ${n.congTy
           .map((c) => `${c.tenDonVi} (${c.maSoThue})`)
           .join(', ')}`,
       ].join('\n'),
@@ -132,19 +129,17 @@ export async function inviteUserToCompany(input: InviteEmployeeInput) {
     throw new ForbiddenError(MESSAGES.COMPANY.NO_ACCESS);
   }
 
-  const [employeeCount, limits, owner, existingUser, pendingInvite] =
-    await Promise.all([
-      sysPrisma.user.count({ where: { ownerId } }),
-      getEffectiveLimits(ownerId),
-      sysPrisma.user.findUnique({
-        where: { id: ownerId },
-        select: { hoTen: true },
-      }),
-      sysPrisma.user.findUnique({ where: { email } }),
-      sysPrisma.inviteRequest.findFirst({
-        where: { ownerId, email, status: 'PENDING' },
-      }),
-    ]);
+  const [employeeCount, owner, existingUser, pendingInvite] = await Promise.all([
+    sysPrisma.user.count({ where: { ownerId } }),
+    sysPrisma.user.findUnique({
+      where: { id: ownerId },
+      select: { hoTen: true },
+    }),
+    sysPrisma.user.findUnique({ where: { email } }),
+    sysPrisma.inviteRequest.findFirst({
+      where: { ownerId, email, status: 'PENDING' },
+    }),
+  ]);
 
   // 1 email = 1 tài khoản: email đã có user -> không mời làm nhân viên tài khoản khác.
   if (existingUser) {
@@ -153,11 +148,7 @@ export async function inviteUserToCompany(input: InviteEmployeeInput) {
   if (pendingInvite) {
     throw new ConflictError(MESSAGES.COMPANY.INVITE_ALREADY_PENDING);
   }
-
-  // Giới hạn số nhân viên (override ?? gói; null = không giới hạn).
-  if (limits.soNguoiToiDa !== null && employeeCount >= limits.soNguoiToiDa) {
-    throw new ForbiddenError(MESSAGES.SUBSCRIPTION.USER_LIMIT_REACHED);
-  }
+  await assertUserLimit(ownerId, employeeCount); // trần nhân viên (override ?? gói)
 
   const invite = await sysPrisma.inviteRequest.create({
     data: {
@@ -173,13 +164,13 @@ export async function inviteUserToCompany(input: InviteEmployeeInput) {
 
   // Báo admin là yêu cầu bắt buộc — mail lỗi thì hủy luôn lời mời vừa tạo.
   try {
-    await notifyAdminsOfNewInvite(
-      owner?.hoTen ?? '',
+    await notifyAdminsOfNewInvite({
+      ownerHoTen: owner?.hoTen ?? '',
       email,
       hoTen,
       chucVu,
-      ownedCongTy,
-    );
+      congTy: ownedCongTy,
+    });
   } catch (err) {
     await sysPrisma.inviteRequest.delete({ where: { id: invite.id } });
     throw err;
@@ -279,12 +270,16 @@ export async function setEmployeeAccess(
     }
   }
 
-  // Replace-set: xóa toàn bộ quyền cũ rồi cấp lại theo danh sách mới.
+  // Replace-set: xóa toàn bộ quyền cũ rồi cấp lại theo danh sách mới (1 INSERT).
   await sysPrisma.$transaction([
     sysPrisma.donViAccess.deleteMany({ where: { userId: employeeId } }),
-    ...donViIds.map((donViId) =>
-      sysPrisma.donViAccess.create({ data: { userId: employeeId, donViId } }),
-    ),
+    ...(donViIds.length > 0
+      ? [
+          sysPrisma.donViAccess.createMany({
+            data: donViIds.map((donViId) => ({ userId: employeeId, donViId })),
+          }),
+        ]
+      : []),
   ]);
 
   await writeLog({
