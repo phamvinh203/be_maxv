@@ -36,12 +36,16 @@ export function PlanFormDialog({ open, plan, onClose }: Props): JSX.Element {
   const [ten, setTen] = useState(plan?.ten ?? '');
   const [gia, setGia] = useState(plan?.gia ?? '0');
   const [chuKyThang, setChuKyThang] = useState(plan ? String(plan.chuKyThang) : '1');
+  const [soMstToiDa, setSoMstToiDa] = useState(
+    plan?.soMstToiDa != null ? String(plan.soMstToiDa) : '',
+  );
   const [soNguoiToiDa, setSoNguoiToiDa] = useState(
     plan?.soNguoiToiDa != null ? String(plan.soNguoiToiDa) : '',
   );
   const [isActive, setIsActive] = useState(plan?.isActive ?? true);
 
   function handleSubmit(): void {
+    const soMst = soMstToiDa.trim() === '' ? null : Number(soMstToiDa);
     const soNguoi = soNguoiToiDa.trim() === '' ? null : Number(soNguoiToiDa);
     if (isEdit && plan) {
       update.mutate(
@@ -51,6 +55,7 @@ export function PlanFormDialog({ open, plan, onClose }: Props): JSX.Element {
             ten,
             gia: Number(gia),
             chuKyThang: Number(chuKyThang),
+            soMstToiDa: soMst,
             soNguoiToiDa: soNguoi,
             isActive,
           },
@@ -64,6 +69,7 @@ export function PlanFormDialog({ open, plan, onClose }: Props): JSX.Element {
           ten,
           gia: Number(gia),
           chuKyThang: Number(chuKyThang),
+          soMstToiDa: soMst,
           soNguoiToiDa: soNguoi,
           isActive,
         },
@@ -108,7 +114,15 @@ export function PlanFormDialog({ open, plan, onClose }: Props): JSX.Element {
             fullWidth
           />
           <TextField
-            label="Số người tối đa"
+            label="Số MST (công ty) tối đa"
+            type="number"
+            value={soMstToiDa}
+            onChange={(e) => setSoMstToiDa(e.target.value)}
+            helperText="Số công ty/MST tài khoản được tạo; để trống = không giới hạn"
+            fullWidth
+          />
+          <TextField
+            label="Số nhân viên tối đa"
             type="number"
             value={soNguoiToiDa}
             onChange={(e) => setSoNguoiToiDa(e.target.value)}

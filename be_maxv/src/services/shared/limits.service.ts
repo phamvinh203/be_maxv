@@ -3,77 +3,55 @@ import { ForbiddenError } from '../../helpers/errors';
 import { MESSAGES } from '../../constants/messages';
 import type { Prisma } from '../../generated/sys';
 
-export interface EffectiveLimits {
+export interface PlanLimits {
   soMstToiDa: number | null; // null = không giới hạn
   soNguoiToiDa: number | null;
 }
 
-/** Select tối thiểu để tính giới hạn hiệu lực (override + gói). */
-export const SUBSCRIPTION_LIMITS_SELECT = {
-  soMstToiDaOverride: true,
-  soNguoiToiDaOverride: true,
+/** Select tối thiểu để đọc giới hạn theo gói. */
+export const PLAN_LIMITS_SELECT = {
   plan: { select: { soMstToiDa: true, soNguoiToiDa: true } },
 } satisfies Prisma.SubscriptionSelect;
 
-type SubscriptionLimits = {
-  soMstToiDaOverride: number | null;
-  soNguoiToiDaOverride: number | null;
-} | null;
-
-/** Tách giá trị override (do admin đặt) để hiển thị; null = chưa override. */
-export function extractOverride(sub: SubscriptionLimits) {
+/** Giới hạn theo gói của 1 subscription (null nếu chưa có gói). */
+export function planLimits(
+  sub: { plan: { soMstToiDa: number | null; soNguoiToiDa: number | null } } | null,
+): PlanLimits {
   return {
-    soMstToiDa: sub?.soMstToiDaOverride ?? null,
-    soNguoiToiDa: sub?.soNguoiToiDaOverride ?? null,
-  };
-}
-
-/** Tính giới hạn hiệu lực từ override (trên subscription) và giá trị gói. */
-export function computeEffectiveLimits(
-  sub:
-    | (SubscriptionLimits & {
-        plan: { soMstToiDa: number | null; soNguoiToiDa: number | null };
-      })
-    | null,
-): EffectiveLimits {
-  return {
-    soMstToiDa: sub?.soMstToiDaOverride ?? sub?.plan.soMstToiDa ?? null,
-    soNguoiToiDa: sub?.soNguoiToiDaOverride ?? sub?.plan.soNguoiToiDa ?? null,
+    soMstToiDa: sub?.plan.soMstToiDa ?? null,
+    soNguoiToiDa: sub?.plan.soNguoiToiDa ?? null,
   };
 }
 
 /**
- * Giới hạn hiệu lực của 1 TÀI KHOẢN (owner):
- *   override do admin đặt ?? giá trị theo gói ?? null (không giới hạn).
+ * Giới hạn của 1 TÀI KHOẢN (owner) theo gói đang dùng.
  * Chưa có subscription (chưa tạo công ty nào) -> không giới hạn (cho tạo MST đầu).
  */
-export async function getEffectiveLimits(
-  ownerId: string,
-): Promise<EffectiveLimits> {
+export async function getPlanLimits(ownerId: string): Promise<PlanLimits> {
   const sub = await sysPrisma.subscription.findUnique({
     where: { ownerId },
-    select: SUBSCRIPTION_LIMITS_SELECT,
+    select: PLAN_LIMITS_SELECT,
   });
-  return computeEffectiveLimits(sub);
+  return planLimits(sub);
 }
 
-/** Chặn nếu tạo thêm MST sẽ vượt trần (null = không giới hạn). */
+/** Chặn nếu tạo thêm MST sẽ vượt trần gói (null = không giới hạn). */
 export async function assertMstLimit(
   ownerId: string,
   currentCount: number,
 ): Promise<void> {
-  const { soMstToiDa } = await getEffectiveLimits(ownerId);
+  const { soMstToiDa } = await getPlanLimits(ownerId);
   if (soMstToiDa !== null && currentCount >= soMstToiDa) {
     throw new ForbiddenError(MESSAGES.SUBSCRIPTION.MST_LIMIT_REACHED);
   }
 }
 
-/** Chặn nếu thêm nhân viên sẽ vượt trần (null = không giới hạn). */
+/** Chặn nếu thêm nhân viên sẽ vượt trần gói (null = không giới hạn). */
 export async function assertUserLimit(
   ownerId: string,
   currentCount: number,
 ): Promise<void> {
-  const { soNguoiToiDa } = await getEffectiveLimits(ownerId);
+  const { soNguoiToiDa } = await getPlanLimits(ownerId);
   if (soNguoiToiDa !== null && currentCount >= soNguoiToiDa) {
     throw new ForbiddenError(MESSAGES.SUBSCRIPTION.USER_LIMIT_REACHED);
   }

@@ -1,17 +1,9 @@
 import { sysPrisma } from '../../config/db.sys';
-import { writeLog } from '../shared/syslog.service';
-import {
-  computeEffectiveLimits,
-  extractOverride,
-  SUBSCRIPTION_LIMITS_SELECT,
-} from '../shared/limits.service';
-import { ConflictError, NotFoundError } from '../../helpers/errors';
+import { planLimits } from '../shared/limits.service';
+import { NotFoundError } from '../../helpers/errors';
 import { MESSAGES } from '../../constants/messages';
 import type { Prisma } from '../../generated/sys';
-import type {
-  ListOwnersQuery,
-  SetOwnerLimitsInput,
-} from '../../validators/admin.validator';
+import type { ListOwnersQuery } from '../../validators/admin.validator';
 
 /** Dung lượng (bytes) của các DB tenant còn tồn tại thật trong PostgreSQL. */
 async function dbSizes(dbNames: string[]): Promise<Map<string, number>> {
@@ -23,7 +15,7 @@ async function dbSizes(dbNames: string[]): Promise<Map<string, number>> {
   return new Map(rows.map((r) => [r.datname, r.size]));
 }
 
-/** GET /admin/owners — danh sách tài khoản (owner) + số MST/nhân viên + giới hạn hiệu lực. */
+/** GET /admin/owners — danh sách tài khoản (owner) + số MST/nhân viên + giới hạn theo gói. */
 export async function adminListOwners(query: ListOwnersQuery) {
   const { q, page, pageSize } = query;
 
@@ -51,8 +43,6 @@ export async function adminListOwners(query: ListOwnersQuery) {
         subscription: {
           select: {
             status: true,
-            soMstToiDaOverride: true,
-            soNguoiToiDaOverride: true,
             plan: {
               select: {
                 ma: true,
@@ -79,8 +69,7 @@ export async function adminListOwners(query: ListOwnersQuery) {
     plan: o.subscription
       ? { ma: o.subscription.plan.ma, ten: o.subscription.plan.ten }
       : null,
-    gioiHan: computeEffectiveLimits(o.subscription),
-    override: extractOverride(o.subscription),
+    gioiHan: planLimits(o.subscription),
   }));
 
   return { data, total, page, pageSize };
@@ -102,8 +91,6 @@ export async function adminGetOwner(id: string) {
           status: true,
           batDau: true,
           ketThuc: true,
-          soMstToiDaOverride: true,
-          soNguoiToiDaOverride: true,
           plan: {
             select: {
               ma: true,
@@ -161,63 +148,11 @@ export async function adminGetOwner(id: string) {
     status: owner.status,
     createdAt: owner.createdAt,
     subscription: owner.subscription,
-    gioiHan: computeEffectiveLimits(owner.subscription),
-    override: extractOverride(owner.subscription),
+    gioiHan: planLimits(owner.subscription),
     soCongTy: congTy.length,
     soNhanVien: owner.employees.length,
     tongDbBytes,
     congTy,
     nhanVien: owner.employees,
-  };
-}
-
-/**
- * PATCH /admin/owners/:id/limits — admin đặt giới hạn RIÊNG cho owner (ghi đè gói).
- * Truyền null cho 1 field = xóa override (quay lại theo gói); bỏ field = giữ nguyên.
- * Yêu cầu owner đã có subscription (đã tạo ≥1 công ty).
- */
-export async function adminSetOwnerLimits(
-  id: string,
-  input: SetOwnerLimitsInput,
-  adminId: string,
-) {
-  const owner = await sysPrisma.user.findFirst({
-    where: { id, role: 'OWNER' },
-    select: { id: true, subscription: { select: { id: true } } },
-  });
-  if (!owner) throw new NotFoundError(MESSAGES.USER.NOT_FOUND);
-  if (!owner.subscription) {
-    throw new ConflictError(MESSAGES.SUBSCRIPTION.NO_SUBSCRIPTION);
-  }
-
-  const data: Prisma.SubscriptionUpdateInput = {};
-  if (input.soMstToiDaOverride !== undefined) {
-    data.soMstToiDaOverride = input.soMstToiDaOverride;
-  }
-  if (input.soNguoiToiDaOverride !== undefined) {
-    data.soNguoiToiDaOverride = input.soNguoiToiDaOverride;
-  }
-
-  const updated = await sysPrisma.subscription.update({
-    where: { ownerId: id },
-    data,
-    select: SUBSCRIPTION_LIMITS_SELECT,
-  });
-
-  const chiTiet = {
-    ownerId: id,
-    ...(input.soMstToiDaOverride !== undefined && {
-      soMstToiDaOverride: input.soMstToiDaOverride,
-    }),
-    ...(input.soNguoiToiDaOverride !== undefined && {
-      soNguoiToiDaOverride: input.soNguoiToiDaOverride,
-    }),
-  };
-  await writeLog({ hanhDong: 'SET_OWNER_LIMITS', userId: adminId, chiTiet });
-
-  return {
-    ownerId: id,
-    override: extractOverride(updated),
-    gioiHan: computeEffectiveLimits(updated),
   };
 }

@@ -41,8 +41,6 @@ export interface Subscription {
   batDau: string;
   ketThuc: string | null;
   autoRenew: boolean;
-  soMstToiDaOverride: number | null;
-  soNguoiToiDaOverride: number | null;
   createdAt: string;
   updatedAt: string;
   owner: OwnerRef;

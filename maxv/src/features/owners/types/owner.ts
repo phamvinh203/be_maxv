@@ -1,7 +1,7 @@
 import type { TenantStatus } from '@/features/companies/types/company';
 import type { UserStatus } from '@/features/users/types/user';
 
-/** Giới hạn (hiệu lực hoặc override). null = không giới hạn / chưa override. */
+/** Giới hạn theo gói. null = không giới hạn. */
 export interface Limits {
   soMstToiDa: number | null;
   soNguoiToiDa: number | null;
@@ -17,8 +17,7 @@ export interface Owner {
   soCongTy: number;
   soNhanVien: number;
   plan: { ma: string; ten: string } | null;
-  gioiHan: Limits; // override ?? gói
-  override: Limits; // riêng phần admin đặt
+  gioiHan: Limits; // trần theo gói
 }
 
 /** 1 MST/DB thuộc tài khoản. */
@@ -58,7 +57,6 @@ export interface OwnerDetail {
     plan: { ma: string; ten: string };
   } | null;
   gioiHan: Limits;
-  override: Limits;
   soCongTy: number;
   soNhanVien: number;
   tongDbBytes: number;
@@ -70,10 +68,4 @@ export interface ListOwnersParams {
   q?: string;
   page?: number;
   pageSize?: number;
-}
-
-/** null = xóa override (theo gói); số = đặt trần riêng. */
-export interface SetOwnerLimitsInput {
-  soMstToiDaOverride?: number | null;
-  soNguoiToiDaOverride?: number | null;
 }

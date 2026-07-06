@@ -35,7 +35,6 @@ import {
 import {
   listOwners,
   getOwner,
-  setOwnerLimits,
 } from '../controllers/admin/adminOwner.controller';
 
 /**
@@ -47,10 +46,9 @@ export async function adminRoutes(app: FastifyInstance) {
   app.addHook('preHandler', app.authenticate);
   app.addHook('preHandler', app.requireRole('ADMIN'));
 
-  // Quản lý tài khoản (owner-centric): xem MST/DB của từng owner + đặt giới hạn
+  // Quản lý tài khoản (owner-centric): xem MST/DB + nhân viên của từng owner
   app.get('/owners', listOwners);
   app.get('/owners/:id', getOwner);
-  app.patch('/owners/:id/limits', setOwnerLimits);
 
   // Quản lý đơn vị (tenant)
   app.get('/companies', listCompanies);
