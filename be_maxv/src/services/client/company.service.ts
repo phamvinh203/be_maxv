@@ -4,54 +4,70 @@ import { provisionTenant } from '../shared/provisioning.service';
 import { createTrialSubscription } from '../shared/subscription.service';
 import { writeLog } from '../shared/syslog.service';
 import { sendMail } from '../shared/mailer.service';
-import { ConflictError, MailError, NotFoundError } from '../../helpers/errors';
+import {
+  ConflictError,
+  ForbiddenError,
+  MailError,
+  NotFoundError,
+} from '../../helpers/errors';
 import { MESSAGES } from '../../constants/messages';
 import type { DonVi, InviteRequest } from '../../generated/sys';
 import type { RegisterCompanyInput } from '../../validators/company.validator';
 import type { InviteUserInput } from '../../validators/company.validator';
 
-/**
- * BƯỚC 2 — Đăng ký công ty cho một người dùng đã có tài khoản.
- * Tạo don_vi + cấp DB riêng maxv2_<mst>_app + gắn user.donViId.
- * (Mỗi user chỉ gắn 1 công ty.)
- */
-export async function registerCompany(input: RegisterCompanyInput) {
-  const { userId, tenCongTy, maSoThue, diaChi, sdt, loaiHinhKinhDoanh } = input;
+/** ownerId lấy từ JWT (req.user.userId) của owner đang đăng nhập, không nhận từ body. */
+type RegisterCompanyArgs = RegisterCompanyInput & { ownerId: string };
 
-  const [user, mstExists] = await Promise.all([
-    sysPrisma.user.findUnique({ where: { id: userId } }),
+/**
+ * BƯỚC 2 — Owner đăng ký MỘT công ty/MST (có thể nhiều MST mỗi tài khoản).
+ * Tạo don_vi (ownerId = owner) + cấp DB riêng maxv2_<mst>_app.
+ * MST đầu tiên của owner -> tạo luôn thuê bao dùng thử cho tài khoản.
+ */
+export async function registerCompany(input: RegisterCompanyArgs) {
+  const { ownerId, tenCongTy, maSoThue, diaChi, sdt, loaiHinhKinhDoanh } = input;
+
+  // Đếm MST hiện có của owner + kiểm tra MST trùng + lấy gói để soát giới hạn.
+  const [existingCount, mstExists, subscription] = await Promise.all([
+    sysPrisma.donVi.count({ where: { ownerId } }),
     sysPrisma.donVi.findUnique({ where: { maSoThue } }),
+    sysPrisma.subscription.findUnique({
+      where: { ownerId },
+      select: { plan: { select: { soMstToiDa: true } } },
+    }),
   ]);
 
-  if (!user) throw new NotFoundError(MESSAGES.COMPANY.USER_NOT_FOUND);
-  if (user.donViId) throw new ConflictError(MESSAGES.COMPANY.USER_HAS_COMPANY);
   if (mstExists) throw new ConflictError(MESSAGES.COMPANY.MST_TAKEN);
 
-  // Tạo don_vi (PROVISIONING) + gắn user.donViId trong 1 transaction
-  const donVi = await sysPrisma.$transaction(async (tx) => {
-    const dv = await tx.donVi.create({
-      data: {
-        maSoThue,
-        slug: tenantSlug(maSoThue),
-        tenDonVi: tenCongTy,
-        diaChi,
-        sdt,
-        loaiHinhKinhDoanh,
-        status: 'PROVISIONING',
-      },
-    });
-    await tx.user.update({ where: { id: userId }, data: { donViId: dv.id } });
-    return dv;
+  // Giới hạn số MST theo gói (bỏ qua khi chưa có gói = đang tạo MST đầu tiên).
+  const soMstToiDa = subscription?.plan.soMstToiDa ?? null;
+  if (soMstToiDa !== null && existingCount >= soMstToiDa) {
+    throw new ForbiddenError(MESSAGES.SUBSCRIPTION.MST_LIMIT_REACHED);
+  }
+
+  const donVi = await sysPrisma.donVi.create({
+    data: {
+      ownerId,
+      maSoThue,
+      slug: tenantSlug(maSoThue),
+      tenDonVi: tenCongTy,
+      diaChi,
+      sdt,
+      loaiHinhKinhDoanh,
+      status: 'PROVISIONING',
+    },
   });
 
-  // Cấp DB riêng (ngoài transaction)
+  // Cấp DB riêng cho MST.
   const dbName = await provisionTenant(donVi.id, maSoThue);
 
-  // Tạo thuê bao dùng thử (best-effort) rồi ghi nhật ký (writeLog tự nuốt lỗi).
-  await createTrialSubscription(donVi.id).catch(() => undefined);
+  // MST đầu tiên của tài khoản -> tạo thuê bao dùng thử (best-effort).
+  if (existingCount === 0) {
+    await createTrialSubscription(ownerId).catch(() => undefined);
+  }
+
   await writeLog({
     hanhDong: 'CREATE_COMPANY',
-    userId,
+    userId: ownerId,
     donViId: donVi.id,
     chiTiet: { maSoThue, dbName },
   });

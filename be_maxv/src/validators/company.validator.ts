@@ -3,10 +3,8 @@ import { MST_REGEX } from '../utils/dbName';
 import { MESSAGES } from '../constants/messages';
 
 
-// Bước 2: đăng ký công ty (tạo maxv2_<mst>_app)
+// Bước 2: đăng ký công ty (tạo maxv2_<mst>_app). ownerId lấy từ JWT, không nhận từ body.
 export const registerCompanySchema = z.object({
-  // TODO: bỏ userId khi có JWT auth — lấy từ token. Tạm dùng để test phía admin.
-  userId: z.string().uuid(),
   tenCongTy: z.string().min(1),
   maSoThue: z.string().regex(MST_REGEX, MESSAGES.VALIDATION.INVALID_MST),
   diaChi: z.string().min(1),

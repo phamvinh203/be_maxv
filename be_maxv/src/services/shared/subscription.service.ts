@@ -16,22 +16,23 @@ async function ensureTrialPlan(): Promise<SubscriptionPlan> {
       ten: 'Dùng thử',
       gia: 0,
       chuKyThang: 0,
+      soMstToiDa: 3,
       soNguoiToiDa: 3,
     },
   });
 }
 
 /**
- * Tạo thuê bao dùng thử cho 1 công ty mới + ghi lịch sử.
- * trial = env.trialDays ngày kể từ bây giờ.
+ * Tạo thuê bao dùng thử cho 1 TÀI KHOẢN (owner) mới + ghi lịch sử.
+ * Gọi khi owner tạo công ty đầu tiên. trial = env.trialDays ngày kể từ bây giờ.
  */
-export async function createTrialSubscription(donViId: string) {
+export async function createTrialSubscription(ownerId: string) {
   const plan = await ensureTrialPlan();
   const ketThuc = new Date(Date.now() + env.trialDays * 24 * 60 * 60 * 1000);
 
   const sub = await sysPrisma.subscription.create({
     data: {
-      donViId,
+      ownerId,
       planId: plan.id,
       status: 'TRIALING',
       ketThuc,
@@ -41,7 +42,7 @@ export async function createTrialSubscription(donViId: string) {
   await sysPrisma.subscriptionHistory.create({
     data: {
       subscriptionId: sub.id,
-      donViId,
+      ownerId,
       planId: plan.id,
       hanhDong: 'CREATE_TRIAL',
       ghiChu: `Tạo gói dùng thử ${env.trialDays} ngày`,

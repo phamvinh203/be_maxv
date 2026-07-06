@@ -10,29 +10,7 @@ import { sendCreated, sendOk } from '../../helpers/response';
 import { UnauthorizedError } from '../../helpers/errors';
 import { MESSAGES } from '../../constants/messages';
 import { REFRESH_COOKIE, REFRESH_PATH } from '../../constants/auth';
-import { env } from '../../config/env';
-
-const refreshCookieOptions = {
-  httpOnly: true,
-  sameSite: 'lax' as const,
-  secure: env.nodeEnv === 'production',
-  path: REFRESH_PATH,
-  maxAge: env.refreshTtlSec,
-};
-
-/** Ký access (body) + refresh (cookie httpOnly) cho 1 user. */
-async function issueTokens(
-  reply: FastifyReply,
-  payload: { userId: string; donViId: string | null; role: string },
-): Promise<string> {
-  // 2 thao tác ký độc lập -> chạy song song để giảm độ trễ login/refresh.
-  const [accessToken, refreshToken] = await Promise.all([
-    reply.jwtSign(payload, { expiresIn: env.accessTtl }),
-    reply.refreshJwtSign(payload, { expiresIn: env.refreshTtlSec }),
-  ]);
-  reply.setCookie(REFRESH_COOKIE, refreshToken, refreshCookieOptions);
-  return accessToken;
-}
+import { issueTokens } from '../../helpers/authTokens';
 
 /** POST /api/v1/auth/register — Bước 1: đăng ký người dùng. */
 export async function register(req: FastifyRequest, reply: FastifyReply) {
