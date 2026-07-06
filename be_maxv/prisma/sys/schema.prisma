@@ -124,6 +124,11 @@ model Subscription {
   batDau    DateTime           @default(now())
   ketThuc   DateTime? // hết hạn kỳ hiện tại (trial/định kỳ)
   autoRenew Boolean            @default(false)
+
+  // Giới hạn RIÊNG do admin đặt cho tài khoản này (ghi đè gói); null = theo gói.
+  soMstToiDaOverride   Int?
+  soNguoiToiDaOverride Int?
+
   createdAt DateTime           @default(now())
   updatedAt DateTime           @updatedAt
 

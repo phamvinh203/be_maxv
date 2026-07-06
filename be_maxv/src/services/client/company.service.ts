@@ -2,6 +2,7 @@ import { sysPrisma } from '../../config/db.sys';
 import { tenantSlug } from '../../utils/dbName';
 import { provisionTenant } from '../shared/provisioning.service';
 import { createTrialSubscription } from '../shared/subscription.service';
+import { getEffectiveLimits } from '../shared/limits.service';
 import { writeLog } from '../shared/syslog.service';
 import { sendMail } from '../shared/mailer.service';
 import {
@@ -25,21 +26,17 @@ type RegisterCompanyArgs = RegisterCompanyInput & { ownerId: string };
 export async function registerCompany(input: RegisterCompanyArgs) {
   const { ownerId, tenCongTy, maSoThue, diaChi, sdt, loaiHinhKinhDoanh } = input;
 
-  // Đếm MST hiện có của owner + kiểm tra MST trùng + lấy gói để soát giới hạn.
-  const [existingCount, mstExists, subscription] = await Promise.all([
+  // Đếm MST hiện có + kiểm tra MST trùng + lấy giới hạn hiệu lực (override ?? gói).
+  const [existingCount, mstExists, limits] = await Promise.all([
     sysPrisma.donVi.count({ where: { ownerId } }),
     sysPrisma.donVi.findUnique({ where: { maSoThue } }),
-    sysPrisma.subscription.findUnique({
-      where: { ownerId },
-      select: { plan: { select: { soMstToiDa: true } } },
-    }),
+    getEffectiveLimits(ownerId),
   ]);
 
   if (mstExists) throw new ConflictError(MESSAGES.COMPANY.MST_TAKEN);
 
-  // Giới hạn số MST theo gói (bỏ qua khi chưa có gói = đang tạo MST đầu tiên).
-  const soMstToiDa = subscription?.plan.soMstToiDa ?? null;
-  if (soMstToiDa !== null && existingCount >= soMstToiDa) {
+  // Giới hạn số MST (bỏ qua khi null = không giới hạn / chưa có gói ở MST đầu tiên).
+  if (limits.soMstToiDa !== null && existingCount >= limits.soMstToiDa) {
     throw new ForbiddenError(MESSAGES.SUBSCRIPTION.MST_LIMIT_REACHED);
   }
 
@@ -135,13 +132,10 @@ export async function inviteUserToCompany(input: InviteEmployeeInput) {
     throw new ForbiddenError(MESSAGES.COMPANY.NO_ACCESS);
   }
 
-  const [employeeCount, subscription, owner, existingUser, pendingInvite] =
+  const [employeeCount, limits, owner, existingUser, pendingInvite] =
     await Promise.all([
       sysPrisma.user.count({ where: { ownerId } }),
-      sysPrisma.subscription.findUnique({
-        where: { ownerId },
-        select: { plan: { select: { soNguoiToiDa: true } } },
-      }),
+      getEffectiveLimits(ownerId),
       sysPrisma.user.findUnique({
         where: { id: ownerId },
         select: { hoTen: true },
@@ -160,9 +154,8 @@ export async function inviteUserToCompany(input: InviteEmployeeInput) {
     throw new ConflictError(MESSAGES.COMPANY.INVITE_ALREADY_PENDING);
   }
 
-  // Giới hạn số nhân viên theo gói.
-  const soNguoiToiDa = subscription?.plan.soNguoiToiDa ?? null;
-  if (soNguoiToiDa !== null && employeeCount >= soNguoiToiDa) {
+  // Giới hạn số nhân viên (override ?? gói; null = không giới hạn).
+  if (limits.soNguoiToiDa !== null && employeeCount >= limits.soNguoiToiDa) {
     throw new ForbiddenError(MESSAGES.SUBSCRIPTION.USER_LIMIT_REACHED);
   }
 
