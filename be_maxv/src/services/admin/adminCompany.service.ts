@@ -48,16 +48,37 @@ export async function adminListCompanies(query: ListCompaniesQuery) {
   return { data, total, page, pageSize };
 }
 
-/** GET /admin/companies/:id — chi tiết kèm owner/nhân viên + thuê bao hiện hành. */
+/** GET /admin/companies/:id — chi tiết kèm owner (+ thuê bao tài khoản) và nhân viên được cấp. */
 export async function adminGetCompany(id: string) {
   const company = await sysPrisma.donVi.findUnique({
     where: { id },
     include: {
-      users: {
-        select: { id: true, hoTen: true, email: true, role: true, isActive: true },
+      owner: {
+        select: {
+          id: true,
+          hoTen: true,
+          email: true,
+          role: true,
+          isActive: true,
+          // Thuê bao nằm ở cấp tài khoản (owner), không còn ở công ty.
+          subscription: {
+            include: { plan: { select: { ma: true, ten: true } } },
+          },
+        },
       },
-      subscription: {
-        include: { plan: { select: { ma: true, ten: true } } },
+      // Nhân viên được cấp quyền vào MST này.
+      access: {
+        select: {
+          user: {
+            select: {
+              id: true,
+              hoTen: true,
+              email: true,
+              role: true,
+              isActive: true,
+            },
+          },
+        },
       },
     },
   });

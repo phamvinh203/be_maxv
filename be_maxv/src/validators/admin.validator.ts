@@ -40,7 +40,8 @@ export const createPlanSchema = z.object({
   ten: z.string().trim().min(1),
   gia: z.coerce.number().min(0).default(0),
   chuKyThang: z.coerce.number().int().min(0).default(1), // 0 = trial
-  soNguoiToiDa: z.coerce.number().int().min(1).nullish(), // null = không giới hạn
+  soMstToiDa: z.coerce.number().int().min(1).nullish(), // null = không giới hạn số MST
+  soNguoiToiDa: z.coerce.number().int().min(1).nullish(), // null = không giới hạn số nhân viên
   isActive: z.boolean().default(true),
 });
 
@@ -49,6 +50,7 @@ export const updatePlanSchema = z.object({
   ten: z.string().trim().min(1).optional(),
   gia: z.coerce.number().min(0).optional(),
   chuKyThang: z.coerce.number().int().min(0).optional(),
+  soMstToiDa: z.coerce.number().int().min(1).nullish(),
   soNguoiToiDa: z.coerce.number().int().min(1).nullish(),
   isActive: z.boolean().optional(),
 });

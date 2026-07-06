@@ -37,6 +37,7 @@ export async function adminCreatePlan(input: CreatePlanInput) {
       ten: input.ten,
       gia: input.gia,
       chuKyThang: input.chuKyThang,
+      soMstToiDa: input.soMstToiDa ?? null,
       soNguoiToiDa: input.soNguoiToiDa ?? null,
       isActive: input.isActive,
     },
@@ -56,21 +57,30 @@ export async function adminUpdatePlan(id: string, input: UpdatePlanInput) {
 // ============ THUÊ BAO (subscription) ============
 
 const SUB_INCLUDE = {
-  donVi: { select: { id: true, maSoThue: true, tenDonVi: true, status: true } },
+  owner: {
+    select: {
+      id: true,
+      hoTen: true,
+      email: true,
+      _count: { select: { ownedDonVi: true } },
+    },
+  },
   plan: { select: { id: true, ma: true, ten: true, gia: true } },
 } satisfies Prisma.SubscriptionInclude;
 
-/** GET /admin/subscriptions — danh sách + lọc trạng thái/đơn vị, phân trang. */
+/** GET /admin/subscriptions — danh sách + lọc trạng thái/tài khoản, phân trang. */
 export async function adminListSubscriptions(query: ListSubscriptionsQuery) {
   const { status, q, page, pageSize } = query;
 
   const where: Prisma.SubscriptionWhereInput = {};
   if (status) where.status = status;
+  // Tìm theo chủ tài khoản (tên/email) hoặc theo MST của tài khoản đó.
   if (q) {
-    where.donVi = {
+    where.owner = {
       OR: [
-        { maSoThue: { contains: q } },
-        { tenDonVi: { contains: q, mode: 'insensitive' } },
+        { hoTen: { contains: q, mode: 'insensitive' } },
+        { email: { contains: q, mode: 'insensitive' } },
+        { ownedDonVi: { some: { maSoThue: { contains: q } } } },
       ],
     };
   }
@@ -119,7 +129,7 @@ export async function adminChangePlan(
     await tx.subscriptionHistory.create({
       data: {
         subscriptionId: id,
-        donViId: sub.donViId,
+        ownerId: sub.ownerId,
         planId: plan.id,
         hanhDong: 'CHANGE_PLAN',
         giaTri: plan.gia,
@@ -132,8 +142,7 @@ export async function adminChangePlan(
   await writeLog({
     hanhDong: 'CHANGE_PLAN',
     userId: adminId,
-    donViId: sub.donViId,
-    chiTiet: { planMa: plan.ma },
+    chiTiet: { ownerId: sub.ownerId, planMa: plan.ma },
   });
   return updated;
 }
@@ -155,7 +164,7 @@ export async function adminCancelSubscription(id: string, adminId: string) {
     await tx.subscriptionHistory.create({
       data: {
         subscriptionId: id,
-        donViId: sub.donViId,
+        ownerId: sub.ownerId,
         planId: sub.planId,
         hanhDong: 'CANCEL',
       },
@@ -163,7 +172,11 @@ export async function adminCancelSubscription(id: string, adminId: string) {
     return next;
   });
 
-  await writeLog({ hanhDong: 'CANCEL_SUBSCRIPTION', userId: adminId, donViId: sub.donViId });
+  await writeLog({
+    hanhDong: 'CANCEL_SUBSCRIPTION',
+    userId: adminId,
+    chiTiet: { ownerId: sub.ownerId },
+  });
   return updated;
 }
 
