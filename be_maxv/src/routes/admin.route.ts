@@ -32,6 +32,11 @@ import {
   approveInvite,
   rejectInvite,
 } from '../controllers/admin/adminInvite.controller';
+import {
+  listOwners,
+  getOwner,
+  setOwnerLimits,
+} from '../controllers/admin/adminOwner.controller';
 
 /**
  * Nhóm route quản trị (control plane maxv2_sys).
@@ -41,6 +46,11 @@ import {
 export async function adminRoutes(app: FastifyInstance) {
   app.addHook('preHandler', app.authenticate);
   app.addHook('preHandler', app.requireRole('ADMIN'));
+
+  // Quản lý tài khoản (owner-centric): xem MST/DB của từng owner + đặt giới hạn
+  app.get('/owners', listOwners);
+  app.get('/owners/:id', getOwner);
+  app.patch('/owners/:id/limits', setOwnerLimits);
 
   // Quản lý đơn vị (tenant)
   app.get('/companies', listCompanies);

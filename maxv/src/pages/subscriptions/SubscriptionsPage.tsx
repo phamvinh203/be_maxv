@@ -52,7 +52,7 @@ function SubscriptionsSection({
   const [historySub, setHistorySub] = useState<Subscription | null>(null);
 
   function handleCancel(sub: Subscription): void {
-    if (window.confirm(`Hủy thuê bao của "${sub.donVi.tenDonVi}"?`)) {
+    if (window.confirm(`Hủy thuê bao của "${sub.owner.hoTen}"?`)) {
       cancel.mutate(sub.id);
     }
   }
@@ -80,7 +80,7 @@ function SubscriptionsSection({
       )}
       <HistoryDialog
         subscriptionId={historySub?.id ?? null}
-        title={historySub?.donVi.tenDonVi}
+        title={historySub?.owner.hoTen}
         onClose={() => setHistorySub(null)}
       />
     </>

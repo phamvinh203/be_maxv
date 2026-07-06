@@ -11,17 +11,19 @@ export interface Plan {
   ten: string;
   gia: string; // Decimal -> chuỗi
   chuKyThang: number;
+  soMstToiDa: number | null;
   soNguoiToiDa: number | null;
   features: unknown;
   isActive: boolean;
   createdAt: string;
 }
 
-interface CompanyRef {
+/** Chủ tài khoản (đơn vị billing) + số MST đang sở hữu. */
+interface OwnerRef {
   id: string;
-  maSoThue: string;
-  tenDonVi: string;
-  status: string;
+  hoTen: string;
+  email: string;
+  _count: { ownedDonVi: number };
 }
 
 interface PlanRef {
@@ -33,22 +35,24 @@ interface PlanRef {
 
 export interface Subscription {
   id: string;
-  donViId: string;
+  ownerId: string;
   planId: string;
   status: SubStatus;
   batDau: string;
   ketThuc: string | null;
   autoRenew: boolean;
+  soMstToiDaOverride: number | null;
+  soNguoiToiDaOverride: number | null;
   createdAt: string;
   updatedAt: string;
-  donVi: CompanyRef;
+  owner: OwnerRef;
   plan: PlanRef;
 }
 
 export interface SubHistory {
   id: string;
   subscriptionId: string | null;
-  donViId: string;
+  ownerId: string;
   planId: string | null;
   hanhDong: string;
   giaTri: string | null;
@@ -69,6 +73,7 @@ export interface CreatePlanInput {
   ten: string;
   gia: number;
   chuKyThang: number;
+  soMstToiDa?: number | null;
   soNguoiToiDa?: number | null;
   isActive?: boolean;
 }

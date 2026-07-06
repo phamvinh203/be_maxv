@@ -18,13 +18,21 @@ export interface CompanyUser {
   isActive: boolean;
 }
 
+/** Chi tiết đơn vị: billing + thành viên giờ ở cấp tài khoản (owner) và DonViAccess. */
 export interface CompanyDetail extends Company {
-  users: CompanyUser[];
-  subscription: {
-    status: string;
-    ketThuc: string | null;
-    plan: { ma: string; ten: string };
+  owner: {
+    id: string;
+    hoTen: string;
+    email: string;
+    role: string;
+    isActive: boolean;
+    subscription: {
+      status: string;
+      ketThuc: string | null;
+      plan: { ma: string; ten: string };
+    } | null;
   } | null;
+  access: { user: CompanyUser }[]; // nhân viên được cấp quyền vào MST này
 }
 
 /** 1 mục trong menu (vd "Danh mục hàng hóa, vật tư"). rows/size null = chưa có bảng. */

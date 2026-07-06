@@ -22,6 +22,13 @@ import { CompanyOverview } from './CompanyOverview';
 export function CompanyDetail({ id }: { id: string }): JSX.Element {
   const { data } = useCompany(id);
 
+  // Billing ở cấp tài khoản (owner); thành viên = owner + nhân viên được cấp quyền.
+  const sub = data.owner?.subscription ?? null;
+  const members = [
+    ...(data.owner ? [data.owner] : []),
+    ...data.access.map((a) => a.user),
+  ];
+
   return (
     <Stack spacing={3}>
       {/* Header + thao tác */}
@@ -55,12 +62,12 @@ export function CompanyDetail({ id }: { id: string }): JSX.Element {
         <Typography variant="h6" gutterBottom>
           Thuê bao
         </Typography>
-        {data.subscription ? (
+        {sub ? (
           <Stack direction="row" spacing={2} sx={{ alignItems: 'center' }}>
-            <Chip label={data.subscription.plan.ten} color="primary" />
-            <Typography>{data.subscription.status}</Typography>
+            <Chip label={sub.plan.ten} color="primary" />
+            <Typography>{sub.status}</Typography>
             <Typography color="text.secondary">
-              Hết hạn: {formatDate(data.subscription.ketThuc)}
+              Hết hạn: {formatDate(sub.ketThuc)}
             </Typography>
           </Stack>
         ) : (
@@ -68,10 +75,10 @@ export function CompanyDetail({ id }: { id: string }): JSX.Element {
         )}
       </Paper>
 
-      {/* Người dùng */}
+      {/* Chủ tài khoản + nhân viên được cấp quyền vào MST này */}
       <Paper variant="outlined" sx={{ p: 2 }}>
         <Typography variant="h6" gutterBottom>
-          Người dùng ({data.users.length})
+          Người dùng có quyền ({members.length})
         </Typography>
         <Table size="small">
           <TableHead>
@@ -83,7 +90,7 @@ export function CompanyDetail({ id }: { id: string }): JSX.Element {
             </TableRow>
           </TableHead>
           <TableBody>
-            {data.users.map((u) => (
+            {members.map((u) => (
               <TableRow key={u.id}>
                 <TableCell>{u.hoTen}</TableCell>
                 <TableCell>{u.email}</TableCell>

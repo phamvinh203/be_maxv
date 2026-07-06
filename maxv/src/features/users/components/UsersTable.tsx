@@ -89,8 +89,15 @@ export function UsersTable({
                     />
                   </TableCell>
                   <TableCell>
-                    {u.donVi ? (
-                      u.donVi.tenDonVi
+                    {u.owner ? (
+                      <>
+                        <Box sx={{ fontSize: 13 }}>{u.owner.hoTen}</Box>
+                        <Box sx={{ fontSize: 12, color: 'text.secondary' }}>
+                          {u._count.donViAccess} MST được cấp
+                        </Box>
+                      </>
+                    ) : u.role === 'OWNER' ? (
+                      `${u._count.ownedDonVi} MST`
                     ) : (
                       <Box component="span" sx={{ color: 'text.secondary' }}>
                         Hệ thống

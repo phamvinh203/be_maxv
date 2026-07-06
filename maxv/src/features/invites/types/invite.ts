@@ -1,9 +1,8 @@
 export type InviteStatus = 'PENDING' | 'APPROVED' | 'REJECTED';
 
-interface CompanyRef {
-  id: string;
-  tenDonVi: string;
-  maSoThue: string;
+interface OwnerRef {
+  hoTen: string;
+  email: string;
 }
 
 export interface AdminInvite {
@@ -15,7 +14,9 @@ export interface AdminInvite {
   lyDoTuChoi: string | null;
   createdAt: string;
   resolvedAt: string | null;
-  donVi: CompanyRef;
+  ownerId: string;
+  donViIds: string[]; // các MST sẽ cấp cho nhân viên khi duyệt
+  owner: OwnerRef; // chủ tài khoản mời
 }
 
 export interface ListInvitesParams {

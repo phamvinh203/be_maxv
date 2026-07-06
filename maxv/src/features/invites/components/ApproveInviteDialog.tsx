@@ -30,8 +30,8 @@ export function ApproveInviteDialog({ invite, onClose }: Props): JSX.Element {
       <DialogContent>
         <Stack spacing={2} sx={{ mt: 0.5 }}>
           <Typography variant="body2" color="text.secondary">
-            Duyệt <b>{invite.hoTen}</b> ({invite.email}) vào công ty{' '}
-            <b>{invite.donVi.tenDonVi}</b>?
+            Duyệt <b>{invite.hoTen}</b> ({invite.email}) vào tài khoản{' '}
+            <b>{invite.owner.hoTen}</b> — cấp {invite.donViIds.length} MST?
           </Typography>
           <Alert severity="info">
             Hệ thống sẽ tạo tài khoản và gửi mật khẩu đăng nhập qua email{' '}

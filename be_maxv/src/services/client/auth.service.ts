@@ -1,6 +1,8 @@
 import { sysPrisma } from '../../config/db.sys';
 import { hashPassword, verifyPassword, DUMMY_HASH } from '../../utils/password';
 import { writeLog } from '../shared/syslog.service';
+import { listAccessibleCompanies } from '../shared/companyAccess.service';
+import { canAccessDonVi } from '../../helpers/access';
 import { ConflictError, UnauthorizedError } from '../../helpers/errors';
 import { MESSAGES } from '../../constants/messages';
 import type { RegisterInput, LoginInput } from '../../validators/auth.validator';
@@ -37,7 +39,10 @@ export async function registerUser(input: RegisterInput) {
 }
 
 /**
- * Đăng nhập: xác thực email + mật khẩu, trả về user + context công ty.
+ * Đăng nhập: xác thực email + mật khẩu, trả về user + danh sách công ty được phép.
+ *
+ * Token KHÔNG gắn sẵn công ty (donViId=null) — trừ khi user chỉ có đúng 1 công ty
+ * thì tự chọn luôn để đỡ 1 lần switch. Nhiều công ty -> FE gọi /companies/:id/switch.
  * Việc ký token do controller làm (cần reply.jwtSign).
  */
 export async function loginUser(input: LoginInput) {
@@ -54,17 +59,14 @@ export async function loginUser(input: LoginInput) {
     throw new UnauthorizedError(MESSAGES.AUTH.ACCOUNT_INACTIVE);
   }
 
-  const company = user.donViId
-    ? await sysPrisma.donVi.findUnique({
-        where: { id: user.donViId },
-        select: { id: true, maSoThue: true, slug: true, tenDonVi: true, status: true },
-      })
-    : null;
+  const companies = await listAccessibleCompanies(user.id, user.role);
+  // Tự chọn khi chỉ có 1 công ty; nhiều/không có -> null (chờ FE switch hoặc tạo MST).
+  const activeDonViId = companies.length === 1 ? companies[0].id : null;
 
   await writeLog({
     hanhDong: 'LOGIN',
     userId: user.id,
-    donViId: user.donViId ?? undefined,
+    donViId: activeDonViId ?? undefined,
   });
 
   return {
@@ -73,20 +75,30 @@ export async function loginUser(input: LoginInput) {
       hoTen: user.hoTen,
       email: user.email,
       role: user.role,
-      donViId: user.donViId,
     },
-    company,
+    companies,
+    activeDonViId,
   };
 }
 
 /**
  * Tải lại user theo id để cấp access token mới (refresh).
- * Đọc lại từ DB để token mới phản ánh role/donViId hiện tại, không tin payload cũ.
+ * Đọc lại role từ DB (không tin payload cũ) và giữ lại công ty đang chọn từ refresh
+ * token — nhưng chỉ khi user VẪN còn quyền vào công ty đó (quyền có thể đã bị thu hồi).
  */
-export async function loadUserForRefresh(userId: string) {
+export async function loadUserForRefresh(
+  userId: string,
+  tokenDonViId: string | null,
+) {
   const user = await sysPrisma.user.findUnique({ where: { id: userId } });
   if (!user || !user.isActive) {
     throw new UnauthorizedError(MESSAGES.AUTH.REFRESH_INVALID);
   }
-  return { id: user.id, role: user.role, donViId: user.donViId };
+
+  let donViId: string | null = null;
+  if (tokenDonViId && (await canAccessDonVi(user.id, user.role, tokenDonViId))) {
+    donViId = tokenDonViId;
+  }
+
+  return { id: user.id, role: user.role, donViId };
 }

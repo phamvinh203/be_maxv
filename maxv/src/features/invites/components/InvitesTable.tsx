@@ -48,7 +48,7 @@ export function InvitesTable({
             <TableRow sx={tableHeadRowSx}>
               <TableCell>Nhân viên</TableCell>
               <TableCell>Chức vụ</TableCell>
-              <TableCell>Công ty</TableCell>
+              <TableCell>Tài khoản mời</TableCell>
               <TableCell>Trạng thái</TableCell>
               <TableCell>Ngày gửi</TableCell>
               <TableCell align="right">Thao tác</TableCell>
@@ -67,9 +67,9 @@ export function InvitesTable({
                   </TableCell>
                   <TableCell>{invite.chucVu}</TableCell>
                   <TableCell>
-                    {invite.donVi.tenDonVi}
+                    {invite.owner.hoTen}
                     <Box sx={{ fontSize: 12.5, color: 'text.secondary' }}>
-                      MST: {invite.donVi.maSoThue}
+                      Cấp {invite.donViIds.length} MST
                     </Box>
                   </TableCell>
                   <TableCell>

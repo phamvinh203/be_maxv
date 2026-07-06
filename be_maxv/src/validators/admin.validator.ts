@@ -40,7 +40,8 @@ export const createPlanSchema = z.object({
   ten: z.string().trim().min(1),
   gia: z.coerce.number().min(0).default(0),
   chuKyThang: z.coerce.number().int().min(0).default(1), // 0 = trial
-  soNguoiToiDa: z.coerce.number().int().min(1).nullish(), // null = không giới hạn
+  soMstToiDa: z.coerce.number().int().min(1).nullish(), // null = không giới hạn số MST
+  soNguoiToiDa: z.coerce.number().int().min(1).nullish(), // null = không giới hạn số nhân viên
   isActive: z.boolean().default(true),
 });
 
@@ -49,6 +50,7 @@ export const updatePlanSchema = z.object({
   ten: z.string().trim().min(1).optional(),
   gia: z.coerce.number().min(0).optional(),
   chuKyThang: z.coerce.number().int().min(0).optional(),
+  soMstToiDa: z.coerce.number().int().min(1).nullish(),
   soNguoiToiDa: z.coerce.number().int().min(1).nullish(),
   isActive: z.boolean().optional(),
 });
@@ -85,6 +87,26 @@ export const listUsersQuerySchema = z.object({
 
 export const changeRoleSchema = z.object({ role: z.enum(ASSIGNABLE_ROLES) });
 
+// ---- Tài khoản (owner-centric) ----
+// GET /admin/owners?q=&page=&pageSize=
+export const listOwnersQuerySchema = z.object({
+  q: z.string().trim().min(1).optional(), // tìm theo email / họ tên owner
+  page: z.coerce.number().int().min(1).default(1),
+  pageSize: z.coerce.number().int().min(1).max(100).default(20),
+});
+
+// PATCH /admin/owners/:id/limits — override giới hạn cho owner (null = xóa override, theo gói).
+export const setOwnerLimitsSchema = z
+  .object({
+    soMstToiDaOverride: z.coerce.number().int().min(1).nullish(),
+    soNguoiToiDaOverride: z.coerce.number().int().min(1).nullish(),
+  })
+  .refine(
+    (v) =>
+      v.soMstToiDaOverride !== undefined || v.soNguoiToiDaOverride !== undefined,
+    { message: 'Phải truyền ít nhất một giới hạn để cập nhật' },
+  );
+
 // ---- Lời mời nhân viên (invite_requests) ----
 export const listInvitesQuerySchema = z.object({
   status: z.enum(['PENDING', 'APPROVED', 'REJECTED']).optional(),
@@ -102,6 +124,8 @@ export type ListInvitesQuery = z.infer<typeof listInvitesQuerySchema>;
 export type RejectInviteInput = z.infer<typeof rejectInviteSchema>;
 export type ListUsersQuery = z.infer<typeof listUsersQuerySchema>;
 export type ChangeRoleInput = z.infer<typeof changeRoleSchema>;
+export type ListOwnersQuery = z.infer<typeof listOwnersQuerySchema>;
+export type SetOwnerLimitsInput = z.infer<typeof setOwnerLimitsSchema>;
 export type ListCompaniesQuery = z.infer<typeof listCompaniesQuerySchema>;
 export type ListLogsQuery = z.infer<typeof listLogsQuerySchema>;
 export type CreatePlanInput = z.infer<typeof createPlanSchema>;

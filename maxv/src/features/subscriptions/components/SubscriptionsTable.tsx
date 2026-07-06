@@ -49,7 +49,7 @@ export function SubscriptionsTable({
         <Table>
           <TableHead>
             <TableRow sx={tableHeadRowSx}>
-              <TableCell>Đơn vị</TableCell>
+              <TableCell>Tài khoản</TableCell>
               <TableCell>Gói</TableCell>
               <TableCell>Giá</TableCell>
               <TableCell>Trạng thái</TableCell>
@@ -62,9 +62,9 @@ export function SubscriptionsTable({
             {rows.map((s) => (
               <TableRow key={s.id} hover sx={{ '& td': { py: 1.5 } }}>
                 <TableCell>
-                  <Box sx={{ fontWeight: 600 }}>{s.donVi.tenDonVi}</Box>
+                  <Box sx={{ fontWeight: 600 }}>{s.owner.hoTen}</Box>
                   <Box sx={{ fontSize: 12.5, color: 'text.secondary' }}>
-                    MST: {s.donVi.maSoThue}
+                    {s.owner.email} · {s.owner._count.ownedDonVi} MST
                   </Box>
                 </TableCell>
                 <TableCell>

@@ -1,6 +1,7 @@
 import type { FastifyRequest } from 'fastify';
 import { sysPrisma } from '../config/db.sys';
 import { getTenantDb } from './tenantClient';
+import { accessibleDonViWhere } from './access';
 import { ForbiddenError, NotFoundError } from './errors';
 import { MESSAGES } from '../constants/messages';
 import type { PrismaClient } from '../generated/tenant';
@@ -8,10 +9,12 @@ import type { PrismaClient } from '../generated/tenant';
 /**
  * Chọn Prisma client cho DB tenant của request hiện tại.
  *
- *   req.user.donViId  ->  tra don_vi.dbName (control plane)  ->  getTenantDb(dbName)
+ *   req.user.donViId  ->  kiểm tra quyền (canAccessDonVi)  ->  tra don_vi.dbName
+ *   (control plane)  ->  getTenantDb(dbName)
  *
- * Yêu cầu route đã gắn `authenticate` (req.user luôn có mặt). Tài khoản chưa gắn
- * công ty -> 403; công ty chưa cấp DB xong -> 404.
+ * Yêu cầu route đã gắn `authenticate` (req.user luôn có mặt). Chưa chọn công ty
+ * (donViId=null) -> 403; không còn quyền vào MST trong token -> 403; công ty chưa
+ * cấp DB xong -> 404.
  */
 export async function resolveTenantDb(
   req: FastifyRequest,
@@ -21,11 +24,19 @@ export async function resolveTenantDb(
     throw new ForbiddenError(MESSAGES.COMPANY.NO_COMPANY);
   }
 
-  const company = await sysPrisma.donVi.findUnique({
-    where: { id: donViId },
+  // 1 query: vừa kiểm tra quyền (token có thể cũ, quyền đã bị thu hồi) vừa lấy dbName.
+  const scope = accessibleDonViWhere(req.user.userId, req.user.role);
+  if (!scope) {
+    throw new ForbiddenError(MESSAGES.COMPANY.NO_ACCESS);
+  }
+  const company = await sysPrisma.donVi.findFirst({
+    where: { ...scope, id: donViId },
     select: { dbName: true },
   });
-  if (!company?.dbName) {
+  if (!company) {
+    throw new ForbiddenError(MESSAGES.COMPANY.NO_ACCESS);
+  }
+  if (!company.dbName) {
     throw new NotFoundError(MESSAGES.COMPANY.NO_TENANT_DB);
   }
 

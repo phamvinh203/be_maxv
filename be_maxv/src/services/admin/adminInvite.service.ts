@@ -10,11 +10,11 @@ import type {
   RejectInviteInput,
 } from '../../validators/admin.validator';
 
-/** Lấy lời mời PENDING theo id kèm thông tin công ty, hoặc ném lỗi tương ứng. */
+/** Lấy lời mời PENDING theo id kèm người mời (owner), hoặc ném lỗi tương ứng. */
 async function getPendingOrThrow(id: string) {
   const invite = await sysPrisma.inviteRequest.findUnique({
     where: { id },
-    include: { donVi: { select: { tenDonVi: true, maSoThue: true } } },
+    include: { owner: { select: { hoTen: true, email: true } } },
   });
   if (!invite) throw new NotFoundError(MESSAGES.COMPANY.INVITE_NOT_FOUND);
   if (invite.status !== 'PENDING') {
@@ -23,18 +23,18 @@ async function getPendingOrThrow(id: string) {
   return invite;
 }
 
-/** GET /admin/invites — danh sách lời mời + lọc trạng thái/đơn vị, phân trang. */
+/** GET /admin/invites — danh sách lời mời + lọc trạng thái/MST, phân trang. */
 export async function adminListInvites(query: ListInvitesQuery) {
   const { status, donViId, page, pageSize } = query;
 
   const where: Prisma.InviteRequestWhereInput = {};
   if (status) where.status = status;
-  if (donViId) where.donViId = donViId;
+  if (donViId) where.donViIds = { has: donViId }; // lời mời có cấp MST này
 
   const [data, total] = await Promise.all([
     sysPrisma.inviteRequest.findMany({
       where,
-      include: { donVi: { select: { tenDonVi: true, maSoThue: true } } },
+      include: { owner: { select: { hoTen: true, email: true } } },
       orderBy: { createdAt: 'desc' },
       skip: (page - 1) * pageSize,
       take: pageSize,
@@ -52,12 +52,19 @@ export async function adminListInvites(query: ListInvitesQuery) {
 export async function adminApproveInvite(id: string, adminId: string) {
   const invite = await getPendingOrThrow(id);
 
+  // 1 email = 1 tài khoản: email đã có user -> không tạo nhân viên trùng.
   const existingUser = await sysPrisma.user.findUnique({
     where: { email: invite.email },
   });
-  if (existingUser?.donViId) {
+  if (existingUser) {
     throw new ConflictError(MESSAGES.COMPANY.EMAIL_ALREADY_MEMBER);
   }
+
+  // Tên các MST được cấp (cho email chào mừng).
+  const congTy = await sysPrisma.donVi.findMany({
+    where: { id: { in: invite.donViIds } },
+    select: { tenDonVi: true, maSoThue: true },
+  });
 
   const password = generatePassword();
   const passwordHash = await hashPassword(password);
@@ -72,9 +79,18 @@ export async function adminApproveInvite(id: string, adminId: string) {
         role: 'OWNER_EMPLOYEE',
         status: 'ACTIVE',
         isActive: true,
-        donViId: invite.donViId,
+        ownerId: invite.ownerId, // nhân viên thuộc tài khoản của owner
       },
     });
+    // Cấp quyền vào từng MST được mời.
+    if (invite.donViIds.length > 0) {
+      await tx.donViAccess.createMany({
+        data: invite.donViIds.map((donViId) => ({
+          userId: createdUser.id,
+          donViId,
+        })),
+      });
+    }
     await tx.inviteRequest.update({
       where: { id: invite.id },
       data: { status: 'APPROVED', approvedById: adminId, resolvedAt: new Date() },
@@ -87,14 +103,16 @@ export async function adminApproveInvite(id: string, adminId: string) {
       to: invite.email,
       subject: 'Tài khoản nhân viên của bạn đã được duyệt',
       text: [
-        `Công ty: ${invite.donVi.tenDonVi} (MST: ${invite.donVi.maSoThue})`,
+        `Công ty được cấp: ${congTy
+          .map((c) => `${c.tenDonVi} (${c.maSoThue})`)
+          .join(', ')}`,
         `Email đăng nhập: ${invite.email}`,
         `Mật khẩu: ${password}`,
         'Vui lòng đăng nhập và đổi mật khẩu ngay lần đầu sử dụng.',
       ].join('\n'),
     });
   } catch {
-    // Chưa ai biết mật khẩu -> hủy tạo User, đưa invite về lại PENDING để admin duyệt lại.
+    // Chưa ai biết mật khẩu -> hủy tạo User (cascade xóa DonViAccess), invite về lại PENDING.
     await sysPrisma.$transaction([
       sysPrisma.user.delete({ where: { id: user.id } }),
       sysPrisma.inviteRequest.update({
@@ -108,8 +126,13 @@ export async function adminApproveInvite(id: string, adminId: string) {
   await writeLog({
     hanhDong: 'APPROVE_INVITE',
     userId: adminId,
-    donViId: invite.donViId,
-    chiTiet: { inviteId: invite.id, newUserId: user.id, email: invite.email },
+    chiTiet: {
+      inviteId: invite.id,
+      newUserId: user.id,
+      email: invite.email,
+      ownerId: invite.ownerId,
+      donViIds: invite.donViIds,
+    },
   });
 
   return { id: user.id, email: user.email, hoTen: user.hoTen, chucVu: user.chucVu };
@@ -136,8 +159,12 @@ export async function adminRejectInvite(
   await writeLog({
     hanhDong: 'REJECT_INVITE',
     userId: adminId,
-    donViId: invite.donViId,
-    chiTiet: { inviteId: invite.id, email: invite.email, lyDo: input.lyDoTuChoi },
+    chiTiet: {
+      inviteId: invite.id,
+      email: invite.email,
+      ownerId: invite.ownerId,
+      lyDo: input.lyDoTuChoi,
+    },
   });
 
   return {
