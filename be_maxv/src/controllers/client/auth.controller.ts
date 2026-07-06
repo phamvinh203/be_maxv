@@ -40,29 +40,30 @@ export async function register(req: FastifyRequest, reply: FastifyReply) {
   return sendCreated(reply, data);
 }
 
-/** POST /api/v1/auth/login — đăng nhập, trả access token + context công ty. */
+/** POST /api/v1/auth/login — đăng nhập, trả access token + danh sách công ty được phép. */
 export async function login(req: FastifyRequest, reply: FastifyReply) {
-  const { user, company } = await loginUser(
+  const { user, companies, activeDonViId } = await loginUser(
     validateBody(loginSchema, req.body),
   );
   const accessToken = await issueTokens(reply, {
     userId: user.id,
-    donViId: user.donViId,
+    donViId: activeDonViId,
     role: user.role,
   });
-  return sendOk(reply, { accessToken, user, company });
+  return sendOk(reply, { accessToken, user, companies, activeDonViId });
 }
 
 /** POST /api/v1/auth/refresh — cấp access token mới từ refresh cookie. */
 export async function refresh(req: FastifyRequest, reply: FastifyReply) {
   let userId: string;
+  let donViId: string | null;
   try {
-    ({ userId } = await req.refreshJwtVerify());
+    ({ userId, donViId } = await req.refreshJwtVerify());
   } catch {
     throw new UnauthorizedError(MESSAGES.AUTH.REFRESH_INVALID);
   }
 
-  const ctx = await loadUserForRefresh(userId);
+  const ctx = await loadUserForRefresh(userId, donViId);
   const accessToken = await issueTokens(reply, {
     userId: ctx.id,
     donViId: ctx.donViId,

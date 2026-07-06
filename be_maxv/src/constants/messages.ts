@@ -21,6 +21,7 @@ export const MESSAGES = {
 
   COMPANY: {
     NO_COMPANY: 'Tài khoản chưa gắn với công ty nào',
+    NO_ACCESS: 'Bạn không có quyền truy cập công ty này',
     USER_NOT_FOUND: 'Người dùng không tồn tại',
     USER_HAS_COMPANY: 'Người dùng này đã có công ty',
     MST_TAKEN: 'Mã số thuế đã được đăng ký',
@@ -55,6 +56,9 @@ export const MESSAGES = {
     SUB_NOT_FOUND: 'Thuê bao không tồn tại',
     SAME_PLAN: 'Thuê bao đang dùng đúng gói này',
     ALREADY_CANCELED: 'Thuê bao đã bị hủy',
+    NO_SUBSCRIPTION: 'Tài khoản chưa có gói dịch vụ nào',
+    MST_LIMIT_REACHED: 'Gói hiện tại đã đạt giới hạn số công ty/MST được tạo',
+    USER_LIMIT_REACHED: 'Gói hiện tại đã đạt giới hạn số nhân viên',
   },
 
   TON_KHO: {
