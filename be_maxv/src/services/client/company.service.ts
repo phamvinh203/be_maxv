@@ -11,7 +11,6 @@ import {
   NotFoundError,
 } from '../../helpers/errors';
 import { MESSAGES } from '../../constants/messages';
-import type { DonVi, InviteRequest } from '../../generated/sys';
 import type { RegisterCompanyInput } from '../../validators/company.validator';
 import type { InviteUserInput } from '../../validators/company.validator';
 
@@ -85,16 +84,18 @@ export async function registerCompany(input: RegisterCompanyArgs) {
   };
 }
 
-interface InviteUserToCompanyInput extends InviteUserInput {
-  donViId: string | null; // lấy từ JWT (req.user.donViId) của owner đang đăng nhập
+interface InviteEmployeeInput extends InviteUserInput {
+  ownerId: string; // chủ tài khoản gửi lời mời (req.user.userId — đã yêu cầu role OWNER)
   requestedById: string; // userId của owner gửi lời mời
 }
 
 /** Báo cho tất cả admin hệ thống có 1 lời mời nhân viên mới đang chờ duyệt. */
 async function notifyAdminsOfNewInvite(
-  donVi: DonVi,
-  invite: InviteRequest,
   ownerHoTen: string,
+  email: string,
+  hoTen: string,
+  chucVu: string,
+  congTy: { tenDonVi: string; maSoThue: string }[],
 ): Promise<void> {
   const admins = await sysPrisma.user.findMany({
     where: { role: 'ADMIN' },
@@ -107,10 +108,12 @@ async function notifyAdminsOfNewInvite(
       to: admins.map((a) => a.email),
       subject: 'Yêu cầu duyệt lời mời nhân viên mới',
       text: [
-        `Công ty: ${donVi.tenDonVi} (MST: ${donVi.maSoThue})`,
         `Người gửi mời: ${ownerHoTen}`,
-        `Nhân viên được mời: ${invite.hoTen} <${invite.email}>`,
-        `Chức vụ: ${invite.chucVu}`,
+        `Nhân viên được mời: ${hoTen} <${email}>`,
+        `Chức vụ: ${chucVu}`,
+        `Công ty được cấp: ${congTy
+          .map((c) => `${c.tenDonVi} (${c.maSoThue})`)
+          .join(', ')}`,
       ].join('\n'),
     });
   } catch {
@@ -118,37 +121,58 @@ async function notifyAdminsOfNewInvite(
   }
 }
 
-// BƯỚC 3 — Mời user vào công ty (owner gửi yêu cầu, admin duyệt)
-// Mọi lời mời đều gán role = OWNER_EMPLOYEE; chức vụ cụ thể là text tự do (chucVu).
-export async function inviteUserToCompany(input: InviteUserToCompanyInput) {
-  const { donViId, requestedById, email, hoTen, chucVu } = input;
+// BƯỚC 3 — Owner mời nhân viên vào TÀI KHOẢN + cấp quyền vào các MST cụ thể (admin duyệt).
+// Mọi lời mời role = OWNER_EMPLOYEE; chức vụ là text tự do; donViIds là MST được cấp.
+export async function inviteUserToCompany(input: InviteEmployeeInput) {
+  const { ownerId, requestedById, email, hoTen, chucVu, donViIds } = input;
 
-  if (!donViId) throw new NotFoundError(MESSAGES.COMPANY.NOT_FOUND);
+  // Chỉ được cấp các MST do chính owner sở hữu.
+  const ownedCongTy = await sysPrisma.donVi.findMany({
+    where: { id: { in: donViIds }, ownerId },
+    select: { id: true, tenDonVi: true, maSoThue: true },
+  });
+  if (ownedCongTy.length !== donViIds.length) {
+    throw new ForbiddenError(MESSAGES.COMPANY.NO_ACCESS);
+  }
 
-  const [donVi, owner, existingUser, pendingInvite] = await Promise.all([
-    sysPrisma.donVi.findUnique({ where: { id: donViId } }),
-    sysPrisma.user.findUnique({ where: { id: requestedById } }),
-    sysPrisma.user.findUnique({ where: { email } }),
-    sysPrisma.inviteRequest.findFirst({
-      where: { donViId, email, status: 'PENDING' },
-    }),
-  ]);
+  const [employeeCount, subscription, owner, existingUser, pendingInvite] =
+    await Promise.all([
+      sysPrisma.user.count({ where: { ownerId } }),
+      sysPrisma.subscription.findUnique({
+        where: { ownerId },
+        select: { plan: { select: { soNguoiToiDa: true } } },
+      }),
+      sysPrisma.user.findUnique({
+        where: { id: ownerId },
+        select: { hoTen: true },
+      }),
+      sysPrisma.user.findUnique({ where: { email } }),
+      sysPrisma.inviteRequest.findFirst({
+        where: { ownerId, email, status: 'PENDING' },
+      }),
+    ]);
 
-  if (!donVi) throw new NotFoundError(MESSAGES.COMPANY.NOT_FOUND);
-  // User đã tồn tại và đã thuộc 1 công ty (kể cả chính công ty này) -> không mời lại.
-  if (existingUser?.donViId) {
+  // 1 email = 1 tài khoản: email đã có user -> không mời làm nhân viên tài khoản khác.
+  if (existingUser) {
     throw new ConflictError(MESSAGES.COMPANY.EMAIL_ALREADY_MEMBER);
   }
   if (pendingInvite) {
     throw new ConflictError(MESSAGES.COMPANY.INVITE_ALREADY_PENDING);
   }
 
+  // Giới hạn số nhân viên theo gói.
+  const soNguoiToiDa = subscription?.plan.soNguoiToiDa ?? null;
+  if (soNguoiToiDa !== null && employeeCount >= soNguoiToiDa) {
+    throw new ForbiddenError(MESSAGES.SUBSCRIPTION.USER_LIMIT_REACHED);
+  }
+
   const invite = await sysPrisma.inviteRequest.create({
     data: {
-      donViId,
+      ownerId,
       email,
       hoTen,
       chucVu,
+      donViIds,
       role: 'OWNER_EMPLOYEE',
       requestedById,
     },
@@ -156,7 +180,13 @@ export async function inviteUserToCompany(input: InviteUserToCompanyInput) {
 
   // Báo admin là yêu cầu bắt buộc — mail lỗi thì hủy luôn lời mời vừa tạo.
   try {
-    await notifyAdminsOfNewInvite(donVi, invite, owner?.hoTen ?? '');
+    await notifyAdminsOfNewInvite(
+      owner?.hoTen ?? '',
+      email,
+      hoTen,
+      chucVu,
+      ownedCongTy,
+    );
   } catch (err) {
     await sysPrisma.inviteRequest.delete({ where: { id: invite.id } });
     throw err;
@@ -165,8 +195,7 @@ export async function inviteUserToCompany(input: InviteUserToCompanyInput) {
   await writeLog({
     hanhDong: 'INVITE_USER',
     userId: requestedById,
-    donViId,
-    chiTiet: { email, hoTen, chucVu, inviteId: invite.id },
+    chiTiet: { email, hoTen, chucVu, donViIds, inviteId: invite.id },
   });
 
   return {
@@ -174,18 +203,19 @@ export async function inviteUserToCompany(input: InviteUserToCompanyInput) {
     email: invite.email,
     hoTen: invite.hoTen,
     chucVu: invite.chucVu,
+    donViIds: invite.donViIds,
     role: invite.role,
     status: invite.status,
     createdAt: invite.createdAt,
   };
 }
 
-/** GET /companies/employees — danh sách nhân viên (kèm owner) của công ty đang đăng nhập. */
-export async function listCompanyEmployees(donViId: string | null) {
-  if (!donViId) throw new NotFoundError(MESSAGES.COMPANY.NOT_FOUND);
+/** GET /companies/employees — thành viên tài khoản (owner + nhân viên) kèm MST được cấp. */
+export async function listCompanyEmployees(ownerId: string | null) {
+  if (!ownerId) throw new NotFoundError(MESSAGES.COMPANY.NOT_FOUND);
 
   return sysPrisma.user.findMany({
-    where: { donViId },
+    where: { OR: [{ id: ownerId }, { ownerId }] },
     orderBy: { createdAt: 'asc' },
     select: {
       id: true,
@@ -197,22 +227,24 @@ export async function listCompanyEmployees(donViId: string | null) {
       status: true,
       isActive: true,
       createdAt: true,
+      donViAccess: { select: { donViId: true } },
     },
   });
 }
 
-/** GET /companies/invites — toàn bộ lời mời (mọi trạng thái) của công ty đang đăng nhập. */
-export async function listCompanyInvites(donViId: string | null) {
-  if (!donViId) throw new NotFoundError(MESSAGES.COMPANY.NOT_FOUND);
+/** GET /companies/invites — toàn bộ lời mời (mọi trạng thái) của tài khoản. */
+export async function listCompanyInvites(ownerId: string | null) {
+  if (!ownerId) throw new NotFoundError(MESSAGES.COMPANY.NOT_FOUND);
 
   return sysPrisma.inviteRequest.findMany({
-    where: { donViId },
+    where: { ownerId },
     orderBy: { createdAt: 'desc' },
     select: {
       id: true,
       email: true,
       hoTen: true,
       chucVu: true,
+      donViIds: true,
       role: true,
       status: true,
       lyDoTuChoi: true,
@@ -220,4 +252,53 @@ export async function listCompanyInvites(donViId: string | null) {
       resolvedAt: true,
     },
   });
+}
+
+/**
+ * PUT /companies/employees/:userId/access — đặt lại tập MST của 1 nhân viên (replace-set).
+ * donViIds rỗng = thu hồi hết. Chỉ owner của tài khoản thao tác; chỉ gán MST owner sở hữu.
+ */
+export async function setEmployeeAccess(
+  ownerId: string,
+  employeeId: string,
+  donViIds: string[],
+) {
+  const employee = await sysPrisma.user.findUnique({
+    where: { id: employeeId },
+    select: { id: true, role: true, ownerId: true },
+  });
+  if (
+    !employee ||
+    employee.ownerId !== ownerId ||
+    employee.role !== 'OWNER_EMPLOYEE'
+  ) {
+    throw new NotFoundError(MESSAGES.USER.NOT_FOUND);
+  }
+
+  // Chỉ gán được MST do owner sở hữu.
+  if (donViIds.length > 0) {
+    const owned = await sysPrisma.donVi.findMany({
+      where: { id: { in: donViIds }, ownerId },
+      select: { id: true },
+    });
+    if (owned.length !== donViIds.length) {
+      throw new ForbiddenError(MESSAGES.COMPANY.NO_ACCESS);
+    }
+  }
+
+  // Replace-set: xóa toàn bộ quyền cũ rồi cấp lại theo danh sách mới.
+  await sysPrisma.$transaction([
+    sysPrisma.donViAccess.deleteMany({ where: { userId: employeeId } }),
+    ...donViIds.map((donViId) =>
+      sysPrisma.donViAccess.create({ data: { userId: employeeId, donViId } }),
+    ),
+  ]);
+
+  await writeLog({
+    hanhDong: 'SET_EMPLOYEE_ACCESS',
+    userId: ownerId,
+    chiTiet: { employeeId, donViIds },
+  });
+
+  return { userId: employeeId, donViIds };
 }

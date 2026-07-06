@@ -2,14 +2,19 @@ import type { FastifyRequest, FastifyReply } from 'fastify';
 import {
   registerCompanySchema,
   inviteUserSchema,
+  setEmployeeAccessSchema,
 } from '../../validators/company.validator';
 import {
   inviteUserToCompany,
   listCompanyEmployees,
   listCompanyInvites,
   registerCompany,
+  setEmployeeAccess,
 } from '../../services/client/company.service';
-import { listAccessibleCompanies } from '../../services/shared/companyAccess.service';
+import {
+  listAccessibleCompanies,
+  resolveAccountOwnerId,
+} from '../../services/shared/companyAccess.service';
 import { canAccessDonVi } from '../../helpers/access';
 import { issueTokens } from '../../helpers/authTokens';
 import { validateBody } from '../../utils/validate';
@@ -58,24 +63,34 @@ export async function switchCompany(req: FastifyRequest, reply: FastifyReply) {
   return sendOk(reply, { accessToken, activeDonViId: id });
 }
 
-// POST /api/v1/companies/invite - owner thêm user vào công ty (khi owner tạo công ty thì mặc định owner là user đầu tiên của công ty đó)
+// POST /api/v1/companies/invite - owner mời nhân viên vào tài khoản + cấp quyền MST (donViIds)
 export async function inviteUser(req: FastifyRequest, reply: FastifyReply) {
   const data = await inviteUserToCompany({
     ...validateBody(inviteUserSchema, req.body),
-    donViId: req.user.donViId,
+    ownerId: req.user.userId, // route yêu cầu role OWNER -> account = chính user này
     requestedById: req.user.userId,
   });
   return sendCreated(reply, data);
 }
 
-// GET /api/v1/companies/employees - xem danh sách nhân viên của công ty mình (owner + nhân viên đều xem được)
+// GET /api/v1/companies/employees - thành viên tài khoản (owner + nhân viên đều xem được)
 export async function listEmployees(req: FastifyRequest, reply: FastifyReply) {
-  const data = await listCompanyEmployees(req.user.donViId);
+  const ownerId = await resolveAccountOwnerId(req.user.userId, req.user.role);
+  const data = await listCompanyEmployees(ownerId);
   return sendOk(reply, data);
 }
 
-// GET /api/v1/companies/invites - xem toàn bộ lời mời (mọi trạng thái) của công ty mình
+// GET /api/v1/companies/invites - toàn bộ lời mời (mọi trạng thái) của tài khoản
 export async function listInvites(req: FastifyRequest, reply: FastifyReply) {
-  const data = await listCompanyInvites(req.user.donViId);
+  const ownerId = await resolveAccountOwnerId(req.user.userId, req.user.role);
+  const data = await listCompanyInvites(ownerId);
+  return sendOk(reply, data);
+}
+
+// PUT /api/v1/companies/employees/:userId/access - owner đặt lại tập MST của 1 nhân viên
+export async function setAccess(req: FastifyRequest, reply: FastifyReply) {
+  const { userId } = req.params as { userId: string };
+  const { donViIds } = validateBody(setEmployeeAccessSchema, req.body);
+  const data = await setEmployeeAccess(req.user.userId, userId, donViIds);
   return sendOk(reply, data);
 }

@@ -6,7 +6,7 @@ import { MESSAGES } from '../../constants/messages';
 import type { Prisma, Role } from '../../generated/sys';
 import type { ListUsersQuery } from '../../validators/admin.validator';
 
-// KHÔNG bao giờ trả password. Kèm đơn vị để hiển thị.
+// KHÔNG bao giờ trả password. Kèm chủ tài khoản + số MST liên quan để hiển thị.
 const USER_SELECT = {
   id: true,
   email: true,
@@ -15,16 +15,17 @@ const USER_SELECT = {
   role: true,
   status: true,
   isActive: true,
-  donViId: true,
+  ownerId: true,
   createdAt: true,
-  donVi: { select: { id: true, maSoThue: true, tenDonVi: true } },
+  owner: { select: { id: true, hoTen: true, email: true } },
+  _count: { select: { ownedDonVi: true, donViAccess: true } },
 } satisfies Prisma.UserSelect;
 
-/** Lấy user (chỉ id+donViId) hoặc ném NotFound. */
+/** Lấy user (chỉ id+ownerId+role) hoặc ném NotFound. */
 async function getOrThrow(id: string) {
   const user = await sysPrisma.user.findUnique({
     where: { id },
-    select: { id: true, donViId: true, role: true },
+    select: { id: true, ownerId: true, role: true },
   });
   if (!user) throw new NotFoundError(MESSAGES.USER.NOT_FOUND);
   return user;
@@ -33,33 +34,44 @@ async function getOrThrow(id: string) {
 /** Ghi audit cho thao tác admin lên 1 user — gói envelope dùng chung. */
 function logUserAction(
   adminId: string,
-  target: { id: string; donViId: string | null },
+  target: { id: string; ownerId: string | null },
   hanhDong: string,
   chiTiet: Prisma.InputJsonObject = {},
 ) {
   return writeLog({
     hanhDong,
     userId: adminId,
-    donViId: target.donViId ?? undefined,
-    chiTiet: { targetUserId: target.id, ...chiTiet },
+    chiTiet: { targetUserId: target.id, ownerId: target.ownerId, ...chiTiet },
   });
 }
 
-/** GET /admin/users — danh sách + lọc role/status/đơn vị/từ khóa, phân trang. */
+/** GET /admin/users — danh sách + lọc role/status/MST/từ khóa, phân trang. */
 export async function adminListUsers(query: ListUsersQuery) {
   const { role, status, donViId, q, page, pageSize } = query;
 
   const where: Prisma.UserWhereInput = {};
+  const and: Prisma.UserWhereInput[] = [];
   if (role) where.role = role;
   if (status) where.status = status;
-  if (donViId) where.donViId = donViId;
-  if (q) {
-    where.OR = [
-      { email: { contains: q, mode: 'insensitive' } },
-      { hoTen: { contains: q, mode: 'insensitive' } },
-      { sdt: { contains: q } },
-    ];
+  // Lọc theo MST: user sở hữu MST đó (owner) hoặc được cấp quyền (nhân viên).
+  if (donViId) {
+    and.push({
+      OR: [
+        { ownedDonVi: { some: { id: donViId } } },
+        { donViAccess: { some: { donViId } } },
+      ],
+    });
   }
+  if (q) {
+    and.push({
+      OR: [
+        { email: { contains: q, mode: 'insensitive' } },
+        { hoTen: { contains: q, mode: 'insensitive' } },
+        { sdt: { contains: q } },
+      ],
+    });
+  }
+  if (and.length) where.AND = and;
 
   const [data, total] = await Promise.all([
     sysPrisma.user.findMany({

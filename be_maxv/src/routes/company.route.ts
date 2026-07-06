@@ -6,6 +6,7 @@ import {
   inviteUser,
   listEmployees,
   listInvites,
+  setAccess,
 } from '../controllers/client/company.controller';
 
 export async function companyRoutes(app: FastifyInstance) {
@@ -43,5 +44,11 @@ export async function companyRoutes(app: FastifyInstance) {
   app.get('/invites', {
     preHandler: [app.authenticate],
     handler: listInvites,
+  });
+
+  // Owner đặt lại tập MST được cấp cho 1 nhân viên (cấp/thu hồi quyền).
+  app.put('/employees/:userId/access', {
+    preHandler: [app.authenticate, app.requireRole('OWNER')],
+    handler: setAccess,
   });
 }

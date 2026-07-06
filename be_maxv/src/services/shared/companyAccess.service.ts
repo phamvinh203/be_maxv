@@ -35,3 +35,24 @@ export function listAccessibleCompanies(userId: string, role: string) {
 
   return Promise.resolve([]);
 }
+
+/**
+ * Xác định "chủ tài khoản" của user hiện tại — dùng để gom nhân viên/lời mời theo account.
+ *   - OWNER          -> chính user đó.
+ *   - OWNER_EMPLOYEE -> owner của họ (User.ownerId).
+ *   - ADMIN / không xác định -> null.
+ */
+export async function resolveAccountOwnerId(
+  userId: string,
+  role: string,
+): Promise<string | null> {
+  if (role === 'OWNER') return userId;
+  if (role === 'OWNER_EMPLOYEE') {
+    const u = await sysPrisma.user.findUnique({
+      where: { id: userId },
+      select: { ownerId: true },
+    });
+    return u?.ownerId ?? null;
+  }
+  return null;
+}
