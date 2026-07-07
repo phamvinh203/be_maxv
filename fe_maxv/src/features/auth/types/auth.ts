@@ -3,7 +3,6 @@ export interface AuthUser {
   hoTen: string;
   email: string;
   role: string;
-  donViId: string | null;
 }
 
 export interface AuthCompany {

@@ -19,8 +19,6 @@ export function setToken(token: string): void {
 }
 
 const isString = (v: unknown): v is string => typeof v === 'string';
-const isNullableString = (v: unknown): v is string | null =>
-  v === null || typeof v === 'string';
 
 /**
  * localStorage attacker-writable (bất kỳ script nào chạy được trên origin đều sửa được).
@@ -31,13 +29,7 @@ const isNullableString = (v: unknown): v is string | null =>
 function isAuthUser(v: unknown): v is AuthUser {
   if (typeof v !== 'object' || v === null) return false;
   const o = v as Record<string, unknown>;
-  return (
-    isString(o.id) &&
-    isString(o.hoTen) &&
-    isString(o.email) &&
-    isString(o.role) &&
-    isNullableString(o.donViId)
-  );
+  return isString(o.id) && isString(o.hoTen) && isString(o.email) && isString(o.role);
 }
 
 function isAuthCompany(v: unknown): v is AuthCompany {

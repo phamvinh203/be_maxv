@@ -74,12 +74,10 @@ export function addCompanyToList(company: AuthCompany): void {
 }
 
 /**
- * Sau khi tạo công ty (registerCompany) thành công: gắn donViId cho user hiện tại,
- * đặt làm company đang chọn, và thêm MST mới vào danh sách để Select thấy ngay.
+ * Sau khi tạo công ty (registerCompany) thành công: đặt làm company đang chọn,
+ * và thêm MST mới vào danh sách để Select thấy ngay.
  */
 export function attachCompanyToSession(company: AuthCompany): void {
-  const user = getUser();
-  if (user) setUser({ ...user, donViId: company.id });
   setCompany(company);
   addCompanyToList(company);
 }
