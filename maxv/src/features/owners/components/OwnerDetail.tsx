@@ -13,9 +13,8 @@ import {
 } from '@mui/material';
 import { StatusChip } from '@/components/StatusChip';
 import { UserStatusChip } from '@/features/users/components/UserStatusChip';
-import { formatBytes, formatDate } from '@/lib/format';
+import { formatBytes, formatDate, formatLimit } from '@/lib/format';
 import { useOwner } from '@/features/owners/hooks/useOwners';
-import { OwnerLimitsForm } from './OwnerLimitsForm';
 
 export function OwnerDetail({ id }: { id: string }): JSX.Element {
   const { data } = useOwner(id);
@@ -40,29 +39,22 @@ export function OwnerDetail({ id }: { id: string }): JSX.Element {
         </Stack>
       </Box>
 
-      {/* Tổng quan số liệu */}
+      {/* Tổng quan số liệu — số đang dùng / trần theo gói */}
       <Stack direction="row" spacing={2} sx={{ flexWrap: 'wrap' }}>
-        <StatCard label="Công ty / MST" value={String(data.soCongTy)} />
-        <StatCard label="Nhân viên" value={String(data.soNhanVien)} />
+        <StatCard
+          label="Công ty / MST"
+          value={`${data.soCongTy} / ${formatLimit(data.gioiHan.soMstToiDa)}`}
+        />
+        <StatCard
+          label="Nhân viên"
+          value={`${data.soNhanVien} / ${formatLimit(data.gioiHan.soNguoiToiDa)}`}
+        />
         <StatCard label="Tổng dung lượng DB" value={formatBytes(data.tongDbBytes)} />
         <StatCard
           label="Gói"
           value={data.subscription?.plan.ten ?? 'Chưa có gói'}
         />
       </Stack>
-
-      {/* Giới hạn (override) */}
-      <Paper variant="outlined" sx={{ p: 2.5 }}>
-        <Typography variant="h6" gutterBottom>
-          Giới hạn tài khoản
-        </Typography>
-        <OwnerLimitsForm
-          ownerId={data.id}
-          gioiHan={data.gioiHan}
-          override={data.override}
-          hasSubscription={data.subscription !== null}
-        />
-      </Paper>
 
       {/* Công ty / MST / DB */}
       <Paper variant="outlined" sx={{ p: 2 }}>

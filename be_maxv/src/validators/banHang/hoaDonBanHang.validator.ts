@@ -120,7 +120,9 @@ export const hoaDonBodySchema = z.object({
   t_tt_nt: num,
   t_tt: num,
 
-  status: z.string().trim().default('2'),
+  // Không ràng buộc enum vì chưa xác định chắc chắn toàn bộ tập giá trị hợp lệ đang
+  // dùng trong nghiệp vụ hiện tại — chỉ giới hạn độ dài để tránh giá trị bất thường.
+  status: z.string().trim().max(10).default('2'),
 
   chi_tiet: z.array(hoaDonChiTietSchema).default([]),
 });

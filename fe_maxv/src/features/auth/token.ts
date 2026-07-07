@@ -5,6 +5,10 @@ import type { AuthCompany, AuthUser } from './types/auth';
 const TOKEN_KEY = 'maxv_client_access_token';
 const USER_KEY = 'maxv_client_user';
 const COMPANY_KEY = 'maxv_client_company';
+const COMPANIES_KEY = 'maxv_client_companies';
+
+/** Bắn khi danh sách MST đổi — để Select đổi MST ở header cập nhật ngay, không cần reload. */
+export const COMPANIES_CHANGED_EVENT = 'maxv:companies-changed';
 
 export function getToken(): string | null {
   return localStorage.getItem(TOKEN_KEY);
@@ -30,6 +34,7 @@ function createStorageSlot<T>(key: string) {
 
 const userSlot = createStorageSlot<AuthUser>(USER_KEY);
 const companySlot = createStorageSlot<AuthCompany>(COMPANY_KEY);
+const companiesSlot = createStorageSlot<AuthCompany[]>(COMPANIES_KEY);
 
 export function getUser(): AuthUser | null {
   return userSlot.get();
@@ -47,8 +52,19 @@ export function setCompany(company: AuthCompany | null): void {
   companySlot.set(company);
 }
 
+/** Danh sách MST/công ty tài khoản được phép — nguồn cho Select đổi MST ở header. */
+export function getCompanies(): AuthCompany[] {
+  return companiesSlot.get() ?? [];
+}
+
+export function setCompanies(companies: AuthCompany[]): void {
+  companiesSlot.set(companies);
+  window.dispatchEvent(new Event(COMPANIES_CHANGED_EVENT));
+}
+
 export function clearSession(): void {
   localStorage.removeItem(TOKEN_KEY);
   localStorage.removeItem(USER_KEY);
   localStorage.removeItem(COMPANY_KEY);
+  localStorage.removeItem(COMPANIES_KEY);
 }

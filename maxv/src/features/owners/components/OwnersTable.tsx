@@ -3,7 +3,6 @@ import { useNavigate } from '@tanstack/react-router';
 import {
   Box,
   Chip,
-  Stack,
   Table,
   TableBody,
   TableCell,
@@ -25,29 +24,22 @@ interface Props {
   onPageSizeChange: (pageSize: number) => void;
 }
 
-/** "dùng / trần" — kèm chip nếu admin đã override. */
+/** "dùng / trần" theo gói — đỏ khi đã chạm trần. */
 function Usage({
   used,
   limit,
-  isOverride,
 }: {
   used: number;
   limit: number | null;
-  isOverride: boolean;
 }): JSX.Element {
   const atLimit = limit != null && used >= limit;
   return (
-    <Stack direction="row" spacing={1} sx={{ alignItems: 'center' }}>
-      <Typography
-        component="span"
-        sx={{ fontWeight: 600, color: atLimit ? 'error.main' : 'text.primary' }}
-      >
-        {used} / {formatLimit(limit)}
-      </Typography>
-      {isOverride && (
-        <Chip label="override" size="small" color="info" variant="outlined" />
-      )}
-    </Stack>
+    <Typography
+      component="span"
+      sx={{ fontWeight: 600, color: atLimit ? 'error.main' : 'text.primary' }}
+    >
+      {used} / {formatLimit(limit)}
+    </Typography>
   );
 }
 
@@ -105,18 +97,10 @@ export function OwnersTable({
                   )}
                 </TableCell>
                 <TableCell>
-                  <Usage
-                    used={o.soCongTy}
-                    limit={o.gioiHan.soMstToiDa}
-                    isOverride={o.override.soMstToiDa != null}
-                  />
+                  <Usage used={o.soCongTy} limit={o.gioiHan.soMstToiDa} />
                 </TableCell>
                 <TableCell>
-                  <Usage
-                    used={o.soNhanVien}
-                    limit={o.gioiHan.soNguoiToiDa}
-                    isOverride={o.override.soNguoiToiDa != null}
-                  />
+                  <Usage used={o.soNhanVien} limit={o.gioiHan.soNguoiToiDa} />
                 </TableCell>
                 <TableCell sx={{ color: 'text.secondary' }}>
                   {formatDate(o.createdAt)}

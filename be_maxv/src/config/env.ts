@@ -9,6 +9,20 @@ function required(name: string): string {
   return v;
 }
 
+// CORS: whitelist domain FE cụ thể — KHÔNG dùng origin:true (phản chiếu mọi Origin).
+// Dev: mặc định các cổng Vite hay dùng nếu chưa set. Production: bắt buộc khai báo rõ.
+const DEV_DEFAULT_ORIGINS = ['http://localhost:5173', 'http://localhost:5174'];
+function parseOrigins(raw: string | undefined): string[] {
+  return (raw ?? '')
+    .split(',')
+    .map((o) => o.trim())
+    .filter(Boolean);
+}
+const configuredOrigins = parseOrigins(process.env.ALLOWED_ORIGINS);
+if (configuredOrigins.length === 0 && process.env.NODE_ENV === 'production') {
+  throw new Error('Thiếu biến môi trường: ALLOWED_ORIGINS (bắt buộc ở production để cấu hình CORS)');
+}
+
 const APP_HOST = required('APP_DB_HOST');
 const APP_PORT = required('APP_DB_PORT');
 const APP_USER = required('APP_DB_USER');
@@ -20,6 +34,9 @@ export const env = {
   nodeEnv: process.env.NODE_ENV ?? 'development',
   // Bật khi chạy sau reverse proxy để đọc IP thật từ X-Forwarded-For.
   trustProxy: process.env.TRUST_PROXY === 'true',
+
+  // Whitelist domain FE được phép gọi API kèm credentials (xem plugin CORS trong app.ts).
+  allowedOrigins: configuredOrigins.length > 0 ? configuredOrigins : DEV_DEFAULT_ORIGINS,
 
   // Control plane (maxv2_sys) - Prisma client đọc qua DB_SYS_URL
   sysUrl: required('DB_SYS_URL'),

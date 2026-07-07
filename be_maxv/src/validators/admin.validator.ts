@@ -95,18 +95,6 @@ export const listOwnersQuerySchema = z.object({
   pageSize: z.coerce.number().int().min(1).max(100).default(20),
 });
 
-// PATCH /admin/owners/:id/limits — override giới hạn cho owner (null = xóa override, theo gói).
-export const setOwnerLimitsSchema = z
-  .object({
-    soMstToiDaOverride: z.coerce.number().int().min(1).nullish(),
-    soNguoiToiDaOverride: z.coerce.number().int().min(1).nullish(),
-  })
-  .refine(
-    (v) =>
-      v.soMstToiDaOverride !== undefined || v.soNguoiToiDaOverride !== undefined,
-    { message: 'Phải truyền ít nhất một giới hạn để cập nhật' },
-  );
-
 // ---- Lời mời nhân viên (invite_requests) ----
 export const listInvitesQuerySchema = z.object({
   status: z.enum(['PENDING', 'APPROVED', 'REJECTED']).optional(),
@@ -125,7 +113,6 @@ export type RejectInviteInput = z.infer<typeof rejectInviteSchema>;
 export type ListUsersQuery = z.infer<typeof listUsersQuerySchema>;
 export type ChangeRoleInput = z.infer<typeof changeRoleSchema>;
 export type ListOwnersQuery = z.infer<typeof listOwnersQuerySchema>;
-export type SetOwnerLimitsInput = z.infer<typeof setOwnerLimitsSchema>;
 export type ListCompaniesQuery = z.infer<typeof listCompaniesQuerySchema>;
 export type ListLogsQuery = z.infer<typeof listLogsQuerySchema>;
 export type CreatePlanInput = z.infer<typeof createPlanSchema>;

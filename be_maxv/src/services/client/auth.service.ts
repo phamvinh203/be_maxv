@@ -1,6 +1,7 @@
 import { sysPrisma } from '../../config/db.sys';
 import { hashPassword, verifyPassword, DUMMY_HASH } from '../../utils/password';
 import { writeLog } from '../shared/syslog.service';
+import { createTrialSubscription } from '../shared/subscription.service';
 import { listAccessibleCompanies } from '../shared/companyAccess.service';
 import { canAccessDonVi } from '../../helpers/access';
 import { ConflictError, UnauthorizedError } from '../../helpers/errors';
@@ -9,8 +10,8 @@ import type { RegisterInput, LoginInput } from '../../validators/auth.validator'
 
 /**
  * BƯỚC 1 — Đăng ký người dùng.
- * Lưu thông tin (hoTen, email, sdt, password) vào maxv2_sys.
- * CHƯA tạo công ty / DB nào ở bước này.
+ * Lưu thông tin (hoTen, email, sdt, password) vào maxv2_sys và gán luôn gói
+ * dùng thử TRIAL cho tài khoản. CHƯA tạo công ty / DB nào ở bước này.
  */
 export async function registerUser(input: RegisterInput) {
   const { hoTen, email, sdt, password } = input;
@@ -32,6 +33,10 @@ export async function registerUser(input: RegisterInput) {
       // donViId = null: chưa gắn công ty nào
     },
   });
+
+  // Gán gói dùng thử ngay khi tạo tài khoản (best-effort: lỗi tạo gói không được
+  // chặn đăng ký — lưới an toàn idempotent ở bước tạo công ty sẽ bù lại nếu thiếu).
+  await createTrialSubscription(user.id).catch(() => undefined);
 
   await writeLog({ hanhDong: 'REGISTER', userId: user.id, chiTiet: { email } });
 
@@ -60,8 +65,8 @@ export async function loginUser(input: LoginInput) {
   }
 
   const companies = await listAccessibleCompanies(user.id, user.role);
-  // Tự chọn khi chỉ có 1 công ty; nhiều/không có -> null (chờ FE switch hoặc tạo MST).
-  const activeDonViId = companies.length === 1 ? companies[0].id : null;
+  // Mặc định vào MST đầu tiên (token nhúng luôn donViId) — FE đổi MST qua switch sau.
+  const activeDonViId = companies[0]?.id ?? null;
 
   await writeLog({
     hanhDong: 'LOGIN',

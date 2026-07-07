@@ -58,7 +58,8 @@ export function PlansPanel(): JSX.Element {
               <TableCell>Tên</TableCell>
               <TableCell>Giá</TableCell>
               <TableCell>Chu kỳ</TableCell>
-              <TableCell>Số người tối đa</TableCell>
+              <TableCell>Số MST tối đa</TableCell>
+              <TableCell>Số nhân viên tối đa</TableCell>
               <TableCell>Trạng thái</TableCell>
               <TableCell align="right">Thao tác</TableCell>
             </TableRow>
@@ -71,6 +72,13 @@ export function PlansPanel(): JSX.Element {
                 <TableCell>{formatVnd(p.gia)}</TableCell>
                 <TableCell>
                   {p.chuKyThang > 0 ? `${p.chuKyThang} tháng` : 'Dùng thử'}
+                </TableCell>
+                <TableCell>
+                  {p.soMstToiDa ?? (
+                    <Box component="span" sx={{ color: 'text.secondary' }}>
+                      Không giới hạn
+                    </Box>
+                  )}
                 </TableCell>
                 <TableCell>
                   {p.soNguoiToiDa ?? (

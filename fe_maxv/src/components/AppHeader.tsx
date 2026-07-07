@@ -1,7 +1,13 @@
-import { useEffect, useRef, useState, type JSX } from 'react';
+import { useEffect, useRef, useState, type ChangeEvent, type JSX } from 'react';
 import logo from '../assets/Logo-Maxv.png';
-import { getUser } from '@/features/auth/token';
-import { useLogout } from '@/features/auth/hooks/useAuth';
+import { getUser, setCompany, COMPANIES_CHANGED_EVENT } from '@/features/auth/token';
+import {
+  useLogout,
+  getCurrentCompany,
+  getCurrentCompanies,
+  switchToCompany,
+} from '@/features/auth/hooks/useAuth';
+import type { AuthCompany } from '@/features/auth/types/auth';
 
 interface Props {
   onLogout: () => void;
@@ -13,11 +19,29 @@ function getInitial(hoTen: string | undefined): string {
   return trimmed ? trimmed.charAt(0).toUpperCase() : '?';
 }
 
+/** Nhãn hiển thị của 1 MST trên header. */
+function companyLabel(c: AuthCompany): string {
+  return `${c.maSoThue} — ${c.tenDonVi}`;
+}
+
+const DIVIDER_STYLE = { width: 1, height: 24, background: 'rgba(255,255,255,0.2)' };
+
 export default function AppHeader({ onLogout, onSettings }: Props): JSX.Element {
   const user = getUser();
   const [menuOpen, setMenuOpen] = useState(false);
+  const [switching, setSwitching] = useState(false);
+  // Danh sách MST đọc từ localStorage (không reactive) -> giữ trong state, cập nhật
+  // khi có COMPANIES_CHANGED_EVENT (thêm MST ở trang Cài đặt).
+  const [companies, setCompanies] = useState(getCurrentCompanies);
+  const currentCompany = getCurrentCompany();
   const menuRef = useRef<HTMLDivElement>(null);
   const logoutMutation = useLogout();
+
+  useEffect(() => {
+    const handler = () => setCompanies(getCurrentCompanies());
+    window.addEventListener(COMPANIES_CHANGED_EVENT, handler);
+    return () => window.removeEventListener(COMPANIES_CHANGED_EVENT, handler);
+  }, []);
 
   useEffect(() => {
     if (!menuOpen) return;
@@ -38,6 +62,28 @@ export default function AppHeader({ onLogout, onSettings }: Props): JSX.Element 
   function handleSettings() {
     setMenuOpen(false);
     onSettings?.();
+  }
+
+  /**
+   * Đổi MST đang làm việc: switch token (để tenant DB resolve đúng), lưu công ty,
+   * rồi thay slug trên URL và full reload (xóa sạch cache dữ liệu của MST cũ).
+   */
+  async function handleChangeCompany(e: ChangeEvent<HTMLSelectElement>) {
+    const id = e.target.value;
+    if (!currentCompany || id === currentCompany.id) return;
+    const target = companies.find((c) => c.id === id);
+    if (!target) return;
+
+    setSwitching(true);
+    try {
+      await switchToCompany(id);
+      setCompany(target);
+      // Giữ nguyên path sau :slug, chỉ thay MST (slug) rồi tải lại toàn trang.
+      const rest = window.location.pathname.split('/').slice(2).join('/');
+      window.location.assign(`/${target.slug}${rest ? `/${rest}` : ''}`);
+    } catch {
+      setSwitching(false);
+    }
   }
 
   return (
@@ -68,6 +114,44 @@ export default function AppHeader({ onLogout, onSettings }: Props): JSX.Element 
       <span style={{ color: 'rgba(255,255,255,0.85)', fontSize: 13, fontWeight: 600, letterSpacing: 0.3 }}>
         Kế toán tổng hợp
       </span>
+
+      {/* Đổi MST: chỉ hiện Select khi tài khoản có nhiều MST; 1 MST -> nhãn tĩnh. */}
+      {currentCompany && (
+        <>
+          <div style={DIVIDER_STYLE} />
+          {companies.length > 1 ? (
+            <select
+              value={currentCompany.id}
+              onChange={handleChangeCompany}
+              disabled={switching}
+              title="Chọn công ty (MST) đang làm việc"
+              style={{
+                height: 30,
+                maxWidth: 340,
+                background: 'rgba(255,255,255,0.12)',
+                color: 'white',
+                border: '1px solid rgba(255,255,255,0.25)',
+                borderRadius: 6,
+                padding: '0 10px',
+                fontSize: 13,
+                fontWeight: 600,
+                cursor: switching ? 'wait' : 'pointer',
+                outline: 'none',
+              }}
+            >
+              {companies.map((c) => (
+                <option key={c.id} value={c.id} style={{ color: '#0f172a' }}>
+                  {companyLabel(c)}
+                </option>
+              ))}
+            </select>
+          ) : (
+            <span style={{ color: 'rgba(255,255,255,0.85)', fontSize: 13, fontWeight: 600 }}>
+              {companyLabel(currentCompany)}
+            </span>
+          )}
+        </>
+      )}
 
       <div style={{ flex: 1 }} />
 

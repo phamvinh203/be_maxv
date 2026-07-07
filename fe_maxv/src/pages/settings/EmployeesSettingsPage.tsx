@@ -6,12 +6,25 @@ import { EmployeesTable } from '@/features/company/components/EmployeesTable';
 import { PendingInvitesTable } from '@/features/company/components/PendingInvitesTable';
 import { InviteEmployeeDialog } from '@/features/company/components/InviteEmployeeDialog';
 import { getUser } from '@/features/auth/token';
+import { getCurrentCompany } from '@/features/auth/hooks/useAuth';
 
 export default function EmployeesSettingsPage(): JSX.Element {
   const [dialogOpen, setDialogOpen] = useState(false);
   const employeesQuery = useEmployees();
   const invitesQuery = useCompanyInvites();
   const isOwner = getUser()?.role === 'OWNER';
+
+  // Chỉ hiển thị theo MST đang chọn ở header: nhân viên được cấp quyền vào MST đó
+  // (owner luôn hiện vì thấy hết mọi MST của mình), và lời mời có kèm MST đó.
+  const currentId = getCurrentCompany()?.id ?? null;
+  const employees = (employeesQuery.data ?? []).filter(
+    (e) =>
+      e.role === 'OWNER' ||
+      (currentId != null && e.donViAccess.some((a) => a.donViId === currentId)),
+  );
+  const invites = (invitesQuery.data ?? []).filter(
+    (i) => currentId != null && i.donViIds.includes(currentId),
+  );
 
   return (
     <Box sx={{ p: 3, maxWidth: 960 }}>
@@ -36,7 +49,7 @@ export default function EmployeesSettingsPage(): JSX.Element {
       {employeesQuery.isLoading ? (
         <CircularProgress size={24} />
       ) : (
-        <EmployeesTable employees={employeesQuery.data ?? []} />
+        <EmployeesTable employees={employees} />
       )}
 
       <Typography variant="h6" sx={{ fontWeight: 700, mt: 4, mb: 2 }}>
@@ -46,7 +59,7 @@ export default function EmployeesSettingsPage(): JSX.Element {
       {invitesQuery.isLoading ? (
         <CircularProgress size={24} />
       ) : (
-        <PendingInvitesTable invites={invitesQuery.data ?? []} />
+        <PendingInvitesTable invites={invites} />
       )}
 
       <InviteEmployeeDialog open={dialogOpen} onClose={() => setDialogOpen(false)} />

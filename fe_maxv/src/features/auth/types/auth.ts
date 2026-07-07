@@ -22,7 +22,14 @@ export interface LoginInput {
 export interface LoginResult {
   accessToken: string;
   user: AuthUser;
-  company: AuthCompany | null;
+  companies: AuthCompany[];
+  // Công ty được backend tự chọn: chỉ set khi tài khoản có đúng 1 MST, còn lại null.
+  activeDonViId: string | null;
+}
+
+export interface SwitchCompanyResult {
+  accessToken: string;
+  activeDonViId: string;
 }
 
 export interface RegisterInput {

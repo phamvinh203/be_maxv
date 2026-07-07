@@ -4,8 +4,6 @@ import type {
   Owner,
   OwnerDetail,
   ListOwnersParams,
-  SetOwnerLimitsInput,
-  Limits,
 } from '@/features/owners/types/owner';
 
 export function listOwners(
@@ -16,11 +14,4 @@ export function listOwners(
 
 export function getOwner(id: string): Promise<OwnerDetail> {
   return api.get<OwnerDetail>(`/admin/owners/${id}`);
-}
-
-export function setOwnerLimits(
-  id: string,
-  input: SetOwnerLimitsInput,
-): Promise<{ ownerId: string; override: Limits; gioiHan: Limits }> {
-  return api.patch(`/admin/owners/${id}/limits`, input);
 }

@@ -21,7 +21,8 @@ type RegisterCompanyArgs = RegisterCompanyInput & { ownerId: string };
 /**
  * BƯỚC 2 — Owner đăng ký MỘT công ty/MST (có thể nhiều MST mỗi tài khoản).
  * Tạo don_vi (ownerId = owner) + cấp DB riêng maxv2_<mst>_app.
- * MST đầu tiên của owner -> tạo luôn thuê bao dùng thử cho tài khoản.
+ * Thuê bao dùng thử đã được gán khi đăng ký tài khoản; ở đây chỉ gọi lại làm
+ * lưới an toàn idempotent (bù cho tài khoản cũ đăng ký trước khi có logic này).
  */
 export async function registerCompany(input: RegisterCompanyArgs) {
   const { ownerId, tenCongTy, maSoThue, diaChi, sdt, loaiHinhKinhDoanh } = input;
@@ -51,7 +52,7 @@ export async function registerCompany(input: RegisterCompanyArgs) {
   // Cấp DB riêng cho MST.
   const dbName = await provisionTenant(donVi.id, maSoThue);
 
-  // MST đầu tiên của tài khoản -> tạo thuê bao dùng thử (best-effort).
+  // Lưới an toàn: đảm bảo tài khoản có thuê bao (idempotent, no-op nếu đã có).
   if (existingCount === 0) {
     await createTrialSubscription(ownerId).catch(() => undefined);
   }
