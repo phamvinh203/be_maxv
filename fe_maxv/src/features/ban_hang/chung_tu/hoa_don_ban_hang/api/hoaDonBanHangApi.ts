@@ -2,8 +2,8 @@ import { api } from '@/lib/apiClient';
 import type {
   HoaDon,
   HoaDonChiTiet,
-  HoaDonForm,
   HoaDonListParams,
+  HoaDonPayload,
 } from '@/features/ban_hang/chung_tu/hoa_don_ban_hang/types';
 
 const BASE = '/ban-hang/hoa-don-ban-hang';
@@ -20,13 +20,13 @@ export function nextSoCt(): Promise<{ so_ct: string }> {
   return api.get<{ so_ct: string }>(`${BASE}/next-so-ct`);
 }
 
-export function createHoaDon(body: HoaDonForm): Promise<{ stt_rec: string }> {
+export function createHoaDon(body: HoaDonPayload): Promise<{ stt_rec: string }> {
   return api.post(BASE, body);
 }
 
 export function updateHoaDon(
   sttRec: string,
-  body: HoaDonForm,
+  body: HoaDonPayload,
 ): Promise<{ stt_rec: string }> {
   return api.put(`${BASE}/${encodeURIComponent(sttRec)}`, body);
 }

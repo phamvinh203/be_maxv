@@ -10,6 +10,7 @@ import {
   Typography,
 } from '@mui/material';
 import { useLogin } from '@/features/auth/hooks/useAuth';
+import { useLoginBackoff } from '@/features/auth/hooks/useAuthBackoff';
 import { getApiError } from '@/lib/apiClient';
 import { PasswordField } from '@/features/auth/components/PasswordField';
 
@@ -20,19 +21,26 @@ interface Props {
 
 export function LoginForm({ onSuccess, onRegister }: Props): JSX.Element {
   const { mutate, isPending } = useLogin();
+  const { locked, remainingSec, reportFailure, reportSuccess } = useLoginBackoff();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
 
   function handleSubmit(e: FormEvent): void {
     e.preventDefault();
+    if (locked) return;
     setError('');
     mutate(
       { email: email.trim(), password },
       {
-        onSuccess,
-        onError: (err) =>
-          setError(getApiError(err, 'Đăng nhập thất bại. Vui lòng thử lại.')),
+        onSuccess: () => {
+          reportSuccess();
+          onSuccess();
+        },
+        onError: (err) => {
+          reportFailure();
+          setError(getApiError(err, 'Đăng nhập thất bại. Vui lòng thử lại.'));
+        },
       },
     );
   }
@@ -52,6 +60,11 @@ export function LoginForm({ onSuccess, onRegister }: Props): JSX.Element {
       <Box component="form" onSubmit={handleSubmit}>
         <Stack spacing={2.5}>
           {error && <Alert severity="error">{error}</Alert>}
+          {locked && (
+            <Alert severity="warning">
+              Quá nhiều lần đăng nhập sai. Vui lòng thử lại sau {remainingSec}s.
+            </Alert>
+          )}
           <TextField
             label="Email"
             type="email"
@@ -74,7 +87,7 @@ export function LoginForm({ onSuccess, onRegister }: Props): JSX.Element {
             variant="contained"
             fullWidth
             size="large"
-            disabled={isPending}
+            disabled={isPending || locked}
             sx={{
               height: 44,
               fontWeight: 700,
@@ -84,6 +97,8 @@ export function LoginForm({ onSuccess, onRegister }: Props): JSX.Element {
           >
             {isPending ? (
               <CircularProgress size={22} sx={{ color: 'white' }} />
+            ) : locked ? (
+              `THỬ LẠI SAU ${remainingSec}S`
             ) : (
               'ĐĂNG NHẬP'
             )}

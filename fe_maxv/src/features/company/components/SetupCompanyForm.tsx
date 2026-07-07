@@ -94,7 +94,6 @@ export function SetupCompanyForm({
 
     mutate(
       {
-        userId: user.id,
         tenCongTy: form.tenCongTy.trim(),
         maSoThue: form.maSoThue.trim(),
         diaChi: form.diaChi.trim(),
