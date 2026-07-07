@@ -12,7 +12,7 @@ import {
   setEmployeeAccess,
 } from '../../services/client/company.service';
 import {
-  listAccessibleCompanies,
+  listAccessibleCompaniesDetailed,
   resolveAccountOwnerId,
 } from '../../services/shared/companyAccess.service';
 import { canAccessDonVi } from '../../helpers/access';
@@ -41,7 +41,7 @@ export async function createCompany(req: FastifyRequest, reply: FastifyReply) {
 
 /** GET /api/v1/companies — danh sách công ty/MST user được phép (owner + nhân viên). */
 export async function listCompanies(req: FastifyRequest, reply: FastifyReply) {
-  const data = await listAccessibleCompanies(req.user.userId, req.user.role);
+  const data = await listAccessibleCompaniesDetailed(req.user.userId, req.user.role);
   return sendOk(reply, data);
 }
 

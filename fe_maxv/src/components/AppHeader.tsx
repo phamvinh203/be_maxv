@@ -1,6 +1,11 @@
 import { useEffect, useRef, useState, type ChangeEvent, type JSX } from 'react';
 import logo from '../assets/Logo-Maxv.png';
-import { getUser, setCompany, setToken } from '@/features/auth/token';
+import {
+  getUser,
+  setCompany,
+  setToken,
+  COMPANIES_CHANGED_EVENT,
+} from '@/features/auth/token';
 import {
   useLogout,
   getCurrentCompany,
@@ -20,12 +25,22 @@ function getInitial(hoTen: string | undefined): string {
 
 export default function AppHeader({ onLogout, onSettings }: Props): JSX.Element {
   const user = getUser();
-  const companies = getCurrentCompanies();
-  const currentCompany = getCurrentCompany();
   const [menuOpen, setMenuOpen] = useState(false);
   const [switching, setSwitching] = useState(false);
+  const [, forceTick] = useState(0);
   const menuRef = useRef<HTMLDivElement>(null);
   const logoutMutation = useLogout();
+
+  // Danh sách MST đọc từ localStorage (không reactive) -> lắng nghe event để
+  // cập nhật Select ngay khi thêm MST mới ở trang Cài đặt.
+  const companies = getCurrentCompanies();
+  const currentCompany = getCurrentCompany();
+
+  useEffect(() => {
+    const handler = () => forceTick((n) => n + 1);
+    window.addEventListener(COMPANIES_CHANGED_EVENT, handler);
+    return () => window.removeEventListener(COMPANIES_CHANGED_EVENT, handler);
+  }, []);
 
   useEffect(() => {
     if (!menuOpen) return;

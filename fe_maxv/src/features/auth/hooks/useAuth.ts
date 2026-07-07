@@ -69,6 +69,17 @@ export function getCurrentCompanies(): AuthCompany[] {
 }
 
 /**
+ * Thêm 1 MST vào danh sách mà KHÔNG đổi công ty đang chọn (dùng khi tạo thêm MST
+ * ở trang Cài đặt — để Select header thấy, còn phiên vẫn ở công ty hiện tại).
+ */
+export function addCompanyToList(company: AuthCompany): void {
+  const companies = getCompanies();
+  if (!companies.some((c) => c.id === company.id)) {
+    setCompanies([...companies, company]);
+  }
+}
+
+/**
  * Sau khi tạo công ty (registerCompany) thành công: gắn donViId cho user hiện tại,
  * đặt làm company đang chọn, và thêm MST mới vào danh sách để Select thấy ngay.
  */

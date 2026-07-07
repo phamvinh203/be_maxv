@@ -8,6 +8,7 @@ export interface Employee {
   status: string;
   isActive: boolean;
   createdAt: string;
+  donViAccess: { donViId: string }[]; // MST mà nhân viên được cấp (owner rỗng: thấy hết)
 }
 
 export type InviteStatus = 'PENDING' | 'APPROVED' | 'REJECTED';
@@ -22,12 +23,26 @@ export interface CompanyInvite {
   lyDoTuChoi: string | null;
   createdAt: string;
   resolvedAt: string | null;
+  donViIds: string[]; // các MST được cấp trong lời mời
+}
+
+/** Công ty/MST kèm thông tin chi tiết — cho bảng Cài đặt › Công ty/MST (GET /companies). */
+export interface Company {
+  id: string;
+  maSoThue: string;
+  slug: string;
+  tenDonVi: string;
+  diaChi: string | null;
+  sdt: string | null;
+  loaiHinhKinhDoanh: string | null;
+  status: string;
 }
 
 export interface InviteEmployeeInput {
   email: string;
   hoTen: string;
   chucVu: string;
+  donViIds: string[]; // các MST (của owner) được cấp cho nhân viên — bắt buộc >= 1
 }
 
 export interface RegisterCompanyInput {

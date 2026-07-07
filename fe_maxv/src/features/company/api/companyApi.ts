@@ -1,9 +1,7 @@
 import { api } from '@/lib/apiClient';
+import type { SwitchCompanyResult } from '@/features/auth/types/auth';
 import type {
-  AuthCompany,
-  SwitchCompanyResult,
-} from '@/features/auth/types/auth';
-import type {
+  Company,
   CompanyInvite,
   Employee,
   InviteEmployeeInput,
@@ -17,9 +15,9 @@ export function registerCompany(
   return api.post<RegisterCompanyResponse>('/companies', input);
 }
 
-/** Danh sách MST/công ty tài khoản được phép (dùng để làm mới Select đổi MST). */
-export function listCompanies(): Promise<AuthCompany[]> {
-  return api.get<AuthCompany[]>('/companies');
+/** Danh sách công ty/MST kèm thông tin chi tiết (bảng Cài đặt › Công ty/MST). */
+export function listCompanies(): Promise<Company[]> {
+  return api.get<Company[]>('/companies');
 }
 
 /** Đổi công ty đang làm việc: backend cấp lại token nhúng donViId mới của MST đích. */

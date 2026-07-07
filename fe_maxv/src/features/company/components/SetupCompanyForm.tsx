@@ -6,6 +6,7 @@ import { attachCompanyToSession, getCurrentUser } from '@/features/auth/hooks/us
 import { setToken } from '@/features/auth/token';
 import { getApiError } from '@/lib/apiClient';
 import { MODULE_ORDER } from '@/config/modules';
+import type { RegisterCompanyResponse } from '@/features/company/types/company';
 
 const MST_REGEX = /^[0-9]{10}(-[0-9]{3})?$/;
 const PHONE_REGEX = /^[0-9]{9,11}$/;
@@ -20,16 +21,43 @@ const EMPTY_FORM: Record<Field, string> = {
   loaiHinhKinhDoanh: '',
 };
 
-export function SetupCompanyForm(): JSX.Element {
+interface Props {
+  heading?: string;
+  description?: string;
+  submitLabel?: string;
+  /** Bề rộng tối đa của form (mặc định 460 cho trang; dialog truyền '100%'). */
+  maxWidth?: number | string;
+  /** Xóa trắng form sau khi tạo thành công (dùng khi tạo thêm MST, ở lại trang). */
+  resetOnSuccess?: boolean;
+  /** Thông báo thành công hiển thị sau khi tạo (khi không điều hướng). */
+  successMessage?: string;
+  /**
+   * Nếu truyền, sẽ được gọi thay cho hành vi mặc định (attach + điều hướng vào app).
+   * Cho phép caller tự quyết định (vd: ở lại trang, chỉ thêm MST vào danh sách).
+   */
+  onCreated?: (result: RegisterCompanyResponse) => void | Promise<void>;
+}
+
+export function SetupCompanyForm({
+  heading = 'Thông tin công ty',
+  description = 'Nhập mã số thuế để khởi tạo dữ liệu kế toán riêng cho công ty của bạn.',
+  submitLabel = 'TẠO CÔNG TY',
+  maxWidth = 460,
+  resetOnSuccess = false,
+  successMessage,
+  onCreated,
+}: Props = {}): JSX.Element {
   const navigate = useNavigate();
   const { mutate, isPending } = useRegisterCompany();
   const [form, setForm] = useState(EMPTY_FORM);
   const [fieldErrors, setFieldErrors] = useState<Partial<Record<Field, string>>>({});
   const [serverError, setServerError] = useState('');
+  const [success, setSuccess] = useState('');
 
   function set(field: Field) {
     return (e: ChangeEvent<HTMLInputElement>) => {
       setForm((f) => ({ ...f, [field]: e.target.value }));
+      setSuccess('');
       setFieldErrors((er) => {
         const n = { ...er };
         delete n[field];
@@ -50,6 +78,7 @@ export function SetupCompanyForm(): JSX.Element {
   function handleSubmit(e: FormEvent): void {
     e.preventDefault();
     setServerError('');
+    setSuccess('');
     const errs = validate();
     if (Object.keys(errs).length) {
       setFieldErrors(errs);
@@ -75,9 +104,24 @@ export function SetupCompanyForm(): JSX.Element {
         loaiHinhKinhDoanh: loaiHinhKinhDoanh || undefined,
       },
       {
-        onSuccess: (result) => {
-          // Backend trả { company, accessToken, activeDonViId } và đã tự switch sang
-          // MST vừa tạo — dùng luôn token mới (đã nhúng donViId) thay vì refresh.
+        onSuccess: async (result) => {
+          // Caller tự xử lý (vd: ở lại trang Settings, chỉ thêm MST vào danh sách).
+          if (onCreated) {
+            try {
+              await onCreated(result);
+            } catch (err) {
+              setServerError(
+                getApiError(err, 'Tạo công ty xong nhưng đồng bộ phiên thất bại. Hãy tải lại trang.'),
+              );
+              return;
+            }
+            if (resetOnSuccess) setForm(EMPTY_FORM);
+            if (successMessage) setSuccess(successMessage);
+            return;
+          }
+
+          // Mặc định (luồng thiết lập lần đầu): backend đã tự switch sang MST vừa tạo,
+          // dùng luôn token mới (đã nhúng donViId) rồi vào thẳng app.
           const { company, accessToken } = result;
           attachCompanyToSession(company);
           setToken(accessToken);
@@ -90,17 +134,22 @@ export function SetupCompanyForm(): JSX.Element {
   }
 
   return (
-    <Box sx={{ width: '100%', maxWidth: 460 }}>
-      <Typography variant="h5" sx={{ fontWeight: 800, color: '#0f172a', mb: 0.5 }}>
-        Thông tin công ty
-      </Typography>
-      <Typography sx={{ fontSize: 14, color: '#64748b', mb: 3 }}>
-        Nhập mã số thuế để khởi tạo dữ liệu kế toán riêng cho công ty của bạn.
-      </Typography>
+    <Box sx={{ width: '100%', maxWidth }}>
+      {heading && (
+        <Typography variant="h5" sx={{ fontWeight: 800, color: '#0f172a', mb: 0.5 }}>
+          {heading}
+        </Typography>
+      )}
+      {description && (
+        <Typography sx={{ fontSize: 14, color: '#64748b', mb: 3 }}>
+          {description}
+        </Typography>
+      )}
 
       <Box component="form" onSubmit={handleSubmit}>
         <Stack spacing={2}>
           {serverError && <Alert severity="error">{serverError}</Alert>}
+          {success && <Alert severity="success">{success}</Alert>}
           <TextField
             label="Tên công ty"
             required
@@ -156,7 +205,7 @@ export function SetupCompanyForm(): JSX.Element {
             disabled={isPending}
             sx={{ height: 44, fontWeight: 700 }}
           >
-            {isPending ? <CircularProgress size={22} sx={{ color: 'white' }} /> : 'TẠO CÔNG TY'}
+            {isPending ? <CircularProgress size={22} sx={{ color: 'white' }} /> : submitLabel}
           </Button>
         </Stack>
       </Box>

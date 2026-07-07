@@ -7,6 +7,9 @@ const USER_KEY = 'maxv_client_user';
 const COMPANY_KEY = 'maxv_client_company';
 const COMPANIES_KEY = 'maxv_client_companies';
 
+/** Bắn khi danh sách MST đổi — để Select đổi MST ở header cập nhật ngay, không cần reload. */
+export const COMPANIES_CHANGED_EVENT = 'maxv:companies-changed';
+
 export function getToken(): string | null {
   return localStorage.getItem(TOKEN_KEY);
 }
@@ -56,6 +59,7 @@ export function getCompanies(): AuthCompany[] {
 
 export function setCompanies(companies: AuthCompany[]): void {
   companiesSlot.set(companies);
+  window.dispatchEvent(new Event(COMPANIES_CHANGED_EVENT));
 }
 
 export function clearSession(): void {

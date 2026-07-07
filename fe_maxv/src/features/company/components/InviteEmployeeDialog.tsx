@@ -9,8 +9,10 @@ import {
   DialogTitle,
   Stack,
   TextField,
+  Typography,
 } from '@mui/material';
 import { useInviteEmployee } from '@/features/company/hooks/useCompany';
+import { getCurrentCompany } from '@/features/auth/hooks/useAuth';
 import { getApiError } from '@/lib/apiClient';
 
 interface Props {
@@ -24,6 +26,9 @@ export function InviteEmployeeDialog({ open, onClose }: Props): JSX.Element {
   const { mutate, isPending } = useInviteEmployee();
   const [form, setForm] = useState(EMPTY_FORM);
   const [error, setError] = useState('');
+
+  // Nhân viên được cấp quyền vào đúng MST đang mở (chọn ở Select trên header).
+  const current = getCurrentCompany();
 
   function set(field: keyof typeof EMPTY_FORM) {
     return (e: ChangeEvent<HTMLInputElement>) =>
@@ -39,8 +44,17 @@ export function InviteEmployeeDialog({ open, onClose }: Props): JSX.Element {
   function handleSubmit(e: FormEvent) {
     e.preventDefault();
     setError('');
+    if (!current) {
+      setError('Chưa xác định được công ty đang làm việc. Vui lòng chọn MST trên thanh tiêu đề.');
+      return;
+    }
     mutate(
-      { hoTen: form.hoTen.trim(), email: form.email.trim(), chucVu: form.chucVu.trim() },
+      {
+        hoTen: form.hoTen.trim(),
+        email: form.email.trim(),
+        chucVu: form.chucVu.trim(),
+        donViIds: [current.id],
+      },
       {
         onSuccess: handleClose,
         onError: (err) =>
@@ -56,6 +70,14 @@ export function InviteEmployeeDialog({ open, onClose }: Props): JSX.Element {
         <DialogContent>
           <Stack spacing={2} sx={{ mt: 1 }}>
             {error && <Alert severity="error">{error}</Alert>}
+            {current && (
+              <Typography sx={{ fontSize: 13, color: '#475569' }}>
+                Cấp quyền vào công ty:{' '}
+                <b>
+                  {current.maSoThue} — {current.tenDonVi}
+                </b>
+              </Typography>
+            )}
             <TextField
               label="Họ và tên"
               required
