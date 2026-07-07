@@ -2,6 +2,7 @@ import Fastify, { type FastifyInstance } from 'fastify';
 import sensible from '@fastify/sensible';
 import cors from '@fastify/cors';
 import cookie from '@fastify/cookie';
+import rateLimit from '@fastify/rate-limit';
 import { env } from './config/env';
 import requestContextPlugin from './plugins/requestContext.plugin';
 import prismaPlugin from './plugins/prisma.plugin';
@@ -20,8 +21,13 @@ export async function buildApp(
 
   await app.register(requestContextPlugin); // ALS: lưu IP theo request (cho writeLog)
   await app.register(sensible);
-  await app.register(cors, { origin: true, credentials: true }); // credentials: gửi cookie
+  // Whitelist domain FE cụ thể (env.allowedOrigins) — KHÔNG dùng origin:true, tránh
+  // phản chiếu mọi Origin kèm credentials (CORS misconfig).
+  await app.register(cors, { origin: env.allowedOrigins, credentials: true });
   await app.register(cookie); // đọc/ghi cookie (refresh token httpOnly)
+  // Giới hạn tốc độ mặc định toàn app; route nhạy cảm (login/register) tự siết chặt
+  // hơn qua config.rateLimit riêng (xem auth.route.ts).
+  await app.register(rateLimit, { max: 300, timeWindow: '1 minute' });
   await app.register(errorHandlerPlugin); // ánh xạ lỗi nghiệp vụ -> HTTP status
   await app.register(prismaPlugin); // decorate app.sysPrisma + onClose disconnect
   await app.register(jwtPlugin); // @fastify/jwt + app.authenticate
