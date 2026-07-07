@@ -1,7 +1,12 @@
-import { useEffect, useRef, useState, type JSX } from 'react';
+import { useEffect, useRef, useState, type ChangeEvent, type JSX } from 'react';
 import logo from '../assets/Logo-Maxv.png';
-import { getUser } from '@/features/auth/token';
-import { useLogout } from '@/features/auth/hooks/useAuth';
+import { getUser, setCompany, setToken } from '@/features/auth/token';
+import {
+  useLogout,
+  getCurrentCompany,
+  getCurrentCompanies,
+} from '@/features/auth/hooks/useAuth';
+import { switchCompany } from '@/features/company/api/companyApi';
 
 interface Props {
   onLogout: () => void;
@@ -15,7 +20,10 @@ function getInitial(hoTen: string | undefined): string {
 
 export default function AppHeader({ onLogout, onSettings }: Props): JSX.Element {
   const user = getUser();
+  const companies = getCurrentCompanies();
+  const currentCompany = getCurrentCompany();
   const [menuOpen, setMenuOpen] = useState(false);
+  const [switching, setSwitching] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
   const logoutMutation = useLogout();
 
@@ -38,6 +46,29 @@ export default function AppHeader({ onLogout, onSettings }: Props): JSX.Element 
   function handleSettings() {
     setMenuOpen(false);
     onSettings?.();
+  }
+
+  /**
+   * Đổi MST đang làm việc: switch token (để tenant DB resolve đúng), lưu công ty,
+   * rồi thay slug trên URL và full reload (xóa sạch cache dữ liệu của MST cũ).
+   */
+  async function handleChangeCompany(e: ChangeEvent<HTMLSelectElement>) {
+    const id = e.target.value;
+    if (!currentCompany || id === currentCompany.id) return;
+    const target = companies.find((c) => c.id === id);
+    if (!target) return;
+
+    setSwitching(true);
+    try {
+      const res = await switchCompany(id);
+      setToken(res.accessToken);
+      setCompany(target);
+      // Giữ nguyên path sau :slug, chỉ thay MST (slug) rồi tải lại toàn trang.
+      const rest = window.location.pathname.split('/').slice(2).join('/');
+      window.location.assign(`/${target.slug}${rest ? `/${rest}` : ''}`);
+    } catch {
+      setSwitching(false);
+    }
   }
 
   return (
@@ -68,6 +99,47 @@ export default function AppHeader({ onLogout, onSettings }: Props): JSX.Element 
       <span style={{ color: 'rgba(255,255,255,0.85)', fontSize: 13, fontWeight: 600, letterSpacing: 0.3 }}>
         Kế toán tổng hợp
       </span>
+
+      {/* Đổi MST: chỉ hiện Select khi tài khoản có nhiều MST; 1 MST -> nhãn tĩnh. */}
+      {companies.length > 1 ? (
+        <>
+          <div style={{ width: 1, height: 24, background: 'rgba(255,255,255,0.2)' }} />
+          <select
+            value={currentCompany?.id ?? ''}
+            onChange={handleChangeCompany}
+            disabled={switching}
+            title="Chọn công ty (MST) đang làm việc"
+            style={{
+              height: 30,
+              maxWidth: 340,
+              background: 'rgba(255,255,255,0.12)',
+              color: 'white',
+              border: '1px solid rgba(255,255,255,0.25)',
+              borderRadius: 6,
+              padding: '0 10px',
+              fontSize: 13,
+              fontWeight: 600,
+              cursor: switching ? 'wait' : 'pointer',
+              outline: 'none',
+            }}
+          >
+            {companies.map((c) => (
+              <option key={c.id} value={c.id} style={{ color: '#0f172a' }}>
+                {c.maSoThue} — {c.tenDonVi}
+              </option>
+            ))}
+          </select>
+        </>
+      ) : (
+        currentCompany && (
+          <>
+            <div style={{ width: 1, height: 24, background: 'rgba(255,255,255,0.2)' }} />
+            <span style={{ color: 'rgba(255,255,255,0.85)', fontSize: 13, fontWeight: 600 }}>
+              {currentCompany.maSoThue} — {currentCompany.tenDonVi}
+            </span>
+          </>
+        )
+      )}
 
       <div style={{ flex: 1 }} />
 

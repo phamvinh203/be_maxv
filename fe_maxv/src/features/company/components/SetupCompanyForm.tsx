@@ -3,7 +3,8 @@ import { Alert, Box, Button, CircularProgress, Stack, TextField, Typography } fr
 import { useNavigate } from 'react-router-dom';
 import { useRegisterCompany } from '@/features/company/hooks/useCompany';
 import { attachCompanyToSession, getCurrentUser } from '@/features/auth/hooks/useAuth';
-import { getApiError, refreshAccessToken } from '@/lib/apiClient';
+import { setToken } from '@/features/auth/token';
+import { getApiError } from '@/lib/apiClient';
 import { MODULE_ORDER } from '@/config/modules';
 
 const MST_REGEX = /^[0-9]{10}(-[0-9]{3})?$/;
@@ -74,12 +75,13 @@ export function SetupCompanyForm(): JSX.Element {
         loaiHinhKinhDoanh: loaiHinhKinhDoanh || undefined,
       },
       {
-        onSuccess: async (result) => {
-          // result đã có đủ field của AuthCompany (id/maSoThue/slug/tenDonVi/status).
-          attachCompanyToSession(result);
-          // JWT hiện tại vẫn mang donViId cũ (null) vì ký lúc login trước khi có công ty.
-          await refreshAccessToken();
-          navigate(`/${result.slug}/${MODULE_ORDER[0].slug}`, { replace: true });
+        onSuccess: (result) => {
+          // Backend trả { company, accessToken, activeDonViId } và đã tự switch sang
+          // MST vừa tạo — dùng luôn token mới (đã nhúng donViId) thay vì refresh.
+          const { company, accessToken } = result;
+          attachCompanyToSession(company);
+          setToken(accessToken);
+          navigate(`/${company.slug}/${MODULE_ORDER[0].slug}`, { replace: true });
         },
         onError: (err) =>
           setServerError(getApiError(err, 'Tạo công ty thất bại. Vui lòng thử lại.')),

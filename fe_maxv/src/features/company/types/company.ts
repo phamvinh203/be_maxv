@@ -50,3 +50,13 @@ export interface RegisterCompanyResult {
   status: string;
   dbName: string | null;
 }
+
+/**
+ * Response thật của POST /companies: backend bọc company trong { company, ... } và
+ * tự switch sang MST vừa tạo (accessToken đã nhúng donViId mới) để vào làm ngay.
+ */
+export interface RegisterCompanyResponse {
+  company: RegisterCompanyResult;
+  accessToken: string;
+  activeDonViId: string;
+}
