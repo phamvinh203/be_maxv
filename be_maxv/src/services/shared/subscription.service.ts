@@ -31,7 +31,9 @@ async function ensureTrialPlan(): Promise<SubscriptionPlan> {
  * lưới an toàn ở bước tạo công ty (cho tài khoản cũ) là no-op an toàn.
  */
 export async function createTrialSubscription(ownerId: string) {
-  const existing = await sysPrisma.subscription.findUnique({ where: { ownerId } });
+  const existing = await sysPrisma.subscription.findUnique({
+    where: { ownerId },
+  });
   if (existing) return existing;
 
   const plan = await ensureTrialPlan();

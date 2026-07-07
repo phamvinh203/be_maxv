@@ -50,12 +50,19 @@ export async function createCompany(req: FastifyRequest, reply: FastifyReply) {
     donViId: company.id,
     role: req.user.role,
   });
-  return sendCreated(reply, { company, accessToken, activeDonViId: company.id });
+  return sendCreated(reply, {
+    company,
+    accessToken,
+    activeDonViId: company.id,
+  });
 }
 
 /** GET /api/v1/companies — danh sách công ty/MST user được phép (owner + nhân viên). */
 export async function listCompanies(req: FastifyRequest, reply: FastifyReply) {
-  const data = await listAccessibleCompaniesDetailed(req.user.userId, req.user.role);
+  const data = await listAccessibleCompaniesDetailed(
+    req.user.userId,
+    req.user.role,
+  );
   return sendOk(reply, data);
 }
 

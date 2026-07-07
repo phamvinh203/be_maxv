@@ -31,7 +31,11 @@ function queryAccessibleCompanies<T extends Prisma.DonViSelect>(
   const where = accessibleDonViWhere(userId, role);
   if (!where) return Promise.resolve([]);
 
-  return sysPrisma.donVi.findMany({ where, select, orderBy: { createdAt: 'asc' } });
+  return sysPrisma.donVi.findMany({
+    where,
+    select,
+    orderBy: { createdAt: 'asc' },
+  });
 }
 
 /** Bản tóm tắt — dùng cho login (Select đổi MST). */

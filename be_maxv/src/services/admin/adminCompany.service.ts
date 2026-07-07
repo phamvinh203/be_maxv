@@ -1,8 +1,12 @@
 import { sysPrisma } from '../../config/db.sys';
 import { getTenantDb } from '../../helpers/tenantClient';
-import { provisionTenant, tenantDbExists } from '../shared/provisioning.service';
+import {
+  provisionTenant,
+  tenantDbExists,
+} from '../shared/provisioning.service';
 import { writeLog } from '../shared/syslog.service';
 import { ConflictError, NotFoundError } from '../../helpers/errors';
+import { findOrThrow } from '../../helpers/crudGuards';
 import { MESSAGES } from '../../constants/messages';
 import type { Prisma } from '../../generated/sys';
 import type { PrismaClient as TenantClient } from '../../generated/tenant';
@@ -87,10 +91,11 @@ export async function adminGetCompany(id: string) {
 }
 
 /** Lấy công ty theo id hoặc ném NotFound. */
-async function getOrThrow(id: string) {
-  const company = await sysPrisma.donVi.findUnique({ where: { id } });
-  if (!company) throw new NotFoundError(MESSAGES.COMPANY.NOT_FOUND);
-  return company;
+function getOrThrow(id: string) {
+  return findOrThrow(
+    () => sysPrisma.donVi.findUnique({ where: { id } }),
+    new NotFoundError(MESSAGES.COMPANY.NOT_FOUND),
+  );
 }
 
 /** POST /admin/companies/:id/retry-provision — chạy lại saga cấp DB cho cty FAILED. */
@@ -196,9 +201,8 @@ async function collectTableStats(
   const unionSql = existing
     .map((t) => `SELECT '${t}' AS t, count(*)::bigint AS c FROM "${t}"`)
     .join(' UNION ALL ');
-  const countRows = await db.$queryRawUnsafe<Array<{ t: string; c: bigint }>>(
-    unionSql,
-  );
+  const countRows =
+    await db.$queryRawUnsafe<Array<{ t: string; c: bigint }>>(unionSql);
   const countMap = new Map(countRows.map((r) => [r.t, Number(r.c)]));
 
   for (const r of sizeRows) {

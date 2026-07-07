@@ -1,12 +1,5 @@
 import { z } from 'zod';
-
-/** Chuỗi tùy chọn: '' | null | undefined -> null; có giá trị -> trim(). */
-const optText = z
-  .string()
-  .trim()
-  .nullable()
-  .optional()
-  .transform((v) => (v && v.length ? v : null));
+import { optText } from '../shared/primitives';
 
 /** Thân request tạo/sửa 1 mặt hàng (dmvt). Default khớp maxv_v1. */
 export const hangHoaBodySchema = z.object({

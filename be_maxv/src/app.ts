@@ -17,7 +17,10 @@ import { registerRoutes } from './routes/index.route';
 export async function buildApp(
   opts: { logger?: boolean } = {},
 ): Promise<FastifyInstance> {
-  const app = Fastify({ logger: opts.logger ?? true, trustProxy: env.trustProxy });
+  const app = Fastify({
+    logger: opts.logger ?? true,
+    trustProxy: env.trustProxy,
+  });
 
   await app.register(requestContextPlugin); // ALS: lưu IP theo request (cho writeLog)
   await app.register(sensible);

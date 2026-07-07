@@ -1,5 +1,6 @@
 import type { Prisma, PrismaClient } from '../../../../generated/tenant';
 import { ConflictError, NotFoundError } from '../../../../helpers/errors';
+import { assertNotExists, findOrThrow } from '../../../../helpers/crudGuards';
 import { MESSAGES } from '../../../../constants/messages';
 import type {
   PhongBanBodyInput,
@@ -25,11 +26,14 @@ export async function createPhongBan(
   db: PrismaClient,
   body: PhongBanBodyInput,
 ) {
-  const exists = await db.dmpb.findUnique({
-    where: { ma_pb: body.ma_pb },
-    select: { ma_pb: true },
-  });
-  if (exists) throw new ConflictError(`Mã phòng ban "${body.ma_pb}" đã tồn tại`);
+  await assertNotExists(
+    () =>
+      db.dmpb.findUnique({
+        where: { ma_pb: body.ma_pb },
+        select: { ma_pb: true },
+      }),
+    new ConflictError(`Mã phòng ban "${body.ma_pb}" đã tồn tại`),
+  );
 
   await db.dmpb.create({ data: body });
   return { ma_pb: body.ma_pb };
@@ -41,11 +45,11 @@ export async function updatePhongBan(
   maPb: string,
   body: PhongBanUpdateInput,
 ) {
-  const current = await db.dmpb.findUnique({
-    where: { ma_pb: maPb },
-    select: { ma_pb: true },
-  });
-  if (!current) throw new NotFoundError(MESSAGES.TONG_HOP.PHONG_BAN_NOT_FOUND);
+  await findOrThrow(
+    () =>
+      db.dmpb.findUnique({ where: { ma_pb: maPb }, select: { ma_pb: true } }),
+    new NotFoundError(MESSAGES.TONG_HOP.PHONG_BAN_NOT_FOUND),
+  );
 
   await db.dmpb.update({
     where: { ma_pb: maPb },
@@ -56,11 +60,11 @@ export async function updatePhongBan(
 
 /** DELETE. */
 export async function deletePhongBan(db: PrismaClient, maPb: string) {
-  const current = await db.dmpb.findUnique({
-    where: { ma_pb: maPb },
-    select: { ma_pb: true },
-  });
-  if (!current) throw new NotFoundError(MESSAGES.TONG_HOP.PHONG_BAN_NOT_FOUND);
+  await findOrThrow(
+    () =>
+      db.dmpb.findUnique({ where: { ma_pb: maPb }, select: { ma_pb: true } }),
+    new NotFoundError(MESSAGES.TONG_HOP.PHONG_BAN_NOT_FOUND),
+  );
 
   await db.dmpb.delete({ where: { ma_pb: maPb } });
   return { ma_pb: maPb };

@@ -1,5 +1,6 @@
 import type { Prisma, PrismaClient } from '../../../../generated/tenant';
 import { ConflictError, NotFoundError } from '../../../../helpers/errors';
+import { assertNotExists, findOrThrow } from '../../../../helpers/crudGuards';
 import { MESSAGES } from '../../../../constants/messages';
 import type {
   ViTriBodyInput,
@@ -39,24 +40,28 @@ export async function listViTri(db: PrismaClient, q: ViTriListQuery) {
 
 /** POST tạo mới. */
 export async function createViTri(db: PrismaClient, body: ViTriBodyInput) {
-  const exists = await db.dmvitri.findUnique({
-    where: {
-      ma_kho_ma_vi_tri: { ma_kho: body.ma_kho, ma_vi_tri: body.ma_vi_tri },
-    },
-    select: { ma_vi_tri: true },
-  });
-  if (exists) {
-    throw new ConflictError(
+  await assertNotExists(
+    () =>
+      db.dmvitri.findUnique({
+        where: {
+          ma_kho_ma_vi_tri: { ma_kho: body.ma_kho, ma_vi_tri: body.ma_vi_tri },
+        },
+        select: { ma_vi_tri: true },
+      }),
+    new ConflictError(
       `Vị trí "${body.ma_vi_tri}" của kho "${body.ma_kho}" đã tồn tại`,
-    );
-  }
+    ),
+  );
 
   // Kho phải tồn tại (vị trí thuộc 1 kho).
-  const kho = await db.dmkho.findUnique({
-    where: { ma_kho: body.ma_kho },
-    select: { ma_kho: true },
-  });
-  if (!kho) throw new ConflictError(`Kho "${body.ma_kho}" không tồn tại`);
+  await findOrThrow(
+    () =>
+      db.dmkho.findUnique({
+        where: { ma_kho: body.ma_kho },
+        select: { ma_kho: true },
+      }),
+    new ConflictError(`Kho "${body.ma_kho}" không tồn tại`),
+  );
 
   await db.dmvitri.create({
     data: {
@@ -77,11 +82,14 @@ export async function updateViTri(
   maViTri: string,
   body: ViTriUpdateInput,
 ) {
-  const current = await db.dmvitri.findUnique({
-    where: { ma_kho_ma_vi_tri: { ma_kho: maKho, ma_vi_tri: maViTri } },
-    select: { ma_vi_tri: true },
-  });
-  if (!current) throw new NotFoundError(MESSAGES.TON_KHO.VI_TRI_NOT_FOUND);
+  await findOrThrow(
+    () =>
+      db.dmvitri.findUnique({
+        where: { ma_kho_ma_vi_tri: { ma_kho: maKho, ma_vi_tri: maViTri } },
+        select: { ma_vi_tri: true },
+      }),
+    new NotFoundError(MESSAGES.TON_KHO.VI_TRI_NOT_FOUND),
+  );
 
   await db.dmvitri.update({
     where: { ma_kho_ma_vi_tri: { ma_kho: maKho, ma_vi_tri: maViTri } },
@@ -100,11 +108,14 @@ export async function deleteViTri(
   maKho: string,
   maViTri: string,
 ) {
-  const current = await db.dmvitri.findUnique({
-    where: { ma_kho_ma_vi_tri: { ma_kho: maKho, ma_vi_tri: maViTri } },
-    select: { ma_vi_tri: true },
-  });
-  if (!current) throw new NotFoundError(MESSAGES.TON_KHO.VI_TRI_NOT_FOUND);
+  await findOrThrow(
+    () =>
+      db.dmvitri.findUnique({
+        where: { ma_kho_ma_vi_tri: { ma_kho: maKho, ma_vi_tri: maViTri } },
+        select: { ma_vi_tri: true },
+      }),
+    new NotFoundError(MESSAGES.TON_KHO.VI_TRI_NOT_FOUND),
+  );
 
   const used = await db.dmvt.count({
     where: { ma_kho: maKho, ma_vi_tri: maViTri },

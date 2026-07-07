@@ -1,13 +1,6 @@
 import { z } from 'zod';
 import { MESSAGES } from '../../constants/messages';
-
-/** '' | null | undefined -> null; có giá trị -> trim(). */
-const optText = z
-  .string()
-  .trim()
-  .nullable()
-  .optional()
-  .transform((v) => (v && v.length ? v : null));
+import { optText } from '../shared/primitives';
 
 const loaiNh = z.coerce
   .number()

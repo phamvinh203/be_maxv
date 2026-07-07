@@ -1,12 +1,5 @@
 import { z } from 'zod';
-
-/** '' | null | undefined -> null; có giá trị -> trim(). */
-const optText = z
-  .string()
-  .trim()
-  .nullable()
-  .optional()
-  .transform((v) => (v && v.length ? v : null));
+import { optText } from '../shared/primitives';
 
 /** Số thực, thiếu -> 0. */
 const num = z.coerce.number().default(0);

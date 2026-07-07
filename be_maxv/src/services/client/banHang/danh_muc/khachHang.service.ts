@@ -1,5 +1,6 @@
 import type { Prisma, PrismaClient } from '../../../../generated/tenant';
 import { ConflictError, NotFoundError } from '../../../../helpers/errors';
+import { assertNotExists, findOrThrow } from '../../../../helpers/crudGuards';
 import { MESSAGES } from '../../../../constants/messages';
 import type {
   KhachHangBodyInput,
@@ -29,11 +30,14 @@ export async function createKhachHang(
   db: PrismaClient,
   body: KhachHangBodyInput,
 ) {
-  const exists = await db.dmkh.findUnique({
-    where: { ma_kh: body.ma_kh },
-    select: { ma_kh: true },
-  });
-  if (exists) throw new ConflictError(`Mã khách hàng "${body.ma_kh}" đã tồn tại`);
+  await assertNotExists(
+    () =>
+      db.dmkh.findUnique({
+        where: { ma_kh: body.ma_kh },
+        select: { ma_kh: true },
+      }),
+    new ConflictError(`Mã khách hàng "${body.ma_kh}" đã tồn tại`),
+  );
 
   await db.dmkh.create({ data: body });
   return { ma_kh: body.ma_kh };
@@ -45,11 +49,11 @@ export async function updateKhachHang(
   maKh: string,
   body: KhachHangUpdateInput,
 ) {
-  const current = await db.dmkh.findUnique({
-    where: { ma_kh: maKh },
-    select: { ma_kh: true },
-  });
-  if (!current) throw new NotFoundError(MESSAGES.BAN_HANG.KHACH_HANG_NOT_FOUND);
+  await findOrThrow(
+    () =>
+      db.dmkh.findUnique({ where: { ma_kh: maKh }, select: { ma_kh: true } }),
+    new NotFoundError(MESSAGES.BAN_HANG.KHACH_HANG_NOT_FOUND),
+  );
 
   await db.dmkh.update({
     where: { ma_kh: maKh },
@@ -60,11 +64,11 @@ export async function updateKhachHang(
 
 /** DELETE. */
 export async function deleteKhachHang(db: PrismaClient, maKh: string) {
-  const current = await db.dmkh.findUnique({
-    where: { ma_kh: maKh },
-    select: { ma_kh: true },
-  });
-  if (!current) throw new NotFoundError(MESSAGES.BAN_HANG.KHACH_HANG_NOT_FOUND);
+  await findOrThrow(
+    () =>
+      db.dmkh.findUnique({ where: { ma_kh: maKh }, select: { ma_kh: true } }),
+    new NotFoundError(MESSAGES.BAN_HANG.KHACH_HANG_NOT_FOUND),
+  );
 
   await db.dmkh.delete({ where: { ma_kh: maKh } });
   return { ma_kh: maKh };

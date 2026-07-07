@@ -1,5 +1,6 @@
 import type { Prisma, PrismaClient } from '../../../../generated/tenant';
 import { ConflictError, NotFoundError } from '../../../../helpers/errors';
+import { assertNotExists, findOrThrow } from '../../../../helpers/crudGuards';
 import { MESSAGES } from '../../../../constants/messages';
 import type {
   TienTeBodyInput,
@@ -22,11 +23,14 @@ export function listTienTe(db: PrismaClient, q: TienTeListQuery) {
 
 /** POST tạo mới. */
 export async function createTienTe(db: PrismaClient, body: TienTeBodyInput) {
-  const exists = await db.dmnt.findUnique({
-    where: { ma_nt: body.ma_nt },
-    select: { ma_nt: true },
-  });
-  if (exists) throw new ConflictError(`Mã ngoại tệ "${body.ma_nt}" đã tồn tại`);
+  await assertNotExists(
+    () =>
+      db.dmnt.findUnique({
+        where: { ma_nt: body.ma_nt },
+        select: { ma_nt: true },
+      }),
+    new ConflictError(`Mã ngoại tệ "${body.ma_nt}" đã tồn tại`),
+  );
 
   await db.dmnt.create({ data: body });
   return { ma_nt: body.ma_nt };
@@ -38,11 +42,11 @@ export async function updateTienTe(
   maNt: string,
   body: TienTeUpdateInput,
 ) {
-  const current = await db.dmnt.findUnique({
-    where: { ma_nt: maNt },
-    select: { ma_nt: true },
-  });
-  if (!current) throw new NotFoundError(MESSAGES.TONG_HOP.TIEN_TE_NOT_FOUND);
+  await findOrThrow(
+    () =>
+      db.dmnt.findUnique({ where: { ma_nt: maNt }, select: { ma_nt: true } }),
+    new NotFoundError(MESSAGES.TONG_HOP.TIEN_TE_NOT_FOUND),
+  );
 
   await db.dmnt.update({
     where: { ma_nt: maNt },
@@ -53,11 +57,11 @@ export async function updateTienTe(
 
 /** DELETE. */
 export async function deleteTienTe(db: PrismaClient, maNt: string) {
-  const current = await db.dmnt.findUnique({
-    where: { ma_nt: maNt },
-    select: { ma_nt: true },
-  });
-  if (!current) throw new NotFoundError(MESSAGES.TONG_HOP.TIEN_TE_NOT_FOUND);
+  await findOrThrow(
+    () =>
+      db.dmnt.findUnique({ where: { ma_nt: maNt }, select: { ma_nt: true } }),
+    new NotFoundError(MESSAGES.TONG_HOP.TIEN_TE_NOT_FOUND),
+  );
 
   await db.dmnt.delete({ where: { ma_nt: maNt } });
   return { ma_nt: maNt };

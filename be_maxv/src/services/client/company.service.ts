@@ -25,7 +25,8 @@ type RegisterCompanyArgs = RegisterCompanyInput & { ownerId: string };
  * lưới an toàn idempotent (bù cho tài khoản cũ đăng ký trước khi có logic này).
  */
 export async function registerCompany(input: RegisterCompanyArgs) {
-  const { ownerId, tenCongTy, maSoThue, diaChi, sdt, loaiHinhKinhDoanh } = input;
+  const { ownerId, tenCongTy, maSoThue, diaChi, sdt, loaiHinhKinhDoanh } =
+    input;
 
   // Đếm MST hiện có + kiểm tra MST trùng.
   const [existingCount, mstExists] = await Promise.all([
@@ -54,7 +55,12 @@ export async function registerCompany(input: RegisterCompanyArgs) {
 
   // Lưới an toàn: đảm bảo tài khoản có thuê bao (idempotent, no-op nếu đã có).
   if (existingCount === 0) {
-    await createTrialSubscription(ownerId).catch(() => undefined);
+    await createTrialSubscription(ownerId).catch((err) =>
+      console.error(
+        `[registerCompany] createTrialSubscription lỗi cho owner ${ownerId}:`,
+        err,
+      ),
+    );
   }
 
   await writeLog({
@@ -130,17 +136,19 @@ export async function inviteUserToCompany(input: InviteEmployeeInput) {
     throw new ForbiddenError(MESSAGES.COMPANY.NO_ACCESS);
   }
 
-  const [employeeCount, owner, existingUser, pendingInvite] = await Promise.all([
-    sysPrisma.user.count({ where: { ownerId } }),
-    sysPrisma.user.findUnique({
-      where: { id: ownerId },
-      select: { hoTen: true },
-    }),
-    sysPrisma.user.findUnique({ where: { email } }),
-    sysPrisma.inviteRequest.findFirst({
-      where: { ownerId, email, status: 'PENDING' },
-    }),
-  ]);
+  const [employeeCount, owner, existingUser, pendingInvite] = await Promise.all(
+    [
+      sysPrisma.user.count({ where: { ownerId } }),
+      sysPrisma.user.findUnique({
+        where: { id: ownerId },
+        select: { hoTen: true },
+      }),
+      sysPrisma.user.findUnique({ where: { email } }),
+      sysPrisma.inviteRequest.findFirst({
+        where: { ownerId, email, status: 'PENDING' },
+      }),
+    ],
+  );
 
   // 1 email = 1 tài khoản: email đã có user -> không mời làm nhân viên tài khoản khác.
   if (existingUser) {

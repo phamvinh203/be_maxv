@@ -6,7 +6,10 @@ import { listAccessibleCompanies } from '../shared/companyAccess.service';
 import { canAccessDonVi } from '../../helpers/access';
 import { ConflictError, UnauthorizedError } from '../../helpers/errors';
 import { MESSAGES } from '../../constants/messages';
-import type { RegisterInput, LoginInput } from '../../validators/auth.validator';
+import type {
+  RegisterInput,
+  LoginInput,
+} from '../../validators/auth.validator';
 
 /**
  * BƯỚC 1 — Đăng ký người dùng.
@@ -36,7 +39,13 @@ export async function registerUser(input: RegisterInput) {
 
   // Gán gói dùng thử ngay khi tạo tài khoản (best-effort: lỗi tạo gói không được
   // chặn đăng ký — lưới an toàn idempotent ở bước tạo công ty sẽ bù lại nếu thiếu).
-  await createTrialSubscription(user.id).catch(() => undefined);
+  // Log lại thay vì nuốt hoàn toàn: đây là entitlement quan trọng, cần biết nếu tạo lỗi.
+  await createTrialSubscription(user.id).catch((err) =>
+    console.error(
+      `[registerUser] createTrialSubscription lỗi cho owner ${user.id}:`,
+      err,
+    ),
+  );
 
   await writeLog({ hanhDong: 'REGISTER', userId: user.id, chiTiet: { email } });
 
@@ -101,7 +110,10 @@ export async function loadUserForRefresh(
   }
 
   let donViId: string | null = null;
-  if (tokenDonViId && (await canAccessDonVi(user.id, user.role, tokenDonViId))) {
+  if (
+    tokenDonViId &&
+    (await canAccessDonVi(user.id, user.role, tokenDonViId))
+  ) {
     donViId = tokenDonViId;
   }
 
