@@ -24,13 +24,27 @@ import { MESSAGES } from '../../constants/messages';
 
 /**
  * POST /api/v1/companies — Owner tạo 1 công ty/MST + cấp DB maxv2_<mst>_app.
- * Tự động switch sang MST vừa tạo (cấp token mới) để owner vào làm ngay.
+ *
+ * Mặc định (activate=true, dùng ở luồng thiết lập lần đầu): tự động switch sang MST
+ * vừa tạo (cấp token mới + refresh cookie) để owner vào làm ngay.
+ *
+ * activate=false (dùng khi thêm MST từ Cài đặt, owner đang làm việc ở MST khác):
+ * KHÔNG đụng tới token/refresh cookie hiện tại — tránh cửa sổ đua khi FE phải
+ * switch-back thủ công (refresh cookie có thể ngầm trỏ sang MST mới nếu 1 request
+ * khác 401 đúng lúc đó).
  */
 export async function createCompany(req: FastifyRequest, reply: FastifyReply) {
+  const { activate = true } = (req.body as { activate?: boolean }) ?? {};
+
   const company = await registerCompany({
     ...validateBody(registerCompanySchema, req.body),
     ownerId: req.user.userId,
   });
+
+  if (!activate) {
+    return sendCreated(reply, { company });
+  }
+
   const accessToken = await issueTokens(reply, {
     userId: req.user.userId,
     donViId: company.id,

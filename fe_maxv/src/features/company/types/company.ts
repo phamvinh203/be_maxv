@@ -52,6 +52,11 @@ export interface RegisterCompanyInput {
   diaChi: string;
   sdt?: string;
   loaiHinhKinhDoanh?: string;
+  /**
+   * false khi thêm MST từ Cài đặt (owner đang làm việc ở MST khác): backend KHÔNG
+   * đụng tới token/refresh cookie hiện tại. Mặc định true (luồng thiết lập lần đầu).
+   */
+  activate?: boolean;
 }
 
 export interface RegisterCompanyResult {
@@ -67,11 +72,12 @@ export interface RegisterCompanyResult {
 }
 
 /**
- * Response thật của POST /companies: backend bọc company trong { company, ... } và
- * tự switch sang MST vừa tạo (accessToken đã nhúng donViId mới) để vào làm ngay.
+ * Response thật của POST /companies: backend bọc company trong { company, ... }.
+ * accessToken/activeDonViId chỉ có khi activate=true (mặc định) — backend đã tự
+ * switch sang MST vừa tạo; khi activate=false thì không có (phiên đứng yên).
  */
 export interface RegisterCompanyResponse {
   company: RegisterCompanyResult;
-  accessToken: string;
-  activeDonViId: string;
+  accessToken?: string;
+  activeDonViId?: string;
 }

@@ -28,6 +28,12 @@ interface Props {
   /** Bề rộng tối đa của form (mặc định 460 cho trang; dialog truyền '100%'). */
   maxWidth?: number | string;
   /**
+   * false khi tạo THÊM MST cho tài khoản đang có sẵn công ty (vd: dialog ở Cài đặt):
+   * backend KHÔNG đụng tới token/refresh cookie hiện tại, tránh cửa sổ đua tenant.
+   * true (mặc định) cho luồng thiết lập lần đầu — backend tự switch sang MST vừa tạo.
+   */
+  activate?: boolean;
+  /**
    * Nếu truyền, sẽ được gọi thay cho hành vi mặc định (attach + điều hướng vào app).
    * Cho phép caller tự quyết định (vd: ở lại trang, chỉ thêm MST vào danh sách).
    */
@@ -39,6 +45,7 @@ export function SetupCompanyForm({
   description = 'Nhập mã số thuế để khởi tạo dữ liệu kế toán riêng cho công ty của bạn.',
   submitLabel = 'TẠO CÔNG TY',
   maxWidth = 460,
+  activate = true,
   onCreated,
 }: Props = {}): JSX.Element {
   const navigate = useNavigate();
@@ -93,6 +100,7 @@ export function SetupCompanyForm({
         diaChi: form.diaChi.trim(),
         sdt: sdt || undefined,
         loaiHinhKinhDoanh: loaiHinhKinhDoanh || undefined,
+        activate,
       },
       {
         onSuccess: async (result) => {
@@ -108,11 +116,11 @@ export function SetupCompanyForm({
             return;
           }
 
-          // Mặc định (luồng thiết lập lần đầu): backend đã tự switch sang MST vừa tạo,
-          // dùng luôn token mới (đã nhúng donViId) rồi vào thẳng app.
+          // Mặc định (luồng thiết lập lần đầu, activate=true): backend đã tự switch
+          // sang MST vừa tạo, dùng luôn token mới (đã nhúng donViId) rồi vào thẳng app.
           const { company, accessToken } = result;
           attachCompanyToSession(company);
-          setToken(accessToken);
+          if (accessToken) setToken(accessToken);
           navigate(`/${company.slug}/${MODULE_ORDER[0].slug}`, { replace: true });
         },
         onError: (err) =>
