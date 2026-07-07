@@ -65,8 +65,8 @@ export async function loginUser(input: LoginInput) {
   }
 
   const companies = await listAccessibleCompanies(user.id, user.role);
-  // Tự chọn khi chỉ có 1 công ty; nhiều/không có -> null (chờ FE switch hoặc tạo MST).
-  const activeDonViId = companies.length === 1 ? companies[0].id : null;
+  // Mặc định vào MST đầu tiên (token nhúng luôn donViId) — FE đổi MST qua switch sau.
+  const activeDonViId = companies[0]?.id ?? null;
 
   await writeLog({
     hanhDong: 'LOGIN',

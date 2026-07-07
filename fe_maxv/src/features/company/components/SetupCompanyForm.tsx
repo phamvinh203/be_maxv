@@ -27,10 +27,6 @@ interface Props {
   submitLabel?: string;
   /** Bề rộng tối đa của form (mặc định 460 cho trang; dialog truyền '100%'). */
   maxWidth?: number | string;
-  /** Xóa trắng form sau khi tạo thành công (dùng khi tạo thêm MST, ở lại trang). */
-  resetOnSuccess?: boolean;
-  /** Thông báo thành công hiển thị sau khi tạo (khi không điều hướng). */
-  successMessage?: string;
   /**
    * Nếu truyền, sẽ được gọi thay cho hành vi mặc định (attach + điều hướng vào app).
    * Cho phép caller tự quyết định (vd: ở lại trang, chỉ thêm MST vào danh sách).
@@ -43,8 +39,6 @@ export function SetupCompanyForm({
   description = 'Nhập mã số thuế để khởi tạo dữ liệu kế toán riêng cho công ty của bạn.',
   submitLabel = 'TẠO CÔNG TY',
   maxWidth = 460,
-  resetOnSuccess = false,
-  successMessage,
   onCreated,
 }: Props = {}): JSX.Element {
   const navigate = useNavigate();
@@ -52,12 +46,10 @@ export function SetupCompanyForm({
   const [form, setForm] = useState(EMPTY_FORM);
   const [fieldErrors, setFieldErrors] = useState<Partial<Record<Field, string>>>({});
   const [serverError, setServerError] = useState('');
-  const [success, setSuccess] = useState('');
 
   function set(field: Field) {
     return (e: ChangeEvent<HTMLInputElement>) => {
       setForm((f) => ({ ...f, [field]: e.target.value }));
-      setSuccess('');
       setFieldErrors((er) => {
         const n = { ...er };
         delete n[field];
@@ -78,7 +70,6 @@ export function SetupCompanyForm({
   function handleSubmit(e: FormEvent): void {
     e.preventDefault();
     setServerError('');
-    setSuccess('');
     const errs = validate();
     if (Object.keys(errs).length) {
       setFieldErrors(errs);
@@ -113,10 +104,7 @@ export function SetupCompanyForm({
               setServerError(
                 getApiError(err, 'Tạo công ty xong nhưng đồng bộ phiên thất bại. Hãy tải lại trang.'),
               );
-              return;
             }
-            if (resetOnSuccess) setForm(EMPTY_FORM);
-            if (successMessage) setSuccess(successMessage);
             return;
           }
 
@@ -149,7 +137,6 @@ export function SetupCompanyForm({
       <Box component="form" onSubmit={handleSubmit}>
         <Stack spacing={2}>
           {serverError && <Alert severity="error">{serverError}</Alert>}
-          {success && <Alert severity="success">{success}</Alert>}
           <TextField
             label="Tên công ty"
             required

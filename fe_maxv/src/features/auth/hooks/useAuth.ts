@@ -17,27 +17,21 @@ import type { AuthCompany, AuthUser } from '@/features/auth/types/auth';
 export function useLogin() {
   return useMutation({
     mutationFn: login,
-    onSuccess: async (data) => {
+    onSuccess: (data) => {
       setToken(data.accessToken);
       setUser(data.user);
       setCompanies(data.companies);
-
-      // Chọn công ty đang làm việc: ưu tiên cái backend đã tự chọn (activeDonViId),
-      // nếu tài khoản có nhiều MST (backend để null) thì mặc định MST đầu tiên.
-      const active =
-        data.companies.find((c) => c.id === data.activeDonViId) ??
-        data.companies[0] ??
-        null;
-      setCompany(active);
-
-      // Nếu token chưa gắn đúng MST (nhiều MST -> activeDonViId null), switch để
-      // token nhúng donViId của MST mặc định, đảm bảo tenant DB resolve đúng.
-      if (active && active.id !== data.activeDonViId) {
-        const res = await switchCompany(active.id);
-        setToken(res.accessToken);
-      }
+      // Backend luôn gắn activeDonViId = MST mặc định (công ty đầu) khi tài khoản có
+      // MST, nên token đã trỏ đúng tenant — chỉ cần lưu công ty đang chọn.
+      setCompany(data.companies.find((c) => c.id === data.activeDonViId) ?? null);
     },
   });
+}
+
+/** Đổi công ty đang làm việc ở tầng token: switch (backend cấp token mới) + lưu lại. */
+export async function switchToCompany(id: string): Promise<void> {
+  const res = await switchCompany(id);
+  setToken(res.accessToken);
 }
 
 export function useRegister() {
@@ -87,9 +81,5 @@ export function attachCompanyToSession(company: AuthCompany): void {
   const user = getUser();
   if (user) setUser({ ...user, donViId: company.id });
   setCompany(company);
-
-  const companies = getCompanies();
-  if (!companies.some((c) => c.id === company.id)) {
-    setCompanies([...companies, company]);
-  }
+  addCompanyToList(company);
 }

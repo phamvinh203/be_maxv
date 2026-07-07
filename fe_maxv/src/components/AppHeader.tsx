@@ -1,17 +1,13 @@
 import { useEffect, useRef, useState, type ChangeEvent, type JSX } from 'react';
 import logo from '../assets/Logo-Maxv.png';
-import {
-  getUser,
-  setCompany,
-  setToken,
-  COMPANIES_CHANGED_EVENT,
-} from '@/features/auth/token';
+import { getUser, setCompany, COMPANIES_CHANGED_EVENT } from '@/features/auth/token';
 import {
   useLogout,
   getCurrentCompany,
   getCurrentCompanies,
+  switchToCompany,
 } from '@/features/auth/hooks/useAuth';
-import { switchCompany } from '@/features/company/api/companyApi';
+import type { AuthCompany } from '@/features/auth/types/auth';
 
 interface Props {
   onLogout: () => void;
@@ -23,21 +19,26 @@ function getInitial(hoTen: string | undefined): string {
   return trimmed ? trimmed.charAt(0).toUpperCase() : '?';
 }
 
+/** Nhãn hiển thị của 1 MST trên header. */
+function companyLabel(c: AuthCompany): string {
+  return `${c.maSoThue} — ${c.tenDonVi}`;
+}
+
+const DIVIDER_STYLE = { width: 1, height: 24, background: 'rgba(255,255,255,0.2)' };
+
 export default function AppHeader({ onLogout, onSettings }: Props): JSX.Element {
   const user = getUser();
   const [menuOpen, setMenuOpen] = useState(false);
   const [switching, setSwitching] = useState(false);
-  const [, forceTick] = useState(0);
+  // Danh sách MST đọc từ localStorage (không reactive) -> giữ trong state, cập nhật
+  // khi có COMPANIES_CHANGED_EVENT (thêm MST ở trang Cài đặt).
+  const [companies, setCompanies] = useState(getCurrentCompanies);
+  const currentCompany = getCurrentCompany();
   const menuRef = useRef<HTMLDivElement>(null);
   const logoutMutation = useLogout();
 
-  // Danh sách MST đọc từ localStorage (không reactive) -> lắng nghe event để
-  // cập nhật Select ngay khi thêm MST mới ở trang Cài đặt.
-  const companies = getCurrentCompanies();
-  const currentCompany = getCurrentCompany();
-
   useEffect(() => {
-    const handler = () => forceTick((n) => n + 1);
+    const handler = () => setCompanies(getCurrentCompanies());
     window.addEventListener(COMPANIES_CHANGED_EVENT, handler);
     return () => window.removeEventListener(COMPANIES_CHANGED_EVENT, handler);
   }, []);
@@ -75,8 +76,7 @@ export default function AppHeader({ onLogout, onSettings }: Props): JSX.Element 
 
     setSwitching(true);
     try {
-      const res = await switchCompany(id);
-      setToken(res.accessToken);
+      await switchToCompany(id);
       setCompany(target);
       // Giữ nguyên path sau :slug, chỉ thay MST (slug) rồi tải lại toàn trang.
       const rest = window.location.pathname.split('/').slice(2).join('/');
@@ -116,44 +116,41 @@ export default function AppHeader({ onLogout, onSettings }: Props): JSX.Element 
       </span>
 
       {/* Đổi MST: chỉ hiện Select khi tài khoản có nhiều MST; 1 MST -> nhãn tĩnh. */}
-      {companies.length > 1 ? (
+      {currentCompany && (
         <>
-          <div style={{ width: 1, height: 24, background: 'rgba(255,255,255,0.2)' }} />
-          <select
-            value={currentCompany?.id ?? ''}
-            onChange={handleChangeCompany}
-            disabled={switching}
-            title="Chọn công ty (MST) đang làm việc"
-            style={{
-              height: 30,
-              maxWidth: 340,
-              background: 'rgba(255,255,255,0.12)',
-              color: 'white',
-              border: '1px solid rgba(255,255,255,0.25)',
-              borderRadius: 6,
-              padding: '0 10px',
-              fontSize: 13,
-              fontWeight: 600,
-              cursor: switching ? 'wait' : 'pointer',
-              outline: 'none',
-            }}
-          >
-            {companies.map((c) => (
-              <option key={c.id} value={c.id} style={{ color: '#0f172a' }}>
-                {c.maSoThue} — {c.tenDonVi}
-              </option>
-            ))}
-          </select>
-        </>
-      ) : (
-        currentCompany && (
-          <>
-            <div style={{ width: 1, height: 24, background: 'rgba(255,255,255,0.2)' }} />
+          <div style={DIVIDER_STYLE} />
+          {companies.length > 1 ? (
+            <select
+              value={currentCompany.id}
+              onChange={handleChangeCompany}
+              disabled={switching}
+              title="Chọn công ty (MST) đang làm việc"
+              style={{
+                height: 30,
+                maxWidth: 340,
+                background: 'rgba(255,255,255,0.12)',
+                color: 'white',
+                border: '1px solid rgba(255,255,255,0.25)',
+                borderRadius: 6,
+                padding: '0 10px',
+                fontSize: 13,
+                fontWeight: 600,
+                cursor: switching ? 'wait' : 'pointer',
+                outline: 'none',
+              }}
+            >
+              {companies.map((c) => (
+                <option key={c.id} value={c.id} style={{ color: '#0f172a' }}>
+                  {companyLabel(c)}
+                </option>
+              ))}
+            </select>
+          ) : (
             <span style={{ color: 'rgba(255,255,255,0.85)', fontSize: 13, fontWeight: 600 }}>
-              {currentCompany.maSoThue} — {currentCompany.tenDonVi}
+              {companyLabel(currentCompany)}
             </span>
-          </>
-        )
+          )}
+        </>
       )}
 
       <div style={{ flex: 1 }} />

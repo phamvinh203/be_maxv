@@ -1,4 +1,5 @@
 import { sysPrisma } from '../../config/db.sys';
+import type { Prisma } from '../../generated/sys';
 import { accessibleDonViWhere } from '../../helpers/access';
 
 /** Trường tóm tắt công ty trả cho FE (danh sách chọn / switcher) — giữ gọn cho login. */
@@ -19,30 +20,28 @@ const COMPANY_DETAIL_SELECT = {
 } as const;
 
 /**
- * Danh sách công ty (MST) user được phép thao tác — bản tóm tắt, dùng cho login.
+ * Danh sách công ty (MST) user được phép thao tác, theo bộ trường `select`.
  * Phạm vi theo vai trò do accessibleDonViWhere quyết định (ADMIN -> []).
  */
-export function listAccessibleCompanies(userId: string, role: string) {
+function queryAccessibleCompanies<T extends Prisma.DonViSelect>(
+  userId: string,
+  role: string,
+  select: T,
+) {
   const where = accessibleDonViWhere(userId, role);
   if (!where) return Promise.resolve([]);
 
-  return sysPrisma.donVi.findMany({
-    where,
-    select: COMPANY_SUMMARY_SELECT,
-    orderBy: { createdAt: 'asc' },
-  });
+  return sysPrisma.donVi.findMany({ where, select, orderBy: { createdAt: 'asc' } });
 }
 
-/** Như listAccessibleCompanies nhưng kèm địa chỉ/SĐT/loại hình — dùng cho GET /companies. */
-export function listAccessibleCompaniesDetailed(userId: string, role: string) {
-  const where = accessibleDonViWhere(userId, role);
-  if (!where) return Promise.resolve([]);
+/** Bản tóm tắt — dùng cho login (Select đổi MST). */
+export function listAccessibleCompanies(userId: string, role: string) {
+  return queryAccessibleCompanies(userId, role, COMPANY_SUMMARY_SELECT);
+}
 
-  return sysPrisma.donVi.findMany({
-    where,
-    select: COMPANY_DETAIL_SELECT,
-    orderBy: { createdAt: 'asc' },
-  });
+/** Bản chi tiết (kèm địa chỉ/SĐT/loại hình) — dùng cho GET /companies. */
+export function listAccessibleCompaniesDetailed(userId: string, role: string) {
+  return queryAccessibleCompanies(userId, role, COMPANY_DETAIL_SELECT);
 }
 
 /**
