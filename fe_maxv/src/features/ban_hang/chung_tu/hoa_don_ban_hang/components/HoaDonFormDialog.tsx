@@ -26,7 +26,7 @@ import {
 } from '@/features/ban_hang/chung_tu/hoa_don_ban_hang/hooks/useHoaDonBanHang';
 import { nextSoCt } from '@/features/ban_hang/chung_tu/hoa_don_ban_hang/api/hoaDonBanHangApi';
 import { fmt } from '@/utils/format';
-import { computeLine, computeTotals, round } from '@/features/ban_hang/chung_tu/hoa_don_ban_hang/calc';
+import { computeTotals } from '@/features/ban_hang/chung_tu/hoa_don_ban_hang/calc';
 import { ChiTietTab } from '@/features/ban_hang/chung_tu/hoa_don_ban_hang/components/tabs/ChiTietTab';
 import { KhacTab } from '@/features/ban_hang/chung_tu/hoa_don_ban_hang/components/tabs/KhacTab';
 import { XuatKhauTab } from '@/features/ban_hang/chung_tu/hoa_don_ban_hang/components/tabs/XuatKhauTab';
@@ -122,42 +122,29 @@ export function HoaDonFormDialog({ open, mode, current, onClose }: Props): JSX.E
     const onError = (err: unknown) =>
       setError(getApiError(err, 'Lưu thất bại, vui lòng thử lại.'));
 
-    const tg = form.ty_gia || 1;
-    const lines = form.chi_tiet
+    // Chỉ gửi INPUT THÔ — không gửi số tiền/thuế/chiết khấu đã tính (tien_nt2, ck_nt,
+    // thue_nt, tien_khay_nt, tien_no_nt) hay các tổng (t_tien_nt2, t_ck_nt...). Backend
+    // tự tính lại toàn bộ từ so_luong/gia_nt2/tl_ck/thue_suat/ty_gia — không tin số tiền
+    // do trình duyệt tính (mass-assignment: client có thể sửa payload để ghi khống doanh thu).
+    const chi_tiet = form.chi_tiet
       .filter((l) => l.ma_vt.trim())
-      .map((l) => {
-        const c = computeLine(l);
-        return {
-          ...l,
-          tien_nt2: c.tien_nt2,
-          ck_nt: c.ck_nt,
-          thue_nt: c.thue_nt,
-          tien_khay_nt: c.tien_khay_nt,
-          tien_no_nt: c.tien_no_nt,
-          gia: round(l.gia_nt2 * tg),
-          tien: round(c.tien_nt2 * tg),
-          ck: round(c.ck_nt * tg),
-          thue: round(c.thue_nt * tg),
-          gia2: round(l.gia_nt2 * tg),
-          tien2: round(c.tien_nt2 * tg),
-          tien_khay: round(c.tien_khay_nt * tg),
-          tien_no: round(c.tien_no_nt * tg),
-        };
-      });
+      .map(
+        ({
+          ma_vt, dvt, dvt2, he_so2, ma_kho,
+          so_luong, gia_nt2, tl_ck, so_luong2, so_luong2_nl,
+          so_luong_giao, so_luong_hh, ty_le_hh, gia_khay_nt,
+          ma_thue, thue_suat, ma_du_an, ma_pb,
+          tk_dt, tk_ck, tk_gv, tk_thue, tk_vt,
+        }) => ({
+          ma_vt, dvt, dvt2, he_so2, ma_kho,
+          so_luong, gia_nt2, tl_ck, so_luong2, so_luong2_nl,
+          so_luong_giao, so_luong_hh, ty_le_hh, gia_khay_nt,
+          ma_thue, thue_suat, ma_du_an, ma_pb,
+          tk_dt, tk_ck, tk_gv, tk_thue, tk_vt,
+        }),
+      );
 
-    // Các trường tổng gửi kèm cho BE (không nằm trong HoaDonForm type).
-    const totalsPayload = {
-      t_so_luong: totals.sl,
-      t_tien_nt2: totals.tien,
-      t_tien2: round(totals.tien * tg),
-      t_ck_nt: totals.ck,
-      t_ck: round(totals.ck * tg),
-      t_thue_nt: totals.thue,
-      t_thue: round(totals.thue * tg),
-      t_tt_nt: totals.tt,
-      t_tt: round(totals.tt * tg),
-    };
-    const body = { ...form, chi_tiet: lines as LineForm[], ...totalsPayload };
+    const body = { ...form, chi_tiet };
 
     if (mode === 'edit' && current) {
       update.mutate({ sttRec: current.stt_rec, body }, { onSuccess: onClose, onError });
@@ -228,7 +215,9 @@ export function HoaDonFormDialog({ open, mode, current, onClose }: Props): JSX.E
             <TextField label="Diễn giải" size="small" value={form.dien_giai} onChange={(e) => setField('dien_giai', e.target.value)} disabled={ro} sx={{ gridColumn: 'span 3' }} />
             <TextField select label="Trạng thái" size="small" value={form.status} onChange={(e) => setField('status', e.target.value)} disabled={ro}>
               <MenuItem value="2">Lập chứng từ</MenuItem>
-              <MenuItem value="1">Đã ghi sổ</MenuItem>
+              {/* "Đã ghi sổ" không cho chọn khi tạo/sửa (backend chặn) — chỉ hiện nếu
+                  hóa đơn đang xem/đã có sẵn trạng thái này, để không vỡ hiển thị. */}
+              {(ro || form.status === '1') && <MenuItem value="1">Đã ghi sổ</MenuItem>}
               <MenuItem value="0">Hủy</MenuItem>
             </TextField>
           </Box>

@@ -1,12 +1,5 @@
 import { z } from 'zod';
-
-/** '' | null | undefined -> null; có giá trị -> trim(). */
-const optText = z
-  .string()
-  .trim()
-  .nullable()
-  .optional()
-  .transform((v) => (v && v.length ? v : null));
+import { optText } from '../shared/primitives';
 
 /** '' | null | undefined -> null; else -> Int. (bac_tk) */
 const optInt = z.preprocess(

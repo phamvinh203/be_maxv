@@ -1,5 +1,6 @@
 import type { Prisma, PrismaClient } from '../../../../generated/tenant';
 import { ConflictError, NotFoundError } from '../../../../helpers/errors';
+import { assertNotExists, findOrThrow } from '../../../../helpers/crudGuards';
 import { MESSAGES } from '../../../../constants/messages';
 import type {
   LoaiVtBodyInput,
@@ -31,11 +32,14 @@ export function listLoaiVt(db: PrismaClient, q: LoaiVtListQuery) {
 
 /** POST tạo mới. */
 export async function createLoaiVt(db: PrismaClient, body: LoaiVtBodyInput) {
-  const exists = await db.dmloaivt.findUnique({
-    where: { ma_loai_vt: body.ma_loai_vt },
-    select: { ma_loai_vt: true },
-  });
-  if (exists) throw new ConflictError(`Mã loại "${body.ma_loai_vt}" đã tồn tại`);
+  await assertNotExists(
+    () =>
+      db.dmloaivt.findUnique({
+        where: { ma_loai_vt: body.ma_loai_vt },
+        select: { ma_loai_vt: true },
+      }),
+    new ConflictError(`Mã loại "${body.ma_loai_vt}" đã tồn tại`),
+  );
 
   await db.dmloaivt.create({
     data: {
@@ -54,11 +58,14 @@ export async function updateLoaiVt(
   maLoai: string,
   body: LoaiVtUpdateInput,
 ) {
-  const current = await db.dmloaivt.findUnique({
-    where: { ma_loai_vt: maLoai },
-    select: { ma_loai_vt: true },
-  });
-  if (!current) throw new NotFoundError(MESSAGES.TON_KHO.LOAI_VT_NOT_FOUND);
+  await findOrThrow(
+    () =>
+      db.dmloaivt.findUnique({
+        where: { ma_loai_vt: maLoai },
+        select: { ma_loai_vt: true },
+      }),
+    new NotFoundError(MESSAGES.TON_KHO.LOAI_VT_NOT_FOUND),
+  );
 
   await db.dmloaivt.update({
     where: { ma_loai_vt: maLoai },
@@ -73,11 +80,14 @@ export async function updateLoaiVt(
 
 /** DELETE — chặn nếu loại đang được dùng trong hàng hóa (dmvt.loai_vt). */
 export async function deleteLoaiVt(db: PrismaClient, maLoai: string) {
-  const current = await db.dmloaivt.findUnique({
-    where: { ma_loai_vt: maLoai },
-    select: { ma_loai_vt: true },
-  });
-  if (!current) throw new NotFoundError(MESSAGES.TON_KHO.LOAI_VT_NOT_FOUND);
+  await findOrThrow(
+    () =>
+      db.dmloaivt.findUnique({
+        where: { ma_loai_vt: maLoai },
+        select: { ma_loai_vt: true },
+      }),
+    new NotFoundError(MESSAGES.TON_KHO.LOAI_VT_NOT_FOUND),
+  );
 
   const used = await db.dmvt.count({ where: { loai_vt: maLoai } });
   if (used > 0) {

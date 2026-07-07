@@ -1,5 +1,6 @@
 import type { Prisma, PrismaClient } from '../../../../generated/tenant';
 import { ConflictError, NotFoundError } from '../../../../helpers/errors';
+import { assertNotExists, findOrThrow } from '../../../../helpers/crudGuards';
 import { MESSAGES } from '../../../../constants/messages';
 import type {
   KhoBodyInput,
@@ -20,7 +21,8 @@ const khoSelect = {
 /** GET danh sách + lọc + kèm tên nhóm kho (thay LEFT JOIN dmnhkho). */
 export async function listKho(db: PrismaClient, q: KhoListQuery) {
   const and: Prisma.dmkhoWhereInput[] = [];
-  if (q.ma_kho) and.push({ ma_kho: { contains: q.ma_kho, mode: 'insensitive' } });
+  if (q.ma_kho)
+    and.push({ ma_kho: { contains: q.ma_kho, mode: 'insensitive' } });
   if (q.ten_kho)
     and.push({ ten_kho: { contains: q.ten_kho, mode: 'insensitive' } });
   if (q.ma_dvcs) and.push({ ma_dvcs: q.ma_dvcs });
@@ -43,11 +45,14 @@ export async function listKho(db: PrismaClient, q: KhoListQuery) {
 
 /** POST tạo mới. */
 export async function createKho(db: PrismaClient, body: KhoBodyInput) {
-  const exists = await db.dmkho.findUnique({
-    where: { ma_kho: body.ma_kho },
-    select: { ma_kho: true },
-  });
-  if (exists) throw new ConflictError(`Mã kho "${body.ma_kho}" đã tồn tại`);
+  await assertNotExists(
+    () =>
+      db.dmkho.findUnique({
+        where: { ma_kho: body.ma_kho },
+        select: { ma_kho: true },
+      }),
+    new ConflictError(`Mã kho "${body.ma_kho}" đã tồn tại`),
+  );
 
   await db.dmkho.create({
     data: {
@@ -70,11 +75,14 @@ export async function updateKho(
   oldKey: string,
   body: KhoBodyInput,
 ) {
-  const current = await db.dmkho.findUnique({
-    where: { ma_kho: oldKey },
-    select: { ma_kho: true },
-  });
-  if (!current) throw new NotFoundError(MESSAGES.TON_KHO.KHO_NOT_FOUND);
+  await findOrThrow(
+    () =>
+      db.dmkho.findUnique({
+        where: { ma_kho: oldKey },
+        select: { ma_kho: true },
+      }),
+    new NotFoundError(MESSAGES.TON_KHO.KHO_NOT_FOUND),
+  );
 
   const newKey = body.ma_kho;
   const data = {
@@ -88,11 +96,14 @@ export async function updateKho(
   };
 
   if (newKey !== oldKey) {
-    const dup = await db.dmkho.findUnique({
-      where: { ma_kho: newKey },
-      select: { ma_kho: true },
-    });
-    if (dup) throw new ConflictError(`Mã kho "${newKey}" đã tồn tại`);
+    await assertNotExists(
+      () =>
+        db.dmkho.findUnique({
+          where: { ma_kho: newKey },
+          select: { ma_kho: true },
+        }),
+      new ConflictError(`Mã kho "${newKey}" đã tồn tại`),
+    );
 
     await db.$transaction([
       db.dmkho.create({ data: { ma_kho: newKey, ...data } }),
@@ -106,11 +117,11 @@ export async function updateKho(
 
 /** DELETE — chặn nếu kho đang dùng trong hàng hóa hoặc còn vị trí kho. */
 export async function deleteKho(db: PrismaClient, key: string) {
-  const current = await db.dmkho.findUnique({
-    where: { ma_kho: key },
-    select: { ma_kho: true },
-  });
-  if (!current) throw new NotFoundError(MESSAGES.TON_KHO.KHO_NOT_FOUND);
+  await findOrThrow(
+    () =>
+      db.dmkho.findUnique({ where: { ma_kho: key }, select: { ma_kho: true } }),
+    new NotFoundError(MESSAGES.TON_KHO.KHO_NOT_FOUND),
+  );
 
   const [usedVt, usedVitri] = await Promise.all([
     db.dmvt.count({ where: { ma_kho: key } }),

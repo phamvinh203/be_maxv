@@ -2,6 +2,7 @@ import { sysPrisma } from '../../config/db.sys';
 import { generatePassword, hashPassword } from '../../utils/password';
 import { writeLog } from '../shared/syslog.service';
 import { ConflictError, NotFoundError } from '../../helpers/errors';
+import { findOrThrow } from '../../helpers/crudGuards';
 import { MESSAGES } from '../../constants/messages';
 import type { Prisma, Role } from '../../generated/sys';
 import type { ListUsersQuery } from '../../validators/admin.validator';
@@ -22,13 +23,15 @@ const USER_SELECT = {
 } satisfies Prisma.UserSelect;
 
 /** Lấy user (chỉ id+ownerId+role) hoặc ném NotFound. */
-async function getOrThrow(id: string) {
-  const user = await sysPrisma.user.findUnique({
-    where: { id },
-    select: { id: true, ownerId: true, role: true },
-  });
-  if (!user) throw new NotFoundError(MESSAGES.USER.NOT_FOUND);
-  return user;
+function getOrThrow(id: string) {
+  return findOrThrow(
+    () =>
+      sysPrisma.user.findUnique({
+        where: { id },
+        select: { id: true, ownerId: true, role: true },
+      }),
+    new NotFoundError(MESSAGES.USER.NOT_FOUND),
+  );
 }
 
 /** Ghi audit cho thao tác admin lên 1 user — gói envelope dùng chung. */

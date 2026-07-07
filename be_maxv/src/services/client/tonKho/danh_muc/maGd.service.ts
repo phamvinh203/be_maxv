@@ -1,5 +1,6 @@
 import type { Prisma, PrismaClient } from '../../../../generated/tenant';
 import { ConflictError, NotFoundError } from '../../../../helpers/errors';
+import { assertNotExists, findOrThrow } from '../../../../helpers/crudGuards';
 import { MESSAGES } from '../../../../constants/messages';
 import type {
   MaGdBodyInput,
@@ -33,15 +34,16 @@ export function listMaGd(db: PrismaClient, q: MaGdListQuery) {
 
 /** POST tạo mới. */
 export async function createMaGd(db: PrismaClient, body: MaGdBodyInput) {
-  const exists = await db.dmmagd.findUnique({
-    where: { ma_ct_ma_gd: { ma_ct: body.ma_ct, ma_gd: body.ma_gd } },
-    select: { ma_gd: true },
-  });
-  if (exists) {
-    throw new ConflictError(
+  await assertNotExists(
+    () =>
+      db.dmmagd.findUnique({
+        where: { ma_ct_ma_gd: { ma_ct: body.ma_ct, ma_gd: body.ma_gd } },
+        select: { ma_gd: true },
+      }),
+    new ConflictError(
       `Mã giao dịch "${body.ma_gd}" của chứng từ "${body.ma_ct}" đã tồn tại`,
-    );
-  }
+    ),
+  );
 
   await db.dmmagd.create({
     data: {
@@ -63,11 +65,14 @@ export async function updateMaGd(
   maGd: string,
   body: MaGdUpdateInput,
 ) {
-  const current = await db.dmmagd.findUnique({
-    where: { ma_ct_ma_gd: { ma_ct: maCt, ma_gd: maGd } },
-    select: { ma_gd: true },
-  });
-  if (!current) throw new NotFoundError(MESSAGES.TON_KHO.MAGD_NOT_FOUND);
+  await findOrThrow(
+    () =>
+      db.dmmagd.findUnique({
+        where: { ma_ct_ma_gd: { ma_ct: maCt, ma_gd: maGd } },
+        select: { ma_gd: true },
+      }),
+    new NotFoundError(MESSAGES.TON_KHO.MAGD_NOT_FOUND),
+  );
 
   await db.dmmagd.update({
     where: { ma_ct_ma_gd: { ma_ct: maCt, ma_gd: maGd } },
@@ -84,11 +89,14 @@ export async function updateMaGd(
 
 /** DELETE. */
 export async function deleteMaGd(db: PrismaClient, maCt: string, maGd: string) {
-  const current = await db.dmmagd.findUnique({
-    where: { ma_ct_ma_gd: { ma_ct: maCt, ma_gd: maGd } },
-    select: { ma_gd: true },
-  });
-  if (!current) throw new NotFoundError(MESSAGES.TON_KHO.MAGD_NOT_FOUND);
+  await findOrThrow(
+    () =>
+      db.dmmagd.findUnique({
+        where: { ma_ct_ma_gd: { ma_ct: maCt, ma_gd: maGd } },
+        select: { ma_gd: true },
+      }),
+    new NotFoundError(MESSAGES.TON_KHO.MAGD_NOT_FOUND),
+  );
 
   await db.dmmagd.delete({
     where: { ma_ct_ma_gd: { ma_ct: maCt, ma_gd: maGd } },

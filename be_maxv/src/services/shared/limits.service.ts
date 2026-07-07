@@ -15,7 +15,9 @@ export const PLAN_LIMITS_SELECT = {
 
 /** Giới hạn theo gói của 1 subscription (null nếu chưa có gói). */
 export function planLimits(
-  sub: { plan: { soMstToiDa: number | null; soNguoiToiDa: number | null } } | null,
+  sub: {
+    plan: { soMstToiDa: number | null; soNguoiToiDa: number | null };
+  } | null,
 ): PlanLimits {
   return {
     soMstToiDa: sub?.plan.soMstToiDa ?? null,
@@ -35,24 +37,40 @@ export async function getPlanLimits(ownerId: string): Promise<PlanLimits> {
   return planLimits(sub);
 }
 
-/** Chặn nếu tạo thêm MST sẽ vượt trần gói (null = không giới hạn). */
-export async function assertMstLimit(
+/** Chặn nếu vượt trần gói (null = không giới hạn) — dùng chung cho MST và nhân viên. */
+async function assertLimit(
   ownerId: string,
   currentCount: number,
+  field: keyof PlanLimits,
+  message: string,
 ): Promise<void> {
-  const { soMstToiDa } = await getPlanLimits(ownerId);
-  if (soMstToiDa !== null && currentCount >= soMstToiDa) {
-    throw new ForbiddenError(MESSAGES.SUBSCRIPTION.MST_LIMIT_REACHED);
-  }
+  const limits = await getPlanLimits(ownerId);
+  const max = limits[field];
+  if (max !== null && currentCount >= max) throw new ForbiddenError(message);
 }
 
-/** Chặn nếu thêm nhân viên sẽ vượt trần gói (null = không giới hạn). */
-export async function assertUserLimit(
+/** Chặn nếu tạo thêm MST sẽ vượt trần gói. */
+export function assertMstLimit(
   ownerId: string,
   currentCount: number,
 ): Promise<void> {
-  const { soNguoiToiDa } = await getPlanLimits(ownerId);
-  if (soNguoiToiDa !== null && currentCount >= soNguoiToiDa) {
-    throw new ForbiddenError(MESSAGES.SUBSCRIPTION.USER_LIMIT_REACHED);
-  }
+  return assertLimit(
+    ownerId,
+    currentCount,
+    'soMstToiDa',
+    MESSAGES.SUBSCRIPTION.MST_LIMIT_REACHED,
+  );
+}
+
+/** Chặn nếu thêm nhân viên sẽ vượt trần gói. */
+export function assertUserLimit(
+  ownerId: string,
+  currentCount: number,
+): Promise<void> {
+  return assertLimit(
+    ownerId,
+    currentCount,
+    'soNguoiToiDa',
+    MESSAGES.SUBSCRIPTION.USER_LIMIT_REACHED,
+  );
 }

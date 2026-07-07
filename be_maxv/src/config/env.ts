@@ -20,7 +20,9 @@ function parseOrigins(raw: string | undefined): string[] {
 }
 const configuredOrigins = parseOrigins(process.env.ALLOWED_ORIGINS);
 if (configuredOrigins.length === 0 && process.env.NODE_ENV === 'production') {
-  throw new Error('Thiếu biến môi trường: ALLOWED_ORIGINS (bắt buộc ở production để cấu hình CORS)');
+  throw new Error(
+    'Thiếu biến môi trường: ALLOWED_ORIGINS (bắt buộc ở production để cấu hình CORS)',
+  );
 }
 
 const APP_HOST = required('APP_DB_HOST');
@@ -36,7 +38,8 @@ export const env = {
   trustProxy: process.env.TRUST_PROXY === 'true',
 
   // Whitelist domain FE được phép gọi API kèm credentials (xem plugin CORS trong app.ts).
-  allowedOrigins: configuredOrigins.length > 0 ? configuredOrigins : DEV_DEFAULT_ORIGINS,
+  allowedOrigins:
+    configuredOrigins.length > 0 ? configuredOrigins : DEV_DEFAULT_ORIGINS,
 
   // Control plane (maxv2_sys) - Prisma client đọc qua DB_SYS_URL
   sysUrl: required('DB_SYS_URL'),

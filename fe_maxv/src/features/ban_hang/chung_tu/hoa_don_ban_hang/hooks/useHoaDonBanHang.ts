@@ -10,7 +10,7 @@ import {
   listHoaDon,
   updateHoaDon,
 } from '@/features/ban_hang/chung_tu/hoa_don_ban_hang/api/hoaDonBanHangApi';
-import type { HoaDonForm } from '@/features/ban_hang/chung_tu/hoa_don_ban_hang/types';
+import type { HoaDonPayload } from '@/features/ban_hang/chung_tu/hoa_don_ban_hang/types';
 
 export const hoaDonKeys = {
   all: ['hoa-don-ban-hang'] as const,
@@ -43,7 +43,7 @@ function useInvalidate() {
 export function useCreateHoaDon() {
   const invalidate = useInvalidate();
   return useMutation({
-    mutationFn: (body: HoaDonForm) => createHoaDon(body),
+    mutationFn: (body: HoaDonPayload) => createHoaDon(body),
     onSuccess: invalidate,
   });
 }
@@ -51,7 +51,7 @@ export function useCreateHoaDon() {
 export function useUpdateHoaDon() {
   const invalidate = useInvalidate();
   return useMutation({
-    mutationFn: ({ sttRec, body }: { sttRec: string; body: HoaDonForm }) =>
+    mutationFn: ({ sttRec, body }: { sttRec: string; body: HoaDonPayload }) =>
       updateHoaDon(sttRec, body),
     onSuccess: invalidate,
   });

@@ -46,7 +46,6 @@ export interface InviteEmployeeInput {
 }
 
 export interface RegisterCompanyInput {
-  userId: string;
   tenCongTy: string;
   maSoThue: string;
   diaChi: string;

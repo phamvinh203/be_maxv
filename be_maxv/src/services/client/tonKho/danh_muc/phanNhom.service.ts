@@ -1,5 +1,6 @@
 import type { Prisma, PrismaClient } from '../../../../generated/tenant';
 import { ConflictError, NotFoundError } from '../../../../helpers/errors';
+import { assertNotExists, findOrThrow } from '../../../../helpers/crudGuards';
 import { MESSAGES } from '../../../../constants/messages';
 import type {
   PhanNhomBodyInput,
@@ -27,7 +28,8 @@ export function listPhanNhom(db: PrismaClient, q: PhanNhomListQuery) {
   const and: Prisma.dmnhvtWhereInput[] = [];
   if (q.loai_nh) and.push({ loai_nh: q.loai_nh });
   if (q.ma_nh) and.push({ ma_nh: { contains: q.ma_nh, mode: 'insensitive' } });
-  if (q.ten_nh) and.push({ ten_nh: { contains: q.ten_nh, mode: 'insensitive' } });
+  if (q.ten_nh)
+    and.push({ ten_nh: { contains: q.ten_nh, mode: 'insensitive' } });
 
   return db.dmnhvt.findMany({
     where: and.length ? { AND: and } : undefined,
@@ -41,15 +43,16 @@ export async function createPhanNhom(
   db: PrismaClient,
   body: PhanNhomBodyInput,
 ) {
-  const exists = await db.dmnhvt.findUnique({
-    where: { loai_nh_ma_nh: { loai_nh: body.loai_nh, ma_nh: body.ma_nh } },
-    select: { ma_nh: true },
-  });
-  if (exists) {
-    throw new ConflictError(
+  await assertNotExists(
+    () =>
+      db.dmnhvt.findUnique({
+        where: { loai_nh_ma_nh: { loai_nh: body.loai_nh, ma_nh: body.ma_nh } },
+        select: { ma_nh: true },
+      }),
+    new ConflictError(
       `Mã nhóm "${body.ma_nh}" (loại ${body.loai_nh}) đã tồn tại`,
-    );
-  }
+    ),
+  );
 
   await db.dmnhvt.create({
     data: {
@@ -70,24 +73,28 @@ export async function updatePhanNhom(
   oldMa: string,
   body: PhanNhomBodyInput,
 ) {
-  const current = await db.dmnhvt.findUnique({
-    where: { loai_nh_ma_nh: { loai_nh: oldLoai, ma_nh: oldMa } },
-    select: { ma_nh: true },
-  });
-  if (!current) throw new NotFoundError(MESSAGES.TON_KHO.NHOM_NOT_FOUND);
+  await findOrThrow(
+    () =>
+      db.dmnhvt.findUnique({
+        where: { loai_nh_ma_nh: { loai_nh: oldLoai, ma_nh: oldMa } },
+        select: { ma_nh: true },
+      }),
+    new NotFoundError(MESSAGES.TON_KHO.NHOM_NOT_FOUND),
+  );
 
   const newLoai = body.loai_nh;
   const newMa = body.ma_nh;
   const keyChanged = newLoai !== oldLoai || newMa !== oldMa;
 
   if (keyChanged) {
-    const dup = await db.dmnhvt.findUnique({
-      where: { loai_nh_ma_nh: { loai_nh: newLoai, ma_nh: newMa } },
-      select: { ma_nh: true },
-    });
-    if (dup) {
-      throw new ConflictError(`Mã nhóm "${newMa}" (loại ${newLoai}) đã tồn tại`);
-    }
+    await assertNotExists(
+      () =>
+        db.dmnhvt.findUnique({
+          where: { loai_nh_ma_nh: { loai_nh: newLoai, ma_nh: newMa } },
+          select: { ma_nh: true },
+        }),
+      new ConflictError(`Mã nhóm "${newMa}" (loại ${newLoai}) đã tồn tại`),
+    );
   }
 
   if (keyChanged) {
@@ -124,11 +131,14 @@ export async function deletePhanNhom(
   loaiNh: number,
   maNh: string,
 ) {
-  const current = await db.dmnhvt.findUnique({
-    where: { loai_nh_ma_nh: { loai_nh: loaiNh, ma_nh: maNh } },
-    select: { ma_nh: true },
-  });
-  if (!current) throw new NotFoundError(MESSAGES.TON_KHO.NHOM_NOT_FOUND);
+  await findOrThrow(
+    () =>
+      db.dmnhvt.findUnique({
+        where: { loai_nh_ma_nh: { loai_nh: loaiNh, ma_nh: maNh } },
+        select: { ma_nh: true },
+      }),
+    new NotFoundError(MESSAGES.TON_KHO.NHOM_NOT_FOUND),
+  );
 
   if (await usedInHangHoa(db, maNh)) {
     throw new ConflictError(

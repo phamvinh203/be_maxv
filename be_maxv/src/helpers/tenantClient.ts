@@ -38,6 +38,8 @@ export function getTenantDb(dbName: string): PrismaClient {
 }
 
 const sweeper = setInterval(() => {
+  if (pool.size === 0) return; // không có gì để quét -> khỏi lặp Map rỗng mỗi phút.
+
   const now = Date.now();
   const idle: Entry[] = [];
   for (const [name, entry] of pool) {

@@ -1,12 +1,5 @@
 import { z } from 'zod';
-
-/** '' | null | undefined -> null; có giá trị -> trim(). */
-const optText = z
-  .string()
-  .trim()
-  .nullable()
-  .optional()
-  .transform((v) => (v && v.length ? v : null));
+import { optText } from '../shared/primitives';
 
 /** Thân request tạo/sửa 1 kho hàng (dmkho). */
 export const khoBodySchema = z.object({

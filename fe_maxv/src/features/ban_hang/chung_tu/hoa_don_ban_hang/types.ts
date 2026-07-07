@@ -121,6 +121,43 @@ export interface HoaDonForm {
   chi_tiet: LineForm[];
 }
 
+/**
+ * 1 dòng chi tiết GỬI LÊN API — chỉ input thô (không có tien_nt2/ck_nt/thue_nt/
+ * tien_khay_nt/tien_no_nt hay ten_vt hiển thị). Backend tự tính lại toàn bộ số tiền
+ * từ các trường này; không bao giờ gửi kèm trường "kết quả" đã tính ở trình duyệt.
+ */
+export type HoaDonLinePayload = Pick<
+  LineForm,
+  | 'ma_vt'
+  | 'dvt'
+  | 'dvt2'
+  | 'he_so2'
+  | 'ma_kho'
+  | 'so_luong'
+  | 'gia_nt2'
+  | 'tl_ck'
+  | 'so_luong2'
+  | 'so_luong2_nl'
+  | 'so_luong_giao'
+  | 'so_luong_hh'
+  | 'ty_le_hh'
+  | 'gia_khay_nt'
+  | 'ma_thue'
+  | 'thue_suat'
+  | 'ma_du_an'
+  | 'ma_pb'
+  | 'tk_dt'
+  | 'tk_ck'
+  | 'tk_gv'
+  | 'tk_thue'
+  | 'tk_vt'
+>;
+
+/** Thân request tạo/sửa hóa đơn — header (như HoaDonForm) + dòng chỉ gồm input thô. */
+export type HoaDonPayload = Omit<HoaDonForm, 'chi_tiet'> & {
+  chi_tiet: HoaDonLinePayload[];
+};
+
 export interface HoaDonListParams {
   so_ct?: string;
   ma_kh?: string;

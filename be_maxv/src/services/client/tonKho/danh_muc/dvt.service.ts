@@ -1,5 +1,6 @@
 import type { Prisma, PrismaClient } from '../../../../generated/tenant';
 import { ConflictError, NotFoundError } from '../../../../helpers/errors';
+import { assertNotExists, findOrThrow } from '../../../../helpers/crudGuards';
 import { MESSAGES } from '../../../../constants/messages';
 import type {
   DvtBodyInput,
@@ -38,11 +39,11 @@ export function listDvt(db: PrismaClient, q: DvtListQuery) {
 
 /** POST tạo mới. */
 export async function createDvt(db: PrismaClient, body: DvtBodyInput) {
-  const exists = await db.dmdvt.findUnique({
-    where: { dvt: body.dvt },
-    select: { dvt: true },
-  });
-  if (exists) throw new ConflictError(`Đvt "${body.dvt}" đã tồn tại`);
+  await assertNotExists(
+    () =>
+      db.dmdvt.findUnique({ where: { dvt: body.dvt }, select: { dvt: true } }),
+    new ConflictError(`Đvt "${body.dvt}" đã tồn tại`),
+  );
 
   await db.dmdvt.create({
     data: {
@@ -62,19 +63,19 @@ export async function updateDvt(
   oldKey: string,
   body: DvtBodyInput,
 ) {
-  const current = await db.dmdvt.findUnique({
-    where: { dvt: oldKey },
-    select: { dvt: true },
-  });
-  if (!current) throw new NotFoundError(MESSAGES.TON_KHO.DVT_NOT_FOUND);
+  await findOrThrow(
+    () =>
+      db.dmdvt.findUnique({ where: { dvt: oldKey }, select: { dvt: true } }),
+    new NotFoundError(MESSAGES.TON_KHO.DVT_NOT_FOUND),
+  );
 
   const newKey = body.dvt;
   if (newKey !== oldKey) {
-    const dup = await db.dmdvt.findUnique({
-      where: { dvt: newKey },
-      select: { dvt: true },
-    });
-    if (dup) throw new ConflictError(`Đvt "${newKey}" đã tồn tại`);
+    await assertNotExists(
+      () =>
+        db.dmdvt.findUnique({ where: { dvt: newKey }, select: { dvt: true } }),
+      new ConflictError(`Đvt "${newKey}" đã tồn tại`),
+    );
 
     if (await usedInHangHoa(db, oldKey)) {
       throw new ConflictError(
@@ -98,11 +99,10 @@ export async function updateDvt(
 
 /** DELETE — chặn nếu đvt đang được dùng trong hàng hóa. */
 export async function deleteDvt(db: PrismaClient, key: string) {
-  const current = await db.dmdvt.findUnique({
-    where: { dvt: key },
-    select: { dvt: true },
-  });
-  if (!current) throw new NotFoundError(MESSAGES.TON_KHO.DVT_NOT_FOUND);
+  await findOrThrow(
+    () => db.dmdvt.findUnique({ where: { dvt: key }, select: { dvt: true } }),
+    new NotFoundError(MESSAGES.TON_KHO.DVT_NOT_FOUND),
+  );
 
   if (await usedInHangHoa(db, key)) {
     throw new ConflictError(

@@ -18,12 +18,49 @@ export function setToken(token: string): void {
   localStorage.setItem(TOKEN_KEY, token);
 }
 
-/** Slot localStorage JSON có type, dùng chung cho mọi giá trị object (user, company, ...). */
-function createStorageSlot<T>(key: string) {
+const isString = (v: unknown): v is string => typeof v === 'string';
+
+/**
+ * localStorage attacker-writable (bất kỳ script nào chạy được trên origin đều sửa được).
+ * Validate shape trước khi tin — dữ liệu sai hình dạng bị coi như không có, không throw
+ * làm vỡ app. Đây chỉ là "hint" hiển thị (role/tenant hiện), MỌI quyền hạn thật vẫn phải
+ * do backend tự xác thực lại qua JWT — validate ở đây chỉ chống app tự sập vì dữ liệu rác.
+ */
+function isAuthUser(v: unknown): v is AuthUser {
+  if (typeof v !== 'object' || v === null) return false;
+  const o = v as Record<string, unknown>;
+  return isString(o.id) && isString(o.hoTen) && isString(o.email) && isString(o.role);
+}
+
+function isAuthCompany(v: unknown): v is AuthCompany {
+  if (typeof v !== 'object' || v === null) return false;
+  const o = v as Record<string, unknown>;
+  return (
+    isString(o.id) &&
+    isString(o.maSoThue) &&
+    isString(o.slug) &&
+    isString(o.tenDonVi) &&
+    isString(o.status)
+  );
+}
+
+/**
+ * Slot localStorage JSON có type + validate shape trước khi trả về. Dữ liệu hỏng/không
+ * đúng hình dạng -> coi như rỗng và tự dọn key hỏng, tránh lặp lại lỗi mỗi lần đọc.
+ */
+function createStorageSlot<T>(key: string, isValid: (v: unknown) => v is T) {
   return {
     get(): T | null {
       const raw = localStorage.getItem(key);
-      return raw ? (JSON.parse(raw) as T) : null;
+      if (!raw) return null;
+      try {
+        const parsed: unknown = JSON.parse(raw);
+        if (isValid(parsed)) return parsed;
+      } catch {
+        // JSON hỏng -> rơi xuống dọn key bên dưới.
+      }
+      localStorage.removeItem(key);
+      return null;
     },
     set(value: T | null): void {
       if (value) localStorage.setItem(key, JSON.stringify(value));
@@ -32,9 +69,12 @@ function createStorageSlot<T>(key: string) {
   };
 }
 
-const userSlot = createStorageSlot<AuthUser>(USER_KEY);
-const companySlot = createStorageSlot<AuthCompany>(COMPANY_KEY);
-const companiesSlot = createStorageSlot<AuthCompany[]>(COMPANIES_KEY);
+const isAuthCompanyArray = (v: unknown): v is AuthCompany[] =>
+  Array.isArray(v) && v.every(isAuthCompany);
+
+const userSlot = createStorageSlot<AuthUser>(USER_KEY, isAuthUser);
+const companySlot = createStorageSlot<AuthCompany>(COMPANY_KEY, isAuthCompany);
+const companiesSlot = createStorageSlot<AuthCompany[]>(COMPANIES_KEY, isAuthCompanyArray);
 
 export function getUser(): AuthUser | null {
   return userSlot.get();

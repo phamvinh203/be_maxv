@@ -1,5 +1,6 @@
 import type { Prisma, PrismaClient } from '../../../../generated/tenant';
 import { ConflictError, NotFoundError } from '../../../../helpers/errors';
+import { assertNotExists, findOrThrow } from '../../../../helpers/crudGuards';
 import { MESSAGES } from '../../../../constants/messages';
 import type {
   TaiKhoanBodyInput,
@@ -23,12 +24,14 @@ export function listTaiKhoan(db: PrismaClient, q: TaiKhoanListQuery) {
 }
 
 /** POST tạo mới. */
-export async function createTaiKhoan(db: PrismaClient, body: TaiKhoanBodyInput) {
-  const exists = await db.dmtk.findUnique({
-    where: { tk: body.tk },
-    select: { tk: true },
-  });
-  if (exists) throw new ConflictError(`Tài khoản "${body.tk}" đã tồn tại`);
+export async function createTaiKhoan(
+  db: PrismaClient,
+  body: TaiKhoanBodyInput,
+) {
+  await assertNotExists(
+    () => db.dmtk.findUnique({ where: { tk: body.tk }, select: { tk: true } }),
+    new ConflictError(`Tài khoản "${body.tk}" đã tồn tại`),
+  );
 
   await db.dmtk.create({ data: body });
   return { tk: body.tk };
@@ -40,11 +43,10 @@ export async function updateTaiKhoan(
   tk: string,
   body: TaiKhoanUpdateInput,
 ) {
-  const current = await db.dmtk.findUnique({
-    where: { tk },
-    select: { tk: true },
-  });
-  if (!current) throw new NotFoundError(MESSAGES.TONG_HOP.TAI_KHOAN_NOT_FOUND);
+  await findOrThrow(
+    () => db.dmtk.findUnique({ where: { tk }, select: { tk: true } }),
+    new NotFoundError(MESSAGES.TONG_HOP.TAI_KHOAN_NOT_FOUND),
+  );
 
   await db.dmtk.update({ where: { tk }, data: body });
   return { tk };
@@ -52,11 +54,10 @@ export async function updateTaiKhoan(
 
 /** DELETE — chặn nếu tài khoản có tài khoản con (tk_me = tk). */
 export async function deleteTaiKhoan(db: PrismaClient, tk: string) {
-  const current = await db.dmtk.findUnique({
-    where: { tk },
-    select: { tk: true },
-  });
-  if (!current) throw new NotFoundError(MESSAGES.TONG_HOP.TAI_KHOAN_NOT_FOUND);
+  await findOrThrow(
+    () => db.dmtk.findUnique({ where: { tk }, select: { tk: true } }),
+    new NotFoundError(MESSAGES.TONG_HOP.TAI_KHOAN_NOT_FOUND),
+  );
 
   const children = await db.dmtk.count({ where: { tk_me: tk } });
   if (children > 0) {

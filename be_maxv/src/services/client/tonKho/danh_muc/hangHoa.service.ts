@@ -1,5 +1,6 @@
 import type { Prisma, PrismaClient } from '../../../../generated/tenant';
 import { ConflictError, NotFoundError } from '../../../../helpers/errors';
+import { assertNotExists, findOrThrow } from '../../../../helpers/crudGuards';
 import { MESSAGES } from '../../../../constants/messages';
 import type {
   DoiMaInput,
@@ -128,9 +129,10 @@ export async function listHangHoa(db: PrismaClient, q: HangHoaListQuery) {
 
 /** GET chi tiết 1 mặt hàng. */
 export async function getHangHoa(db: PrismaClient, maVt: string) {
-  const row = await db.dmvt.findUnique({ where: { ma_vt: maVt } });
-  if (!row) throw new NotFoundError(MESSAGES.TON_KHO.VT_NOT_FOUND);
-  return row;
+  return findOrThrow(
+    () => db.dmvt.findUnique({ where: { ma_vt: maVt } }),
+    new NotFoundError(MESSAGES.TON_KHO.VT_NOT_FOUND),
+  );
 }
 
 /** POST tạo mới (+ đồng bộ dmqddvt nếu nhiều ĐVT). */
@@ -139,15 +141,14 @@ export async function createHangHoa(
   body: HangHoaBodyInput,
   userId: string,
 ) {
-  const exists = await db.dmvt.findUnique({
-    where: { ma_vt: body.ma_vt },
-    select: { ma_vt: true },
-  });
-  if (exists) {
-    throw new ConflictError(
-      `Mã hàng "${body.ma_vt}" đã tồn tại trong danh mục.`,
-    );
-  }
+  await assertNotExists(
+    () =>
+      db.dmvt.findUnique({
+        where: { ma_vt: body.ma_vt },
+        select: { ma_vt: true },
+      }),
+    new ConflictError(`Mã hàng "${body.ma_vt}" đã tồn tại trong danh mục.`),
+  );
 
   await db.$transaction(async (tx) => {
     await tx.dmvt.create({
@@ -186,19 +187,25 @@ export async function updateHangHoa(
   body: HangHoaBodyInput,
   userId: string,
 ) {
-  const current = await db.dmvt.findUnique({
-    where: { ma_vt: oldKey },
-    select: { dvt: true, nhieu_dvt: true },
-  });
-  if (!current) throw new NotFoundError(MESSAGES.TON_KHO.VT_NOT_FOUND);
+  const current = await findOrThrow(
+    () =>
+      db.dmvt.findUnique({
+        where: { ma_vt: oldKey },
+        select: { dvt: true, nhieu_dvt: true },
+      }),
+    new NotFoundError(MESSAGES.TON_KHO.VT_NOT_FOUND),
+  );
 
   const newKey = body.ma_vt;
   if (newKey !== oldKey) {
-    const dup = await db.dmvt.findUnique({
-      where: { ma_vt: newKey },
-      select: { ma_vt: true },
-    });
-    if (dup) throw new ConflictError(`Mã hàng "${newKey}" đã tồn tại.`);
+    await assertNotExists(
+      () =>
+        db.dmvt.findUnique({
+          where: { ma_vt: newKey },
+          select: { ma_vt: true },
+        }),
+      new ConflictError(`Mã hàng "${newKey}" đã tồn tại.`),
+    );
   }
 
   await db.$transaction(async (tx) => {
@@ -237,11 +244,11 @@ export async function updateHangHoa(
 
 /** DELETE — chặn nếu đã phát sinh chứng từ (ct70). */
 export async function deleteHangHoa(db: PrismaClient, maVt: string) {
-  const row = await db.dmvt.findUnique({
-    where: { ma_vt: maVt },
-    select: { ma_vt: true },
-  });
-  if (!row) throw new NotFoundError(MESSAGES.TON_KHO.VT_NOT_FOUND);
+  await findOrThrow(
+    () =>
+      db.dmvt.findUnique({ where: { ma_vt: maVt }, select: { ma_vt: true } }),
+    new NotFoundError(MESSAGES.TON_KHO.VT_NOT_FOUND),
+  );
 
   // ct70 (chi tiết nhập/xuất kho) có thể chưa tồn tại -> chỉ kiểm tra khi có bảng.
   if (await tableExists(db, 'ct70')) {
@@ -268,17 +275,17 @@ export async function doiMaHangHoa(db: PrismaClient, input: DoiMaInput) {
 
   if (oldKey === newKey) throw new ConflictError(MESSAGES.TON_KHO.DOI_MA_SAME);
 
-  const exists = await db.dmvt.findUnique({
-    where: { ma_vt: oldKey },
-    select: { ma_vt: true },
-  });
-  if (!exists) throw new NotFoundError(`Mã hàng "${oldKey}" không tồn tại`);
+  await findOrThrow(
+    () =>
+      db.dmvt.findUnique({ where: { ma_vt: oldKey }, select: { ma_vt: true } }),
+    new NotFoundError(`Mã hàng "${oldKey}" không tồn tại`),
+  );
 
-  const dup = await db.dmvt.findUnique({
-    where: { ma_vt: newKey },
-    select: { ma_vt: true },
-  });
-  if (dup) throw new ConflictError(`Mã hàng "${newKey}" đã tồn tại`);
+  await assertNotExists(
+    () =>
+      db.dmvt.findUnique({ where: { ma_vt: newKey }, select: { ma_vt: true } }),
+    new ConflictError(`Mã hàng "${newKey}" đã tồn tại`),
+  );
 
   // Kiểm tra bảng tham chiếu TRƯỚC transaction (tránh SQL lỗi làm abort tx).
   const hasCdlo = await tableExists(db, 'cdlo');

@@ -1,5 +1,6 @@
 import type { Prisma, PrismaClient } from '../../../../generated/tenant';
 import { ConflictError, NotFoundError } from '../../../../helpers/errors';
+import { assertNotExists, findOrThrow } from '../../../../helpers/crudGuards';
 import { MESSAGES } from '../../../../constants/messages';
 import type {
   NhomKhoBodyInput,
@@ -30,11 +31,14 @@ export function listNhomKho(db: PrismaClient, q: NhomKhoListQuery) {
 
 /** POST tạo mới. */
 export async function createNhomKho(db: PrismaClient, body: NhomKhoBodyInput) {
-  const exists = await db.dmnhkho.findUnique({
-    where: { ma_nh: body.ma_nh },
-    select: { ma_nh: true },
-  });
-  if (exists) throw new ConflictError(`Mã nhóm "${body.ma_nh}" đã tồn tại`);
+  await assertNotExists(
+    () =>
+      db.dmnhkho.findUnique({
+        where: { ma_nh: body.ma_nh },
+        select: { ma_nh: true },
+      }),
+    new ConflictError(`Mã nhóm "${body.ma_nh}" đã tồn tại`),
+  );
 
   await db.dmnhkho.create({
     data: {
@@ -53,11 +57,14 @@ export async function updateNhomKho(
   maNh: string,
   body: NhomKhoUpdateInput,
 ) {
-  const current = await db.dmnhkho.findUnique({
-    where: { ma_nh: maNh },
-    select: { ma_nh: true },
-  });
-  if (!current) throw new NotFoundError(MESSAGES.TON_KHO.NHOM_KHO_NOT_FOUND);
+  await findOrThrow(
+    () =>
+      db.dmnhkho.findUnique({
+        where: { ma_nh: maNh },
+        select: { ma_nh: true },
+      }),
+    new NotFoundError(MESSAGES.TON_KHO.NHOM_KHO_NOT_FOUND),
+  );
 
   await db.dmnhkho.update({
     where: { ma_nh: maNh },
@@ -72,11 +79,14 @@ export async function updateNhomKho(
 
 /** DELETE — chặn nếu nhóm kho đang được dùng trong kho (dmkho.ma_nh). */
 export async function deleteNhomKho(db: PrismaClient, maNh: string) {
-  const current = await db.dmnhkho.findUnique({
-    where: { ma_nh: maNh },
-    select: { ma_nh: true },
-  });
-  if (!current) throw new NotFoundError(MESSAGES.TON_KHO.NHOM_KHO_NOT_FOUND);
+  await findOrThrow(
+    () =>
+      db.dmnhkho.findUnique({
+        where: { ma_nh: maNh },
+        select: { ma_nh: true },
+      }),
+    new NotFoundError(MESSAGES.TON_KHO.NHOM_KHO_NOT_FOUND),
+  );
 
   const used = await db.dmkho.count({ where: { ma_nh: maNh } });
   if (used > 0) {

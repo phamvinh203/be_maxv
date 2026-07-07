@@ -11,6 +11,7 @@ import {
 } from '@mui/material';
 import CheckCircleRoundedIcon from '@mui/icons-material/CheckCircleRounded';
 import { useRegister } from '@/features/auth/hooks/useAuth';
+import { useSubmitCooldown } from '@/features/auth/hooks/useAuthBackoff';
 import { getApiError } from '@/lib/apiClient';
 import { PasswordField } from '@/features/auth/components/PasswordField';
 
@@ -25,6 +26,7 @@ interface Props {
 
 export function RegisterForm({ onLogin }: Props): JSX.Element {
   const { mutate, isPending } = useRegister();
+  const { locked, remainingSec, startCooldown } = useSubmitCooldown();
   const [form, setForm] = useState<Record<Field, string>>({
     ho_ten: '',
     email: '',
@@ -58,12 +60,14 @@ export function RegisterForm({ onLogin }: Props): JSX.Element {
 
   function handleSubmit(e: FormEvent): void {
     e.preventDefault();
+    if (locked) return;
     setServerError('');
     const errs = validate();
     if (Object.keys(errs).length) {
       setFieldErrors(errs);
       return;
     }
+    startCooldown();
     const sdt = form.phone.replace(/\s/g, '');
     mutate(
       {
@@ -177,7 +181,7 @@ export function RegisterForm({ onLogin }: Props): JSX.Element {
             variant="contained"
             fullWidth
             size="large"
-            disabled={isPending}
+            disabled={isPending || locked}
             sx={{
               height: 44,
               fontWeight: 700,
@@ -187,6 +191,8 @@ export function RegisterForm({ onLogin }: Props): JSX.Element {
           >
             {isPending ? (
               <CircularProgress size={22} sx={{ color: 'white' }} />
+            ) : locked ? (
+              `VUI LÒNG ĐỢI ${remainingSec}S`
             ) : (
               'BẮT ĐẦU DÙNG THỬ 7 NGÀY'
             )}
