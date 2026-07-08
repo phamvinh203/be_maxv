@@ -3,14 +3,11 @@ import Button from "@mui/material/Button";
 import Box from "@mui/material/Box";
 import DialogLoginHddt from "../components/dialogLoginHddt";
 import AppHeader from "../components/AppHeader";
-import LoginForm from "../features/auth/components/LoginForm";
 import { useAuth } from "../features/auth/useAuth";
 
 export default function HomePage() {
-  const { user, setGdtToken } = useAuth();
+  const { setGdtToken } = useAuth();
   const [openLogin, setOpenLogin] = useState(false);
-
-  if (!user) return <LoginForm />;
 
   return (
     <>

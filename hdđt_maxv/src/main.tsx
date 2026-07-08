@@ -5,14 +5,14 @@ import { ThemeProvider } from "@mui/material/styles";
 import { theme } from "./theme";
 import { AuthProvider } from "./features/auth/AuthContext";
 import "./index.css";
-import App from "./App.tsx";
+import AppRouter from "./routes/AppRouter.tsx";
 
 createRoot(document.getElementById("root")!).render(
   <StrictMode>
     <ThemeProvider theme={theme}>
       <CssBaseline />
       <AuthProvider>
-        <App />
+        <AppRouter />
       </AuthProvider>
     </ThemeProvider>
   </StrictMode>,
