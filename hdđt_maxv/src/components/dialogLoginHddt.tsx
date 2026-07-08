@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type AnimationEvent } from "react";
 import Dialog from "@mui/material/Dialog";
 import DialogTitle from "@mui/material/DialogTitle";
 import DialogContent from "@mui/material/DialogContent";
@@ -22,6 +22,27 @@ interface Props {
   open: boolean;
   onClose: () => void;
   onLoginSuccess?: (token: string) => void;
+}
+
+// Ghi đè nền xanh mặc định của trình duyệt khi autofill để khớp giao diện.
+const AUTOFILL_SX = {
+  "& input:-webkit-autofill": {
+    WebkitBoxShadow: "0 0 0 100px #fff inset",
+    WebkitTextFillColor: "inherit",
+  },
+};
+
+/**
+ * Trình duyệt autofill không bắn onChange của React nên label/notch của
+ * TextField không tự cập nhật. Bắt qua animation trick (xem index.css) để
+ * đồng bộ lại state thật khi autofill xảy ra.
+ */
+function onAutoFillDetected(setValue: (v: string) => void) {
+  return (e: AnimationEvent<HTMLInputElement>) => {
+    if (e.animationName === "onAutoFillStart") {
+      setValue(e.currentTarget.value);
+    }
+  };
 }
 
 export default function DialogLoginHddt({
@@ -138,6 +159,11 @@ export default function DialogLoginHddt({
             onChange={(e) => setUsername(e.target.value)}
             fullWidth
             autoFocus
+            autoComplete="username"
+            sx={AUTOFILL_SX}
+            slotProps={{
+              input: { onAnimationStart: onAutoFillDetected(setUsername) },
+            }}
           />
 
           <TextField
@@ -146,8 +172,11 @@ export default function DialogLoginHddt({
             value={password}
             onChange={(e) => setPassword(e.target.value)}
             fullWidth
+            autoComplete="current-password"
+            sx={AUTOFILL_SX}
             slotProps={{
               input: {
+                onAnimationStart: onAutoFillDetected(setPassword),
                 endAdornment: (
                   <InputAdornment position="end">
                     <IconButton

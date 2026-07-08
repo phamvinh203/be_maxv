@@ -1,0 +1,13 @@
+/* Trick để bắt sự kiện khi trình duyệt autofill input (không bắn onChange của React). */
+@keyframes onAutoFillStart {
+  from {}
+}
+@keyframes onAutoFillCancel {
+  from {}
+}
+input:-webkit-autofill {
+  animation-name: onAutoFillStart;
+}
+input:not(:-webkit-autofill) {
+  animation-name: onAutoFillCancel;
+}

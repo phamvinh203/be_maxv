@@ -3,7 +3,7 @@ import { createTheme } from '@mui/material/styles'
 // Theme nâu (saddle brown) theo mockup dialog login HĐĐT.
 export const theme = createTheme({
   palette: {
-    primary: { main: '#8B4513' },
+    primary: { main: '#0067e8' },
   },
   typography: {
     fontFamily:
