@@ -16,6 +16,7 @@ import { taiKhoanRoutes } from './tongHop/taiKhoan.route';
 import { phongBanRoutes } from './tongHop/phongBan.route';
 import { khachHangRoutes } from './banHang/khachHang.route';
 import { hoaDonBanHangRoutes } from './banHang/hoaDonBanHang.route';
+import gdtRoutes from './hddt/gdt.route';
 
 export async function registerRoutes(app: FastifyInstance) {
   await app.register(authRoutes, { prefix: '/api/v1/auth' });
@@ -39,4 +40,7 @@ export async function registerRoutes(app: FastifyInstance) {
   // Bán hàng
   await app.register(khachHangRoutes, { prefix: '/api/v1/ban-hang' });
   await app.register(hoaDonBanHangRoutes, { prefix: '/api/v1/ban-hang' });
+
+  // hóa đơn điện tử
+  await app.register(gdtRoutes, { prefix: '/api/v1/gdt' });
 }
