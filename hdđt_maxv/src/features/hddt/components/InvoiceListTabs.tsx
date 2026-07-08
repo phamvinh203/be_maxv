@@ -20,25 +20,13 @@ import CircularProgress from "@mui/material/CircularProgress";
 import SearchRounded from "@mui/icons-material/SearchRounded";
 import SyncRounded from "@mui/icons-material/SyncRounded";
 import InboxRounded from "@mui/icons-material/InboxRounded";
-import { useAuth } from "../../auth/useAuth";
-import {
-  getPurchaseInvoices,
-  getSoldInvoices,
-  type PurchaseInvoiceRaw,
-  type SoldInvoiceRaw,
-} from "../api/gdt";
-
-type InvoiceDirection = "in" | "out";
-
-const TAB_CONFIG: Record<InvoiceDirection, { label: string }> = {
-  in: { label: "Hóa đơn đầu vào" },
-  out: { label: "Hóa đơn đầu ra" },
-};
+import { useGdtSession } from "../gdtSession/useGdtSession";
+import { getInvoices, type InvoiceDirection, type InvoiceRaw } from "../api/gdt";
 
 /** Cột chưa có nguồn dữ liệu (cần lưu DB / tra cứu rủi ro riêng) — hiển thị tạm "—". */
 const NO_DATA_YET = "—";
 
-/** Dòng hiển thị chuẩn hóa — gộp field khác tên giữa hóa đơn mua vào (nbmst/nbten) và bán ra (nmmst/nmten). */
+/** Dòng hiển thị — đổi tên field GDT sang tên tiếng Việt dễ đọc cho bảng. */
 interface DisplayRow {
   id: string;
   mauHd: string;
@@ -59,16 +47,16 @@ interface DisplayRow {
   ketQuaKt: string;
 }
 
-function toDisplayRow(direction: InvoiceDirection) {
-  return (r: PurchaseInvoiceRaw | SoldInvoiceRaw): DisplayRow => ({
+function toDisplayRow(r: InvoiceRaw): DisplayRow {
+  return {
     id: r.id,
     mauHd: r.khmshdon,
     soSeri: r.khhdon,
     soHd: r.shdon,
     ngayLap: r.tdlap,
     ngayKy: r.nky ?? "",
-    partnerMst: direction === "in" ? (r as PurchaseInvoiceRaw).nbmst : (r as SoldInvoiceRaw).nmmst,
-    partnerTen: direction === "in" ? (r as PurchaseInvoiceRaw).nbten : (r as SoldInvoiceRaw).nmten,
+    partnerMst: r.mstDoiTac,
+    partnerTen: r.tenDoiTac,
     tienChuaThue: r.tgtcthue,
     tienThue: r.tgtthue,
     cktm: r.ttcktmai,
@@ -78,7 +66,7 @@ function toDisplayRow(direction: InvoiceDirection) {
     tyGia: r.tgia,
     trangThaiHd: r.tthai,
     ketQuaKt: r.ttxly,
-  });
+  };
 }
 
 function formatMoney(n?: number) {
@@ -97,7 +85,7 @@ interface InvoiceTablePanelProps {
 }
 
 function InvoiceTablePanel({ direction }: InvoiceTablePanelProps) {
-  const { currentGdtMst, getGdtToken } = useAuth();
+  const { currentGdtMst, getGdtToken } = useGdtSession();
   const [keyword, setKeyword] = useState("");
   const [fromDate, setFromDate] = useState("");
   const [toDate, setToDate] = useState("");
@@ -141,11 +129,8 @@ function InvoiceTablePanel({ direction }: InvoiceTablePanelProps) {
 
     setLoading(true);
     try {
-      const datas =
-        direction === "in"
-          ? (await getPurchaseInvoices(token, { tuNgay: fromDate, denNgay: toDate })).datas
-          : (await getSoldInvoices(token, { tuNgay: fromDate, denNgay: toDate })).datas;
-      setRows((datas ?? []).map(toDisplayRow(direction)));
+      const result = await getInvoices(direction, token, { tuNgay: fromDate, denNgay: toDate });
+      setRows((result.datas ?? []).map(toDisplayRow));
       setSelected(new Set());
       setSearched(true);
     } catch (e) {
@@ -306,7 +291,7 @@ function InvoiceTablePanel({ direction }: InvoiceTablePanelProps) {
 }
 
 export default function InvoiceListTabs() {
-  const [tab, setTab] = useState<InvoiceDirection>("in");
+  const [tab, setTab] = useState<InvoiceDirection>("purchase");
 
   const handleChange = (_e: SyntheticEvent, value: InvoiceDirection) => {
     setTab(value);
@@ -319,12 +304,12 @@ export default function InvoiceListTabs() {
         onChange={handleChange}
         sx={{ borderBottom: 1, borderColor: "divider" }}
       >
-        <Tab label={TAB_CONFIG.in.label} value="in" />
-        <Tab label={TAB_CONFIG.out.label} value="out" />
+        <Tab label="Hóa đơn đầu vào" value="purchase" />
+        <Tab label="Hóa đơn đầu ra" value="sold" />
       </Tabs>
 
-      {tab === "in" && <InvoiceTablePanel direction="in" />}
-      {tab === "out" && <InvoiceTablePanel direction="out" />}
+      {/* key={tab}: buộc remount khi đổi tab để mỗi chiều có state tra cứu riêng, không lẫn dữ liệu cũ. */}
+      <InvoiceTablePanel key={tab} direction={tab} />
     </Box>
   );
 }

@@ -9,9 +9,11 @@ import MenuItem from "@mui/material/MenuItem";
 import ListItemText from "@mui/material/ListItemText";
 import Divider from "@mui/material/Divider";
 import { useAuth } from "../features/auth/useAuth";
+import { useGdtSession } from "../features/hddt/gdtSession/useGdtSession";
 
 export default function AppHeader() {
   const { user, logout } = useAuth();
+  const { clearGdtSession } = useGdtSession();
   const [anchorEl, setAnchorEl] = useState<HTMLElement | null>(null);
 
   if (!user) return null;
@@ -43,6 +45,7 @@ export default function AppHeader() {
             onClick={() => {
               setAnchorEl(null);
               logout();
+              clearGdtSession();
             }}
           >
             Đăng xuất

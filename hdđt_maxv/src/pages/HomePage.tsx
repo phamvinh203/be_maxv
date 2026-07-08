@@ -6,10 +6,10 @@ import Typography from "@mui/material/Typography";
 import DialogLoginHddt from "../components/dialogLoginHddt";
 import AppHeader from "../components/AppHeader";
 import InvoiceListTabs from "../features/hddt/components/InvoiceListTabs";
-import { useAuth } from "../features/auth/useAuth";
+import { useGdtSession } from "../features/hddt/gdtSession/useGdtSession";
 
 export default function HomePage() {
-  const { setGdtToken } = useAuth();
+  const { setGdtToken } = useGdtSession();
   const [openLogin, setOpenLogin] = useState(false);
 
   return (
