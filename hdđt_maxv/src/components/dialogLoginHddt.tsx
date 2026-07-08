@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type AnimationEvent } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Dialog from "@mui/material/Dialog";
 import DialogTitle from "@mui/material/DialogTitle";
 import DialogContent from "@mui/material/DialogContent";
@@ -16,33 +16,16 @@ import Close from "@mui/icons-material/Close";
 import Refresh from "@mui/icons-material/Refresh";
 import Visibility from "@mui/icons-material/Visibility";
 import VisibilityOff from "@mui/icons-material/VisibilityOff";
-import { type CaptchaInfo, getCaptcha, loginGdt } from "../features/hddt/api/gdt";
+import {
+  type CaptchaInfo,
+  getCaptcha,
+  loginGdt,
+} from "../features/hddt/api/gdt";
 
 interface Props {
   open: boolean;
   onClose: () => void;
   onLoginSuccess?: (token: string) => void;
-}
-
-// Ghi đè nền xanh mặc định của trình duyệt khi autofill để khớp giao diện.
-const AUTOFILL_SX = {
-  "& input:-webkit-autofill": {
-    WebkitBoxShadow: "0 0 0 100px #fff inset",
-    WebkitTextFillColor: "inherit",
-  },
-};
-
-/**
- * Trình duyệt autofill không bắn onChange của React nên label/notch của
- * TextField không tự cập nhật. Bắt qua animation trick (xem index.css) để
- * đồng bộ lại state thật khi autofill xảy ra.
- */
-function onAutoFillDetected(setValue: (v: string) => void) {
-  return (e: AnimationEvent<HTMLInputElement>) => {
-    if (e.animationName === "onAutoFillStart") {
-      setValue(e.currentTarget.value);
-    }
-  };
 }
 
 export default function DialogLoginHddt({
@@ -65,7 +48,7 @@ export default function DialogLoginHddt({
       captcha?.content
         ? `data:image/svg+xml;utf8,${encodeURIComponent(captcha.content)}`
         : undefined,
-    [captcha?.content]
+    [captcha?.content],
   );
 
   const fetchCaptcha = async () => {
@@ -151,8 +134,8 @@ export default function DialogLoginHddt({
         </IconButton>
       </DialogTitle>
 
-      <DialogContent sx={{ pt: 3, mt: 1 }}>
-        <Stack spacing={2}>
+      <DialogContent sx={{ pt: 2, mt: 3, pb: 2 }}>
+        <Stack spacing={3}>
           <TextField
             label="Tên đăng nhập"
             value={username}
@@ -160,10 +143,6 @@ export default function DialogLoginHddt({
             fullWidth
             autoFocus
             autoComplete="username"
-            sx={AUTOFILL_SX}
-            slotProps={{
-              input: { onAnimationStart: onAutoFillDetected(setUsername) },
-            }}
           />
 
           <TextField
@@ -173,10 +152,8 @@ export default function DialogLoginHddt({
             onChange={(e) => setPassword(e.target.value)}
             fullWidth
             autoComplete="current-password"
-            sx={AUTOFILL_SX}
             slotProps={{
               input: {
-                onAnimationStart: onAutoFillDetected(setPassword),
                 endAdornment: (
                   <InputAdornment position="end">
                     <IconButton
