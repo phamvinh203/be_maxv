@@ -8,7 +8,15 @@ import {
   CaptchaResponse,
   LoginRequest,
   LoginResponse,
+  PurchaseInvoiceQuery,
+  PurchaseInvoiceResponse,
 } from "../../../types/gdt";
+
+/** "yyyy-MM-dd" (input FE) -> "dd/MM/yyyy" (định dạng GDT yêu cầu trong tham số `search`). */
+function toGdtDate(isoDate: string): string {
+  const [y, m, d] = isoDate.split("-");
+  return `${d}/${m}/${y}`;
+}
 
 /**
  * Lấy captcha + giữ lại cookie session mà GDT set.
@@ -57,4 +65,38 @@ export async function login(body: LoginRequest) {
   renameCookies(body.key, result.token);
 
   return result;
+}
+
+/**
+ * Lấy danh sách hóa đơn đầu vào (mua vào) — tương đương bước đầu của
+ * `ConvertInput` bên bản C# (chỉ gọi API lấy danh sách, chưa lưu DB/tải chi tiết).
+ */
+export async function getPurchaseInvoices(
+  token: string,
+  query: PurchaseInvoiceQuery
+) {
+  const isMayTinhTien = query.ketQuaHd === "8";
+  const path = isMayTinhTien
+    ? "/sco-query/invoices/purchase"
+    : "/query/invoices/purchase";
+
+  const search = [
+    `tdlap=ge=${toGdtDate(query.tuNgay)}T00:00:00`,
+    `tdlap=le=${toGdtDate(query.denNgay)}T23:59:59`,
+    query.trangThaiHd && `tthai==${query.trangThaiHd}`,
+    query.ketQuaHd && `ttxly==${query.ketQuaHd}`,
+    query.mstNguoiBan && `nbmst==${query.mstNguoiBan}`,
+    query.mauHd && `khmshdon==${query.mauHd}`,
+    query.soSeri && `khhdon==${query.soSeri}`,
+    query.soHd && `shdon==${query.soHd}`,
+  ]
+    .filter(Boolean)
+    .join(";");
+
+  const params = new URLSearchParams({ sort: "tdlap:desc", size: "50", search });
+  if (query.state) params.set("state", query.state);
+
+  return gdtFetch<PurchaseInvoiceResponse>(`${path}?${params.toString()}`, {
+    bearerToken: token,
+  });
 }

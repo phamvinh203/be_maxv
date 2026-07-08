@@ -49,13 +49,19 @@ type GdtFetchInit = RequestInit & {
   cookieKey?: string;
   /** Có thu thập Set-Cookie từ response vào jar không */
   captureCookies?: boolean;
+  /**
+   * Token đăng nhập GDT, gửi dưới dạng `Authorization: Bearer <token>`.
+   * Các API tra cứu (query/invoices/...) xác thực bằng header này,
+   * khác với /captcha và /security-taxpayer/authenticate (xác thực qua cookie).
+   */
+  bearerToken?: string;
 };
 
 export async function gdtFetch<T>(
   path: string,
   init?: GdtFetchInit
 ): Promise<T> {
-  const { cookieKey, captureCookies, ...rest } = init ?? {};
+  const { cookieKey, captureCookies, bearerToken, ...rest } = init ?? {};
 
   const headers: Record<string, string> = {
     Accept: "application/json",
@@ -68,6 +74,10 @@ export async function gdtFetch<T>(
     if (cookies?.length) {
       headers.Cookie = cookies.map((c) => c.split(";")[0]).join("; ");
     }
+  }
+
+  if (bearerToken) {
+    headers.Authorization = `Bearer ${bearerToken}`;
   }
 
   if (rest.body && !headers["Content-Type"]) {
