@@ -20,7 +20,12 @@ import SearchRounded from "@mui/icons-material/SearchRounded";
 import SyncRounded from "@mui/icons-material/SyncRounded";
 import InboxRounded from "@mui/icons-material/InboxRounded";
 import { useAuth } from "../../auth/useAuth";
-import { getPurchaseInvoices, type PurchaseInvoiceRaw } from "../api/gdt";
+import {
+  getPurchaseInvoices,
+  getSoldInvoices,
+  type PurchaseInvoiceRaw,
+  type SoldInvoiceRaw,
+} from "../api/gdt";
 
 type InvoiceDirection = "in" | "out";
 
@@ -31,6 +36,33 @@ const TAB_CONFIG: Record<
   in: { label: "Hóa đơn đầu vào", partnerColumn: "MST / Tên người bán" },
   out: { label: "Hóa đơn đầu ra", partnerColumn: "MST / Tên người mua" },
 };
+
+/** Dòng hiển thị chuẩn hóa — gộp field khác tên giữa hóa đơn mua vào (nbmst/nbten) và bán ra (nmmst/nmten). */
+interface DisplayRow {
+  id: string;
+  khhdon: string;
+  shdon: string;
+  tdlap: string;
+  partner: string;
+  tgtttbso: number;
+  tthai: string;
+}
+
+function toDisplayRow(direction: InvoiceDirection) {
+  return (r: PurchaseInvoiceRaw | SoldInvoiceRaw): DisplayRow => {
+    const mst = direction === "in" ? (r as PurchaseInvoiceRaw).nbmst : (r as SoldInvoiceRaw).nmmst;
+    const ten = direction === "in" ? (r as PurchaseInvoiceRaw).nbten : (r as SoldInvoiceRaw).nmten;
+    return {
+      id: r.id,
+      khhdon: r.khhdon,
+      shdon: r.shdon,
+      tdlap: r.tdlap,
+      partner: `${mst ?? ""}${ten ? ` - ${ten}` : ""}`,
+      tgtttbso: r.tgtttbso,
+      tthai: r.tthai,
+    };
+  };
+}
 
 function formatMoney(n?: number) {
   if (typeof n !== "number") return "";
@@ -49,20 +81,17 @@ interface InvoiceTablePanelProps {
 
 function InvoiceTablePanel({ direction }: InvoiceTablePanelProps) {
   const { partnerColumn } = TAB_CONFIG[direction];
-  // Chỉ tab "đầu vào" đã có API (/gdt/invoices/purchase) — "đầu ra" để làm sau.
-  const canSearch = direction === "in";
 
   const { currentGdtMst, getGdtToken } = useAuth();
   const [keyword, setKeyword] = useState("");
   const [fromDate, setFromDate] = useState("");
   const [toDate, setToDate] = useState("");
-  const [rows, setRows] = useState<PurchaseInvoiceRaw[]>([]);
+  const [rows, setRows] = useState<DisplayRow[]>([]);
   const [searched, setSearched] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
   const handleSearch = async () => {
-    if (!canSearch) return;
     setError("");
 
     if (!fromDate || !toDate) {
@@ -80,11 +109,11 @@ function InvoiceTablePanel({ direction }: InvoiceTablePanelProps) {
 
     setLoading(true);
     try {
-      const result = await getPurchaseInvoices(token, {
-        tuNgay: fromDate,
-        denNgay: toDate,
-      });
-      setRows(result.datas ?? []);
+      const datas =
+        direction === "in"
+          ? (await getPurchaseInvoices(token, { tuNgay: fromDate, denNgay: toDate })).datas
+          : (await getSoldInvoices(token, { tuNgay: fromDate, denNgay: toDate })).datas;
+      setRows((datas ?? []).map(toDisplayRow(direction)));
       setSearched(true);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Không lấy được danh sách hóa đơn.");
@@ -121,7 +150,6 @@ function InvoiceTablePanel({ direction }: InvoiceTablePanelProps) {
           size="small"
           value={keyword}
           onChange={(e) => setKeyword(e.target.value)}
-          disabled={!canSearch}
           sx={{ flexGrow: 1, minWidth: 220 }}
           slotProps={{
             input: {
@@ -136,7 +164,7 @@ function InvoiceTablePanel({ direction }: InvoiceTablePanelProps) {
         <Button
           variant="outlined"
           sx={{ textTransform: "none" }}
-          disabled={!canSearch || loading}
+          disabled={loading}
           onClick={handleSearch}
         >
           {loading ? <CircularProgress size={20} /> : "Tra cứu"}
@@ -145,7 +173,7 @@ function InvoiceTablePanel({ direction }: InvoiceTablePanelProps) {
           variant="contained"
           startIcon={<SyncRounded />}
           sx={{ textTransform: "none", whiteSpace: "nowrap" }}
-          disabled={!canSearch}
+          disabled
         >
           Đồng bộ từ Thuế
         </Button>
@@ -176,9 +204,7 @@ function InvoiceTablePanel({ direction }: InvoiceTablePanelProps) {
                   <TableCell>{r.khhdon}</TableCell>
                   <TableCell>{r.shdon}</TableCell>
                   <TableCell>{formatDate(r.tdlap)}</TableCell>
-                  <TableCell>
-                    {r.nbmst} {r.nbten ? `- ${r.nbten}` : ""}
-                  </TableCell>
+                  <TableCell>{r.partner}</TableCell>
                   <TableCell align="right">{formatMoney(r.tgtttbso)}</TableCell>
                   <TableCell align="center">{r.tthai}</TableCell>
                 </TableRow>

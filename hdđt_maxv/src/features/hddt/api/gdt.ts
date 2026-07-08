@@ -99,3 +99,61 @@ export async function getPurchaseInvoices(
   }
   return data
 }
+
+export interface SoldInvoiceQuery {
+  /** yyyy-MM-dd — bắt buộc */
+  tuNgay: string
+  /** yyyy-MM-dd — bắt buộc */
+  denNgay: string
+  trangThaiHd?: string
+  ketQuaHd?: string
+  mstNguoiMua?: string
+  mauHd?: string
+  soSeri?: string
+  soHd?: string
+  /** Cursor phân trang từ lần gọi trước */
+  state?: string
+}
+
+/** 1 hóa đơn bán ra thô trả về từ GDT (field đặt tên theo nguyên bản GDT, chưa chuẩn hóa). */
+export interface SoldInvoiceRaw {
+  id: string
+  nmmst: string
+  nmten: string
+  khmshdon: string
+  khhdon: string
+  shdon: string
+  tdlap: string
+  tthai: string
+  ttxly: string
+  tgtttbso: number
+  [key: string]: unknown
+}
+
+export interface SoldInvoiceResult {
+  total?: number
+  state?: string
+  datas?: SoldInvoiceRaw[]
+}
+
+/** GET /api/v1/gdt/invoices/sold → danh sách hóa đơn đầu ra (chưa lưu DB, chỉ tra cứu trực tiếp GDT). */
+export async function getSoldInvoices(
+  token: string,
+  query: SoldInvoiceQuery,
+): Promise<SoldInvoiceResult> {
+  const params = new URLSearchParams()
+  Object.entries(query).forEach(([key, value]) => {
+    if (value) params.set(key, value)
+  })
+
+  const res = await fetch(`${API_BASE}/gdt/invoices/sold?${params.toString()}`, {
+    headers: { Authorization: `Bearer ${token}` },
+  })
+  const data = (await res.json().catch(() => ({}))) as SoldInvoiceResult & {
+    message?: string
+  }
+  if (!res.ok) {
+    throw new Error(data.message || `Không lấy được danh sách hóa đơn (${res.status})`)
+  }
+  return data
+}
