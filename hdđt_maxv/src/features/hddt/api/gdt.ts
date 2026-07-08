@@ -66,8 +66,22 @@ export interface PurchaseInvoiceRaw {
   khhdon: string
   shdon: string
   tdlap: string
+  /** Ngày ký */
+  nky?: string
   tthai: string
   ttxly: string
+  /** Mã ngoại tệ */
+  dvtte?: string
+  /** Tỷ giá */
+  tgia?: number
+  /** Tổng tiền chưa thuế */
+  tgtcthue?: number
+  /** Tổng tiền thuế */
+  tgtthue?: number
+  /** Tổng chiết khấu thương mại */
+  ttcktmai?: number
+  /** Tổng phí */
+  tgtphi?: number
   tgtttbso: number
   [key: string]: unknown
 }
@@ -124,8 +138,22 @@ export interface SoldInvoiceRaw {
   khhdon: string
   shdon: string
   tdlap: string
+  /** Ngày ký */
+  nky?: string
   tthai: string
   ttxly: string
+  /** Mã ngoại tệ */
+  dvtte?: string
+  /** Tỷ giá */
+  tgia?: number
+  /** Tổng tiền chưa thuế */
+  tgtcthue?: number
+  /** Tổng tiền thuế */
+  tgtthue?: number
+  /** Tổng chiết khấu thương mại */
+  ttcktmai?: number
+  /** Tổng phí */
+  tgtphi?: number
   tgtttbso: number
   [key: string]: unknown
 }
