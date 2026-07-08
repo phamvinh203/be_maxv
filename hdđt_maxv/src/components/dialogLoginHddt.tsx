@@ -1,6 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
 import Dialog from "@mui/material/Dialog";
-import DialogTitle from "@mui/material/DialogTitle";
 import DialogContent from "@mui/material/DialogContent";
 import DialogActions from "@mui/material/DialogActions";
 import TextField from "@mui/material/TextField";
@@ -105,37 +104,45 @@ export default function DialogLoginHddt({
     <Dialog
       open={open}
       onClose={submitting ? undefined : onClose}
-      maxWidth="xs"
+      maxWidth="sm"
       fullWidth
+      slotProps={{ paper: { sx: { borderRadius: 2, overflow: "hidden" } } }}
     >
-      <DialogTitle
+      <Box
         sx={{
-          position: "relative",
-          m: 0,
-          p: 1.5,
-          bgcolor: "primary.main",
-          color: "primary.contrastText",
-          fontWeight: 700,
+          display: "flex",
+          alignItems: "center",
+          gap: 1.5,
+          px: 2.5,
+          py: 1.5,
         }}
       >
-        Đăng nhập
-        <IconButton
-          aria-label="Đóng"
-          onClick={onClose}
+        <Box
           sx={{
-            position: "absolute",
-            right: 8,
-            top: 6,
-            color: "primary.contrastText",
+            width: 36,
+            height: 36,
+            borderRadius: 1,
+            bgcolor: "primary.main",
           }}
-          size="small"
-        >
+        />
+        <Typography variant="h6" sx={{ fontWeight: 700, flexGrow: 1 }}>
+          Đăng nhập
+        </Typography>
+        <IconButton aria-label="Đóng" onClick={onClose} size="small">
           <Close fontSize="small" />
         </IconButton>
-      </DialogTitle>
+      </Box>
+      <Box sx={{ height: 3, bgcolor: "primary.main" }} />
 
-      <DialogContent sx={{ pt: 2, mt: 3, pb: 2 }}>
-        <Stack spacing={3}>
+      <DialogContent sx={{ pt: 3, pb: 1 }}>
+        <Box
+          sx={{
+            display: "grid",
+            gridTemplateColumns: { xs: "1fr", sm: "1fr 1fr" },
+            gap: 2.5,
+            mb: 3,
+          }}
+        >
           <TextField
             label="Tên đăng nhập"
             value={username}
@@ -168,19 +175,21 @@ export default function DialogLoginHddt({
               },
             }}
           />
+        </Box>
 
+        <Box
+          sx={{
+            display: "grid",
+            gridTemplateColumns: { xs: "1fr", sm: "1fr 1fr" },
+            gap: 2.5,
+            alignItems: "start",
+          }}
+        >
           <Box>
-            <Typography variant="body2" sx={{ fontWeight: 600 }}>
-              Mã captcha{" "}
-              <Typography component="span" color="error">
-                * Nhập mã captcha
-              </Typography>
+            <Typography variant="body2" sx={{ fontWeight: 600, mb: 0.5 }}>
+              Mã captcha
             </Typography>
-            <Stack
-              direction="row"
-              spacing={1}
-              sx={{ mt: 0.5, alignItems: "center" }}
-            >
+            <Stack direction="row" spacing={1} sx={{ alignItems: "center" }}>
               <Box
                 sx={{
                   height: 48,
@@ -218,26 +227,44 @@ export default function DialogLoginHddt({
               >
                 <Refresh />
               </IconButton>
-              <TextField
-                placeholder="Nhập mã captcha"
-                value={captchaInput}
-                onChange={(e) => setCaptchaInput(e.target.value)}
-                size="small"
-              />
             </Stack>
           </Box>
 
-          <Typography
-            variant="body2"
-            color="primary"
-            sx={{ cursor: "pointer", alignSelf: "flex-start" }}
-          >
-            Quên mật khẩu
-          </Typography>
+          <Box>
+            <Typography variant="body2" sx={{ fontWeight: 600, mb: 0.5 }}>
+              <Typography component="span" color="error">
+                *{" "}
+              </Typography>
+              Nhập mã captcha
+            </Typography>
+            <TextField
+              placeholder="Nhập mã captcha"
+              value={captchaInput}
+              onChange={(e) => setCaptchaInput(e.target.value)}
+              size="small"
+              fullWidth
+            />
+          </Box>
+        </Box>
 
-          {error && <Alert severity="error">{error}</Alert>}
-          {done && <Alert severity="success">Đăng nhập thành công.</Alert>}
-        </Stack>
+        <Typography
+          variant="body2"
+          color="primary"
+          sx={{ cursor: "pointer", alignSelf: "flex-start", mt: 2 }}
+        >
+          Quên mật khẩu
+        </Typography>
+
+        {error && (
+          <Alert severity="error" sx={{ mt: 2 }}>
+            {error}
+          </Alert>
+        )}
+        {done && (
+          <Alert severity="success" sx={{ mt: 2 }}>
+            Đăng nhập thành công.
+          </Alert>
+        )}
       </DialogContent>
 
       <DialogActions sx={{ justifyContent: "center", pb: 3 }}>
