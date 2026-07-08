@@ -24,7 +24,8 @@ import {
 interface Props {
   open: boolean;
   onClose: () => void;
-  onLoginSuccess?: (token: string) => void;
+  /** `mst` là tên đăng nhập (tenant) vừa dùng để login GDT. */
+  onLoginSuccess?: (token: string, mst: string) => void;
 }
 
 export default function DialogLoginHddt({
@@ -91,7 +92,7 @@ export default function DialogLoginHddt({
         key: captcha.key,
       });
       setDone(true);
-      if (res.token) onLoginSuccess?.(res.token);
+      if (res.token) onLoginSuccess?.(res.token, username.trim());
     } catch (e) {
       setError(e instanceof Error ? e.message : "Đăng nhập thất bại.");
       fetchCaptcha(); // sai captcha/thông tin → lấy captcha mới

@@ -7,7 +7,7 @@ import LoginForm from "../features/auth/components/LoginForm";
 import { useAuth } from "../features/auth/useAuth";
 
 export default function HomePage() {
-  const { user } = useAuth();
+  const { user, setGdtToken } = useAuth();
   const [openLogin, setOpenLogin] = useState(false);
 
   if (!user) return <LoginForm />;
@@ -27,10 +27,7 @@ export default function HomePage() {
         <DialogLoginHddt
           open={openLogin}
           onClose={() => setOpenLogin(false)}
-          onLoginSuccess={(token) => {
-            // TODO: lưu token theo tenant (tương đương SaveToken ở bản C#)
-            console.log("GDT token:", token);
-          }}
+          onLoginSuccess={(token, mst) => setGdtToken(mst, token)}
         />
       </Box>
     </>
