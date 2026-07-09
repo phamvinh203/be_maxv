@@ -1,11 +1,8 @@
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
-import {
-  login as loginApi,
-  logout as logoutApi,
-  type AuthCompany,
-  type AuthUser,
-} from "./api/authApi";
+import { login as loginApi, logout as logoutApi } from "./api/authApi";
+import type { AuthCompany, AuthUser } from "./types";
 import { listCompanies, switchCompany as switchCompanyApi } from "../company/api/companyApi";
+import { queryClient } from "../../lib/queryClient";
 import { AuthContext } from "./context";
 
 // Persist để sống qua F5 (không làm refresh-token/switch-company tự động — xem spec).
@@ -73,6 +70,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const login = useCallback(async (email: string, password: string) => {
     const data = await loginApi(email, password);
+    // Xóa cache Query của phiên trước (nếu có) để không rò dữ liệu sang user mới.
+    queryClient.clear();
     setUser(data.user);
     setAccessToken(data.accessToken);
     setCompanies(data.companies);
@@ -81,6 +80,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const logout = useCallback(async () => {
     await logoutApi().catch(() => {});
+    queryClient.clear();
     setUser(null);
     setAccessToken(null);
     setCompanies([]);

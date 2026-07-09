@@ -1,5 +1,5 @@
-import { trangThaiHdLabel, type InvoiceDirection } from "./api/gdt";
-import type { DisplayRow } from "./components/InvoiceListTabs";
+import { trangThaiHdLabel } from "./api/gdt";
+import type { DisplayRow, InvoiceDirection } from "./types";
 import { formatDateVN } from "./dateUtils";
 
 interface Column {
@@ -7,7 +7,10 @@ interface Column {
   value: (row: DisplayRow, index: number) => string | number;
 }
 
-/** Cột xuất Excel — chỉ các cột có dữ liệu thật (bỏ cột placeholder "—" và cột nút thao tác). */
+/**
+ * Cột xuất Excel — chỉ các cột có dữ liệu thật (bỏ cột placeholder "—" và cột nút thao tác).
+ * Dùng: nội bộ file này — `exportInvoicesToCsv`.
+ */
 function columns(direction: InvoiceDirection): Column[] {
   const isPurchase = direction === "purchase";
   return [
@@ -33,7 +36,10 @@ function columns(direction: InvoiceDirection): Column[] {
   ];
 }
 
-/** Bọc 1 ô CSV: escape dấu nháy kép và bọc trong "" nếu chứa ký tự đặc biệt. */
+/**
+ * Bọc 1 ô CSV: escape dấu nháy kép và bọc trong "" nếu chứa ký tự đặc biệt.
+ * Dùng: nội bộ file này — `exportInvoicesToCsv` (cho cả header lẫn từng ô).
+ */
 function csvCell(value: string | number): string {
   const s = String(value);
   return /[",\r\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
@@ -42,6 +48,7 @@ function csvCell(value: string | number): string {
 /**
  * Xuất danh sách hóa đơn đang hiển thị ra file CSV (Excel mở trực tiếp).
  * Dùng BOM UTF-8 để Excel hiển thị đúng tiếng Việt; số tiền để dạng số thô để Excel tính được.
+ * Dùng: `InvoiceListTabs` — nút "Xuất hóa đơn (Excel)".
  */
 export function exportInvoicesToCsv(rows: DisplayRow[], direction: InvoiceDirection): void {
   const cols = columns(direction);

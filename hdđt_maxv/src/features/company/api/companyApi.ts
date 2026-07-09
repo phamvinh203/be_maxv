@@ -1,28 +1,9 @@
 import { apiFetchData } from "../../../lib/http";
-import type { AuthCompany } from "../../auth/api/authApi";
-
-/** Chi tiết công ty dùng cho tab "Quản lý công ty/Hộ kinh doanh". */
-export interface CompanyDetail extends AuthCompany {
-  diaChi: string | null;
-  sdt: string | null;
-  loaiHinhKinhDoanh: string | null;
-}
-
-export interface CreateCompanyPayload {
-  tenCongTy: string;
-  maSoThue: string;
-  diaChi: string;
-  sdt?: string;
-  loaiHinhKinhDoanh?: string;
-}
-
-/** MST không nằm trong đây — không sửa được sau khi tạo (đã gắn tenant DB). */
-export interface UpdateCompanyPayload {
-  tenCongTy?: string;
-  diaChi?: string;
-  sdt?: string;
-  loaiHinhKinhDoanh?: string;
-}
+import type {
+  CompanyDetail,
+  CreateCompanyPayload,
+  UpdateCompanyPayload,
+} from "../types";
 
 /** GET /companies — danh sách công ty/MST user được phép (owner thấy hết của mình). */
 export function listCompanies(token: string): Promise<CompanyDetail[]> {

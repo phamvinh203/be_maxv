@@ -390,10 +390,40 @@ export interface SyncParams {
   loai: SyncInvoiceKind;
 }
 
+const toYmd = (d: Date): string =>
+  `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(
+    d.getDate(),
+  ).padStart(2, "0")}`;
+
 /**
- * Đồng bộ hóa đơn 1 khoảng ngày từ GDT vào DB tenant: với mỗi nguồn (chiều × loại) lặp
- * hết các trang theo cursor `state`, upsert từng trang, cộng dồn tổng/đã lưu. Lỗi giữa
- * chừng (vd token GDT hết hạn) -> dừng, đánh dấu `partial`. Cuối cùng ghi 1 dòng `sync_log`.
+ * Chia [tuNgay, denNgay] thành các cửa sổ nằm gọn trong TỪNG tháng dương lịch — mỗi cửa sổ
+ * luôn ≤ 1 tháng, thỏa giới hạn GDT ("khoảng thời gian tìm kiếm không được lớn hơn 1 tháng").
+ * Ví dụ 15/01 → 10/03 = [15/01–31/01], [01/02–28/02], [01/03–10/03].
+ */
+function monthlyChunks(
+  tuNgay: string,
+  denNgay: string,
+): { tuNgay: string; denNgay: string }[] {
+  const end = new Date(`${denNgay}T00:00:00`);
+  const chunks: { tuNgay: string; denNgay: string }[] = [];
+  let cur = new Date(`${tuNgay}T00:00:00`);
+
+  while (cur <= end) {
+    // Ngày cuối tháng của `cur` = "ngày 0" của tháng kế tiếp.
+    const lastOfMonth = new Date(cur.getFullYear(), cur.getMonth() + 1, 0);
+    const chunkEnd = lastOfMonth < end ? lastOfMonth : end;
+    chunks.push({ tuNgay: toYmd(cur), denNgay: toYmd(chunkEnd) });
+    // Ngày kế tiếp (tự nhảy sang tháng sau nếu chunkEnd là cuối tháng).
+    cur = new Date(chunkEnd.getFullYear(), chunkEnd.getMonth(), chunkEnd.getDate() + 1);
+  }
+  return chunks;
+}
+
+/**
+ * Đồng bộ hóa đơn 1 khoảng ngày từ GDT vào DB tenant. GDT chỉ cho tìm ≤ 1 tháng/lần nên chia
+ * khoảng thành các cửa sổ theo tháng; với mỗi nguồn (chiều × loại) × mỗi cửa sổ, lặp hết các
+ * trang theo cursor `state`, upsert từng trang, cộng dồn tổng/đã lưu. Lỗi giữa chừng (vd token
+ * GDT hết hạn) -> dừng toàn bộ, đánh dấu `partial`. Cuối cùng ghi 1 dòng `sync_log`.
  */
 export async function runSync(
   tenantDb: PrismaClient,
@@ -401,51 +431,57 @@ export async function runSync(
   params: SyncParams,
 ) {
   const sources = resolveSyncSources(params.direction, params.loai);
+  const chunks = monthlyChunks(params.tuNgay, params.denNgay);
   let total = 0;
   let saved = 0;
   let partial = false;
   let message = "";
+  let aborted = false;
 
   for (const source of sources) {
-    try {
-      let state: string | undefined = undefined;
-      let pages = 0;
+    for (const chunk of chunks) {
+      try {
+        let state: string | undefined = undefined;
+        let pages = 0;
 
-      do {
-        const query: PurchaseInvoiceQuery = {
-          tuNgay: params.tuNgay,
-          denNgay: params.denNgay,
-          ketQuaHd: source.cashRegister ? "8" : undefined,
-          state,
-        };
-        const page: PurchaseInvoiceResponse | SoldInvoiceResponse =
-          source.direction === "purchase"
-            ? await getPurchaseInvoices(gdtToken, query)
-            : await getSoldInvoices(gdtToken, query);
+        do {
+          const query: PurchaseInvoiceQuery = {
+            tuNgay: chunk.tuNgay,
+            denNgay: chunk.denNgay,
+            ketQuaHd: source.cashRegister ? "8" : undefined,
+            state,
+          };
+          const page: PurchaseInvoiceResponse | SoldInvoiceResponse =
+            source.direction === "purchase"
+              ? await getPurchaseInvoices(gdtToken, query)
+              : await getSoldInvoices(gdtToken, query);
 
-        // GDT trả `total` cho cả khoảng (giống nhau mỗi trang) -> chỉ cộng 1 lần/nguồn (trang đầu).
-        if (pages === 0) total += page.total ?? 0;
-        const rows = page.datas ?? [];
-        saved += await saveInvoices(tenantDb, source.direction, rows);
+          // GDT trả `total` cho cả cửa sổ (giống nhau mỗi trang) -> cộng 1 lần/cửa sổ (trang đầu).
+          if (pages === 0) total += page.total ?? 0;
+          const rows = page.datas ?? [];
+          saved += await saveInvoices(tenantDb, source.direction, rows);
 
-        state = page.state || undefined;
-        pages += 1;
-        // Dừng ngay khi trang rỗng: một số API vẫn trả cursor khác rỗng ở trang cuối,
-        // nếu chỉ dựa vào `state` sẽ lặp tới trần MAX_SYNC_PAGES rồi báo "partial" nhầm.
-        if (rows.length === 0) break;
-        if (state) await delay(SYNC_PAGE_DELAY_MS);
-      } while (state && pages < MAX_SYNC_PAGES);
+          state = page.state || undefined;
+          pages += 1;
+          // Dừng ngay khi trang rỗng: một số API vẫn trả cursor khác rỗng ở trang cuối,
+          // nếu chỉ dựa vào `state` sẽ lặp tới trần MAX_SYNC_PAGES rồi báo "partial" nhầm.
+          if (rows.length === 0) break;
+          if (state) await delay(SYNC_PAGE_DELAY_MS);
+        } while (state && pages < MAX_SYNC_PAGES);
 
-      if (state && pages >= MAX_SYNC_PAGES) {
+        if (state && pages >= MAX_SYNC_PAGES) {
+          partial = true;
+          message = `Đạt giới hạn ${MAX_SYNC_PAGES} trang cho 1 cửa sổ — có thể còn dữ liệu chưa đồng bộ hết.`;
+        }
+      } catch (err) {
+        // Lỗi (thường do token GDT hết hạn / bị chặn) -> dừng, giữ những gì đã lưu.
         partial = true;
-        message = `Đạt giới hạn ${MAX_SYNC_PAGES} trang cho 1 nguồn — có thể còn dữ liệu chưa đồng bộ hết.`;
+        message = err instanceof Error ? err.message : "Lỗi khi gọi GDT.";
+        aborted = true;
+        break;
       }
-    } catch (err) {
-      // Lỗi (thường do token GDT hết hạn / bị chặn) -> dừng, giữ những gì đã lưu.
-      partial = true;
-      message = err instanceof Error ? err.message : "Lỗi khi gọi GDT.";
-      break;
     }
+    if (aborted) break;
   }
 
   return tenantDb.sync_log.create({

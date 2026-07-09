@@ -18,18 +18,8 @@ import AddRounded from "@mui/icons-material/AddRounded";
 import SearchRounded from "@mui/icons-material/SearchRounded";
 import RestartAltRounded from "@mui/icons-material/RestartAltRounded";
 import CloudSyncRounded from "@mui/icons-material/CloudSyncRounded";
-import { TRANG_THAI_HD_OPTIONS, type InvoiceDirection } from "../api/gdt";
-
-export interface InvoiceFilterValues {
-  tuNgay: string;
-  denNgay: string;
-  mstDoiTac: string;
-  trangThaiHd: string;
-  ketQuaHd: string;
-  mauHd: string;
-  soSeri: string;
-  soHd: string;
-}
+import { TRANG_THAI_HD_OPTIONS } from "../api/gdt";
+import type { InvoiceDirection, InvoiceFilterValues } from "../types";
 
 const EMPTY_FILTERS: InvoiceFilterValues = {
   tuNgay: "",
