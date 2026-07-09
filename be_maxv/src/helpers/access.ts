@@ -10,14 +10,15 @@ import type { Prisma } from '../generated/sys';
  * Dùng chung cho: canAccessDonVi (1 MST), listAccessibleCompanies (tất cả),
  * và resolveTenantDb (chọn DB tenant) — thêm role mới chỉ sửa 1 chỗ.
  */
+// Công ty đã bị owner "xóa" (ARCHIVED) không còn thao tác được nữa (list/switch/resolveTenantDb).
+const NOT_ARCHIVED = { status: { not: 'ARCHIVED' } } as const;
+
 export function accessibleDonViWhere(
   userId: string,
   role: string,
 ): Prisma.DonViWhereInput | null {
-  // Công ty đã bị owner "xóa" (ARCHIVED) không còn thao tác được nữa (list/switch/resolveTenantDb).
-  if (role === 'OWNER') return { ownerId: userId, status: { not: 'ARCHIVED' } };
-  if (role === 'OWNER_EMPLOYEE')
-    return { access: { some: { userId } }, status: { not: 'ARCHIVED' } };
+  if (role === 'OWNER') return { ownerId: userId, ...NOT_ARCHIVED };
+  if (role === 'OWNER_EMPLOYEE') return { access: { some: { userId } }, ...NOT_ARCHIVED };
   return null;
 }
 
