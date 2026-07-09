@@ -2,6 +2,7 @@ import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
 import App from "../App";
 import AuthPage from "../pages/AuthPage";
 import HomePage from "../pages/HomePage";
+import SettingsPage from "../pages/settings/SettingsPage";
 import ProtectedRoute from "./ProtectedRoute";
 import { useAuth } from "../features/auth/useAuth";
 
@@ -24,6 +25,14 @@ export default function AppRouter() {
             element={
               <ProtectedRoute>
                 <HomePage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="settings"
+            element={
+              <ProtectedRoute>
+                <SettingsPage />
               </ProtectedRoute>
             }
           />
