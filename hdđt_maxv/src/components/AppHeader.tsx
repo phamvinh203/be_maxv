@@ -3,7 +3,7 @@ import { useNavigate } from "react-router-dom";
 import AppBar from "@mui/material/AppBar";
 import Toolbar from "@mui/material/Toolbar";
 import Stack from "@mui/material/Stack";
-import Typography from "@mui/material/Typography";
+import Box from "@mui/material/Box";
 import Button from "@mui/material/Button";
 import Avatar from "@mui/material/Avatar";
 import IconButton from "@mui/material/IconButton";
@@ -22,6 +22,7 @@ import CheckRounded from "@mui/icons-material/CheckRounded";
 import { useAuth } from "../features/auth/useAuth";
 import { useGdtSession } from "../features/hddt/gdtSession/useGdtSession";
 import { useCompanySwitch } from "../features/company/hooks/useCompanySwitch";
+import logoMaxv from "../assets/Logo_Maxv.png";
 
 export default function AppHeader() {
   const { user, logout, companies, currentCompanyId } = useAuth();
@@ -47,9 +48,13 @@ export default function AppHeader() {
     <AppBar position="static" color="primary" enableColorOnDark>
       <Toolbar sx={{ justifyContent: "space-between", gap: 2 }}>
         <Stack direction="row" spacing={3} sx={{ alignItems: "center" }}>
-          <Typography variant="h6" sx={{ fontWeight: 700 }}>
-            MAXV
-          </Typography>
+          <Box
+            component="img"
+            src={logoMaxv}
+            alt="MAXV"
+            sx={{ height: 32, width: "auto", display: "block", cursor: "pointer" }}
+            onClick={() => navigate("/")}
+          />
           <Button
             color="inherit"
             onClick={() => navigate("/")}

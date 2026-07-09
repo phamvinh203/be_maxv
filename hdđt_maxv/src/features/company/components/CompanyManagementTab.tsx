@@ -3,6 +3,7 @@ import Box from "@mui/material/Box";
 import Stack from "@mui/material/Stack";
 import Typography from "@mui/material/Typography";
 import Button from "@mui/material/Button";
+import Chip from "@mui/material/Chip";
 import Alert from "@mui/material/Alert";
 import Tooltip from "@mui/material/Tooltip";
 import CircularProgress from "@mui/material/CircularProgress";
@@ -11,10 +12,14 @@ import DialogTitle from "@mui/material/DialogTitle";
 import DialogContent from "@mui/material/DialogContent";
 import DialogContentText from "@mui/material/DialogContentText";
 import DialogActions from "@mui/material/DialogActions";
+import { alpha } from "@mui/material/styles";
 import AddRounded from "@mui/icons-material/AddRounded";
 import EditRounded from "@mui/icons-material/EditRounded";
 import DeleteRounded from "@mui/icons-material/DeleteRounded";
 import CheckCircleRounded from "@mui/icons-material/CheckCircleRounded";
+import ReceiptLongRounded from "@mui/icons-material/ReceiptLongRounded";
+import AccountBalanceRounded from "@mui/icons-material/AccountBalanceRounded";
+import LocationOnRounded from "@mui/icons-material/LocationOnRounded";
 import { useAuth } from "../../auth/useAuth";
 import { useCompanySwitch } from "../hooks/useCompanySwitch";
 import { deleteCompany, listCompanies, type CompanyDetail } from "../api/companyApi";
@@ -132,17 +137,18 @@ export default function CompanyManagementTab() {
                 sx={{
                   position: "relative",
                   display: "flex",
-                  alignItems: "flex-start",
-                  justifyContent: "space-between",
+                  alignItems: { xs: "flex-start", sm: "center" },
                   gap: 2,
                   p: 2,
-                  pl: isCurrent ? 3 : 2,
                   border: "1px solid",
                   borderColor: isCurrent ? "primary.main" : "divider",
                   borderRadius: 2,
                   overflow: "hidden",
+                  bgcolor: isCurrent
+                    ? (theme) => alpha(theme.palette.primary.main, 0.05)
+                    : "background.paper",
                   cursor: isCurrent ? "default" : "pointer",
-                  transition: "background-color 0.15s",
+                  transition: "background-color 0.15s, border-color 0.15s",
                   "&:hover": isCurrent ? undefined : { bgcolor: "action.hover" },
                   opacity: switchingId !== null && switchingId !== company.id ? 0.6 : 1,
                 }}
@@ -154,39 +160,63 @@ export default function CompanyManagementTab() {
                       left: 0,
                       top: 0,
                       bottom: 0,
-                      width: 6,
+                      width: 4,
                       bgcolor: "primary.main",
                     }}
                   />
                 )}
-                {isCurrent && (
-                  <CheckCircleRounded
-                    color="primary"
-                    fontSize="small"
-                    sx={{ position: "absolute", left: 14, top: "50%", mt: "-10px" }}
-                  />
-                )}
 
-                <Box>
-                  <Stack direction="row" spacing={1} sx={{ alignItems: "center" }}>
-                    <Typography sx={{ fontWeight: 700 }}>{company.tenDonVi}</Typography>
+
+                <Box sx={{ flex: 1, minWidth: 0 }}>
+                  <Stack direction="row" spacing={1} sx={{ alignItems: "center", flexWrap: "wrap" }}>
+                    <Typography sx={{ fontWeight: 700 }} noWrap>
+                      {company.tenDonVi}
+                    </Typography>
+                    {isCurrent && (
+                      <Chip
+                        size="small"
+                        color="primary"
+                        icon={<CheckCircleRounded />}
+                        label="Đang sử dụng"
+                        sx={{ height: 22 }}
+                      />
+                    )}
                     {switchingId === company.id && <CircularProgress size={14} />}
                   </Stack>
-                  <Typography variant="body2" sx={{ mt: 0.5 }}>
-                    <Box component="span" color="text.secondary">
-                      Tài khoản Hóa đơn điện tử:{" "}
-                    </Box>
-                    <Box component="span" color="primary.main" sx={{ fontWeight: 600 }}>
-                      {company.maSoThue}
-                    </Box>
-                  </Typography>
-                  <Typography variant="body2" color="text.disabled">
-                    Tài khoản Thuế điện tử:
-                  </Typography>
+
+                  <Stack spacing={0.25} sx={{ mt: 0.75 }}>
+                    <Stack direction="row" spacing={1} sx={{ alignItems: "center" }}>
+                      <ReceiptLongRounded sx={{ fontSize: 16, color: "text.disabled", flexShrink: 0 }} />
+                      <Typography variant="body2" color="text.secondary" noWrap>
+                        Tài khoản Hóa đơn điện tử:{" "}
+                        <Box component="span" color="primary.main" sx={{ fontWeight: 600 }}>
+                          {company.maSoThue}
+                        </Box>
+                      </Typography>
+                    </Stack>
+                    <Stack direction="row" spacing={1} sx={{ alignItems: "center" }}>
+                      <AccountBalanceRounded sx={{ fontSize: 16, color: "text.disabled", flexShrink: 0 }} />
+                      <Typography variant="body2" color="text.secondary">
+                        Tài khoản Thuế điện tử:{" "}
+                        <Box component="span" color="text.disabled" sx={{ fontStyle: "italic" }}>
+                          Chưa liên kết
+                        </Box>
+                      </Typography>
+                    </Stack>
+                    {company.diaChi && (
+                      <Stack direction="row" spacing={1} sx={{ alignItems: "center" }}>
+                        <LocationOnRounded sx={{ fontSize: 16, color: "text.disabled", flexShrink: 0 }} />
+                        <Typography variant="body2" color="text.secondary" noWrap>
+                          {company.diaChi}
+                        </Typography>
+                      </Stack>
+                    )}
+                  </Stack>
                 </Box>
 
                 {isOwner && (
                   <Stack
+                    direction={{ xs: "row", sm: "column" }}
                     spacing={1}
                     sx={{ flexShrink: 0 }}
                     onClick={(e) => e.stopPropagation()}

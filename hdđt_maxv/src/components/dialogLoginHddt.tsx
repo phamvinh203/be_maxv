@@ -20,6 +20,7 @@ import {
   getCaptcha,
   loginGdt,
 } from "../features/hddt/api/gdt";
+import logoThueNhaNuoc from "../assets/logo_thue_nha_nuoc.jpg";
 
 interface Props {
   open: boolean;
@@ -122,11 +123,14 @@ export default function DialogLoginHddt({
         }}
       >
         <Box
+          component="img"
+          src={logoThueNhaNuoc}
+          alt="Thuế điện tử"
           sx={{
             width: 36,
             height: 36,
             borderRadius: 1,
-            bgcolor: "primary.main",
+            objectFit: "contain",
           }}
         />
         <Typography variant="h6" sx={{ fontWeight: 700, flexGrow: 1 }}>
