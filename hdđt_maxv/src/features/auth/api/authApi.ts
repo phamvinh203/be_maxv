@@ -1,4 +1,4 @@
-import { API_BASE } from "../../../config/api";
+import { apiFetch } from "../../../lib/http";
 
 export interface AuthUser {
   id: string;
@@ -7,9 +7,22 @@ export interface AuthUser {
   role: string;
 }
 
+/** Bản tóm tắt công ty/MST trả về lúc login (chi tiết đầy đủ hơn xem `features/company/api/companyApi.ts`). */
+export interface AuthCompany {
+  id: string;
+  maSoThue: string;
+  slug: string;
+  tenDonVi: string;
+  status: string;
+}
+
 interface LoginResponseData {
   accessToken: string;
   user: AuthUser;
+  /** Toàn bộ công ty/MST user được phép thao tác (owner thấy hết của mình; nhân viên thấy MST được cấp). */
+  companies: AuthCompany[];
+  /** Công ty đang active nhúng trong JWT; null nếu user có nhiều công ty và chưa xác định rõ. */
+  activeDonViId: string | null;
 }
 
 interface ApiEnvelope<T> {
@@ -20,13 +33,11 @@ interface ApiEnvelope<T> {
 
 /** POST /api/v1/auth/login → { accessToken, user } (ném error kèm message nếu thất bại) */
 export async function login(email: string, password: string) {
-  const res = await fetch(`${API_BASE}/auth/login`, {
+  const body = await apiFetch<ApiEnvelope<LoginResponseData>>("/auth/login", {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ email, password }),
   });
-  const body = (await res.json().catch(() => ({}))) as ApiEnvelope<LoginResponseData>;
-  if (!res.ok || !body.data) {
+  if (!body.data) {
     throw new Error(body.message || "Đăng nhập thất bại");
   }
   return body.data;
@@ -34,5 +45,5 @@ export async function login(email: string, password: string) {
 
 /** POST /api/v1/auth/logout — xóa refresh cookie phía server. */
 export async function logout() {
-  await fetch(`${API_BASE}/auth/logout`, { method: "POST" });
+  await apiFetch("/auth/logout", { method: "POST" });
 }

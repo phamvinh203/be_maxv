@@ -210,6 +210,7 @@ enum TenantStatus {
   READY
   FAILED
   SUSPENDED
+  ARCHIVED // owner "xóa" công ty (soft-delete) — KHÔNG xóa DB tenant, chỉ ẩn khỏi danh sách
 }
 
 enum SubscriptionStatus {

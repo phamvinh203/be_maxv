@@ -6,6 +6,7 @@ import Paper from "@mui/material/Paper";
 import Stack from "@mui/material/Stack";
 import TextField from "@mui/material/TextField";
 import Button from "@mui/material/Button";
+import Checkbox from "@mui/material/Checkbox";
 import InputAdornment from "@mui/material/InputAdornment";
 import Table from "@mui/material/Table";
 import TableHead from "@mui/material/TableHead";
@@ -19,18 +20,54 @@ import CircularProgress from "@mui/material/CircularProgress";
 import SearchRounded from "@mui/icons-material/SearchRounded";
 import SyncRounded from "@mui/icons-material/SyncRounded";
 import InboxRounded from "@mui/icons-material/InboxRounded";
-import { useAuth } from "../../auth/useAuth";
-import { getPurchaseInvoices, type PurchaseInvoiceRaw } from "../api/gdt";
+import { useGdtSession } from "../gdtSession/useGdtSession";
+import { getInvoices, type InvoiceDirection, type InvoiceRaw } from "../api/gdt";
 
-type InvoiceDirection = "in" | "out";
+/** Cột chưa có nguồn dữ liệu (cần lưu DB / tra cứu rủi ro riêng) — hiển thị tạm "—". */
+const NO_DATA_YET = "—";
 
-const TAB_CONFIG: Record<
-  InvoiceDirection,
-  { label: string; partnerColumn: string }
-> = {
-  in: { label: "Hóa đơn đầu vào", partnerColumn: "MST / Tên người bán" },
-  out: { label: "Hóa đơn đầu ra", partnerColumn: "MST / Tên người mua" },
-};
+/** Dòng hiển thị — đổi tên field GDT sang tên tiếng Việt dễ đọc cho bảng. */
+interface DisplayRow {
+  id: string;
+  mauHd: string;
+  soSeri: string;
+  soHd: string;
+  ngayLap: string;
+  ngayKy: string;
+  partnerMst: string;
+  partnerTen: string;
+  tienChuaThue?: number;
+  tienThue?: number;
+  cktm?: number;
+  phi?: number;
+  tongTt: number;
+  maNt: string;
+  tyGia?: number;
+  trangThaiHd: string;
+  ketQuaKt: string;
+}
+
+function toDisplayRow(r: InvoiceRaw): DisplayRow {
+  return {
+    id: r.id,
+    mauHd: r.khmshdon,
+    soSeri: r.khhdon,
+    soHd: r.shdon,
+    ngayLap: r.tdlap,
+    ngayKy: r.nky ?? "",
+    partnerMst: r.mstDoiTac,
+    partnerTen: r.tenDoiTac,
+    tienChuaThue: r.tgtcthue,
+    tienThue: r.tgtthue,
+    cktm: r.ttcktmai,
+    phi: r.tgtphi,
+    tongTt: r.tgtttbso,
+    maNt: r.dvtte ?? "",
+    tyGia: r.tgia,
+    trangThaiHd: r.tthai,
+    ketQuaKt: r.ttxly,
+  };
+}
 
 function formatMoney(n?: number) {
   if (typeof n !== "number") return "";
@@ -48,21 +85,33 @@ interface InvoiceTablePanelProps {
 }
 
 function InvoiceTablePanel({ direction }: InvoiceTablePanelProps) {
-  const { partnerColumn } = TAB_CONFIG[direction];
-  // Chỉ tab "đầu vào" đã có API (/gdt/invoices/purchase) — "đầu ra" để làm sau.
-  const canSearch = direction === "in";
-
-  const { currentGdtMst, getGdtToken } = useAuth();
+  const { currentGdtMst, getGdtToken } = useGdtSession();
   const [keyword, setKeyword] = useState("");
   const [fromDate, setFromDate] = useState("");
   const [toDate, setToDate] = useState("");
-  const [rows, setRows] = useState<PurchaseInvoiceRaw[]>([]);
+  const [rows, setRows] = useState<DisplayRow[]>([]);
+  const [selected, setSelected] = useState<Set<string>>(new Set());
   const [searched, setSearched] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
+  const allSelected = rows.length > 0 && selected.size === rows.length;
+  const someSelected = selected.size > 0 && !allSelected;
+
+  const toggleAll = () => {
+    setSelected(allSelected ? new Set() : new Set(rows.map((r) => r.id)));
+  };
+
+  const toggleOne = (id: string) => {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
   const handleSearch = async () => {
-    if (!canSearch) return;
     setError("");
 
     if (!fromDate || !toDate) {
@@ -80,11 +129,9 @@ function InvoiceTablePanel({ direction }: InvoiceTablePanelProps) {
 
     setLoading(true);
     try {
-      const result = await getPurchaseInvoices(token, {
-        tuNgay: fromDate,
-        denNgay: toDate,
-      });
-      setRows(result.datas ?? []);
+      const result = await getInvoices(direction, token, { tuNgay: fromDate, denNgay: toDate });
+      setRows((result.datas ?? []).map(toDisplayRow));
+      setSelected(new Set());
       setSearched(true);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Không lấy được danh sách hóa đơn.");
@@ -121,7 +168,6 @@ function InvoiceTablePanel({ direction }: InvoiceTablePanelProps) {
           size="small"
           value={keyword}
           onChange={(e) => setKeyword(e.target.value)}
-          disabled={!canSearch}
           sx={{ flexGrow: 1, minWidth: 220 }}
           slotProps={{
             input: {
@@ -136,7 +182,7 @@ function InvoiceTablePanel({ direction }: InvoiceTablePanelProps) {
         <Button
           variant="outlined"
           sx={{ textTransform: "none" }}
-          disabled={!canSearch || loading}
+          disabled={loading}
           onClick={handleSearch}
         >
           {loading ? <CircularProgress size={20} /> : "Tra cứu"}
@@ -145,7 +191,7 @@ function InvoiceTablePanel({ direction }: InvoiceTablePanelProps) {
           variant="contained"
           startIcon={<SyncRounded />}
           sx={{ textTransform: "none", whiteSpace: "nowrap" }}
-          disabled={!canSearch}
+          disabled
         >
           Đồng bộ từ Thuế
         </Button>
@@ -157,35 +203,77 @@ function InvoiceTablePanel({ direction }: InvoiceTablePanelProps) {
         </Alert>
       )}
 
-      <TableContainer component={Paper} variant="outlined">
-        <Table size="small">
+      <TableContainer component={Paper} variant="outlined" sx={{ overflowX: "auto" }}>
+        <Table size="small" sx={{ "& td, & th": { whiteSpace: "nowrap" } }}>
           <TableHead>
             <TableRow sx={{ "& th": { fontWeight: 700, bgcolor: "action.hover" } }}>
-              <TableCell>Ký hiệu</TableCell>
+              <TableCell padding="checkbox">
+                <Checkbox
+                  size="small"
+                  indeterminate={someSelected}
+                  checked={allSelected}
+                  onChange={toggleAll}
+                  disabled={rows.length === 0}
+                />
+              </TableCell>
+              <TableCell>T. thái tải</TableCell>
+              <TableCell>Ký hiệu mẫu số</TableCell>
+              <TableCell>Ký hiệu hóa đơn</TableCell>
               <TableCell>Số hóa đơn</TableCell>
               <TableCell>Ngày lập</TableCell>
-              <TableCell>{partnerColumn}</TableCell>
-              <TableCell align="right">Tổng tiền</TableCell>
-              <TableCell align="center">Trạng thái</TableCell>
+              <TableCell>Ngày ký</TableCell>
+              <TableCell>MST người bán/MST người xuất hàng</TableCell>
+              <TableCell>Tên người bán/Tên người xuất hàng</TableCell>
+              <TableCell align="right">Tổng tiền chưa thuế</TableCell>
+              <TableCell align="right">Tổng tiền thuế</TableCell>
+              <TableCell align="right">Tổng CKTM</TableCell>
+              <TableCell align="right">Tổng phí</TableCell>
+              <TableCell align="right">Tổng tiền thanh toán</TableCell>
+              <TableCell>Mã nt</TableCell>
+              <TableCell align="right">Tỷ giá</TableCell>
+              <TableCell align="center">Trạng thái hóa đơn</TableCell>
+              <TableCell align="center">Kết quả kiểm tra</TableCell>
+              <TableCell>Mã ct hạch toán</TableCell>
+              <TableCell>Tên chứng từ hạch toán</TableCell>
+              <TableCell align="center">Hóa đơn rủi ro</TableCell>
             </TableRow>
           </TableHead>
           <TableBody>
             {rows.length > 0 ? (
               rows.map((r) => (
-                <TableRow key={r.id}>
-                  <TableCell>{r.khhdon}</TableCell>
-                  <TableCell>{r.shdon}</TableCell>
-                  <TableCell>{formatDate(r.tdlap)}</TableCell>
-                  <TableCell>
-                    {r.nbmst} {r.nbten ? `- ${r.nbten}` : ""}
+                <TableRow key={r.id} selected={selected.has(r.id)} hover>
+                  <TableCell padding="checkbox">
+                    <Checkbox
+                      size="small"
+                      checked={selected.has(r.id)}
+                      onChange={() => toggleOne(r.id)}
+                    />
                   </TableCell>
-                  <TableCell align="right">{formatMoney(r.tgtttbso)}</TableCell>
-                  <TableCell align="center">{r.tthai}</TableCell>
+                  <TableCell>{NO_DATA_YET}</TableCell>
+                  <TableCell>{r.mauHd}</TableCell>
+                  <TableCell>{r.soSeri}</TableCell>
+                  <TableCell>{r.soHd}</TableCell>
+                  <TableCell>{formatDate(r.ngayLap)}</TableCell>
+                  <TableCell>{formatDate(r.ngayKy)}</TableCell>
+                  <TableCell>{r.partnerMst}</TableCell>
+                  <TableCell>{r.partnerTen}</TableCell>
+                  <TableCell align="right">{formatMoney(r.tienChuaThue)}</TableCell>
+                  <TableCell align="right">{formatMoney(r.tienThue)}</TableCell>
+                  <TableCell align="right">{formatMoney(r.cktm)}</TableCell>
+                  <TableCell align="right">{formatMoney(r.phi)}</TableCell>
+                  <TableCell align="right">{formatMoney(r.tongTt)}</TableCell>
+                  <TableCell>{r.maNt}</TableCell>
+                  <TableCell align="right">{formatMoney(r.tyGia)}</TableCell>
+                  <TableCell align="center">{r.trangThaiHd}</TableCell>
+                  <TableCell align="center">{r.ketQuaKt}</TableCell>
+                  <TableCell>{NO_DATA_YET}</TableCell>
+                  <TableCell>{NO_DATA_YET}</TableCell>
+                  <TableCell align="center">{NO_DATA_YET}</TableCell>
                 </TableRow>
               ))
             ) : (
               <TableRow>
-                <TableCell colSpan={6} sx={{ border: 0, py: 6 }}>
+                <TableCell colSpan={21} sx={{ border: 0, py: 6 }}>
                   <Stack spacing={1} sx={{ alignItems: "center", color: "text.disabled" }}>
                     <InboxRounded fontSize="large" />
                     <Typography variant="body2">
@@ -203,7 +291,7 @@ function InvoiceTablePanel({ direction }: InvoiceTablePanelProps) {
 }
 
 export default function InvoiceListTabs() {
-  const [tab, setTab] = useState<InvoiceDirection>("in");
+  const [tab, setTab] = useState<InvoiceDirection>("purchase");
 
   const handleChange = (_e: SyntheticEvent, value: InvoiceDirection) => {
     setTab(value);
@@ -216,12 +304,12 @@ export default function InvoiceListTabs() {
         onChange={handleChange}
         sx={{ borderBottom: 1, borderColor: "divider" }}
       >
-        <Tab label={TAB_CONFIG.in.label} value="in" />
-        <Tab label={TAB_CONFIG.out.label} value="out" />
+        <Tab label="Hóa đơn đầu vào" value="purchase" />
+        <Tab label="Hóa đơn đầu ra" value="sold" />
       </Tabs>
 
-      {tab === "in" && <InvoiceTablePanel direction="in" />}
-      {tab === "out" && <InvoiceTablePanel direction="out" />}
+      {/* key={tab}: buộc remount khi đổi tab để mỗi chiều có state tra cứu riêng, không lẫn dữ liệu cũ. */}
+      <InvoiceTablePanel key={tab} direction={tab} />
     </Box>
   );
 }

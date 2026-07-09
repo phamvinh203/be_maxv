@@ -10,6 +10,8 @@ import {
   LoginResponse,
   PurchaseInvoiceQuery,
   PurchaseInvoiceResponse,
+  SoldInvoiceQuery,
+  SoldInvoiceResponse,
 } from "../../../types/gdt";
 
 /** "yyyy-MM-dd" (input FE) -> "dd/MM/yyyy" (định dạng GDT yêu cầu trong tham số `search`). */
@@ -97,6 +99,37 @@ export async function getPurchaseInvoices(
   if (query.state) params.set("state", query.state);
 
   return gdtFetch<PurchaseInvoiceResponse>(`${path}?${params.toString()}`, {
+    bearerToken: token,
+  });
+}
+
+/**
+ * Lấy danh sách hóa đơn đầu ra (bán ra) — tương đương bước đầu của
+ * `ConvertOutput` bên bản C# (chỉ gọi API lấy danh sách, chưa lưu DB/tải chi tiết).
+ */
+export async function getSoldInvoices(token: string, query: SoldInvoiceQuery) {
+  const isMayTinhTien = query.ketQuaHd === "8";
+  const path = isMayTinhTien
+    ? "/sco-query/invoices/sold"
+    : "/query/invoices/sold";
+
+  const search = [
+    `tdlap=ge=${toGdtDate(query.tuNgay)}T00:00:00`,
+    `tdlap=le=${toGdtDate(query.denNgay)}T23:59:59`,
+    query.trangThaiHd && `tthai==${query.trangThaiHd}`,
+    query.ketQuaHd && `ttxly==${query.ketQuaHd}`,
+    query.mstNguoiMua && `nmmst==${query.mstNguoiMua}`,
+    query.mauHd && `khmshdon==${query.mauHd}`,
+    query.soSeri && `khhdon==${query.soSeri}`,
+    query.soHd && `shdon==${query.soHd}`,
+  ]
+    .filter(Boolean)
+    .join(";");
+
+  const params = new URLSearchParams({ sort: "tdlap:desc", size: "50", search });
+  if (query.state) params.set("state", query.state);
+
+  return gdtFetch<SoldInvoiceResponse>(`${path}?${params.toString()}`, {
     bearerToken: token,
   });
 }

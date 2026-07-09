@@ -5,6 +5,7 @@ import { createTrialSubscription } from '../shared/subscription.service';
 import { assertMstLimit, assertUserLimit } from '../shared/limits.service';
 import { writeLog } from '../shared/syslog.service';
 import { sendMail } from '../shared/mailer.service';
+import { findOrThrow } from '../../helpers/crudGuards';
 import {
   ConflictError,
   ForbiddenError,
@@ -12,8 +13,11 @@ import {
   NotFoundError,
 } from '../../helpers/errors';
 import { MESSAGES } from '../../constants/messages';
-import type { RegisterCompanyInput } from '../../validators/company.validator';
-import type { InviteUserInput } from '../../validators/company.validator';
+import type {
+  InviteUserInput,
+  RegisterCompanyInput,
+  UpdateCompanyInput,
+} from '../../validators/company.validator';
 
 /** ownerId lấy từ JWT (req.user.userId) của owner đang đăng nhập, không nhận từ body. */
 type RegisterCompanyArgs = RegisterCompanyInput & { ownerId: string };
@@ -81,6 +85,60 @@ export async function registerCompany(input: RegisterCompanyArgs) {
     status: donVi.status,
     dbName,
   };
+}
+
+/** Công ty theo id, chỉ khi thuộc quyền sở hữu của `ownerId` — ném NotFound nếu không. */
+function getOwnedOrThrow(id: string, ownerId: string) {
+  return findOrThrow(
+    () => sysPrisma.donVi.findFirst({ where: { id, ownerId } }),
+    new NotFoundError(MESSAGES.COMPANY.NOT_FOUND),
+  );
+}
+
+/** PUT /companies/:id — owner sửa thông tin công ty. MST không đổi được (đã gắn tenant DB). */
+export async function updateCompanyInfo(
+  id: string,
+  ownerId: string,
+  input: UpdateCompanyInput,
+) {
+  await getOwnedOrThrow(id, ownerId);
+
+  const updated = await sysPrisma.donVi.update({ where: { id }, data: input });
+
+  await writeLog({
+    hanhDong: 'UPDATE_COMPANY',
+    userId: ownerId,
+    donViId: id,
+    chiTiet: input,
+  });
+
+  return {
+    id: updated.id,
+    maSoThue: updated.maSoThue,
+    slug: updated.slug,
+    tenDonVi: updated.tenDonVi,
+    diaChi: updated.diaChi,
+    sdt: updated.sdt,
+    loaiHinhKinhDoanh: updated.loaiHinhKinhDoanh,
+    status: updated.status,
+  };
+}
+
+/** DELETE /companies/:id — owner "xóa" (lưu trữ) công ty. KHÔNG xóa DB tenant, chỉ ẩn khỏi danh sách. */
+export async function archiveCompany(id: string, ownerId: string) {
+  const company = await getOwnedOrThrow(id, ownerId);
+  if (company.status === 'ARCHIVED') {
+    throw new ConflictError(MESSAGES.COMPANY.ALREADY_ARCHIVED);
+  }
+
+  const updated = await sysPrisma.donVi.update({
+    where: { id },
+    data: { status: 'ARCHIVED' },
+  });
+
+  await writeLog({ hanhDong: 'ARCHIVE_COMPANY', userId: ownerId, donViId: id });
+
+  return { id: updated.id, status: updated.status };
 }
 
 interface InviteEmployeeInput extends InviteUserInput {

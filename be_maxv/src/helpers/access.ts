@@ -14,8 +14,10 @@ export function accessibleDonViWhere(
   userId: string,
   role: string,
 ): Prisma.DonViWhereInput | null {
-  if (role === 'OWNER') return { ownerId: userId };
-  if (role === 'OWNER_EMPLOYEE') return { access: { some: { userId } } };
+  // Công ty đã bị owner "xóa" (ARCHIVED) không còn thao tác được nữa (list/switch/resolveTenantDb).
+  if (role === 'OWNER') return { ownerId: userId, status: { not: 'ARCHIVED' } };
+  if (role === 'OWNER_EMPLOYEE')
+    return { access: { some: { userId } }, status: { not: 'ARCHIVED' } };
   return null;
 }
 

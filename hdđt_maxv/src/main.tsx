@@ -4,6 +4,7 @@ import CssBaseline from "@mui/material/CssBaseline";
 import { ThemeProvider } from "@mui/material/styles";
 import { theme } from "./theme";
 import { AuthProvider } from "./features/auth/AuthContext";
+import { GdtSessionProvider } from "./features/hddt/gdtSession/GdtSessionProvider";
 import "./index.css";
 import AppRouter from "./routes/AppRouter.tsx";
 
@@ -12,7 +13,9 @@ createRoot(document.getElementById("root")!).render(
     <ThemeProvider theme={theme}>
       <CssBaseline />
       <AuthProvider>
-        <AppRouter />
+        <GdtSessionProvider>
+          <AppRouter />
+        </GdtSessionProvider>
       </AuthProvider>
     </ThemeProvider>
   </StrictMode>,

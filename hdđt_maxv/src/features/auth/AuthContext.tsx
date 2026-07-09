@@ -1,68 +1,113 @@
-import { useState, type ReactNode } from "react";
-import { login as loginApi, logout as logoutApi, type AuthUser } from "./api/authApi";
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
+import {
+  login as loginApi,
+  logout as logoutApi,
+  type AuthCompany,
+  type AuthUser,
+} from "./api/authApi";
+import { listCompanies, switchCompany as switchCompanyApi } from "../company/api/companyApi";
 import { AuthContext } from "./context";
 
-// Token GDT sống ngắn (~5p ở backend) nên chỉ cần tồn tại trong tab hiện tại.
-const GDT_TOKENS_KEY = "hddt_gdt_tokens";
-const GDT_CURRENT_MST_KEY = "hddt_gdt_current_mst";
+// Persist để sống qua F5 (không làm refresh-token/switch-company tự động — xem spec).
+const TOKEN_KEY = "hddt_auth_token";
+const USER_KEY = "hddt_auth_user";
+const COMPANIES_KEY = "hddt_auth_companies";
+const CURRENT_COMPANY_KEY = "hddt_auth_current_company";
 
-function loadGdtTokens(): Record<string, string> {
+function loadJson<T>(key: string, fallback: T): T {
   try {
-    return JSON.parse(sessionStorage.getItem(GDT_TOKENS_KEY) ?? "{}");
+    const raw = localStorage.getItem(key);
+    return raw ? (JSON.parse(raw) as T) : fallback;
   } catch {
-    return {};
+    return fallback;
   }
 }
 
 export function AuthProvider({ children }: { children: ReactNode }) {
-  const [user, setUser] = useState<AuthUser | null>(null);
-  const [accessToken, setAccessToken] = useState<string | null>(null);
-  const [gdtTokens, setGdtTokens] = useState<Record<string, string>>(loadGdtTokens);
-  const [currentGdtMst, setCurrentGdtMst] = useState<string | null>(() =>
-    sessionStorage.getItem(GDT_CURRENT_MST_KEY),
+  const [user, setUser] = useState<AuthUser | null>(() => loadJson(USER_KEY, null));
+  const [accessToken, setAccessToken] = useState<string | null>(() =>
+    localStorage.getItem(TOKEN_KEY),
+  );
+  const [companies, setCompanies] = useState<AuthCompany[]>(() =>
+    loadJson<AuthCompany[]>(COMPANIES_KEY, []),
+  );
+  const [currentCompanyId, setCurrentCompanyId] = useState<string | null>(() =>
+    localStorage.getItem(CURRENT_COMPANY_KEY),
   );
 
-  const login = async (email: string, password: string) => {
+  useEffect(() => {
+    if (accessToken) localStorage.setItem(TOKEN_KEY, accessToken);
+    else localStorage.removeItem(TOKEN_KEY);
+  }, [accessToken]);
+
+  useEffect(() => {
+    if (user) localStorage.setItem(USER_KEY, JSON.stringify(user));
+    else localStorage.removeItem(USER_KEY);
+  }, [user]);
+
+  useEffect(() => {
+    localStorage.setItem(COMPANIES_KEY, JSON.stringify(companies));
+  }, [companies]);
+
+  useEffect(() => {
+    if (currentCompanyId) localStorage.setItem(CURRENT_COMPANY_KEY, currentCompanyId);
+    else localStorage.removeItem(CURRENT_COMPANY_KEY);
+  }, [currentCompanyId]);
+
+  const login = useCallback(async (email: string, password: string) => {
     const data = await loginApi(email, password);
     setUser(data.user);
     setAccessToken(data.accessToken);
-  };
+    setCompanies(data.companies);
+    setCurrentCompanyId(data.activeDonViId);
+  }, []);
 
-  const logout = async () => {
+  const logout = useCallback(async () => {
     await logoutApi().catch(() => {});
     setUser(null);
     setAccessToken(null);
-    setGdtTokens({});
-    setCurrentGdtMst(null);
-    sessionStorage.removeItem(GDT_TOKENS_KEY);
-    sessionStorage.removeItem(GDT_CURRENT_MST_KEY);
-  };
+    setCompanies([]);
+    setCurrentCompanyId(null);
+  }, []);
 
-  const getGdtToken = (mst: string) => gdtTokens[mst];
+  const refreshCompanies = useCallback(async () => {
+    if (!accessToken) return;
+    const data = await listCompanies(accessToken);
+    setCompanies(data);
+  }, [accessToken]);
 
-  const setGdtToken = (mst: string, token: string) => {
-    setGdtTokens((prev) => {
-      const next = { ...prev, [mst]: token };
-      sessionStorage.setItem(GDT_TOKENS_KEY, JSON.stringify(next));
-      return next;
-    });
-    setCurrentGdtMst(mst);
-    sessionStorage.setItem(GDT_CURRENT_MST_KEY, mst);
-  };
-
-  return (
-    <AuthContext.Provider
-      value={{
-        user,
-        accessToken,
-        login,
-        logout,
-        getGdtToken,
-        setGdtToken,
-        currentGdtMst,
-      }}
-    >
-      {children}
-    </AuthContext.Provider>
+  const switchCompany = useCallback(
+    async (id: string) => {
+      if (!accessToken) return;
+      const data = await switchCompanyApi(accessToken, id);
+      setAccessToken(data.accessToken);
+      setCurrentCompanyId(data.activeDonViId);
+    },
+    [accessToken],
   );
+
+  const value = useMemo(
+    () => ({
+      user,
+      accessToken,
+      companies,
+      currentCompanyId,
+      login,
+      logout,
+      refreshCompanies,
+      switchCompany,
+    }),
+    [
+      user,
+      accessToken,
+      companies,
+      currentCompanyId,
+      login,
+      logout,
+      refreshCompanies,
+      switchCompany,
+    ],
+  );
+
+  return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }

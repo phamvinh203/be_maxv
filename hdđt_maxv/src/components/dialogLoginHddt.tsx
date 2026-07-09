@@ -26,12 +26,15 @@ interface Props {
   onClose: () => void;
   /** `mst` là tên đăng nhập (tenant) vừa dùng để login GDT. */
   onLoginSuccess?: (token: string, mst: string) => void;
+  /** Điền sẵn MST (vd đã biết từ form công ty) — người dùng chỉ cần nhập mật khẩu/captcha. */
+  initialUsername?: string;
 }
 
 export default function DialogLoginHddt({
   open,
   onClose,
   onLoginSuccess,
+  initialUsername,
 }: Props) {
   const [username, setUsername] = useState(""); // = MST
   const [password, setPassword] = useState("");
@@ -64,10 +67,10 @@ export default function DialogLoginHddt({
     }
   };
 
-  // Mở dialog -> reset + lấy captcha mới
+  // Mở dialog -> reset + lấy captcha mới (giữ sẵn MST nếu được truyền vào)
   useEffect(() => {
     if (open) {
-      setUsername("");
+      setUsername(initialUsername ?? "");
       setPassword("");
       setCaptchaInput("");
       setError("");
@@ -75,7 +78,7 @@ export default function DialogLoginHddt({
       fetchCaptcha();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open]);
+  }, [open, initialUsername]);
 
   const handleSubmit = async () => {
     setError("");
@@ -149,7 +152,7 @@ export default function DialogLoginHddt({
             value={username}
             onChange={(e) => setUsername(e.target.value)}
             fullWidth
-            autoFocus
+            autoFocus={!initialUsername}
             autoComplete="username"
           />
 
@@ -159,6 +162,7 @@ export default function DialogLoginHddt({
             value={password}
             onChange={(e) => setPassword(e.target.value)}
             fullWidth
+            autoFocus={!!initialUsername}
             autoComplete="current-password"
             slotProps={{
               input: {
