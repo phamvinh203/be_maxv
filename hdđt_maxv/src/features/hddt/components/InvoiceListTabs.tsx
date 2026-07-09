@@ -1,4 +1,4 @@
-import { useState, type SyntheticEvent } from "react";
+import { useEffect, useRef, useState, type SyntheticEvent } from "react";
 import Box from "@mui/material/Box";
 import Tabs from "@mui/material/Tabs";
 import Tab from "@mui/material/Tab";
@@ -22,8 +22,17 @@ import VisibilityRounded from "@mui/icons-material/VisibilityRounded";
 import DownloadRounded from "@mui/icons-material/DownloadRounded";
 import { useAuth } from "../../auth/useAuth";
 import { useGdtSession } from "../gdtSession/useGdtSession";
-import { getInvoices, trangThaiHdLabel, type InvoiceDirection, type InvoiceRaw } from "../api/gdt";
+import {
+  getInvoices,
+  getSavedInvoices,
+  trangThaiHdLabel,
+  type InvoiceDirection,
+  type InvoiceQuery,
+  type InvoiceRaw,
+} from "../api/gdt";
 import InvoiceFilterPanel, { type InvoiceFilterValues } from "./InvoiceFilterPanel";
+import InvoicePagination, { DEFAULT_ROWS_PER_PAGE } from "./InvoicePagination";
+import { exportInvoicesToCsv } from "../exportInvoices";
 
 /** Cột chưa có nguồn dữ liệu (cần API/tính năng riêng, chưa xây) — hiển thị tạm "—". */
 const NO_DATA_YET = "—";
@@ -31,7 +40,7 @@ const NO_DATA_YET = "—";
 const COLUMN_COUNT = 27;
 
 /** Dòng hiển thị — chuẩn hóa field GDT + tách rõ bên bán/bên mua theo chiều hóa đơn. */
-interface DisplayRow {
+export interface DisplayRow {
   id: string;
   mauHd: string;
   soSeri: string;
@@ -53,18 +62,19 @@ interface DisplayRow {
   ketQuaKt: string;
 }
 
+function rowStr(v: unknown): string {
+  return typeof v === "string" ? v : v == null ? "" : String(v);
+}
+
 /**
- * GDT chỉ trả về thông tin bên đối tác (bên còn lại là công ty mình, đã biết trước qua
- * phiên đăng nhập) — nên cần `ownMst`/`ownTen` (tra từ danh sách công ty đã đăng nhập)
- * để điền đủ cột "người bán"/"người mua" bất kể đang xem chiều nào.
+ * GDT/DB đều trả cả 2 phía trong mỗi hàng: bên đối tác đã gộp sẵn ở `mstDoiTac`/`tenDoiTac`,
+ * còn bên "mình" nằm ở field gốc còn lại (mua vào -> người mua nmmst/nmten; bán ra -> người
+ * bán nbmst/nbten). Lấy trực tiếp từ hàng để hiển thị đúng kể cả khi chưa đăng nhập GDT.
  */
-function toDisplayRow(
-  r: InvoiceRaw,
-  direction: InvoiceDirection,
-  ownMst: string,
-  ownTen: string,
-): DisplayRow {
+function toDisplayRow(r: InvoiceRaw, direction: InvoiceDirection): DisplayRow {
   const isPurchase = direction === "purchase";
+  const ownMst = rowStr(isPurchase ? r.nmmst : r.nbmst);
+  const ownTen = rowStr(isPurchase ? r.nmten : r.nbten);
   return {
     id: r.id,
     mauHd: r.khmshdon,
@@ -101,69 +111,153 @@ function formatDate(s?: string) {
 
 interface InvoiceTablePanelProps {
   direction: InvoiceDirection;
+  /** Tab này đang được xem — chỉ tự nạp DB khi active để không tốn request cho tab ẩn. */
+  active: boolean;
 }
 
 type ResultTab = "tong-quat" | "chi-tiet";
 
-function InvoiceTablePanel({ direction }: InvoiceTablePanelProps) {
-  const { companies } = useAuth();
+/** Bộ lọc mặc định = tháng hiện tại (từ ngày 1 -> hôm nay). Dùng khi tự nạp lúc mở tab & khi "Bỏ tìm kiếm". */
+function defaultMonthFilters(): InvoiceFilterValues {
+  const now = new Date();
+  const first = new Date(now.getFullYear(), now.getMonth(), 1);
+  const fmt = (d: Date) =>
+    `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(
+      d.getDate(),
+    ).padStart(2, "0")}`;
+  return {
+    tuNgay: fmt(first),
+    denNgay: fmt(now),
+    mstDoiTac: "",
+    trangThaiHd: "",
+    ketQuaHd: "",
+    mauHd: "",
+    soSeri: "",
+    soHd: "",
+  };
+}
+
+function InvoiceTablePanel({ direction, active }: InvoiceTablePanelProps) {
+  const { accessToken } = useAuth();
   const { currentGdtMst, getGdtToken } = useGdtSession();
   const [resultTab, setResultTab] = useState<ResultTab>("tong-quat");
   const [rows, setRows] = useState<DisplayRow[]>([]);
   const [searched, setSearched] = useState(false);
-  const [loading, setLoading] = useState(false);
+  const [dbLoading, setDbLoading] = useState(false);
+  const [gdtLoading, setGdtLoading] = useState(false);
   const [error, setError] = useState("");
+  const [savedCount, setSavedCount] = useState<number | null>(null);
+  const [page, setPage] = useState(0);
+  const [rowsPerPage, setRowsPerPage] = useState(DEFAULT_ROWS_PER_PAGE);
 
-  const handleSearch = async (filters: InvoiceFilterValues) => {
+  // Lazy init: tính 1 lần, giữ ổn định qua các lần render (không đọc ref trong render).
+  const [defaultFilters] = useState(defaultMonthFilters);
+
+  // Cắt dữ liệu theo trang (phân trang phía client trên dữ liệu đã tải).
+  const pagedRows = rows.slice(page * rowsPerPage, page * rowsPerPage + rowsPerPage);
+
+  const buildQuery = (filters: InvoiceFilterValues): InvoiceQuery => ({
+    tuNgay: filters.tuNgay,
+    denNgay: filters.denNgay,
+    mstDoiTac: filters.mstDoiTac || undefined,
+    trangThaiHd: filters.trangThaiHd || undefined,
+    ketQuaHd: filters.ketQuaHd || undefined,
+    mauHd: filters.mauHd || undefined,
+    soSeri: filters.soSeri || undefined,
+    soHd: filters.soHd || undefined,
+  });
+
+  /** Đọc hóa đơn đã lưu từ DB (không gọi GDT). */
+  const loadFromDb = async (filters: InvoiceFilterValues) => {
+    if (!accessToken) return;
+    if (!filters.tuNgay || !filters.denNgay) {
+      setError("Vui lòng chọn đủ Từ ngày / Đến ngày.");
+      return;
+    }
     setError("");
+    setDbLoading(true);
+    try {
+      const result = await getSavedInvoices(direction, accessToken, buildQuery(filters));
+      setRows((result.datas ?? []).map((r) => toDisplayRow(r, direction)));
+      setPage(0);
+      setSearched(true);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Không đọc được hóa đơn đã lưu.");
+    } finally {
+      setDbLoading(false);
+    }
+  };
+
+  const handleSearch = (filters: InvoiceFilterValues) => {
+    setSavedCount(null);
+    void loadFromDb(filters);
+  };
+
+  /** Tra cứu GDT -> lưu vào DB -> nạp lại từ DB để bảng phản ánh đúng dữ liệu đã lưu. */
+  const handleFetchGdt = async (filters: InvoiceFilterValues) => {
+    setError("");
+    setSavedCount(null);
 
     if (!filters.tuNgay || !filters.denNgay) {
       setError("Vui lòng chọn đủ Từ ngày / Đến ngày.");
       return;
     }
 
-    const token = currentGdtMst ? getGdtToken(currentGdtMst) : undefined;
-    if (!token || !currentGdtMst) {
+    const gdtToken = currentGdtMst ? getGdtToken(currentGdtMst) : undefined;
+    if (!gdtToken || !currentGdtMst || !accessToken) {
       setError(
-        'Chưa đăng nhập Thuế điện tử — bấm "Đăng nhập Thuế điện tử" ở trên trước khi tra cứu.',
+        'Chưa đăng nhập Thuế điện tử — bấm "Đăng nhập Thuế điện tử" ở trên trước khi cập nhật.',
       );
       return;
     }
 
-    setLoading(true);
+    setGdtLoading(true);
     try {
-      const result = await getInvoices(direction, token, {
-        tuNgay: filters.tuNgay,
-        denNgay: filters.denNgay,
-        mstDoiTac: filters.mstDoiTac || undefined,
-        trangThaiHd: filters.trangThaiHd || undefined,
-        ketQuaHd: filters.ketQuaHd || undefined,
-        mauHd: filters.mauHd || undefined,
-        soSeri: filters.soSeri || undefined,
-        soHd: filters.soHd || undefined,
-      });
-      const ownTen = companies.find((c) => c.maSoThue === currentGdtMst)?.tenDonVi ?? "";
-      setRows((result.datas ?? []).map((r) => toDisplayRow(r, direction, currentGdtMst, ownTen)));
+      const gdtResult = await getInvoices(
+        direction,
+        { appToken: accessToken, gdtToken },
+        buildQuery(filters),
+      );
+      setSavedCount(gdtResult.saved ?? 0);
+
+      const dbResult = await getSavedInvoices(direction, accessToken, buildQuery(filters));
+      setRows((dbResult.datas ?? []).map((r) => toDisplayRow(r, direction)));
+      setPage(0);
       setSearched(true);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Không lấy được danh sách hóa đơn.");
+      setError(
+        e instanceof Error ? e.message : "Không cập nhật được hóa đơn từ Thuế điện tử.",
+      );
     } finally {
-      setLoading(false);
+      setGdtLoading(false);
     }
   };
 
   const handleReset = () => {
-    setError("");
-    setRows([]);
-    setSearched(false);
+    setSavedCount(null);
+    void loadFromDb(defaultFilters);
   };
+
+  // Tự nạp dữ liệu DB (tháng hiện tại) 1 lần, khi tab đã hiển thị và có accessToken —
+  // tab ẩn chỉ nạp lần đầu lúc người dùng chuyển sang, tránh 1 request thừa lúc mở trang.
+  const didInit = useRef(false);
+  useEffect(() => {
+    if (!didInit.current && active && accessToken) {
+      didInit.current = true;
+      void loadFromDb(defaultFilters);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [active, accessToken]);
 
   return (
     <Box sx={{ pt: 2.5 }}>
       <InvoiceFilterPanel
         direction={direction}
-        loading={loading}
+        dbLoading={dbLoading}
+        gdtLoading={gdtLoading}
+        initialValues={defaultFilters}
         onSearch={handleSearch}
+        onFetchGdt={handleFetchGdt}
         onReset={handleReset}
       />
 
@@ -172,15 +266,37 @@ function InvoiceTablePanel({ direction }: InvoiceTablePanelProps) {
           {error}
         </Alert>
       )}
+      {savedCount !== null && (
+        <Alert severity="success" sx={{ mb: 2 }}>
+          Đã lưu {savedCount} hóa đơn vào cơ sở dữ liệu.
+        </Alert>
+      )}
 
-      <Tabs
-        value={resultTab}
-        onChange={(_e, value: ResultTab) => setResultTab(value)}
-        sx={{ minHeight: 0, mb: 1.5 }}
+      <Stack
+        direction="row"
+        spacing={1.5}
+        sx={{ justifyContent: "space-between", alignItems: "center", mb: 1.5 }}
       >
-        <Tab label="Tổng quát" value="tong-quat" sx={{ minHeight: 0 }} />
-        <Tab label="Chi tiết hoá đơn" value="chi-tiet" sx={{ minHeight: 0 }} />
-      </Tabs>
+        <Tabs
+          value={resultTab}
+          onChange={(_e, value: ResultTab) => setResultTab(value)}
+          sx={{ minHeight: 0 }}
+        >
+          <Tab label="Tổng quát" value="tong-quat" sx={{ minHeight: 0 }} />
+          <Tab label="Chi tiết hoá đơn" value="chi-tiet" sx={{ minHeight: 0 }} />
+        </Tabs>
+
+        <Button
+          variant="outlined"
+          size="small"
+          startIcon={<FileDownloadRounded fontSize="small" />}
+          sx={{ textTransform: "none", whiteSpace: "nowrap" }}
+          disabled={rows.length === 0}
+          onClick={() => exportInvoicesToCsv(rows, direction)}
+        >
+          Xuất hóa đơn (Excel)
+        </Button>
+      </Stack>
 
       {resultTab === "chi-tiet" ? (
         <Box
@@ -202,6 +318,7 @@ function InvoiceTablePanel({ direction }: InvoiceTablePanelProps) {
           </Typography>
         </Box>
       ) : (
+      <>
       <TableContainer component={Paper} variant="outlined" sx={{ overflowX: "auto" }}>
         <Table size="small" sx={{ "& td, & th": { whiteSpace: "nowrap" } }}>
           <TableHead>
@@ -237,9 +354,9 @@ function InvoiceTablePanel({ direction }: InvoiceTablePanelProps) {
           </TableHead>
           <TableBody>
             {rows.length > 0 ? (
-              rows.map((r, i) => (
+              pagedRows.map((r, i) => (
                 <TableRow key={r.id} hover>
-                  <TableCell>{i + 1}</TableCell>
+                  <TableCell>{page * rowsPerPage + i + 1}</TableCell>
                   <TableCell>{r.mauHd}</TableCell>
                   <TableCell>{r.soSeri}</TableCell>
                   <TableCell>{r.soHd}</TableCell>
@@ -291,6 +408,19 @@ function InvoiceTablePanel({ direction }: InvoiceTablePanelProps) {
           </TableBody>
         </Table>
       </TableContainer>
+      {rows.length > 0 && (
+        <InvoicePagination
+          count={rows.length}
+          page={page}
+          rowsPerPage={rowsPerPage}
+          onPageChange={setPage}
+          onRowsPerPageChange={(value) => {
+            setRowsPerPage(value);
+            setPage(0);
+          }}
+        />
+      )}
+      </>
       )}
     </Box>
   );
@@ -340,8 +470,14 @@ export default function InvoiceListTabs() {
         </Stack>
       </Stack>
 
-      {/* key={tab}: buộc remount khi đổi tab để mỗi chiều có state tra cứu riêng, không lẫn dữ liệu cũ. */}
-      <InvoiceTablePanel key={tab} direction={tab} />
+      {/* Mount cả 2 chiều, chỉ ẩn tab không active bằng CSS — giữ state tra cứu riêng cho mỗi
+          chiều mà không mất dữ liệu khi chuyển qua lại (remount sẽ reset rows về rỗng). */}
+      <Box sx={{ display: tab === "purchase" ? "block" : "none" }}>
+        <InvoiceTablePanel direction="purchase" active={tab === "purchase"} />
+      </Box>
+      <Box sx={{ display: tab === "sold" ? "block" : "none" }}>
+        <InvoiceTablePanel direction="sold" active={tab === "sold"} />
+      </Box>
     </Box>
   );
 }

@@ -29,16 +29,12 @@ interface AutomationToggle {
   description: string;
 }
 
-const AUTOMATION_TOGGLES: AutomationToggle[] = [
+/** Các toggle chưa nối logic thật — cần scheduler/cron riêng (xem tab "Lịch tự động đồng bộ"). */
+const PLACEHOLDER_TOGGLES: AutomationToggle[] = [
   {
     key: "autoDownload",
     label: "Tự động tải hóa đơn về khi có hóa đơn mới",
     description: "Kiểm tra và tải hóa đơn mua vào/bán ra mới phát sinh trên GDT theo định kỳ.",
-  },
-  {
-    key: "autoSaveDb",
-    label: "Tự động lưu hóa đơn vào cơ sở dữ liệu sau khi tra cứu",
-    description: "Ghi kết quả tra cứu vào vct50view/vct60view thay vì chỉ hiển thị tạm thời.",
   },
   {
     key: "autoSyncOnOpen",
@@ -89,7 +85,6 @@ function StatCard({ icon, label, value }: StatCardProps) {
 export default function SystemDataTab() {
   const [toggles, setToggles] = useState<Record<string, boolean>>({
     autoDownload: false,
-    autoSaveDb: false,
     autoSyncOnOpen: false,
   });
   const [retention, setRetention] = useState("12");
@@ -105,8 +100,9 @@ export default function SystemDataTab() {
         Dữ liệu hệ thống
       </Typography>
       <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
-        Quản lý dữ liệu hóa đơn đã đồng bộ và cấu hình tự động hóa. (Giao diện minh họa — chưa nối
-        chức năng thật.)
+        Quản lý dữ liệu hóa đơn đã đồng bộ và cấu hình tự động hóa. (Các toggle bên dưới chỉ minh
+        họa giao diện, chưa nối chức năng — việc lưu hóa đơn vào DB nay thực hiện bằng nút "Cập
+        nhật từ Thuế điện tử" ở trang Hóa đơn điện tử.)
       </Typography>
 
       {/* Tự động hóa */}
@@ -115,12 +111,12 @@ export default function SystemDataTab() {
           Tự động hóa
         </Typography>
         <Stack divider={<Divider />} spacing={1.5}>
-          {AUTOMATION_TOGGLES.map((item, i) => (
+          {PLACEHOLDER_TOGGLES.map((item) => (
             <Stack
               key={item.key}
               direction="row"
               spacing={2}
-              sx={{ alignItems: "center", justifyContent: "space-between", pt: i > 0 ? 1.5 : 0 }}
+              sx={{ alignItems: "center", justifyContent: "space-between" }}
             >
               <Box sx={{ minWidth: 0 }}>
                 <Typography sx={{ fontWeight: 600 }}>{item.label}</Typography>

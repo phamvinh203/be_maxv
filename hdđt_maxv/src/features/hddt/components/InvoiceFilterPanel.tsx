@@ -17,6 +17,7 @@ import RemoveRounded from "@mui/icons-material/RemoveRounded";
 import AddRounded from "@mui/icons-material/AddRounded";
 import SearchRounded from "@mui/icons-material/SearchRounded";
 import RestartAltRounded from "@mui/icons-material/RestartAltRounded";
+import CloudSyncRounded from "@mui/icons-material/CloudSyncRounded";
 import { TRANG_THAI_HD_OPTIONS, type InvoiceDirection } from "../api/gdt";
 
 export interface InvoiceFilterValues {
@@ -43,15 +44,33 @@ const EMPTY_FILTERS: InvoiceFilterValues = {
 
 interface Props {
   direction: InvoiceDirection;
-  loading: boolean;
+  /** Đang đọc dữ liệu từ DB (nút "Tìm kiếm"). */
+  dbLoading: boolean;
+  /** Đang tra cứu + lưu từ GDT (nút "Cập nhật từ Thuế điện tử"). */
+  gdtLoading: boolean;
+  /** Giá trị khởi tạo bộ lọc (mặc định = tháng hiện tại) — cũng là giá trị "Bỏ tìm kiếm" trả về. */
+  initialValues?: InvoiceFilterValues;
+  /** Đọc dữ liệu đã lưu từ DB theo bộ lọc. */
   onSearch: (values: InvoiceFilterValues) => void;
+  /** Tra cứu GDT + lưu vào DB rồi nạp lại theo bộ lọc. */
+  onFetchGdt: (values: InvoiceFilterValues) => void;
   onReset: () => void;
 }
 
 /** Bộ lọc tra cứu hóa đơn — gập/mở được, khớp layout màn tra cứu HĐĐT của GDT. */
-export default function InvoiceFilterPanel({ direction, loading, onSearch, onReset }: Props) {
+export default function InvoiceFilterPanel({
+  direction,
+  dbLoading,
+  gdtLoading,
+  initialValues = EMPTY_FILTERS,
+  onSearch,
+  onFetchGdt,
+  onReset,
+}: Props) {
   const [expanded, setExpanded] = useState(true);
-  const [values, setValues] = useState<InvoiceFilterValues>(EMPTY_FILTERS);
+  const [values, setValues] = useState<InvoiceFilterValues>(initialValues);
+
+  const busy = dbLoading || gdtLoading;
 
   const setField =
     (key: keyof InvoiceFilterValues) => (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -62,7 +81,7 @@ export default function InvoiceFilterPanel({ direction, loading, onSearch, onRes
   const cccdLabel = direction === "purchase" ? "CCCD người bán" : "CCCD người mua";
 
   const handleReset = () => {
-    setValues(EMPTY_FILTERS);
+    setValues(initialValues);
     onReset();
   };
 
@@ -180,21 +199,35 @@ export default function InvoiceFilterPanel({ direction, loading, onSearch, onRes
             />
           </Tooltip>
 
-          <Stack direction="row" spacing={2} sx={{ justifyContent: "center", mt: 2 }}>
+          <Stack
+            direction={{ xs: "column", sm: "row" }}
+            spacing={2}
+            sx={{ justifyContent: "center", mt: 2 }}
+          >
             <Button
               variant="contained"
-              startIcon={loading ? undefined : <SearchRounded />}
+              startIcon={dbLoading ? undefined : <SearchRounded />}
               sx={{ textTransform: "none", px: 4 }}
-              disabled={loading}
+              disabled={busy}
               onClick={() => onSearch(values)}
             >
-              {loading ? <CircularProgress size={20} color="inherit" /> : "Tìm kiếm"}
+              {dbLoading ? <CircularProgress size={20} color="inherit" /> : "Tìm kiếm"}
+            </Button>
+            <Button
+              variant="outlined"
+              color="primary"
+              startIcon={gdtLoading ? <CircularProgress size={18} color="inherit" /> : <CloudSyncRounded />}
+              sx={{ textTransform: "none" }}
+              disabled={busy}
+              onClick={() => onFetchGdt(values)}
+            >
+              Cập nhật từ Thuế điện tử
             </Button>
             <Button
               variant="outlined"
               startIcon={<RestartAltRounded />}
               sx={{ textTransform: "none" }}
-              disabled={loading}
+              disabled={busy}
               onClick={handleReset}
             >
               Bỏ tìm kiếm
