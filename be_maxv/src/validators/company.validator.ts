@@ -15,17 +15,12 @@ export const registerCompanySchema = z.object({
   loaiHinhKinhDoanh: z.string().min(1).optional(),
 });
 
-// PUT /api/v1/companies/:id — owner sửa thông tin công ty. Không có maSoThue: MST không đổi
-// được sau khi tạo (đã gắn với tenant DB maxv2_<mst>_app).
-export const updateCompanySchema = z.object({
-  tenCongTy: z.string().min(1).optional(),
-  diaChi: z.string().min(1).optional(),
-  sdt: z
-    .string()
-    .regex(/^[0-9]{9,11}$/, MESSAGES.VALIDATION.INVALID_PHONE)
-    .optional(),
-  loaiHinhKinhDoanh: z.string().min(1).optional(),
-});
+// PUT /api/v1/companies/:id — owner sửa thông tin công ty. Bỏ maSoThue: MST không đổi
+// được sau khi tạo (đã gắn với tenant DB maxv2_<mst>_app). Derive từ registerCompanySchema
+// để 2 schema không lệch nhau khi sau này đổi rule 1 trong 2 field chung (vd sdt).
+export const updateCompanySchema = registerCompanySchema
+  .omit({ maSoThue: true })
+  .partial();
 
 // POST /api/v1/companies/invite
 // Role luôn là OWNER_EMPLOYEE (gán ở service) — owner đặt tên + chức vụ + chọn MST cấp quyền.

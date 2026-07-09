@@ -5,7 +5,6 @@ import { createTrialSubscription } from '../shared/subscription.service';
 import { assertMstLimit, assertUserLimit } from '../shared/limits.service';
 import { writeLog } from '../shared/syslog.service';
 import { sendMail } from '../shared/mailer.service';
-import { findOrThrow } from '../../helpers/crudGuards';
 import {
   ConflictError,
   ForbiddenError,
@@ -87,23 +86,28 @@ export async function registerCompany(input: RegisterCompanyArgs) {
   };
 }
 
-/** Công ty theo id, chỉ khi thuộc quyền sở hữu của `ownerId` — ném NotFound nếu không. */
-function getOwnedOrThrow(id: string, ownerId: string) {
-  return findOrThrow(
-    () => sysPrisma.donVi.findFirst({ where: { id, ownerId } }),
-    new NotFoundError(MESSAGES.COMPANY.NOT_FOUND),
-  );
-}
-
-/** PUT /companies/:id — owner sửa thông tin công ty. MST không đổi được (đã gắn tenant DB). */
+/**
+ * PUT /companies/:id — owner sửa thông tin công ty. MST không đổi được (đã gắn tenant DB).
+ * Scope quyền sở hữu ngay trong `update()` (Prisma extended-where-unique) thay vì
+ * findFirst-rồi-update riêng — 1 round-trip thay vì 2, và tự động khớp `accessibleDonViWhere`
+ * (không thao tác được công ty đã ARCHIVED, đúng "nguồn duy nhất" ở helpers/access.ts).
+ */
 export async function updateCompanyInfo(
   id: string,
   ownerId: string,
   input: UpdateCompanyInput,
 ) {
-  await getOwnedOrThrow(id, ownerId);
+  const { tenCongTy, ...rest } = input;
 
-  const updated = await sysPrisma.donVi.update({ where: { id }, data: input });
+  const updated = await sysPrisma.donVi
+    .update({
+      // Không thao tác được công ty đã ARCHIVED — khớp accessibleDonViWhere ở helpers/access.ts.
+      where: { id, ownerId, status: { not: 'ARCHIVED' } },
+      data: { ...rest, ...(tenCongTy !== undefined && { tenDonVi: tenCongTy }) },
+    })
+    .catch(() => {
+      throw new NotFoundError(MESSAGES.COMPANY.NOT_FOUND);
+    });
 
   await writeLog({
     hanhDong: 'UPDATE_COMPANY',
@@ -124,17 +128,19 @@ export async function updateCompanyInfo(
   };
 }
 
-/** DELETE /companies/:id — owner "xóa" (lưu trữ) công ty. KHÔNG xóa DB tenant, chỉ ẩn khỏi danh sách. */
+/**
+ * DELETE /companies/:id — owner "xóa" (lưu trữ) công ty. KHÔNG xóa DB tenant, chỉ ẩn khỏi danh sách.
+ * Update kèm scope sở hữu + "chưa archived" trong 1 query; chỉ khi thất bại mới truy vấn thêm
+ * để phân biệt "không tồn tại/không có quyền" với "đã archived trước đó" cho message rõ ràng.
+ */
 export async function archiveCompany(id: string, ownerId: string) {
-  const company = await getOwnedOrThrow(id, ownerId);
-  if (company.status === 'ARCHIVED') {
-    throw new ConflictError(MESSAGES.COMPANY.ALREADY_ARCHIVED);
-  }
-
-  const updated = await sysPrisma.donVi.update({
-    where: { id },
-    data: { status: 'ARCHIVED' },
-  });
+  const updated = await sysPrisma.donVi
+    .update({ where: { id, ownerId, status: { not: 'ARCHIVED' } }, data: { status: 'ARCHIVED' } })
+    .catch(async () => {
+      const exists = await sysPrisma.donVi.findFirst({ where: { id, ownerId } });
+      if (!exists) throw new NotFoundError(MESSAGES.COMPANY.NOT_FOUND);
+      throw new ConflictError(MESSAGES.COMPANY.ALREADY_ARCHIVED);
+    });
 
   await writeLog({ hanhDong: 'ARCHIVE_COMPANY', userId: ownerId, donViId: id });
 
