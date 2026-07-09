@@ -1,13 +1,17 @@
+import { useState } from "react";
 import Box from "@mui/material/Box";
 import Stack from "@mui/material/Stack";
 import Typography from "@mui/material/Typography";
 
 import AppHeader from "../components/AppHeader";
 import InvoiceListTabs from "../features/hddt/components/InvoiceListTabs";
+import SyncInvoiceDialog from "../features/hddt/components/SyncInvoiceDialog";
 import Button from "@mui/material/Button";
 import SyncRounded from "@mui/icons-material/SyncRounded";
 
 export default function HomePage() {
+  const [syncOpen, setSyncOpen] = useState(false);
+
   return (
     <>
       <AppHeader />
@@ -24,6 +28,7 @@ export default function HomePage() {
               variant="contained"
               startIcon={<SyncRounded />}
               sx={{ textTransform: "none", whiteSpace: "nowrap" }}
+              onClick={() => setSyncOpen(true)}
             >
               Đồng bộ từ Thuế
             </Button>
@@ -32,6 +37,8 @@ export default function HomePage() {
 
         <InvoiceListTabs />
       </Box>
+
+      <SyncInvoiceDialog open={syncOpen} onClose={() => setSyncOpen(false)} />
     </>
   );
 }
