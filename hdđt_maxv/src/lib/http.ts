@@ -32,3 +32,24 @@ export async function apiFetch<T>(path: string, options: ApiFetchOptions = {}): 
   }
   return body;
 }
+
+/** Envelope chuẩn `{success, data, message}` mà be_maxv trả cho mọi response (sendOk/sendCreated). */
+export interface ApiEnvelope<T> {
+  success: boolean;
+  data?: T;
+  message?: string;
+}
+
+/**
+ * `apiFetch` rồi tự bóc `data` khỏi envelope — ném Error nếu thiếu (kể cả khi res.ok).
+ * Dùng cho mọi API client thay vì mỗi file tự khai báo `ApiEnvelope`/hàm unwrap riêng.
+ */
+export async function apiFetchData<T>(
+  path: string,
+  options: ApiFetchOptions = {},
+  fallbackMessage = "Yêu cầu thất bại",
+): Promise<T> {
+  const body = await apiFetch<ApiEnvelope<T>>(path, options);
+  if (!body.data) throw new Error(body.message || fallbackMessage);
+  return body.data;
+}
