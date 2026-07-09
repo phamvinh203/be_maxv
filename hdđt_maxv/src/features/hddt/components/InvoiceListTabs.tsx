@@ -4,10 +4,8 @@ import Tabs from "@mui/material/Tabs";
 import Tab from "@mui/material/Tab";
 import Paper from "@mui/material/Paper";
 import Stack from "@mui/material/Stack";
-import TextField from "@mui/material/TextField";
 import Button from "@mui/material/Button";
 import Checkbox from "@mui/material/Checkbox";
-import InputAdornment from "@mui/material/InputAdornment";
 import Table from "@mui/material/Table";
 import TableHead from "@mui/material/TableHead";
 import TableBody from "@mui/material/TableBody";
@@ -16,12 +14,12 @@ import TableCell from "@mui/material/TableCell";
 import TableContainer from "@mui/material/TableContainer";
 import Typography from "@mui/material/Typography";
 import Alert from "@mui/material/Alert";
-import CircularProgress from "@mui/material/CircularProgress";
-import SearchRounded from "@mui/icons-material/SearchRounded";
-import SyncRounded from "@mui/icons-material/SyncRounded";
 import InboxRounded from "@mui/icons-material/InboxRounded";
+import DescriptionRounded from "@mui/icons-material/DescriptionRounded";
+import FileDownloadRounded from "@mui/icons-material/FileDownloadRounded";
 import { useGdtSession } from "../gdtSession/useGdtSession";
 import { getInvoices, type InvoiceDirection, type InvoiceRaw } from "../api/gdt";
+import InvoiceFilterPanel, { type InvoiceFilterValues } from "./InvoiceFilterPanel";
 
 /** Cột chưa có nguồn dữ liệu (cần lưu DB / tra cứu rủi ro riêng) — hiển thị tạm "—". */
 const NO_DATA_YET = "—";
@@ -86,9 +84,6 @@ interface InvoiceTablePanelProps {
 
 function InvoiceTablePanel({ direction }: InvoiceTablePanelProps) {
   const { currentGdtMst, getGdtToken } = useGdtSession();
-  const [keyword, setKeyword] = useState("");
-  const [fromDate, setFromDate] = useState("");
-  const [toDate, setToDate] = useState("");
   const [rows, setRows] = useState<DisplayRow[]>([]);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [searched, setSearched] = useState(false);
@@ -111,10 +106,10 @@ function InvoiceTablePanel({ direction }: InvoiceTablePanelProps) {
     });
   };
 
-  const handleSearch = async () => {
+  const handleSearch = async (filters: InvoiceFilterValues) => {
     setError("");
 
-    if (!fromDate || !toDate) {
+    if (!filters.tuNgay || !filters.denNgay) {
       setError("Vui lòng chọn đủ Từ ngày / Đến ngày.");
       return;
     }
@@ -129,7 +124,16 @@ function InvoiceTablePanel({ direction }: InvoiceTablePanelProps) {
 
     setLoading(true);
     try {
-      const result = await getInvoices(direction, token, { tuNgay: fromDate, denNgay: toDate });
+      const result = await getInvoices(direction, token, {
+        tuNgay: filters.tuNgay,
+        denNgay: filters.denNgay,
+        mstDoiTac: filters.mstDoiTac || undefined,
+        trangThaiHd: filters.trangThaiHd || undefined,
+        ketQuaHd: filters.ketQuaHd || undefined,
+        mauHd: filters.mauHd || undefined,
+        soSeri: filters.soSeri || undefined,
+        soHd: filters.soHd || undefined,
+      });
       setRows((result.datas ?? []).map(toDisplayRow));
       setSelected(new Set());
       setSearched(true);
@@ -140,62 +144,23 @@ function InvoiceTablePanel({ direction }: InvoiceTablePanelProps) {
     }
   };
 
+  const handleReset = () => {
+    setError("");
+    setRows([]);
+    setSelected(new Set());
+    setSearched(false);
+  };
+
   return (
     <Box sx={{ pt: 2.5 }}>
-      <Stack
-        direction={{ xs: "column", sm: "row" }}
-        spacing={1.5}
-        sx={{ mb: 2, alignItems: { sm: "center" } }}
-      >
-        <TextField
-          label="Từ ngày"
-          type="date"
-          size="small"
-          value={fromDate}
-          onChange={(e) => setFromDate(e.target.value)}
-          slotProps={{ inputLabel: { shrink: true } }}
-        />
-        <TextField
-          label="Đến ngày"
-          type="date"
-          size="small"
-          value={toDate}
-          onChange={(e) => setToDate(e.target.value)}
-          slotProps={{ inputLabel: { shrink: true } }}
-        />
-        <TextField
-          placeholder="Tìm theo số hóa đơn, MST..."
-          size="small"
-          value={keyword}
-          onChange={(e) => setKeyword(e.target.value)}
-          sx={{ flexGrow: 1, minWidth: 220 }}
-          slotProps={{
-            input: {
-              startAdornment: (
-                <InputAdornment position="start">
-                  <SearchRounded fontSize="small" color="action" />
-                </InputAdornment>
-              ),
-            },
-          }}
-        />
-        <Button
-          variant="outlined"
-          sx={{ textTransform: "none" }}
-          disabled={loading}
-          onClick={handleSearch}
-        >
-          {loading ? <CircularProgress size={20} /> : "Tra cứu"}
-        </Button>
-        <Button
-          variant="contained"
-          startIcon={<SyncRounded />}
-          sx={{ textTransform: "none", whiteSpace: "nowrap" }}
-          disabled
-        >
-          Đồng bộ từ Thuế
-        </Button>
-      </Stack>
+      
+
+      <InvoiceFilterPanel
+        direction={direction}
+        loading={loading}
+        onSearch={handleSearch}
+        onReset={handleReset}
+      />
 
       {error && (
         <Alert severity="error" sx={{ mb: 2 }}>
@@ -299,14 +264,42 @@ export default function InvoiceListTabs() {
 
   return (
     <Box>
-      <Tabs
-        value={tab}
-        onChange={handleChange}
-        sx={{ borderBottom: 1, borderColor: "divider" }}
+      <Stack
+        direction={{ xs: "column", sm: "row" }}
+        spacing={1.5}
+        sx={{
+          justifyContent: "space-between",
+          alignItems: { sm: "center" },
+          borderBottom: 1,
+          borderColor: "divider",
+        }}
       >
-        <Tab label="Hóa đơn đầu vào" value="purchase" />
-        <Tab label="Hóa đơn đầu ra" value="sold" />
-      </Tabs>
+        <Tabs value={tab} onChange={handleChange} sx={{ minHeight: 0 }}>
+          <Tab label="Hóa đơn đầu vào" value="purchase" />
+          <Tab label="Hóa đơn đầu ra" value="sold" />
+        </Tabs>
+
+        <Stack direction="row" spacing={1} sx={{ pb: { xs: 1, sm: 0 } }}>
+          <Button
+            variant="outlined"
+            size="small"
+            startIcon={<DescriptionRounded fontSize="small" />}
+            sx={{ textTransform: "none", whiteSpace: "nowrap" }}
+            
+          >
+            Lập tờ khai và bảng kê
+          </Button>
+          <Button
+            variant="outlined"
+            size="small"
+            startIcon={<FileDownloadRounded fontSize="small" />}
+            sx={{ textTransform: "none", whiteSpace: "nowrap" }}
+            
+          >
+            Xuất file excel tổng hợp và hóa đơn
+          </Button>
+        </Stack>
+      </Stack>
 
       {/* key={tab}: buộc remount khi đổi tab để mỗi chiều có state tra cứu riêng, không lẫn dữ liệu cũ. */}
       <InvoiceTablePanel key={tab} direction={tab} />

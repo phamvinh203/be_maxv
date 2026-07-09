@@ -4,6 +4,8 @@ import Typography from "@mui/material/Typography";
 
 import AppHeader from "../components/AppHeader";
 import InvoiceListTabs from "../features/hddt/components/InvoiceListTabs";
+import Button from "@mui/material/Button";
+import SyncRounded from "@mui/icons-material/SyncRounded";
 
 export default function HomePage() {
   return (
@@ -17,6 +19,15 @@ export default function HomePage() {
           <Typography variant="h6" sx={{ fontWeight: 700 }}>
             Hóa đơn điện tử
           </Typography>
+          <Stack direction="row" sx={{ justifyContent: "flex-end", mb: 1.5 }}>
+            <Button
+              variant="contained"
+              startIcon={<SyncRounded />}
+              sx={{ textTransform: "none", whiteSpace: "nowrap" }}
+            >
+              Đồng bộ từ Thuế
+            </Button>
+          </Stack>
         </Stack>
 
         <InvoiceListTabs />
