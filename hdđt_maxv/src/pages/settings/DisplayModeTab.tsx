@@ -9,6 +9,7 @@ import Select from "@mui/material/Select";
 import MenuItem from "@mui/material/MenuItem";
 import FormControl from "@mui/material/FormControl";
 import InputLabel from "@mui/material/InputLabel";
+import FormHelperText from "@mui/material/FormHelperText";
 import LightModeRounded from "@mui/icons-material/LightModeRounded";
 import DarkModeRounded from "@mui/icons-material/DarkModeRounded";
 import SettingsBrightnessRounded from "@mui/icons-material/SettingsBrightnessRounded";
@@ -16,10 +17,13 @@ import DensitySmallRounded from "@mui/icons-material/DensitySmallRounded";
 import DensityMediumRounded from "@mui/icons-material/DensityMediumRounded";
 import DensityLargeRounded from "@mui/icons-material/DensityLargeRounded";
 import CheckRounded from "@mui/icons-material/CheckRounded";
-
-type ThemeMode = "light" | "dark" | "system";
-type TableDensity = "compact" | "standard" | "comfortable";
-type FontSize = "small" | "medium" | "large";
+import {
+  ACCENT_COLORS,
+  useDisplaySettings,
+  type FontSize,
+  type TableDensity,
+  type ThemeMode,
+} from "../../theme/displaySettings";
 
 const THEME_OPTIONS: { value: ThemeMode; label: string; icon: React.ReactNode }[] = [
   { value: "light", label: "Sáng", icon: <LightModeRounded fontSize="small" /> },
@@ -39,20 +43,9 @@ const FONT_SIZE_OPTIONS: { value: FontSize; label: string }[] = [
   { value: "large", label: "Lớn" },
 ];
 
-const ACCENT_COLORS = [
-  { key: "blue", value: "#1565c0" },
-  { key: "teal", value: "#00897b" },
-  { key: "purple", value: "#6a1b9a" },
-  { key: "orange", value: "#ef6c00" },
-  { key: "red", value: "#c62828" },
-  { key: "green", value: "#2e7d32" },
-];
-
 export default function DisplayModeTab() {
-  const [themeMode, setThemeMode] = useState<ThemeMode>("light");
-  const [density, setDensity] = useState<TableDensity>("standard");
-  const [fontSize, setFontSize] = useState<FontSize>("medium");
-  const [accentColor, setAccentColor] = useState(ACCENT_COLORS[0].key);
+  const { settings, update } = useDisplaySettings();
+  // Ngôn ngữ: chưa nối i18n nên chỉ giữ lựa chọn cục bộ (chưa đổi ngôn ngữ thật).
   const [language, setLanguage] = useState("vi");
 
   return (
@@ -61,8 +54,8 @@ export default function DisplayModeTab() {
         Chế độ hiển thị
       </Typography>
       <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
-        Tùy chỉnh giao diện hiển thị theo ý thích. (Giao diện minh họa — chưa áp dụng thật lên toàn
-        ứng dụng.)
+        Tùy chỉnh giao diện hiển thị — các thay đổi áp dụng ngay lên toàn ứng dụng và được ghi nhớ
+        cho lần sau (trừ Ngôn ngữ, đang phát triển).
       </Typography>
 
       {/* Giao diện sáng/tối */}
@@ -71,9 +64,9 @@ export default function DisplayModeTab() {
           Giao diện
         </Typography>
         <ToggleButtonGroup
-          value={themeMode}
+          value={settings.mode}
           exclusive
-          onChange={(_e, value: ThemeMode | null) => value && setThemeMode(value)}
+          onChange={(_e, value: ThemeMode | null) => value && update({ mode: value })}
           size="small"
         >
           {THEME_OPTIONS.map((opt) => (
@@ -92,11 +85,11 @@ export default function DisplayModeTab() {
         </Typography>
         <Stack direction="row" spacing={1.5}>
           {ACCENT_COLORS.map((c) => {
-            const selected = accentColor === c.key;
+            const selected = settings.accent === c.key;
             return (
               <Box
                 key={c.key}
-                onClick={() => setAccentColor(c.key)}
+                onClick={() => update({ accent: c.key })}
                 sx={{
                   width: 32,
                   height: 32,
@@ -127,9 +120,9 @@ export default function DisplayModeTab() {
           Áp dụng cho các bảng danh sách hóa đơn nhiều cột.
         </Typography>
         <ToggleButtonGroup
-          value={density}
+          value={settings.density}
           exclusive
-          onChange={(_e, value: TableDensity | null) => value && setDensity(value)}
+          onChange={(_e, value: TableDensity | null) => value && update({ density: value })}
           size="small"
         >
           {DENSITY_OPTIONS.map((opt) => (
@@ -147,9 +140,9 @@ export default function DisplayModeTab() {
           Cỡ chữ
         </Typography>
         <ToggleButtonGroup
-          value={fontSize}
+          value={settings.fontSize}
           exclusive
-          onChange={(_e, value: FontSize | null) => value && setFontSize(value)}
+          onChange={(_e, value: FontSize | null) => value && update({ fontSize: value })}
           size="small"
         >
           {FONT_SIZE_OPTIONS.map((opt) => (
@@ -176,6 +169,7 @@ export default function DisplayModeTab() {
             <MenuItem value="vi">Tiếng Việt</MenuItem>
             <MenuItem value="en">English</MenuItem>
           </Select>
+          <FormHelperText>Tính năng đa ngôn ngữ đang phát triển — chưa đổi ngôn ngữ thật.</FormHelperText>
         </FormControl>
       </Paper>
     </Box>
