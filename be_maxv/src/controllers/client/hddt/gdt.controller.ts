@@ -5,6 +5,7 @@ import {
   LoginRequest,
   PurchaseInvoiceQuery,
   SoldInvoiceQuery,
+  SyncRequestBody,
 } from "../../../types/gdt";
 
 /** Token đăng nhập GDT gửi qua header riêng `X-Gdt-Token` (Authorization đã dành cho JWT app). */
@@ -157,4 +158,79 @@ export async function soldInvoices(
   reply: FastifyReply
 ) {
   return handleGdtInvoices(request, reply, "sold");
+}
+
+// ============================================================
+//  ĐỒNG BỘ HÓA ĐƠN (dialog "Đồng bộ hóa đơn")
+// ============================================================
+
+const VALID_DIRECTIONS = ["all", "purchase", "sold"] as const;
+const VALID_KINDS = ["all", "except_ctt", "only_ctt"] as const;
+
+/**
+ * POST /gdt/sync — đồng bộ hóa đơn 1 khoảng ngày từ GDT vào DB (lặp hết trang, ghi lịch sử).
+ * Cần token GDT (X-Gdt-Token) lẫn JWT app (resolveTenantDb). Có thể chạy lâu với khoảng ngày lớn.
+ */
+export async function syncInvoices(
+  request: FastifyRequest<{ Body: SyncRequestBody }>,
+  reply: FastifyReply
+) {
+  const gdtToken = extractGdtToken(request);
+  if (!gdtToken) {
+    return reply.status(401).send({
+      message: "Thiếu token đăng nhập GDT (header X-Gdt-Token)",
+    });
+  }
+
+  const { tuNgay, denNgay, direction, loai } = request.body ?? {};
+  if (!tuNgay || !denNgay) {
+    return reply.status(400).send({ message: "Thiếu khoảng ngày (tuNgay/denNgay)" });
+  }
+  if (!VALID_DIRECTIONS.includes(direction) || !VALID_KINDS.includes(loai)) {
+    return reply.status(400).send({ message: "Tham số direction/loai không hợp lệ" });
+  }
+
+  // Ngoài try/catch: lỗi quyền/tenant (403/404) trả đúng mã qua error-handler chung.
+  const tenantDb = await resolveTenantDb(request);
+
+  try {
+    const log = await GDTService.runSync(tenantDb, gdtToken, {
+      tuNgay,
+      denNgay,
+      direction,
+      loai,
+    });
+    return reply.send(log);
+  } catch (err) {
+    request.log.error(err);
+    return reply.status(500).send({
+      message: err instanceof Error ? err.message : "Không đồng bộ được hóa đơn",
+    });
+  }
+}
+
+/** GET /gdt/sync/history — lịch sử đồng bộ (không cần token GDT). */
+export async function syncHistory(request: FastifyRequest, reply: FastifyReply) {
+  const tenantDb = await resolveTenantDb(request);
+  try {
+    return reply.send(await GDTService.listSyncLogs(tenantDb));
+  } catch (err) {
+    request.log.error(err);
+    return reply.status(500).send({
+      message: err instanceof Error ? err.message : "Không đọc được lịch sử đồng bộ",
+    });
+  }
+}
+
+/** DELETE /gdt/sync/data — xóa hóa đơn đã lưu + lịch sử đồng bộ (không đụng dữ liệu GDT gốc). */
+export async function clearSyncData(request: FastifyRequest, reply: FastifyReply) {
+  const tenantDb = await resolveTenantDb(request);
+  try {
+    return reply.send(await GDTService.clearSyncedData(tenantDb));
+  } catch (err) {
+    request.log.error(err);
+    return reply.status(500).send({
+      message: err instanceof Error ? err.message : "Không xóa được dữ liệu đã đồng bộ",
+    });
+  }
 }

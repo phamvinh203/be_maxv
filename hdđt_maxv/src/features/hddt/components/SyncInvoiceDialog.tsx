@@ -1,13 +1,18 @@
-import { useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import Dialog from "@mui/material/Dialog";
 import DialogContent from "@mui/material/DialogContent";
 import DialogActions from "@mui/material/DialogActions";
+import DialogTitle from "@mui/material/DialogTitle";
+import DialogContentText from "@mui/material/DialogContentText";
 import Box from "@mui/material/Box";
 import Stack from "@mui/material/Stack";
 import Typography from "@mui/material/Typography";
 import IconButton from "@mui/material/IconButton";
 import Button from "@mui/material/Button";
 import Divider from "@mui/material/Divider";
+import Alert from "@mui/material/Alert";
+import Tooltip from "@mui/material/Tooltip";
+import CircularProgress from "@mui/material/CircularProgress";
 import FormControl from "@mui/material/FormControl";
 import FormLabel from "@mui/material/FormLabel";
 import RadioGroup from "@mui/material/RadioGroup";
@@ -15,6 +20,7 @@ import FormControlLabel from "@mui/material/FormControlLabel";
 import Radio from "@mui/material/Radio";
 import TextField from "@mui/material/TextField";
 import Collapse from "@mui/material/Collapse";
+import Chip from "@mui/material/Chip";
 import Table from "@mui/material/Table";
 import TableHead from "@mui/material/TableHead";
 import TableBody from "@mui/material/TableBody";
@@ -25,16 +31,22 @@ import CloseRounded from "@mui/icons-material/CloseRounded";
 import ExpandMoreRounded from "@mui/icons-material/ExpandMoreRounded";
 import SyncRounded from "@mui/icons-material/SyncRounded";
 import DeleteOutlineRounded from "@mui/icons-material/DeleteOutlineRounded";
+import { useAuth } from "../../auth/useAuth";
+import { useGdtSession } from "../gdtSession/useGdtSession";
+import { currentMonthRange, formatDateVN, formatDateTimeVN } from "../dateUtils";
+import {
+  clearSyncData,
+  getSyncHistory,
+  startSync,
+  type SyncDirection,
+  type SyncKind,
+  type SyncLog,
+} from "../api/sync";
 
 interface Props {
   open: boolean;
   onClose: () => void;
 }
-
-/** Chiều đồng bộ (mua vào / bán ra). */
-type SyncDirection = "all" | "sold" | "purchase";
-/** Loại hóa đơn theo cách xử lý máy tính tiền. */
-type SyncInvoiceType = "all" | "exceptCashRegister" | "onlyCashRegister";
 
 const HISTORY_COLUMNS = [
   "STT",
@@ -46,21 +58,109 @@ const HISTORY_COLUMNS = [
   "Ngày đồng bộ",
 ];
 
+const DIRECTION_LABEL: Record<SyncDirection, string> = {
+  all: "tất cả",
+  purchase: "mua vào",
+  sold: "bán ra",
+};
+
 /**
- * Dialog "Đồng bộ hóa đơn" — chọn chiều/loại hóa đơn + khoảng ngày rồi đồng bộ từ hệ thống
- * HĐĐT. Hiện chỉ dựng UI (chưa nối dữ liệu): lịch sử đồng bộ để trống, các nút chưa có logic.
+ * Dialog "Đồng bộ hóa đơn" — chọn chiều/loại hóa đơn + khoảng ngày, gọi BE đồng bộ từ GDT,
+ * hiển thị lịch sử đồng bộ thật và cho xóa dữ liệu đã đồng bộ.
  */
 export default function SyncInvoiceDialog({ open, onClose }: Props) {
+  const { accessToken } = useAuth();
+  const { currentGdtMst, getGdtToken } = useGdtSession();
+
   const [direction, setDirection] = useState<SyncDirection>("all");
-  const [invoiceType, setInvoiceType] = useState<SyncInvoiceType>("all");
-  const [tuNgay, setTuNgay] = useState("");
-  const [denNgay, setDenNgay] = useState("");
+  const [invoiceKind, setInvoiceKind] = useState<SyncKind>("all");
+  const [range, setRange] = useState(currentMonthRange);
   const [scheduleOpen, setScheduleOpen] = useState(false);
+
+  const [history, setHistory] = useState<SyncLog[]>([]);
+  const [loadingHistory, setLoadingHistory] = useState(false);
+  const [syncing, setSyncing] = useState(false);
+  const [clearing, setClearing] = useState(false);
+  const [confirmClear, setConfirmClear] = useState(false);
+  const [error, setError] = useState("");
+  const [result, setResult] = useState<SyncLog | null>(null);
+
+  const busy = syncing || clearing;
+
+  const loadHistory = useCallback(async () => {
+    if (!accessToken) return;
+    setLoadingHistory(true);
+    try {
+      setHistory(await getSyncHistory(accessToken));
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Không đọc được lịch sử đồng bộ.");
+    } finally {
+      setLoadingHistory(false);
+    }
+  }, [accessToken]);
+
+  const handleOpen = useCallback(() => {
+    setError("");
+    setResult(null);
+    void loadHistory();
+  }, [loadHistory]);
+
+  // Mở dialog -> reset thông báo + nạp lịch sử.
+  useEffect(() => {
+    if (!open) return;
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    handleOpen();
+  }, [open, handleOpen]);
+
+  const handleSync = async () => {
+    setError("");
+    setResult(null);
+    if (!range.tuNgay || !range.denNgay) {
+      setError("Vui lòng chọn đủ Từ ngày / Đến ngày.");
+      return;
+    }
+    const gdtToken = currentGdtMst ? getGdtToken(currentGdtMst) : undefined;
+    if (!gdtToken || !currentGdtMst || !accessToken) {
+      setError('Chưa đăng nhập Thuế điện tử — bấm "Đăng nhập Thuế điện tử" trước khi đồng bộ.');
+      return;
+    }
+    setSyncing(true);
+    try {
+      const log = await startSync(accessToken, gdtToken, {
+        tuNgay: range.tuNgay,
+        denNgay: range.denNgay,
+        direction,
+        loai: invoiceKind,
+      });
+      setResult(log);
+      await loadHistory();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Không đồng bộ được hóa đơn.");
+    } finally {
+      setSyncing(false);
+    }
+  };
+
+  const handleClear = async () => {
+    if (!accessToken) return;
+    setError("");
+    setClearing(true);
+    try {
+      await clearSyncData(accessToken);
+      setConfirmClear(false);
+      setResult(null);
+      await loadHistory();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Không xóa được dữ liệu đã đồng bộ.");
+    } finally {
+      setClearing(false);
+    }
+  };
 
   return (
     <Dialog
       open={open}
-      onClose={onClose}
+      onClose={busy ? undefined : onClose}
       maxWidth="md"
       fullWidth
       slotProps={{ paper: { sx: { borderRadius: 2 } } }}
@@ -75,7 +175,7 @@ export default function SyncInvoiceDialog({ open, onClose }: Props) {
             Chọn khoảng thời gian cần đồng bộ từ hệ thống hóa đơn điện tử
           </Typography>
         </Box>
-        <IconButton aria-label="Đóng" onClick={onClose} size="small" sx={{ mt: -0.5 }}>
+        <IconButton aria-label="Đóng" onClick={onClose} size="small" disabled={busy} sx={{ mt: -0.5 }}>
           <CloseRounded fontSize="small" />
         </IconButton>
       </Box>
@@ -113,17 +213,17 @@ export default function SyncInvoiceDialog({ open, onClose }: Props) {
           </FormLabel>
           <RadioGroup
             row
-            value={invoiceType}
-            onChange={(e) => setInvoiceType(e.target.value as SyncInvoiceType)}
+            value={invoiceKind}
+            onChange={(e) => setInvoiceKind(e.target.value as SyncKind)}
           >
             <FormControlLabel value="all" control={<Radio size="small" />} label="Đồng bộ tất cả" />
             <FormControlLabel
-              value="exceptCashRegister"
+              value="except_ctt"
               control={<Radio size="small" />}
               label="Đồng bộ tất cả trừ hóa đơn máy tính tiền"
             />
             <FormControlLabel
-              value="onlyCashRegister"
+              value="only_ctt"
               control={<Radio size="small" />}
               label="Chỉ đồng bộ hóa đơn máy tính tiền"
             />
@@ -142,8 +242,8 @@ export default function SyncInvoiceDialog({ open, onClose }: Props) {
           <TextField
             label="Từ ngày"
             type="date"
-            value={tuNgay}
-            onChange={(e) => setTuNgay(e.target.value)}
+            value={range.tuNgay}
+            onChange={(e) => setRange((r) => ({ ...r, tuNgay: e.target.value }))}
             size="small"
             fullWidth
             slotProps={{ inputLabel: { shrink: true } }}
@@ -151,8 +251,8 @@ export default function SyncInvoiceDialog({ open, onClose }: Props) {
           <TextField
             label="Đến ngày"
             type="date"
-            value={denNgay}
-            onChange={(e) => setDenNgay(e.target.value)}
+            value={range.denNgay}
+            onChange={(e) => setRange((r) => ({ ...r, denNgay: e.target.value }))}
             size="small"
             fullWidth
             slotProps={{ inputLabel: { shrink: true } }}
@@ -194,8 +294,25 @@ export default function SyncInvoiceDialog({ open, onClose }: Props) {
           </Collapse>
         </Box>
 
+        {error && (
+          <Alert severity="error" sx={{ mb: 2 }} onClose={() => setError("")}>
+            {error}
+          </Alert>
+        )}
+        {result && (
+          <Alert severity={result.trang_thai === "done" ? "success" : "warning"} sx={{ mb: 2 }}>
+            Đã đồng bộ {result.da_luu}/{Math.max(result.tong, result.da_luu)} hóa đơn{" "}
+            {result.trang_thai === "done"
+              ? "— hoàn thành."
+              : `— chưa hoàn thành: ${result.dien_giai ?? ""}`}
+          </Alert>
+        )}
+
         {/* Lịch sử đồng bộ hóa đơn */}
-        <Typography sx={{ fontWeight: 700, mb: 1 }}>Lịch sử đồng bộ hóa đơn</Typography>
+        <Stack direction="row" sx={{ alignItems: "center", justifyContent: "space-between", mb: 1 }}>
+          <Typography sx={{ fontWeight: 700 }}>Lịch sử đồng bộ hóa đơn</Typography>
+          {loadingHistory && <CircularProgress size={16} />}
+        </Stack>
         <TableContainer sx={{ border: "1px solid", borderColor: "divider", borderRadius: 1 }}>
           <Table size="small" sx={{ "& td, & th": { whiteSpace: "nowrap" } }}>
             <TableHead>
@@ -206,14 +323,43 @@ export default function SyncInvoiceDialog({ open, onClose }: Props) {
               </TableRow>
             </TableHead>
             <TableBody>
-              <TableRow>
-                <TableCell
-                  colSpan={HISTORY_COLUMNS.length}
-                  sx={{ border: 0, py: 5, textAlign: "center", color: "text.disabled" }}
-                >
-                  Chưa có lịch sử đồng bộ hóa đơn.
-                </TableCell>
-              </TableRow>
+              {history.length > 0 ? (
+                history.map((row, i) => (
+                  <TableRow key={row.id} hover>
+                    <TableCell>{i + 1}</TableCell>
+                    <TableCell>{formatDateVN(row.tu_ngay)}</TableCell>
+                    <TableCell>{formatDateVN(row.den_ngay)}</TableCell>
+                    <TableCell>
+                      {row.da_luu}/{row.tong}
+                    </TableCell>
+                    <TableCell>
+                      {row.trang_thai === "done" ? (
+                        <Chip size="small" color="success" variant="outlined" label="Hoàn thành" />
+                      ) : (
+                        <Tooltip title={row.dien_giai ?? ""}>
+                          <Chip
+                            size="small"
+                            color="warning"
+                            variant="outlined"
+                            label="Chưa hoàn thành"
+                          />
+                        </Tooltip>
+                      )}
+                    </TableCell>
+                    <TableCell>Đồng bộ hóa đơn {DIRECTION_LABEL[row.direction]}</TableCell>
+                    <TableCell>{formatDateTimeVN(row.created_at)}</TableCell>
+                  </TableRow>
+                ))
+              ) : (
+                <TableRow>
+                  <TableCell
+                    colSpan={HISTORY_COLUMNS.length}
+                    sx={{ border: 0, py: 5, textAlign: "center", color: "text.disabled" }}
+                  >
+                    {loadingHistory ? "Đang tải…" : "Chưa có lịch sử đồng bộ hóa đơn."}
+                  </TableCell>
+                </TableRow>
+              )}
             </TableBody>
           </Table>
         </TableContainer>
@@ -226,22 +372,46 @@ export default function SyncInvoiceDialog({ open, onClose }: Props) {
           color="error"
           startIcon={<DeleteOutlineRounded />}
           sx={{ textTransform: "none" }}
+          disabled={busy || history.length === 0}
+          onClick={() => setConfirmClear(true)}
         >
           Xóa dữ liệu đã đồng bộ
         </Button>
         <Stack direction="row" spacing={1.5}>
-          <Button color="inherit" onClick={onClose} sx={{ textTransform: "none" }}>
+          <Button color="inherit" onClick={onClose} disabled={busy} sx={{ textTransform: "none" }}>
             Hủy
           </Button>
           <Button
             variant="contained"
-            startIcon={<SyncRounded />}
+            startIcon={syncing ? <CircularProgress size={18} color="inherit" /> : <SyncRounded />}
             sx={{ textTransform: "none" }}
+            disabled={busy}
+            onClick={handleSync}
           >
             Đồng bộ
           </Button>
         </Stack>
       </DialogActions>
+
+      {/* Xác nhận xóa dữ liệu đã đồng bộ */}
+      <Dialog open={confirmClear} onClose={() => !clearing && setConfirmClear(false)} maxWidth="xs" fullWidth>
+        <DialogTitle sx={{ fontWeight: 700 }}>Xóa dữ liệu đã đồng bộ</DialogTitle>
+        <DialogContent>
+          <DialogContentText>
+            Toàn bộ hóa đơn đã lưu trong cơ sở dữ liệu (bao gồm cả hóa đơn tra cứu thủ công ở
+            trang Hóa đơn điện tử, không chỉ hóa đơn đã đồng bộ) và toàn bộ lịch sử đồng bộ sẽ bị
+            xóa. Hành động này không ảnh hưởng đến dữ liệu gốc trên hệ thống Thuế điện tử.
+          </DialogContentText>
+        </DialogContent>
+        <DialogActions sx={{ px: 3, pb: 2 }}>
+          <Button onClick={() => setConfirmClear(false)} disabled={clearing}>
+            Hủy
+          </Button>
+          <Button variant="contained" color="error" onClick={handleClear} disabled={clearing}>
+            {clearing ? <CircularProgress size={20} color="inherit" /> : "Xóa"}
+          </Button>
+        </DialogActions>
+      </Dialog>
     </Dialog>
   );
 }

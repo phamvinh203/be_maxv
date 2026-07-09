@@ -6,6 +6,9 @@ import {
   soldInvoices,
   savedPurchaseInvoices,
   savedSoldInvoices,
+  syncInvoices,
+  syncHistory,
+  clearSyncData,
 } from "../../controllers/client/hddt/gdt.controller";
 
 export default async function (
@@ -34,5 +37,20 @@ export default async function (
   fastify.get("/invoices/sold/saved", {
     preHandler: [fastify.authenticate],
     handler: savedSoldInvoices,
+  });
+
+  // Đồng bộ hóa đơn (dialog "Đồng bộ hóa đơn"): POST /sync chạy đồng bộ (cần X-Gdt-Token),
+  // GET /sync/history đọc lịch sử, DELETE /sync/data xóa hóa đơn đã lưu + lịch sử.
+  fastify.post("/sync", {
+    preHandler: [fastify.authenticate],
+    handler: syncInvoices,
+  });
+  fastify.get("/sync/history", {
+    preHandler: [fastify.authenticate],
+    handler: syncHistory,
+  });
+  fastify.delete("/sync/data", {
+    preHandler: [fastify.authenticate],
+    handler: clearSyncData,
   });
 }
