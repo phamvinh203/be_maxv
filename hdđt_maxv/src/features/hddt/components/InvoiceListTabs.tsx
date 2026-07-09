@@ -31,8 +31,8 @@ import type {
   InvoiceDirection,
   InvoiceFilterValues,
   InvoiceQuery,
-  InvoiceRaw,
 } from "../types";
+import { toDisplayRow } from "../invoiceRow";
 import InvoiceFilterPanel from "./InvoiceFilterPanel";
 import InvoicePagination, { DEFAULT_ROWS_PER_PAGE } from "./InvoicePagination";
 import { exportInvoicesToCsv } from "../exportInvoices";
@@ -41,46 +41,6 @@ import { getErrorMessage } from "../../../lib/errors";
 
 /** Cột chưa có nguồn dữ liệu (cần API/tính năng riêng, chưa xây) — hiển thị tạm "—". */
 const NO_DATA_YET = "—";
-
-/**
- * Ép 1 giá trị bất kỳ (field GDT có kiểu `unknown`) về string an toàn (null/undefined -> "").
- * Dùng: nội bộ file này — `toDisplayRow` (lấy MST/tên bên "mình").
- */
-function rowStr(v: unknown): string {
-  return typeof v === "string" ? v : v == null ? "" : String(v);
-}
-
-/**
- * GDT/DB đều trả cả 2 phía trong mỗi hàng: bên đối tác đã gộp sẵn ở `mstDoiTac`/`tenDoiTac`,
- * còn bên "mình" nằm ở field gốc còn lại (mua vào -> người mua nmmst/nmten; bán ra -> người
- * bán nbmst/nbten). Lấy trực tiếp từ hàng để hiển thị đúng kể cả khi chưa đăng nhập GDT.
- */
-function toDisplayRow(r: InvoiceRaw, direction: InvoiceDirection): DisplayRow {
-  const isPurchase = direction === "purchase";
-  const ownMst = rowStr(isPurchase ? r.nmmst : r.nbmst);
-  const ownTen = rowStr(isPurchase ? r.nmten : r.nbten);
-  return {
-    id: r.id,
-    mauHd: r.khmshdon,
-    soSeri: r.khhdon,
-    soHd: r.shdon,
-    ngayLap: r.tdlap,
-    sellerMst: isPurchase ? r.mstDoiTac : ownMst,
-    sellerTen: isPurchase ? r.tenDoiTac : ownTen,
-    sellerDiaChi: isPurchase ? (r.diaChiDoiTac ?? "") : "",
-    buyerMst: isPurchase ? ownMst : r.mstDoiTac,
-    buyerTen: isPurchase ? ownTen : r.tenDoiTac,
-    tienChuaThue: r.tgtcthue,
-    tienThue: r.tgtthue,
-    cktm: r.ttcktmai,
-    phi: r.tgtphi,
-    tongTt: r.tgtttbso,
-    maNt: r.dvtte ?? "",
-    tyGia: r.tgia,
-    trangThaiHd: r.tthai,
-    ketQuaKt: r.ttxly,
-  };
-}
 
 /**
  * Định dạng số tiền theo locale vi-VN (1.234.567); không phải số thì trả chuỗi rỗng.

@@ -521,3 +521,19 @@ export async function clearSyncedData(tenantDb: PrismaClient) {
   ]);
   return { purchase: purchase.count, sold: sold.count, logs: logs.count };
 }
+
+/**
+ * Thống kê dữ liệu đã lưu của DB tenant: số hóa đơn mua vào/bán ra + thời điểm đồng bộ gần nhất.
+ * Dùng cho tab Cài đặt › Dữ liệu hệ thống (các ô thống kê).
+ */
+export async function getSystemStats(tenantDb: PrismaClient) {
+  const [purchase, sold, lastSync] = await Promise.all([
+    tenantDb.vct60view.count(),
+    tenantDb.vct50view.count(),
+    tenantDb.sync_log.findFirst({
+      orderBy: { created_at: "desc" },
+      select: { created_at: true },
+    }),
+  ]);
+  return { purchase, sold, lastSyncAt: lastSync?.created_at ?? null };
+}

@@ -160,3 +160,18 @@ export async function getSavedInvoices(
     datas: mapInvoiceDatas(direction, raw.datas),
   };
 }
+
+/**
+ * Lấy toàn bộ hóa đơn đã lưu (cả 2 chiều) để sao lưu — khoảng ngày rộng để phủ hết. Mỗi chiều
+ * tối đa theo giới hạn endpoint đọc DB; nơi gọi nên đối chiếu số lượng để cảnh báo nếu thiếu.
+ * Dùng: `SystemDataTab` — nút "Xuất / Sao lưu dữ liệu".
+ */
+export function getAllSavedInvoices(
+  appToken: string,
+): Promise<[InvoiceResult, InvoiceResult]> {
+  const range: InvoiceQuery = { tuNgay: "2000-01-01", denNgay: "2100-12-31" };
+  return Promise.all([
+    getSavedInvoices("purchase", appToken, range),
+    getSavedInvoices("sold", appToken, range),
+  ]);
+}

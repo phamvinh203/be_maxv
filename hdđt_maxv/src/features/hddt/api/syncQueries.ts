@@ -1,13 +1,24 @@
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient, type QueryClient } from "@tanstack/react-query";
 import { useAuth } from "../../auth/useAuth";
 import { clearSyncData, getSyncHistory, startSync } from "./sync";
 import { invoiceKeys } from "./invoiceQueries";
+import { statsKeys } from "./statsQueries";
 import type { SyncRequest } from "../types";
 
 // Gắn `companyId` vì lịch sử/hóa đơn nằm ở DB riêng từng tenant.
 export const syncKeys = {
   history: (companyId: string | null) => ["syncHistory", companyId] as const,
 };
+
+/**
+ * Invalidate mọi query phụ thuộc dữ liệu hóa đơn của 1 tenant (lịch sử + bảng hóa đơn + thống kê).
+ * Gọi sau khi đồng bộ/xóa để các nơi đang xem tự cập nhật. Gom 1 chỗ để 2 mutation không lệch nhau.
+ */
+function invalidateTenantInvoiceData(qc: QueryClient, companyId: string | null): void {
+  qc.invalidateQueries({ queryKey: syncKeys.history(companyId) });
+  qc.invalidateQueries({ queryKey: invoiceKeys.byCompany(companyId) });
+  qc.invalidateQueries({ queryKey: statsKeys.system(companyId) });
+}
 
 /**
  * Lịch sử đồng bộ (không cần token GDT). Chỉ fetch khi dialog mở + có accessToken/công ty.
@@ -32,7 +43,7 @@ export function useStartSyncMutation() {
   return useMutation({
     mutationFn: (vars: { gdtToken: string; body: SyncRequest }) =>
       startSync(accessToken as string, vars.gdtToken, vars.body),
-    onSuccess: () => qc.invalidateQueries({ queryKey: syncKeys.history(currentCompanyId) }),
+    onSuccess: () => invalidateTenantInvoiceData(qc, currentCompanyId),
   });
 }
 
@@ -45,9 +56,6 @@ export function useClearSyncMutation() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: () => clearSyncData(accessToken as string),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: syncKeys.history(currentCompanyId) });
-      qc.invalidateQueries({ queryKey: invoiceKeys.byCompany(currentCompanyId) });
-    },
+    onSuccess: () => invalidateTenantInvoiceData(qc, currentCompanyId),
   });
 }
