@@ -1,15 +1,10 @@
 import { trangThaiHdLabel, type InvoiceDirection } from "./api/gdt";
 import type { DisplayRow } from "./components/InvoiceListTabs";
+import { formatDateVN } from "./dateUtils";
 
 interface Column {
   header: string;
   value: (row: DisplayRow, index: number) => string | number;
-}
-
-function fmtDate(s?: string): string {
-  if (!s) return "";
-  const d = new Date(s);
-  return Number.isNaN(d.getTime()) ? s : d.toLocaleDateString("vi-VN");
 }
 
 /** Cột xuất Excel — chỉ các cột có dữ liệu thật (bỏ cột placeholder "—" và cột nút thao tác). */
@@ -20,7 +15,7 @@ function columns(direction: InvoiceDirection): Column[] {
     { header: "Ký hiệu mẫu số", value: (r) => r.mauHd },
     { header: "Ký hiệu hóa đơn", value: (r) => r.soSeri },
     { header: "Số hóa đơn", value: (r) => r.soHd },
-    { header: "Ngày lập", value: (r) => fmtDate(r.ngayLap) },
+    { header: "Ngày lập", value: (r) => formatDateVN(r.ngayLap) },
     { header: isPurchase ? "MST người bán" : "MST người xuất hàng", value: (r) => r.sellerMst },
     { header: isPurchase ? "Tên người bán" : "Tên người xuất hàng", value: (r) => r.sellerTen },
     { header: "Địa chỉ người bán", value: (r) => r.sellerDiaChi },

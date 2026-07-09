@@ -12,6 +12,8 @@ import {
   PurchaseInvoiceResponse,
   SoldInvoiceQuery,
   SoldInvoiceResponse,
+  SyncDirection,
+  SyncInvoiceKind,
 } from "../../../types/gdt";
 import type { PrismaClient, Prisma } from "../../../generated/tenant";
 
@@ -346,4 +348,140 @@ export async function getSavedInvoices(
 
   const datas = (rows as Record<string, unknown>[]).map(mapSavedRow);
   return { total: datas.length, datas };
+}
+
+// ============================================================
+//  ĐỒNG BỘ HÓA ĐƠN (sync) — lặp phân trang GDT + lưu DB + ghi lịch sử
+// ============================================================
+
+/** Trần số trang/nguồn (an toàn, tránh lặp vô hạn nếu GDT trả cursor lỗi). */
+const MAX_SYNC_PAGES = 200;
+/** Nghỉ nhẹ giữa các trang để tránh bị GDT chặn (rate-limit). */
+const SYNC_PAGE_DELAY_MS = 150;
+
+const delay = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
+/** 1 nguồn dữ liệu cần quét: chiều hóa đơn × có phải hóa đơn máy tính tiền (sco-query) hay không. */
+interface SyncSource {
+  direction: "purchase" | "sold";
+  cashRegister: boolean;
+}
+
+/** Bung lựa chọn (chiều + loại) thành danh sách nguồn cần quét. */
+function resolveSyncSources(
+  direction: SyncDirection,
+  loai: SyncInvoiceKind,
+): SyncSource[] {
+  const directions: ("purchase" | "sold")[] =
+    direction === "all" ? ["purchase", "sold"] : [direction];
+  // all -> cả thường lẫn máy tính tiền; except_ctt -> chỉ thường; only_ctt -> chỉ máy tính tiền.
+  const cashVariants: boolean[] =
+    loai === "all" ? [false, true] : loai === "only_ctt" ? [true] : [false];
+
+  return directions.flatMap((dir) =>
+    cashVariants.map((cashRegister) => ({ direction: dir, cashRegister })),
+  );
+}
+
+export interface SyncParams {
+  tuNgay: string;
+  denNgay: string;
+  direction: SyncDirection;
+  loai: SyncInvoiceKind;
+}
+
+/**
+ * Đồng bộ hóa đơn 1 khoảng ngày từ GDT vào DB tenant: với mỗi nguồn (chiều × loại) lặp
+ * hết các trang theo cursor `state`, upsert từng trang, cộng dồn tổng/đã lưu. Lỗi giữa
+ * chừng (vd token GDT hết hạn) -> dừng, đánh dấu `partial`. Cuối cùng ghi 1 dòng `sync_log`.
+ */
+export async function runSync(
+  tenantDb: PrismaClient,
+  gdtToken: string,
+  params: SyncParams,
+) {
+  const sources = resolveSyncSources(params.direction, params.loai);
+  let total = 0;
+  let saved = 0;
+  let partial = false;
+  let message = "";
+
+  for (const source of sources) {
+    try {
+      let state: string | undefined = undefined;
+      let pages = 0;
+
+      do {
+        const query: PurchaseInvoiceQuery = {
+          tuNgay: params.tuNgay,
+          denNgay: params.denNgay,
+          ketQuaHd: source.cashRegister ? "8" : undefined,
+          state,
+        };
+        const page: PurchaseInvoiceResponse | SoldInvoiceResponse =
+          source.direction === "purchase"
+            ? await getPurchaseInvoices(gdtToken, query)
+            : await getSoldInvoices(gdtToken, query);
+
+        // GDT trả `total` cho cả khoảng (giống nhau mỗi trang) -> chỉ cộng 1 lần/nguồn (trang đầu).
+        if (pages === 0) total += page.total ?? 0;
+        const rows = page.datas ?? [];
+        saved += await saveInvoices(tenantDb, source.direction, rows);
+
+        state = page.state || undefined;
+        pages += 1;
+        // Dừng ngay khi trang rỗng: một số API vẫn trả cursor khác rỗng ở trang cuối,
+        // nếu chỉ dựa vào `state` sẽ lặp tới trần MAX_SYNC_PAGES rồi báo "partial" nhầm.
+        if (rows.length === 0) break;
+        if (state) await delay(SYNC_PAGE_DELAY_MS);
+      } while (state && pages < MAX_SYNC_PAGES);
+
+      if (state && pages >= MAX_SYNC_PAGES) {
+        partial = true;
+        message = `Đạt giới hạn ${MAX_SYNC_PAGES} trang cho 1 nguồn — có thể còn dữ liệu chưa đồng bộ hết.`;
+      }
+    } catch (err) {
+      // Lỗi (thường do token GDT hết hạn / bị chặn) -> dừng, giữ những gì đã lưu.
+      partial = true;
+      message = err instanceof Error ? err.message : "Lỗi khi gọi GDT.";
+      break;
+    }
+  }
+
+  return tenantDb.sync_log.create({
+    data: {
+      id: randomUUID(),
+      // Nhãn hiển thị (không dùng để lọc) -> lưu ở 12:00 trưa để chênh lệch múi giờ
+      // server/người xem không làm nhảy sang ngày khác.
+      tu_ngay: new Date(`${params.tuNgay}T12:00:00`),
+      den_ngay: new Date(`${params.denNgay}T12:00:00`),
+      direction: params.direction,
+      loai: params.loai,
+      tong: total,
+      da_luu: saved,
+      trang_thai: partial ? "partial" : "done",
+      dien_giai: message || (partial ? "Chưa hoàn thành" : "Đồng bộ thành công"),
+    },
+  });
+}
+
+/** Danh sách lịch sử đồng bộ (mới nhất trước), giới hạn 100 dòng gần nhất. */
+export async function listSyncLogs(tenantDb: PrismaClient) {
+  return tenantDb.sync_log.findMany({
+    orderBy: { created_at: "desc" },
+    take: 100,
+  });
+}
+
+/**
+ * Xóa toàn bộ dữ liệu đã đồng bộ trong DB tenant: hóa đơn (vct50view/vct60view) + lịch sử
+ * đồng bộ. KHÔNG đụng dữ liệu gốc trên GDT. Trả về số dòng đã xóa từng loại.
+ */
+export async function clearSyncedData(tenantDb: PrismaClient) {
+  const [purchase, sold, logs] = await tenantDb.$transaction([
+    tenantDb.vct60view.deleteMany({}),
+    tenantDb.vct50view.deleteMany({}),
+    tenantDb.sync_log.deleteMany({}),
+  ]);
+  return { purchase: purchase.count, sold: sold.count, logs: logs.count };
 }

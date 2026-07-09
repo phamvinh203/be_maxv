@@ -84,3 +84,18 @@ export interface SoldInvoiceResponse {
   state?: string;
   datas?: unknown[];
 }
+
+/** Chiều đồng bộ hóa đơn. */
+export type SyncDirection = "all" | "purchase" | "sold";
+/** Loại hóa đơn theo cách xử lý máy tính tiền (ctt = hóa đơn máy tính tiền). */
+export type SyncInvoiceKind = "all" | "except_ctt" | "only_ctt";
+
+/** Body cho POST /gdt/sync — đồng bộ hóa đơn 1 khoảng ngày từ GDT vào DB. */
+export interface SyncRequestBody {
+  /** Từ ngày (yyyy-MM-dd) */
+  tuNgay: string;
+  /** Đến ngày (yyyy-MM-dd) */
+  denNgay: string;
+  direction: SyncDirection;
+  loai: SyncInvoiceKind;
+}

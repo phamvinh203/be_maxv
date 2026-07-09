@@ -33,6 +33,7 @@ import {
 import InvoiceFilterPanel, { type InvoiceFilterValues } from "./InvoiceFilterPanel";
 import InvoicePagination, { DEFAULT_ROWS_PER_PAGE } from "./InvoicePagination";
 import { exportInvoicesToCsv } from "../exportInvoices";
+import { currentMonthRange, formatDateVN } from "../dateUtils";
 
 /** Cột chưa có nguồn dữ liệu (cần API/tính năng riêng, chưa xây) — hiển thị tạm "—". */
 const NO_DATA_YET = "—";
@@ -103,12 +104,6 @@ function formatMoney(n?: number) {
   return n.toLocaleString("vi-VN");
 }
 
-function formatDate(s?: string) {
-  if (!s) return "";
-  const d = new Date(s);
-  return Number.isNaN(d.getTime()) ? s : d.toLocaleDateString("vi-VN");
-}
-
 interface InvoiceTablePanelProps {
   direction: InvoiceDirection;
   /** Tab này đang được xem — chỉ tự nạp DB khi active để không tốn request cho tab ẩn. */
@@ -119,15 +114,8 @@ type ResultTab = "tong-quat" | "chi-tiet";
 
 /** Bộ lọc mặc định = tháng hiện tại (từ ngày 1 -> hôm nay). Dùng khi tự nạp lúc mở tab & khi "Bỏ tìm kiếm". */
 function defaultMonthFilters(): InvoiceFilterValues {
-  const now = new Date();
-  const first = new Date(now.getFullYear(), now.getMonth(), 1);
-  const fmt = (d: Date) =>
-    `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(
-      d.getDate(),
-    ).padStart(2, "0")}`;
   return {
-    tuNgay: fmt(first),
-    denNgay: fmt(now),
+    ...currentMonthRange(),
     mstDoiTac: "",
     trangThaiHd: "",
     ketQuaHd: "",
@@ -360,7 +348,7 @@ function InvoiceTablePanel({ direction, active }: InvoiceTablePanelProps) {
                   <TableCell>{r.mauHd}</TableCell>
                   <TableCell>{r.soSeri}</TableCell>
                   <TableCell>{r.soHd}</TableCell>
-                  <TableCell>{formatDate(r.ngayLap)}</TableCell>
+                  <TableCell>{formatDateVN(r.ngayLap)}</TableCell>
                   <TableCell>{r.sellerMst}</TableCell>
                   <TableCell>{r.sellerTen}</TableCell>
                   <TableCell>{r.sellerDiaChi || NO_DATA_YET}</TableCell>

@@ -514,3 +514,20 @@ model dmpb {
   datetime0 DateTime @default(now())
   datetime2 DateTime @default(now())
 }
+
+/// Lịch sử đồng bộ hóa đơn từ hệ thống HĐĐT (GDT) — mỗi lần bấm "Đồng bộ" ghi 1 dòng.
+model sync_log {
+  id         String   @id @db.VarChar(64)
+  tu_ngay    DateTime // Từ ngày (khoảng đồng bộ)
+  den_ngay   DateTime // Đến ngày
+  direction  String   @db.VarChar(16) // all | purchase | sold
+  loai       String   @db.VarChar(24) // all | except_ctt | only_ctt (ctt = hóa đơn máy tính tiền)
+  tong       Int      @default(0) // Tổng số hóa đơn GDT báo có trong khoảng
+  da_luu     Int      @default(0) // Số hóa đơn thực sự đã lưu (upsert) vào DB
+  trang_thai String   @db.VarChar(16) // done | partial
+  dien_giai  String?  @db.VarChar(512) // Mô tả ngắn / lý do nếu chưa hoàn thành
+
+  created_at DateTime @default(now())
+
+  @@index([created_at])
+}
