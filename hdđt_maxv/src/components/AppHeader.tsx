@@ -21,33 +21,26 @@ import ApartmentRounded from "@mui/icons-material/ApartmentRounded";
 import CheckRounded from "@mui/icons-material/CheckRounded";
 import { useAuth } from "../features/auth/useAuth";
 import { useGdtSession } from "../features/hddt/gdtSession/useGdtSession";
+import { useCompanySwitch } from "../features/company/hooks/useCompanySwitch";
 
 export default function AppHeader() {
-  const { user, logout, companies, currentCompanyId, switchCompany } = useAuth();
+  const { user, logout, companies, currentCompanyId } = useAuth();
   const { clearGdtSession } = useGdtSession();
+  const { switchingId, error: switchError, switchTo, clearError } = useCompanySwitch();
   const navigate = useNavigate();
   const [userMenuEl, setUserMenuEl] = useState<HTMLElement | null>(null);
   const [companyMenuEl, setCompanyMenuEl] = useState<HTMLElement | null>(null);
-  const [switching, setSwitching] = useState(false);
-  const [switchError, setSwitchError] = useState("");
 
   if (!user) return null;
 
   const initial = user.hoTen.trim().charAt(0).toUpperCase();
   const currentCompany = companies.find((c) => c.id === currentCompanyId);
+  const switching = switchingId !== null;
 
-  const handleSelectCompany = async (id: string) => {
+  const handleSelectCompany = (id: string) => {
     setCompanyMenuEl(null);
     if (id === currentCompanyId) return;
-
-    setSwitching(true);
-    try {
-      await switchCompany(id);
-    } catch (e) {
-      setSwitchError(e instanceof Error ? e.message : "Không đổi được công ty.");
-    } finally {
-      setSwitching(false);
-    }
+    switchTo(id);
   };
 
   return (
@@ -156,12 +149,8 @@ export default function AppHeader() {
         </Stack>
       </Toolbar>
 
-      <Snackbar
-        open={!!switchError}
-        autoHideDuration={4000}
-        onClose={() => setSwitchError("")}
-      >
-        <Alert severity="error" onClose={() => setSwitchError("")}>
+      <Snackbar open={!!switchError} autoHideDuration={4000} onClose={clearError}>
+        <Alert severity="error" onClose={clearError}>
           {switchError}
         </Alert>
       </Snackbar>

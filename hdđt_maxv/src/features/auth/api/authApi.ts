@@ -1,4 +1,4 @@
-import { apiFetch } from "../../../lib/http";
+import { apiFetch, apiFetchData } from "../../../lib/http";
 
 export interface AuthUser {
   id: string;
@@ -25,22 +25,13 @@ interface LoginResponseData {
   activeDonViId: string | null;
 }
 
-interface ApiEnvelope<T> {
-  success: boolean;
-  data?: T;
-  message?: string;
-}
-
 /** POST /api/v1/auth/login → { accessToken, user } (ném error kèm message nếu thất bại) */
 export async function login(email: string, password: string) {
-  const body = await apiFetch<ApiEnvelope<LoginResponseData>>("/auth/login", {
-    method: "POST",
-    body: JSON.stringify({ email, password }),
-  });
-  if (!body.data) {
-    throw new Error(body.message || "Đăng nhập thất bại");
-  }
-  return body.data;
+  return apiFetchData<LoginResponseData>(
+    "/auth/login",
+    { method: "POST", body: JSON.stringify({ email, password }) },
+    "Đăng nhập thất bại",
+  );
 }
 
 /** POST /api/v1/auth/logout — xóa refresh cookie phía server. */

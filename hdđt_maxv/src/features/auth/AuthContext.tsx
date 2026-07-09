@@ -14,45 +14,62 @@ const USER_KEY = "hddt_auth_user";
 const COMPANIES_KEY = "hddt_auth_companies";
 const CURRENT_COMPANY_KEY = "hddt_auth_current_company";
 
-function loadJson<T>(key: string, fallback: T): T {
+function isAuthUser(v: unknown): v is AuthUser {
+  return (
+    !!v &&
+    typeof v === "object" &&
+    typeof (v as AuthUser).id === "string" &&
+    typeof (v as AuthUser).email === "string"
+  );
+}
+
+function isAuthCompanyArray(v: unknown): v is AuthCompany[] {
+  return (
+    Array.isArray(v) &&
+    v.every((c) => c && typeof c === "object" && typeof (c as AuthCompany).id === "string")
+  );
+}
+
+/** Đọc JSON từ localStorage; nếu shape không khớp (storage cũ/hỏng) thì bỏ và xóa key thay vì tin mù. */
+function loadJson<T>(key: string, fallback: T, isValid: (v: unknown) => boolean): T {
   try {
     const raw = localStorage.getItem(key);
-    return raw ? (JSON.parse(raw) as T) : fallback;
+    if (!raw) return fallback;
+    const parsed = JSON.parse(raw);
+    if (!isValid(parsed)) {
+      localStorage.removeItem(key);
+      return fallback;
+    }
+    return parsed as T;
   } catch {
     return fallback;
   }
 }
 
+/** Ghi/xóa 1 key localStorage — gộp lại thay vì lặp if/else ở từng effect. */
+function persist(key: string, value: string | null) {
+  if (value !== null) localStorage.setItem(key, value);
+  else localStorage.removeItem(key);
+}
+
 export function AuthProvider({ children }: { children: ReactNode }) {
-  const [user, setUser] = useState<AuthUser | null>(() => loadJson(USER_KEY, null));
+  const [user, setUser] = useState<AuthUser | null>(() =>
+    loadJson<AuthUser | null>(USER_KEY, null, (v) => v === null || isAuthUser(v)),
+  );
   const [accessToken, setAccessToken] = useState<string | null>(() =>
     localStorage.getItem(TOKEN_KEY),
   );
   const [companies, setCompanies] = useState<AuthCompany[]>(() =>
-    loadJson<AuthCompany[]>(COMPANIES_KEY, []),
+    loadJson<AuthCompany[]>(COMPANIES_KEY, [], isAuthCompanyArray),
   );
   const [currentCompanyId, setCurrentCompanyId] = useState<string | null>(() =>
     localStorage.getItem(CURRENT_COMPANY_KEY),
   );
 
-  useEffect(() => {
-    if (accessToken) localStorage.setItem(TOKEN_KEY, accessToken);
-    else localStorage.removeItem(TOKEN_KEY);
-  }, [accessToken]);
-
-  useEffect(() => {
-    if (user) localStorage.setItem(USER_KEY, JSON.stringify(user));
-    else localStorage.removeItem(USER_KEY);
-  }, [user]);
-
-  useEffect(() => {
-    localStorage.setItem(COMPANIES_KEY, JSON.stringify(companies));
-  }, [companies]);
-
-  useEffect(() => {
-    if (currentCompanyId) localStorage.setItem(CURRENT_COMPANY_KEY, currentCompanyId);
-    else localStorage.removeItem(CURRENT_COMPANY_KEY);
-  }, [currentCompanyId]);
+  useEffect(() => persist(TOKEN_KEY, accessToken), [accessToken]);
+  useEffect(() => persist(USER_KEY, user ? JSON.stringify(user) : null), [user]);
+  useEffect(() => persist(COMPANIES_KEY, JSON.stringify(companies)), [companies]);
+  useEffect(() => persist(CURRENT_COMPANY_KEY, currentCompanyId), [currentCompanyId]);
 
   const login = useCallback(async (email: string, password: string) => {
     const data = await loginApi(email, password);

@@ -69,10 +69,19 @@ export default function SettingsPage() {
               borderRadius: 2,
             }}
           >
-            {tab === "company" && <CompanyManagementTab />}
-            {tab === "sync-schedule" && <ComingSoonTab title="Lịch tự động đồng bộ hoá đơn" />}
-            {tab === "display" && <ComingSoonTab title="Chế độ hiển thị" />}
-            {tab === "system-data" && <ComingSoonTab title="Dữ liệu hệ thống" />}
+            {/* Giữ mount cả 4 tab, chỉ ẩn bằng CSS — tránh remount + gọi lại API mỗi lần đổi tab. */}
+            <Box sx={{ display: tab === "company" ? "block" : "none" }}>
+              <CompanyManagementTab />
+            </Box>
+            <Box sx={{ display: tab === "sync-schedule" ? "block" : "none" }}>
+              <ComingSoonTab title="Lịch tự động đồng bộ hoá đơn" />
+            </Box>
+            <Box sx={{ display: tab === "display" ? "block" : "none" }}>
+              <ComingSoonTab title="Chế độ hiển thị" />
+            </Box>
+            <Box sx={{ display: tab === "system-data" ? "block" : "none" }}>
+              <ComingSoonTab title="Dữ liệu hệ thống" />
+            </Box>
           </Box>
         </Box>
       </Box>

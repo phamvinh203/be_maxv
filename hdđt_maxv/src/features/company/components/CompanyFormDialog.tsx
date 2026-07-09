@@ -70,23 +70,19 @@ export default function CompanyFormDialog({ open, onClose, onSaved, company }: P
       return;
     }
 
+    const basePayload = {
+      tenCongTy: tenCongTy.trim(),
+      diaChi: diaChi.trim(),
+      sdt: sdt.trim() || undefined,
+      loaiHinhKinhDoanh: loaiHinhKinhDoanh.trim() || undefined,
+    };
+
     setSubmitting(true);
     try {
       if (isEdit && company) {
-        await updateCompany(accessToken, company.id, {
-          tenCongTy: tenCongTy.trim(),
-          diaChi: diaChi.trim(),
-          sdt: sdt.trim() || undefined,
-          loaiHinhKinhDoanh: loaiHinhKinhDoanh.trim() || undefined,
-        });
+        await updateCompany(accessToken, company.id, basePayload);
       } else {
-        await createCompany(accessToken, {
-          tenCongTy: tenCongTy.trim(),
-          maSoThue: maSoThue.trim(),
-          diaChi: diaChi.trim(),
-          sdt: sdt.trim() || undefined,
-          loaiHinhKinhDoanh: loaiHinhKinhDoanh.trim() || undefined,
-        });
+        await createCompany(accessToken, { ...basePayload, maSoThue: maSoThue.trim() });
       }
       onSaved();
       onClose();

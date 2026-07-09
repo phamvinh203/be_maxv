@@ -16,12 +16,15 @@ import EditRounded from "@mui/icons-material/EditRounded";
 import DeleteRounded from "@mui/icons-material/DeleteRounded";
 import CheckCircleRounded from "@mui/icons-material/CheckCircleRounded";
 import { useAuth } from "../../auth/useAuth";
+import { useCompanySwitch } from "../hooks/useCompanySwitch";
 import { deleteCompany, listCompanies, type CompanyDetail } from "../api/companyApi";
 import CompanyFormDialog from "./CompanyFormDialog";
 
 export default function CompanyManagementTab() {
-  const { accessToken, currentCompanyId, user, switchCompany } = useAuth();
+  const { accessToken, currentCompanyId, user, refreshCompanies } = useAuth();
   const isOwner = user?.role === "OWNER";
+  const { switchingId, error: switchError, switchTo, clearError: clearSwitchError } =
+    useCompanySwitch();
 
   const [companies, setCompanies] = useState<CompanyDetail[]>([]);
   const [loading, setLoading] = useState(true);
@@ -32,8 +35,6 @@ export default function CompanyManagementTab() {
   const [deleting, setDeleting] = useState<CompanyDetail | undefined>(undefined);
   const [deleteError, setDeleteError] = useState("");
   const [deleteBusy, setDeleteBusy] = useState(false);
-  const [switchingId, setSwitchingId] = useState<string | null>(null);
-  const [switchError, setSwitchError] = useState("");
 
   const fetchCompanies = useCallback(async () => {
     if (!accessToken) return;
@@ -47,6 +48,11 @@ export default function CompanyManagementTab() {
       setLoading(false);
     }
   }, [accessToken]);
+
+  /** Đồng bộ cả danh sách chi tiết (tab này) lẫn danh sách gọn ở AuthContext (header dùng). */
+  const refreshAll = useCallback(async () => {
+    await Promise.all([fetchCompanies(), refreshCompanies()]);
+  }, [fetchCompanies, refreshCompanies]);
 
   useEffect(() => {
     // Tải danh sách công ty khi mở tab — cố ý fetch-on-mount, không có lib data-fetching riêng.
@@ -64,18 +70,6 @@ export default function CompanyManagementTab() {
     setFormOpen(true);
   };
 
-  const handleSwitch = async (id: string) => {
-    setSwitchError("");
-    setSwitchingId(id);
-    try {
-      await switchCompany(id);
-    } catch (e) {
-      setSwitchError(e instanceof Error ? e.message : "Không đổi được công ty.");
-    } finally {
-      setSwitchingId(null);
-    }
-  };
-
   const confirmDelete = async () => {
     if (!deleting || !accessToken) return;
     setDeleteBusy(true);
@@ -83,7 +77,7 @@ export default function CompanyManagementTab() {
     try {
       await deleteCompany(accessToken, deleting.id);
       setDeleting(undefined);
-      await fetchCompanies();
+      await refreshAll();
     } catch (e) {
       setDeleteError(e instanceof Error ? e.message : "Không xóa được công ty.");
     } finally {
@@ -118,7 +112,7 @@ export default function CompanyManagementTab() {
         </Alert>
       )}
       {switchError && (
-        <Alert severity="error" sx={{ mb: 2 }} onClose={() => setSwitchError("")}>
+        <Alert severity="error" sx={{ mb: 2 }} onClose={clearSwitchError}>
           {switchError}
         </Alert>
       )}
@@ -134,7 +128,7 @@ export default function CompanyManagementTab() {
             const card = (
               <Box
                 key={company.id}
-                onClick={() => !isCurrent && switchingId === null && handleSwitch(company.id)}
+                onClick={() => !isCurrent && switchingId === null && switchTo(company.id)}
                 sx={{
                   position: "relative",
                   display: "flex",
@@ -223,10 +217,13 @@ export default function CompanyManagementTab() {
                 )}
               </Box>
             );
-            return isCurrent ? (
-              card
-            ) : (
-              <Tooltip key={company.id} title="Bấm để chuyển sang công ty này" placement="top">
+            return (
+              <Tooltip
+                key={company.id}
+                title="Bấm để chuyển sang công ty này"
+                placement="top"
+                disableHoverListener={isCurrent}
+              >
                 {card}
               </Tooltip>
             );
@@ -244,7 +241,7 @@ export default function CompanyManagementTab() {
         open={formOpen}
         company={editing}
         onClose={() => setFormOpen(false)}
-        onSaved={fetchCompanies}
+        onSaved={refreshAll}
       />
 
       <Dialog open={Boolean(deleting)} onClose={() => setDeleting(undefined)} maxWidth="xs" fullWidth>
