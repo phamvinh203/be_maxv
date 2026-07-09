@@ -399,6 +399,106 @@ model d81 {
   @@index([stt_rec])
 }
 
+// ============================================================
+//  HÓA ĐƠN ĐIỆN TỬ (HDDT) › CACHE TRA CỨU GDT
+// ============================================================
+
+/// Hóa đơn điện tử bán ra — cache tra cứu từ GDT (chiều "sold" — mình là bên bán).
+/// Cùng chiến lược cột chính + `raw` như vct60view (hóa đơn mua vào), không cần cột
+/// `chieu` vì bảng này chỉ chứa 1 chiều cố định.
+model vct50view {
+  id String @id @db.VarChar(64) // id hóa đơn bên GDT
+
+  khmshdon String  @db.VarChar(16) // Ký hiệu mẫu số hóa đơn
+  khhdon   String  @db.VarChar(32) // Ký hiệu hóa đơn
+  shdon    String  @db.VarChar(32) // Số hóa đơn
+  mhdon    String? @db.VarChar(128) // Mã hóa đơn (tra cứu)
+
+  tdlap DateTime // Ngày lập
+  nky   DateTime? // Ngày người bán ký số
+
+  nbmst  String  @db.VarChar(24) // MST người bán
+  nbten  String  @db.VarChar(254)
+  nbdchi String? @db.VarChar(512)
+
+  nmmst  String? @db.VarChar(24) // MST người mua
+  nmten  String? @db.VarChar(254)
+  nmdchi String? @db.VarChar(512)
+  nmcmnd String? @db.VarChar(32) // CCCD/giấy tờ người mua (cá nhân)
+
+  dvtte String?  @db.VarChar(16) // Đơn vị tiền tệ
+  tgia  Decimal? @db.Decimal(18, 4)
+
+  tgtcthue Decimal? @db.Decimal(18, 2) // Tổng tiền chưa thuế
+  tgtthue  Decimal? @db.Decimal(18, 2) // Tổng tiền thuế
+  ttcktmai Decimal? @db.Decimal(18, 2) // Tổng chiết khấu thương mại
+  tgtphi   Decimal? @db.Decimal(18, 2) // Tổng phí
+  tgtttbso Decimal? @db.Decimal(18, 2) // Tổng tiền thanh toán
+
+  tthai String? @db.VarChar(8) // Trạng thái hóa đơn (mã)
+  ttxly String? @db.VarChar(8) // Kết quả kiểm tra hóa đơn (mã)
+
+  thtttoan String? @db.VarChar(32) // Hình thức thanh toán
+  gchu     String? @db.VarChar(1024) // Ghi chú
+
+  raw Json // Toàn bộ payload GDT gốc — đầy đủ mọi field, kể cả field mới phát sinh sau này
+
+  datetime0 DateTime @default(now())
+  datetime2 DateTime @updatedAt
+
+  @@unique([nbmst, khmshdon, khhdon, shdon])
+  @@index([tdlap])
+  @@index([nmmst])
+}
+
+/// Hóa đơn điện tử mua vào — cache tra cứu từ GDT (chiều "purchase" — mình là bên mua).
+/// Cùng chiến lược cột chính + `raw` như vct50view, không cần cột `chieu` vì bảng
+/// này chỉ chứa 1 chiều cố định.
+model vct60view {
+  id String @id @db.VarChar(64) // id hóa đơn bên GDT
+
+  khmshdon String  @db.VarChar(16) // Ký hiệu mẫu số hóa đơn
+  khhdon   String  @db.VarChar(32) // Ký hiệu hóa đơn
+  shdon    String  @db.VarChar(32) // Số hóa đơn
+  mhdon    String? @db.VarChar(128) // Mã hóa đơn (tra cứu)
+
+  tdlap DateTime // Ngày lập
+  nky   DateTime? // Ngày người bán ký số
+
+  nbmst  String  @db.VarChar(24) // MST người bán (đối tác)
+  nbten  String  @db.VarChar(254)
+  nbdchi String? @db.VarChar(512)
+
+  nmmst  String? @db.VarChar(24) // MST người mua (mình)
+  nmten  String? @db.VarChar(254)
+  nmdchi String? @db.VarChar(512)
+  nmcmnd String? @db.VarChar(32) // CCCD/giấy tờ người mua (cá nhân)
+
+  dvtte String?  @db.VarChar(16) // Đơn vị tiền tệ
+  tgia  Decimal? @db.Decimal(18, 4)
+
+  tgtcthue Decimal? @db.Decimal(18, 2) // Tổng tiền chưa thuế
+  tgtthue  Decimal? @db.Decimal(18, 2) // Tổng tiền thuế
+  ttcktmai Decimal? @db.Decimal(18, 2) // Tổng chiết khấu thương mại
+  tgtphi   Decimal? @db.Decimal(18, 2) // Tổng phí
+  tgtttbso Decimal? @db.Decimal(18, 2) // Tổng tiền thanh toán
+
+  tthai String? @db.VarChar(8) // Trạng thái hóa đơn (mã)
+  ttxly String? @db.VarChar(8) // Kết quả kiểm tra hóa đơn (mã)
+
+  thtttoan String? @db.VarChar(32) // Hình thức thanh toán
+  gchu     String? @db.VarChar(1024) // Ghi chú
+
+  raw Json // Toàn bộ payload GDT gốc — đầy đủ mọi field, kể cả field mới phát sinh sau này
+
+  datetime0 DateTime @default(now())
+  datetime2 DateTime @updatedAt
+
+  @@unique([nbmst, khmshdon, khhdon, shdon])
+  @@index([tdlap])
+  @@index([nmmst])
+}
+
 /// Danh mục phòng ban (dmpb) — thuộc Tổng hợp.
 model dmpb {
   ma_pb      String  @id @db.VarChar(24)

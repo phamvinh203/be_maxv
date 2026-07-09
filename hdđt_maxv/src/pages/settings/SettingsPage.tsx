@@ -12,7 +12,9 @@ import VisibilityRounded from "@mui/icons-material/VisibilityRounded";
 import StorageRounded from "@mui/icons-material/StorageRounded";
 import AppHeader from "../../components/AppHeader";
 import CompanyManagementTab from "../../features/company/components/CompanyManagementTab";
-import ComingSoonTab from "./ComingSoonTab";
+import SystemDataTab from "./SystemDataTab";
+import DisplayModeTab from "./DisplayModeTab";
+import SyncScheduleTab from "./SyncScheduleTab";
 
 type SettingsTab = "company" | "sync-schedule" | "display" | "system-data";
 
@@ -74,13 +76,13 @@ export default function SettingsPage() {
               <CompanyManagementTab />
             </Box>
             <Box sx={{ display: tab === "sync-schedule" ? "block" : "none" }}>
-              <ComingSoonTab title="Lịch tự động đồng bộ hoá đơn" />
+              <SyncScheduleTab />
             </Box>
             <Box sx={{ display: tab === "display" ? "block" : "none" }}>
-              <ComingSoonTab title="Chế độ hiển thị" />
+              <DisplayModeTab />
             </Box>
             <Box sx={{ display: tab === "system-data" ? "block" : "none" }}>
-              <ComingSoonTab title="Dữ liệu hệ thống" />
+              <SystemDataTab />
             </Box>
           </Box>
         </Box>
