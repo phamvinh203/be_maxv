@@ -1,8 +1,10 @@
 import type { FastifyInstance } from 'fastify';
 import {
   createCompany,
+  deleteCompany,
   listCompanies,
   switchCompany,
+  updateCompany,
   inviteUser,
   listEmployees,
   listInvites,
@@ -26,6 +28,18 @@ export async function companyRoutes(app: FastifyInstance) {
   app.post('/:id/switch', {
     preHandler: [app.authenticate],
     handler: switchCompany,
+  });
+
+  // Owner sửa thông tin công ty của chính mình (không đổi được MST).
+  app.put('/:id', {
+    preHandler: [app.authenticate, app.requireRole('OWNER')],
+    handler: updateCompany,
+  });
+
+  // Owner "xóa" (lưu trữ) công ty của chính mình — không xóa DB tenant.
+  app.delete('/:id', {
+    preHandler: [app.authenticate, app.requireRole('OWNER')],
+    handler: deleteCompany,
   });
 
   // Chỉ owner đã đăng nhập và đã có công ty mới được mời user.

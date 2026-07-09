@@ -3,13 +3,16 @@ import {
   registerCompanySchema,
   inviteUserSchema,
   setEmployeeAccessSchema,
+  updateCompanySchema,
 } from '../../validators/company.validator';
 import {
+  archiveCompany,
   inviteUserToCompany,
   listCompanyEmployees,
   listCompanyInvites,
   registerCompany,
   setEmployeeAccess,
+  updateCompanyInfo,
 } from '../../services/client/company.service';
 import {
   listAccessibleCompaniesDetailed,
@@ -82,6 +85,24 @@ export async function switchCompany(req: FastifyRequest, reply: FastifyReply) {
     role: req.user.role,
   });
   return sendOk(reply, { accessToken, activeDonViId: id });
+}
+
+/** PUT /api/v1/companies/:id — owner sửa thông tin công ty của chính mình (MST không đổi được). */
+export async function updateCompany(req: FastifyRequest, reply: FastifyReply) {
+  const { id } = req.params as { id: string };
+  const data = await updateCompanyInfo(
+    id,
+    req.user.userId,
+    validateBody(updateCompanySchema, req.body),
+  );
+  return sendOk(reply, data);
+}
+
+/** DELETE /api/v1/companies/:id — owner "xóa" (lưu trữ) công ty của chính mình. */
+export async function deleteCompany(req: FastifyRequest, reply: FastifyReply) {
+  const { id } = req.params as { id: string };
+  const data = await archiveCompany(id, req.user.userId);
+  return sendOk(reply, data);
 }
 
 // POST /api/v1/companies/invite - owner mời nhân viên vào tài khoản + cấp quyền MST (donViIds)

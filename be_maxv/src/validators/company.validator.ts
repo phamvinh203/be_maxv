@@ -15,6 +15,18 @@ export const registerCompanySchema = z.object({
   loaiHinhKinhDoanh: z.string().min(1).optional(),
 });
 
+// PUT /api/v1/companies/:id — owner sửa thông tin công ty. Không có maSoThue: MST không đổi
+// được sau khi tạo (đã gắn với tenant DB maxv2_<mst>_app).
+export const updateCompanySchema = z.object({
+  tenCongTy: z.string().min(1).optional(),
+  diaChi: z.string().min(1).optional(),
+  sdt: z
+    .string()
+    .regex(/^[0-9]{9,11}$/, MESSAGES.VALIDATION.INVALID_PHONE)
+    .optional(),
+  loaiHinhKinhDoanh: z.string().min(1).optional(),
+});
+
 // POST /api/v1/companies/invite
 // Role luôn là OWNER_EMPLOYEE (gán ở service) — owner đặt tên + chức vụ + chọn MST cấp quyền.
 export const inviteUserSchema = z.object({
@@ -32,4 +44,5 @@ export const setEmployeeAccessSchema = z.object({
 export type InviteUserInput = z.infer<typeof inviteUserSchema>;
 export type SetEmployeeAccessInput = z.infer<typeof setEmployeeAccessSchema>;
 export type RegisterCompanyInput = z.infer<typeof registerCompanySchema>;
+export type UpdateCompanyInput = z.infer<typeof updateCompanySchema>;
 
