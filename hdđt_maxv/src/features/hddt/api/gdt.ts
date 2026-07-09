@@ -41,16 +41,39 @@ export async function loginGdt(body: LoginPayload): Promise<LoginResult> {
 /** "purchase" = hóa đơn đầu vào (mua vào), "sold" = hóa đơn đầu ra (bán ra). Khớp path BE `/gdt/invoices/<direction>`. */
 export type InvoiceDirection = "purchase" | "sold";
 
+/**
+ * Bảng mã trạng thái hóa đơn (`tthai`) của GDT — dùng chung cho dropdown lọc
+ * (InvoiceFilterPanel) và hiển thị nhãn ở bảng kết quả (InvoiceListTabs).
+ */
+export const TRANG_THAI_HD_OPTIONS = [
+  { value: "", label: "Tất cả" },
+  { value: "1", label: "Hóa đơn mới" },
+  { value: "2", label: "Hóa đơn thay thế" },
+  { value: "3", label: "Hóa đơn điều chỉnh" },
+  { value: "4", label: "Hóa đơn bị thay thế" },
+  { value: "5", label: "Hóa đơn đã bị điều chỉnh" },
+  { value: "6", label: "Hóa đơn đã bị hủy" },
+] as const;
+
+const TRANG_THAI_HD_LABEL: Record<string, string> = Object.fromEntries(
+  TRANG_THAI_HD_OPTIONS.filter((o) => o.value).map((o) => [o.value, o.label]),
+);
+
+/** Nhãn tiếng Việt cho mã trạng thái hóa đơn; trả nguyên mã nếu không nằm trong bảng đã biết. */
+export function trangThaiHdLabel(code: string): string {
+  return TRANG_THAI_HD_LABEL[code] ?? code;
+}
+
 /** Query param bên BE giữ tên MST đối tác khác nhau theo chiều hóa đơn. */
 const PARTNER_PARAM: Record<InvoiceDirection, string> = {
   purchase: "mstNguoiBan",
   sold: "mstNguoiMua",
 };
 
-/** Field GDT trả về cho MST/tên đối tác, khác tên theo chiều hóa đơn. */
-const PARTNER_FIELD: Record<InvoiceDirection, { mst: string; ten: string }> = {
-  purchase: { mst: "nbmst", ten: "nbten" },
-  sold: { mst: "nmmst", ten: "nmten" },
+/** Field GDT trả về cho MST/tên/địa chỉ đối tác, khác tên theo chiều hóa đơn. */
+const PARTNER_FIELD: Record<InvoiceDirection, { mst: string; ten: string; dchi: string }> = {
+  purchase: { mst: "nbmst", ten: "nbten", dchi: "nbdchi" },
+  sold: { mst: "nmmst", ten: "nmten", dchi: "nmdchi" },
 };
 
 export interface InvoiceQuery {
@@ -78,6 +101,8 @@ export interface InvoiceRaw {
   id: string;
   mstDoiTac: string;
   tenDoiTac: string;
+  /** Địa chỉ đối tác — không phải hóa đơn nào GDT cũng trả về field này. */
+  diaChiDoiTac?: string;
   khmshdon: string;
   khhdon: string;
   shdon: string;
@@ -127,7 +152,7 @@ export async function getInvoices(
     datas?: Array<Record<string, unknown>>;
   }>(`/gdt/invoices/${direction}?${params.toString()}`, { token });
 
-  const { mst: mstField, ten: tenField } = PARTNER_FIELD[direction];
+  const { mst: mstField, ten: tenField, dchi: dchiField } = PARTNER_FIELD[direction];
 
   return {
     total: raw.total,
@@ -138,6 +163,7 @@ export async function getInvoices(
           ...d,
           mstDoiTac: d[mstField],
           tenDoiTac: d[tenField],
+          diaChiDoiTac: d[dchiField],
         }) as InvoiceRaw,
     ),
   };

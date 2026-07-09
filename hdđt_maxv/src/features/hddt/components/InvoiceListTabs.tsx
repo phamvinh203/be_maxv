@@ -5,7 +5,7 @@ import Tab from "@mui/material/Tab";
 import Paper from "@mui/material/Paper";
 import Stack from "@mui/material/Stack";
 import Button from "@mui/material/Button";
-import Checkbox from "@mui/material/Checkbox";
+import IconButton from "@mui/material/IconButton";
 import Table from "@mui/material/Table";
 import TableHead from "@mui/material/TableHead";
 import TableBody from "@mui/material/TableBody";
@@ -15,25 +15,33 @@ import TableContainer from "@mui/material/TableContainer";
 import Typography from "@mui/material/Typography";
 import Alert from "@mui/material/Alert";
 import InboxRounded from "@mui/icons-material/InboxRounded";
+import ConstructionRounded from "@mui/icons-material/ConstructionRounded";
 import DescriptionRounded from "@mui/icons-material/DescriptionRounded";
 import FileDownloadRounded from "@mui/icons-material/FileDownloadRounded";
+import VisibilityRounded from "@mui/icons-material/VisibilityRounded";
+import DownloadRounded from "@mui/icons-material/DownloadRounded";
+import { useAuth } from "../../auth/useAuth";
 import { useGdtSession } from "../gdtSession/useGdtSession";
-import { getInvoices, type InvoiceDirection, type InvoiceRaw } from "../api/gdt";
+import { getInvoices, trangThaiHdLabel, type InvoiceDirection, type InvoiceRaw } from "../api/gdt";
 import InvoiceFilterPanel, { type InvoiceFilterValues } from "./InvoiceFilterPanel";
 
-/** Cột chưa có nguồn dữ liệu (cần lưu DB / tra cứu rủi ro riêng) — hiển thị tạm "—". */
+/** Cột chưa có nguồn dữ liệu (cần API/tính năng riêng, chưa xây) — hiển thị tạm "—". */
 const NO_DATA_YET = "—";
+/** Số cột của bảng "Tổng quát" — dùng cho colSpan của empty-state. */
+const COLUMN_COUNT = 27;
 
-/** Dòng hiển thị — đổi tên field GDT sang tên tiếng Việt dễ đọc cho bảng. */
+/** Dòng hiển thị — chuẩn hóa field GDT + tách rõ bên bán/bên mua theo chiều hóa đơn. */
 interface DisplayRow {
   id: string;
   mauHd: string;
   soSeri: string;
   soHd: string;
   ngayLap: string;
-  ngayKy: string;
-  partnerMst: string;
-  partnerTen: string;
+  sellerMst: string;
+  sellerTen: string;
+  sellerDiaChi: string;
+  buyerMst: string;
+  buyerTen: string;
   tienChuaThue?: number;
   tienThue?: number;
   cktm?: number;
@@ -45,16 +53,29 @@ interface DisplayRow {
   ketQuaKt: string;
 }
 
-function toDisplayRow(r: InvoiceRaw): DisplayRow {
+/**
+ * GDT chỉ trả về thông tin bên đối tác (bên còn lại là công ty mình, đã biết trước qua
+ * phiên đăng nhập) — nên cần `ownMst`/`ownTen` (tra từ danh sách công ty đã đăng nhập)
+ * để điền đủ cột "người bán"/"người mua" bất kể đang xem chiều nào.
+ */
+function toDisplayRow(
+  r: InvoiceRaw,
+  direction: InvoiceDirection,
+  ownMst: string,
+  ownTen: string,
+): DisplayRow {
+  const isPurchase = direction === "purchase";
   return {
     id: r.id,
     mauHd: r.khmshdon,
     soSeri: r.khhdon,
     soHd: r.shdon,
     ngayLap: r.tdlap,
-    ngayKy: r.nky ?? "",
-    partnerMst: r.mstDoiTac,
-    partnerTen: r.tenDoiTac,
+    sellerMst: isPurchase ? r.mstDoiTac : ownMst,
+    sellerTen: isPurchase ? r.tenDoiTac : ownTen,
+    sellerDiaChi: isPurchase ? (r.diaChiDoiTac ?? "") : "",
+    buyerMst: isPurchase ? ownMst : r.mstDoiTac,
+    buyerTen: isPurchase ? ownTen : r.tenDoiTac,
     tienChuaThue: r.tgtcthue,
     tienThue: r.tgtthue,
     cktm: r.ttcktmai,
@@ -82,29 +103,16 @@ interface InvoiceTablePanelProps {
   direction: InvoiceDirection;
 }
 
+type ResultTab = "tong-quat" | "chi-tiet";
+
 function InvoiceTablePanel({ direction }: InvoiceTablePanelProps) {
+  const { companies } = useAuth();
   const { currentGdtMst, getGdtToken } = useGdtSession();
+  const [resultTab, setResultTab] = useState<ResultTab>("tong-quat");
   const [rows, setRows] = useState<DisplayRow[]>([]);
-  const [selected, setSelected] = useState<Set<string>>(new Set());
   const [searched, setSearched] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
-
-  const allSelected = rows.length > 0 && selected.size === rows.length;
-  const someSelected = selected.size > 0 && !allSelected;
-
-  const toggleAll = () => {
-    setSelected(allSelected ? new Set() : new Set(rows.map((r) => r.id)));
-  };
-
-  const toggleOne = (id: string) => {
-    setSelected((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
-      return next;
-    });
-  };
 
   const handleSearch = async (filters: InvoiceFilterValues) => {
     setError("");
@@ -115,7 +123,7 @@ function InvoiceTablePanel({ direction }: InvoiceTablePanelProps) {
     }
 
     const token = currentGdtMst ? getGdtToken(currentGdtMst) : undefined;
-    if (!token) {
+    if (!token || !currentGdtMst) {
       setError(
         'Chưa đăng nhập Thuế điện tử — bấm "Đăng nhập Thuế điện tử" ở trên trước khi tra cứu.',
       );
@@ -134,8 +142,8 @@ function InvoiceTablePanel({ direction }: InvoiceTablePanelProps) {
         soSeri: filters.soSeri || undefined,
         soHd: filters.soHd || undefined,
       });
-      setRows((result.datas ?? []).map(toDisplayRow));
-      setSelected(new Set());
+      const ownTen = companies.find((c) => c.maSoThue === currentGdtMst)?.tenDonVi ?? "";
+      setRows((result.datas ?? []).map((r) => toDisplayRow(r, direction, currentGdtMst, ownTen)));
       setSearched(true);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Không lấy được danh sách hóa đơn.");
@@ -147,14 +155,11 @@ function InvoiceTablePanel({ direction }: InvoiceTablePanelProps) {
   const handleReset = () => {
     setError("");
     setRows([]);
-    setSelected(new Set());
     setSearched(false);
   };
 
   return (
     <Box sx={{ pt: 2.5 }}>
-      
-
       <InvoiceFilterPanel
         direction={direction}
         loading={loading}
@@ -168,60 +173,83 @@ function InvoiceTablePanel({ direction }: InvoiceTablePanelProps) {
         </Alert>
       )}
 
+      <Tabs
+        value={resultTab}
+        onChange={(_e, value: ResultTab) => setResultTab(value)}
+        sx={{ minHeight: 0, mb: 1.5 }}
+      >
+        <Tab label="Tổng quát" value="tong-quat" sx={{ minHeight: 0 }} />
+        <Tab label="Chi tiết hoá đơn" value="chi-tiet" sx={{ minHeight: 0 }} />
+      </Tabs>
+
+      {resultTab === "chi-tiet" ? (
+        <Box
+          sx={{
+            py: 8,
+            display: "flex",
+            flexDirection: "column",
+            alignItems: "center",
+            gap: 1.5,
+            color: "text.disabled",
+            border: "1px solid",
+            borderColor: "divider",
+            borderRadius: 1,
+          }}
+        >
+          <ConstructionRounded fontSize="large" />
+          <Typography variant="body2">
+            Chi tiết hóa đơn — tính năng đang phát triển.
+          </Typography>
+        </Box>
+      ) : (
       <TableContainer component={Paper} variant="outlined" sx={{ overflowX: "auto" }}>
         <Table size="small" sx={{ "& td, & th": { whiteSpace: "nowrap" } }}>
           <TableHead>
             <TableRow sx={{ "& th": { fontWeight: 700, bgcolor: "action.hover" } }}>
-              <TableCell padding="checkbox">
-                <Checkbox
-                  size="small"
-                  indeterminate={someSelected}
-                  checked={allSelected}
-                  onChange={toggleAll}
-                  disabled={rows.length === 0}
-                />
-              </TableCell>
-              <TableCell>T. thái tải</TableCell>
+              <TableCell>STT</TableCell>
               <TableCell>Ký hiệu mẫu số</TableCell>
               <TableCell>Ký hiệu hóa đơn</TableCell>
               <TableCell>Số hóa đơn</TableCell>
               <TableCell>Ngày lập</TableCell>
-              <TableCell>Ngày ký</TableCell>
               <TableCell>MST người bán/MST người xuất hàng</TableCell>
               <TableCell>Tên người bán/Tên người xuất hàng</TableCell>
+              <TableCell>Địa chỉ người bán</TableCell>
+              <TableCell>MST người mua/MST người nhận hàng</TableCell>
+              <TableCell>CCCD người mua</TableCell>
+              <TableCell>Tên người mua/Tên người nhận hàng</TableCell>
               <TableCell align="right">Tổng tiền chưa thuế</TableCell>
               <TableCell align="right">Tổng tiền thuế</TableCell>
-              <TableCell align="right">Tổng CKTM</TableCell>
-              <TableCell align="right">Tổng phí</TableCell>
+              <TableCell align="right">Tổng tiền chiết khấu thương mại</TableCell>
+              <TableCell align="right">Tổng tiền phí</TableCell>
               <TableCell align="right">Tổng tiền thanh toán</TableCell>
-              <TableCell>Mã nt</TableCell>
+              <TableCell>Đơn vị tiền tệ</TableCell>
               <TableCell align="right">Tỷ giá</TableCell>
+              <TableCell>Ghi chú: Hóa đơn thay thế, điều chỉnh, bị thay thế, bị điều chỉnh</TableCell>
               <TableCell align="center">Trạng thái hóa đơn</TableCell>
-              <TableCell align="center">Kết quả kiểm tra</TableCell>
-              <TableCell>Mã ct hạch toán</TableCell>
-              <TableCell>Tên chứng từ hạch toán</TableCell>
-              <TableCell align="center">Hóa đơn rủi ro</TableCell>
+              <TableCell align="center">Kết quả kiểm tra hóa đơn</TableCell>
+              <TableCell>Website người bán</TableCell>
+              <TableCell>Url tra cứu hóa đơn gốc</TableCell>
+              <TableCell>Mã tra cứu hóa đơn gốc</TableCell>
+              <TableCell>Hóa đơn liên quan</TableCell>
+              <TableCell align="center">Xem hóa đơn</TableCell>
+              <TableCell align="center">Tải file</TableCell>
             </TableRow>
           </TableHead>
           <TableBody>
             {rows.length > 0 ? (
-              rows.map((r) => (
-                <TableRow key={r.id} selected={selected.has(r.id)} hover>
-                  <TableCell padding="checkbox">
-                    <Checkbox
-                      size="small"
-                      checked={selected.has(r.id)}
-                      onChange={() => toggleOne(r.id)}
-                    />
-                  </TableCell>
-                  <TableCell>{NO_DATA_YET}</TableCell>
+              rows.map((r, i) => (
+                <TableRow key={r.id} hover>
+                  <TableCell>{i + 1}</TableCell>
                   <TableCell>{r.mauHd}</TableCell>
                   <TableCell>{r.soSeri}</TableCell>
                   <TableCell>{r.soHd}</TableCell>
                   <TableCell>{formatDate(r.ngayLap)}</TableCell>
-                  <TableCell>{formatDate(r.ngayKy)}</TableCell>
-                  <TableCell>{r.partnerMst}</TableCell>
-                  <TableCell>{r.partnerTen}</TableCell>
+                  <TableCell>{r.sellerMst}</TableCell>
+                  <TableCell>{r.sellerTen}</TableCell>
+                  <TableCell>{r.sellerDiaChi || NO_DATA_YET}</TableCell>
+                  <TableCell>{r.buyerMst}</TableCell>
+                  <TableCell>{NO_DATA_YET}</TableCell>
+                  <TableCell>{r.buyerTen}</TableCell>
                   <TableCell align="right">{formatMoney(r.tienChuaThue)}</TableCell>
                   <TableCell align="right">{formatMoney(r.tienThue)}</TableCell>
                   <TableCell align="right">{formatMoney(r.cktm)}</TableCell>
@@ -229,16 +257,28 @@ function InvoiceTablePanel({ direction }: InvoiceTablePanelProps) {
                   <TableCell align="right">{formatMoney(r.tongTt)}</TableCell>
                   <TableCell>{r.maNt}</TableCell>
                   <TableCell align="right">{formatMoney(r.tyGia)}</TableCell>
-                  <TableCell align="center">{r.trangThaiHd}</TableCell>
+                  <TableCell>{NO_DATA_YET}</TableCell>
+                  <TableCell align="center">{trangThaiHdLabel(r.trangThaiHd)}</TableCell>
                   <TableCell align="center">{r.ketQuaKt}</TableCell>
                   <TableCell>{NO_DATA_YET}</TableCell>
                   <TableCell>{NO_DATA_YET}</TableCell>
-                  <TableCell align="center">{NO_DATA_YET}</TableCell>
+                  <TableCell>{NO_DATA_YET}</TableCell>
+                  <TableCell>{NO_DATA_YET}</TableCell>
+                  <TableCell align="center">
+                    <IconButton size="small" disabled>
+                      <VisibilityRounded fontSize="small" />
+                    </IconButton>
+                  </TableCell>
+                  <TableCell align="center">
+                    <IconButton size="small" disabled>
+                      <DownloadRounded fontSize="small" />
+                    </IconButton>
+                  </TableCell>
                 </TableRow>
               ))
             ) : (
               <TableRow>
-                <TableCell colSpan={21} sx={{ border: 0, py: 6 }}>
+                <TableCell colSpan={COLUMN_COUNT} sx={{ border: 0, py: 6 }}>
                   <Stack spacing={1} sx={{ alignItems: "center", color: "text.disabled" }}>
                     <InboxRounded fontSize="large" />
                     <Typography variant="body2">
@@ -251,6 +291,7 @@ function InvoiceTablePanel({ direction }: InvoiceTablePanelProps) {
           </TableBody>
         </Table>
       </TableContainer>
+      )}
     </Box>
   );
 }
@@ -285,7 +326,6 @@ export default function InvoiceListTabs() {
             size="small"
             startIcon={<DescriptionRounded fontSize="small" />}
             sx={{ textTransform: "none", whiteSpace: "nowrap" }}
-            
           >
             Lập tờ khai và bảng kê
           </Button>
@@ -294,7 +334,6 @@ export default function InvoiceListTabs() {
             size="small"
             startIcon={<FileDownloadRounded fontSize="small" />}
             sx={{ textTransform: "none", whiteSpace: "nowrap" }}
-            
           >
             Xuất file excel tổng hợp và hóa đơn
           </Button>

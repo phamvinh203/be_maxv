@@ -6,6 +6,7 @@ import Divider from "@mui/material/Divider";
 import Collapse from "@mui/material/Collapse";
 import Typography from "@mui/material/Typography";
 import TextField from "@mui/material/TextField";
+import MenuItem from "@mui/material/MenuItem";
 import Button from "@mui/material/Button";
 import IconButton from "@mui/material/IconButton";
 import Tooltip from "@mui/material/Tooltip";
@@ -16,7 +17,7 @@ import RemoveRounded from "@mui/icons-material/RemoveRounded";
 import AddRounded from "@mui/icons-material/AddRounded";
 import SearchRounded from "@mui/icons-material/SearchRounded";
 import RestartAltRounded from "@mui/icons-material/RestartAltRounded";
-import type { InvoiceDirection } from "../api/gdt";
+import { TRANG_THAI_HD_OPTIONS, type InvoiceDirection } from "../api/gdt";
 
 export interface InvoiceFilterValues {
   tuNgay: string;
@@ -105,13 +106,19 @@ export default function InvoiceFilterPanel({ direction, loading, onSearch, onRes
             </Tooltip>
 
             <TextField
+              select
               label="Trạng thái"
-              placeholder="Nhập mã trạng thái (vd: 1)"
               value={values.trangThaiHd}
               onChange={setField("trangThaiHd")}
               size="small"
               fullWidth
-            />
+            >
+              {TRANG_THAI_HD_OPTIONS.map((opt) => (
+                <MenuItem key={opt.value} value={opt.value}>
+                  {opt.label}
+                </MenuItem>
+              ))}
+            </TextField>
             <Stack direction="row" spacing={1.5}>
               <TextField
                 label="Từ ngày"
