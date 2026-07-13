@@ -6,6 +6,7 @@ import {
 } from "./api/authApi";
 import { listCompanies, switchCompany as switchCompanyApi } from "../company/api/companyApi";
 import { queryClient } from "../../lib/queryClient";
+import { setSessionExpiredHandler } from "../../lib/http";
 import { AuthContext } from "./context";
 import type { AuthCompany, AuthUser } from "./types";
 
@@ -49,13 +50,24 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setCurrentCompanyId(data.activeDonViId);
   }, []);
 
-  const logout = useCallback(async () => {
-    await logoutApi().catch(() => {}); // server xóa cookie
+  // Xóa sạch phiên phía client (cache + state). Dùng cho cả logout chủ động lẫn hết phiên bị động.
+  const resetSession = useCallback(() => {
     queryClient.clear();
     setUser(null);
     setCompanies([]);
     setCurrentCompanyId(null);
   }, []);
+
+  const logout = useCallback(async () => {
+    await logoutApi().catch(() => {}); // server xóa cookie
+    resetSession();
+  }, [resetSession]);
+
+  // apiFetch gọi handler này khi refresh cũng 401 (hết phiên hẳn) -> reset để ProtectedRoute về /login.
+  useEffect(() => {
+    setSessionExpiredHandler(resetSession);
+    return () => setSessionExpiredHandler(null);
+  }, [resetSession]);
 
   const refreshCompanies = useCallback(async () => {
     setCompanies(await listCompanies());
