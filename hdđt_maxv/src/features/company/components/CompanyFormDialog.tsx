@@ -9,36 +9,34 @@ import Stack from "@mui/material/Stack";
 import Alert from "@mui/material/Alert";
 import CircularProgress from "@mui/material/CircularProgress";
 import ReceiptLongRounded from "@mui/icons-material/ReceiptLongRounded";
-import { useAuth } from "../../auth/useAuth";
 import { useGdtSession } from "../../hddt/gdtSession/useGdtSession";
+import { getErrorMessage } from "../../../lib/errors";
 import DialogLoginHddt from "../../../components/dialogLoginHddt";
-import {
-  createCompany,
-  updateCompany,
-  type CompanyDetail,
-} from "../api/companyApi";
+import { type CompanyDetail } from "../types";
+import { useCreateCompanyMutation, useUpdateCompanyMutation } from "../api/companyQueries";
 
 interface Props {
   open: boolean;
   onClose: () => void;
-  onSaved: () => void;
   /** Có giá trị = sửa công ty này; không có = tạo mới. */
   company?: CompanyDetail;
 }
 
 const MST_REGEX = /^[0-9]{10}(-[0-9]{3})?$/;
 
-export default function CompanyFormDialog({ open, onClose, onSaved, company }: Props) {
-  const { accessToken } = useAuth();
+export default function CompanyFormDialog({ open, onClose, company }: Props) {
   const { setGdtToken } = useGdtSession();
   const isEdit = Boolean(company);
+
+  const createMutation = useCreateCompanyMutation();
+  const updateMutation = useUpdateCompanyMutation();
+  const submitting = createMutation.isPending || updateMutation.isPending;
 
   const [tenCongTy, setTenCongTy] = useState("");
   const [maSoThue, setMaSoThue] = useState("");
   const [diaChi, setDiaChi] = useState("");
   const [sdt, setSdt] = useState("");
   const [loaiHinhKinhDoanh, setLoaiHinhKinhDoanh] = useState("");
-  const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
   const [gdtLoginOpen, setGdtLoginOpen] = useState(false);
 
@@ -54,7 +52,7 @@ export default function CompanyFormDialog({ open, onClose, onSaved, company }: P
     setError("");
   }, [open, company]);
 
-  const handleSubmit = async () => {
+  const handleSubmit = () => {
     setError("");
 
     if (!tenCongTy.trim() || !diaChi.trim()) {
@@ -65,10 +63,6 @@ export default function CompanyFormDialog({ open, onClose, onSaved, company }: P
       setError("Mã số thuế không hợp lệ.");
       return;
     }
-    if (!accessToken) {
-      setError("Phiên đăng nhập đã hết hạn, vui lòng đăng nhập lại.");
-      return;
-    }
 
     const basePayload = {
       tenCongTy: tenCongTy.trim(),
@@ -77,19 +71,15 @@ export default function CompanyFormDialog({ open, onClose, onSaved, company }: P
       loaiHinhKinhDoanh: loaiHinhKinhDoanh.trim() || undefined,
     };
 
-    setSubmitting(true);
-    try {
-      if (isEdit && company) {
-        await updateCompany(accessToken, company.id, basePayload);
-      } else {
-        await createCompany(accessToken, { ...basePayload, maSoThue: maSoThue.trim() });
-      }
-      onSaved();
-      onClose();
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Không lưu được công ty.");
-    } finally {
-      setSubmitting(false);
+    const handlers = {
+      onSuccess: () => onClose(),
+      onError: (e: unknown) => setError(getErrorMessage(e, "Không lưu được công ty.")),
+    };
+
+    if (isEdit && company) {
+      updateMutation.mutate({ id: company.id, payload: basePayload }, handlers);
+    } else {
+      createMutation.mutate({ ...basePayload, maSoThue: maSoThue.trim() }, handlers);
     }
   };
 

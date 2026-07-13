@@ -48,14 +48,14 @@ export async function createCompany(req: FastifyRequest, reply: FastifyReply) {
     return sendCreated(reply, { company });
   }
 
-  const accessToken = await issueTokens(reply, {
+  // issueTokens đặt access cookie mới (nhúng donViId công ty vừa tạo) — không trả token qua body.
+  await issueTokens(reply, {
     userId: req.user.userId,
     donViId: company.id,
     role: req.user.role,
   });
   return sendCreated(reply, {
     company,
-    accessToken,
     activeDonViId: company.id,
   });
 }
@@ -79,12 +79,13 @@ export async function switchCompany(req: FastifyRequest, reply: FastifyReply) {
   const allowed = await canAccessDonVi(req.user.userId, req.user.role, id);
   if (!allowed) throw new ForbiddenError(MESSAGES.COMPANY.NO_ACCESS);
 
-  const accessToken = await issueTokens(reply, {
+  // Đặt access cookie mới nhúng donViId công ty vừa đổi — không trả token qua body.
+  await issueTokens(reply, {
     userId: req.user.userId,
     donViId: id,
     role: req.user.role,
   });
-  return sendOk(reply, { accessToken, activeDonViId: id });
+  return sendOk(reply, { activeDonViId: id });
 }
 
 /** PUT /api/v1/companies/:id — owner sửa thông tin công ty của chính mình (MST không đổi được). */

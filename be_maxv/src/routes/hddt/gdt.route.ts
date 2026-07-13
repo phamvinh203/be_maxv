@@ -9,6 +9,7 @@ import {
   syncInvoices,
   syncHistory,
   clearSyncData,
+  systemStats,
 } from "../../controllers/client/hddt/gdt.controller";
 
 export default async function (
@@ -52,5 +53,11 @@ export default async function (
   fastify.delete("/sync/data", {
     preHandler: [fastify.authenticate],
     handler: clearSyncData,
+  });
+
+  // Thống kê dữ liệu đã lưu (tab Cài đặt › Dữ liệu hệ thống).
+  fastify.get("/stats", {
+    preHandler: [fastify.authenticate],
+    handler: systemStats,
   });
 }

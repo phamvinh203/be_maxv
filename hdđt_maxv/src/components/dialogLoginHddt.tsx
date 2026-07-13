@@ -1,4 +1,5 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useId, useMemo, useState } from "react";
+import { useMutation, useQuery } from "@tanstack/react-query";
 import Dialog from "@mui/material/Dialog";
 import DialogContent from "@mui/material/DialogContent";
 import DialogActions from "@mui/material/DialogActions";
@@ -15,11 +16,8 @@ import Close from "@mui/icons-material/Close";
 import Refresh from "@mui/icons-material/Refresh";
 import Visibility from "@mui/icons-material/Visibility";
 import VisibilityOff from "@mui/icons-material/VisibilityOff";
-import {
-  type CaptchaInfo,
-  getCaptcha,
-  loginGdt,
-} from "../features/hddt/api/gdt";
+import { getCaptcha, loginGdt } from "../features/hddt/api/gdt";
+import { getErrorMessage } from "../lib/errors";
 import logoThueNhaNuoc from "../assets/logo_thue_nha_nuoc.jpg";
 
 interface Props {
@@ -31,6 +29,11 @@ interface Props {
   initialUsername?: string;
 }
 
+/**
+ * Dialog đăng nhập Thuế điện tử (GDT): nhập MST + mật khẩu + captcha. Thành công thì gọi
+ * `onLoginSuccess(token, mst)` để lưu vào phiên GDT. Captcha lấy qua useQuery, login qua useMutation.
+ * Dùng: `CompanyFormDialog` (nút "Đăng nhập vào hóa đơn điện tử").
+ */
 export default function DialogLoginHddt({
   open,
   onClose,
@@ -41,68 +44,76 @@ export default function DialogLoginHddt({
   const [password, setPassword] = useState("");
   const [showPw, setShowPw] = useState(false);
   const [captchaInput, setCaptchaInput] = useState("");
-  const [captcha, setCaptcha] = useState<CaptchaInfo | null>(null);
-  const [loadingCaptcha, setLoadingCaptcha] = useState(false);
-  const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
   const [done, setDone] = useState(false);
 
+  // Captcha: mỗi lần mở dialog lấy phiên mới (staleTime 0 -> tự fetch lại khi enabled bật).
+  // Key gắn id riêng từng instance để không rò/đè phiên captcha giữa các dialog cùng lúc.
+  const captchaId = useId();
+  const captchaQuery = useQuery({
+    queryKey: ["gdtCaptcha", captchaId],
+    queryFn: getCaptcha,
+    enabled: open,
+    staleTime: 0,
+    retry: false,
+  });
+  const captcha = captchaQuery.data;
+  const loadingCaptcha = captchaQuery.isFetching;
+
+  const loginMutation = useMutation({ mutationFn: loginGdt });
+  const submitting = loginMutation.isPending;
+
+  // Ẩn ảnh captcha cũ khi lấy captcha lỗi — tránh người dùng nhập theo phiên đã hỏng.
   const captchaSrc = useMemo(
     () =>
-      captcha?.content
+      captcha?.content && !captchaQuery.isError
         ? `data:image/svg+xml;utf8,${encodeURIComponent(captcha.content)}`
         : undefined,
-    [captcha?.content],
+    [captcha?.content, captchaQuery.isError],
   );
 
-  const fetchCaptcha = async () => {
-    setError("");
-    setLoadingCaptcha(true);
-    try {
-      setCaptcha(await getCaptcha());
-      setCaptchaInput("");
-    } catch {
-      setError("Không lấy được mã captcha. Vui lòng bấm tải lại.");
-    } finally {
-      setLoadingCaptcha(false);
-    }
+  const displayError =
+    error ||
+    (captchaQuery.isError ? "Không lấy được mã captcha. Vui lòng bấm tải lại." : "");
+
+  /** Lấy captcha mới + xóa ô nhập cũ. Dùng: nút refresh cạnh ảnh captcha, và khi login thất bại. */
+  const refreshCaptcha = () => {
+    setCaptchaInput("");
+    void captchaQuery.refetch();
   };
 
-  // Mở dialog -> reset + lấy captcha mới (giữ sẵn MST nếu được truyền vào)
+  // Mở dialog -> reset form (giữ sẵn MST nếu được truyền vào); captcha tự nạp qua useQuery.
   useEffect(() => {
-    if (open) {
-      setUsername(initialUsername ?? "");
-      setPassword("");
-      setCaptchaInput("");
-      setError("");
-      setDone(false);
-      fetchCaptcha();
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    if (!open) return;
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setUsername(initialUsername ?? "");
+    setPassword("");
+    setCaptchaInput("");
+    setError("");
+    setDone(false);
   }, [open, initialUsername]);
 
-  const handleSubmit = async () => {
+  /** Validate + gọi loginGdt; thành công báo lên qua onLoginSuccess, thất bại thì lấy captcha mới. Dùng: nút "Đăng nhập". */
+  const handleSubmit = () => {
     setError("");
     if (!username || !password || !captchaInput || !captcha?.key) {
       setError("Vui lòng nhập đầy đủ thông tin.");
       return;
     }
-    setSubmitting(true);
-    try {
-      const res = await loginGdt({
-        mst: username.trim(),
-        password,
-        captcha: captchaInput.trim(),
-        key: captcha.key,
-      });
-      setDone(true);
-      if (res.token) onLoginSuccess?.(res.token, username.trim());
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Đăng nhập thất bại.");
-      fetchCaptcha(); // sai captcha/thông tin → lấy captcha mới
-    } finally {
-      setSubmitting(false);
-    }
+    loginMutation.mutate(
+      { mst: username.trim(), password, captcha: captchaInput.trim(), key: captcha.key },
+      {
+        onSuccess: (res) => {
+          setDone(true);
+          if (res.token) onLoginSuccess?.(res.token, username.trim());
+        },
+        onError: (e) => {
+          setError(getErrorMessage(e, "Đăng nhập thất bại."));
+          setCaptchaInput("");
+          void captchaQuery.refetch(); // sai captcha/thông tin -> lấy captcha mới
+        },
+      },
+    );
   };
 
   return (
@@ -230,7 +241,7 @@ export default function DialogLoginHddt({
               </Box>
               <IconButton
                 aria-label="Lấy captcha mới"
-                onClick={fetchCaptcha}
+                onClick={refreshCaptcha}
                 disabled={loadingCaptcha}
                 size="small"
               >
@@ -264,9 +275,9 @@ export default function DialogLoginHddt({
           Quên mật khẩu
         </Typography>
 
-        {error && (
+        {displayError && (
           <Alert severity="error" sx={{ mt: 2 }}>
-            {error}
+            {displayError}
           </Alert>
         )}
         {done && (

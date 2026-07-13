@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useState } from "react";
 import Box from "@mui/material/Box";
 import Stack from "@mui/material/Stack";
 import Typography from "@mui/material/Typography";
@@ -21,49 +21,32 @@ import ReceiptLongRounded from "@mui/icons-material/ReceiptLongRounded";
 import AccountBalanceRounded from "@mui/icons-material/AccountBalanceRounded";
 import LocationOnRounded from "@mui/icons-material/LocationOnRounded";
 import { useAuth } from "../../auth/useAuth";
+import { getErrorMessage } from "../../../lib/errors";
 import { useCompanySwitch } from "../hooks/useCompanySwitch";
-import { deleteCompany, listCompanies, type CompanyDetail } from "../api/companyApi";
+import { type CompanyDetail } from "../types";
+import { useCompaniesQuery, useDeleteCompanyMutation } from "../api/companyQueries";
 import CompanyFormDialog from "./CompanyFormDialog";
 
 export default function CompanyManagementTab() {
-  const { accessToken, currentCompanyId, user, refreshCompanies } = useAuth();
+  const { currentCompanyId, user } = useAuth();
   const isOwner = user?.role === "OWNER";
   const { switchingId, error: switchError, switchTo, clearError: clearSwitchError } =
     useCompanySwitch();
 
-  const [companies, setCompanies] = useState<CompanyDetail[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState("");
+  const companiesQuery = useCompaniesQuery();
+  const companies = companiesQuery.data ?? [];
+  const loading = companiesQuery.isLoading;
+  const error = companiesQuery.isError
+    ? getErrorMessage(companiesQuery.error, "Không lấy được danh sách công ty.")
+    : "";
+
+  const deleteMutation = useDeleteCompanyMutation();
+  const deleteBusy = deleteMutation.isPending;
 
   const [formOpen, setFormOpen] = useState(false);
   const [editing, setEditing] = useState<CompanyDetail | undefined>(undefined);
   const [deleting, setDeleting] = useState<CompanyDetail | undefined>(undefined);
   const [deleteError, setDeleteError] = useState("");
-  const [deleteBusy, setDeleteBusy] = useState(false);
-
-  const fetchCompanies = useCallback(async () => {
-    if (!accessToken) return;
-    setLoading(true);
-    setError("");
-    try {
-      setCompanies(await listCompanies(accessToken));
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Không lấy được danh sách công ty.");
-    } finally {
-      setLoading(false);
-    }
-  }, [accessToken]);
-
-  /** Đồng bộ cả danh sách chi tiết (tab này) lẫn danh sách gọn ở AuthContext (header dùng). */
-  const refreshAll = useCallback(async () => {
-    await Promise.all([fetchCompanies(), refreshCompanies()]);
-  }, [fetchCompanies, refreshCompanies]);
-
-  useEffect(() => {
-    // Tải danh sách công ty khi mở tab — cố ý fetch-on-mount, không có lib data-fetching riêng.
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    fetchCompanies();
-  }, [fetchCompanies]);
 
   const openCreate = () => {
     setEditing(undefined);
@@ -75,19 +58,13 @@ export default function CompanyManagementTab() {
     setFormOpen(true);
   };
 
-  const confirmDelete = async () => {
-    if (!deleting || !accessToken) return;
-    setDeleteBusy(true);
+  const confirmDelete = () => {
+    if (!deleting) return;
     setDeleteError("");
-    try {
-      await deleteCompany(accessToken, deleting.id);
-      setDeleting(undefined);
-      await refreshAll();
-    } catch (e) {
-      setDeleteError(e instanceof Error ? e.message : "Không xóa được công ty.");
-    } finally {
-      setDeleteBusy(false);
-    }
+    deleteMutation.mutate(deleting, {
+      onSuccess: () => setDeleting(undefined),
+      onError: (e) => setDeleteError(getErrorMessage(e, "Không xóa được công ty.")),
+    });
   };
 
   return (
@@ -271,7 +248,6 @@ export default function CompanyManagementTab() {
         open={formOpen}
         company={editing}
         onClose={() => setFormOpen(false)}
-        onSaved={refreshAll}
       />
 
       <Dialog open={Boolean(deleting)} onClose={() => setDeleting(undefined)} maxWidth="xs" fullWidth>

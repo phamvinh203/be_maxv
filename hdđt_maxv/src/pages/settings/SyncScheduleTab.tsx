@@ -17,9 +17,22 @@ import TableBody from "@mui/material/TableBody";
 import TableRow from "@mui/material/TableRow";
 import TableCell from "@mui/material/TableCell";
 import TableContainer from "@mui/material/TableContainer";
+import Chip from "@mui/material/Chip";
+import Tooltip from "@mui/material/Tooltip";
+import CircularProgress from "@mui/material/CircularProgress";
 import InboxRounded from "@mui/icons-material/InboxRounded";
+import { useSyncHistoryQuery } from "../../features/hddt/api/syncQueries";
+import type { SyncDirection } from "../../features/hddt/types";
+import { formatDateVN, formatDateTimeVN } from "../../features/hddt/dateUtils";
 
 type Frequency = "hourly" | "every6h" | "daily" | "weekly";
+
+/** Nhãn chiều đồng bộ cho cột "Chiều" (khớp từ ngữ "đầu vào/đầu ra" của tab này). */
+const DIRECTION_LABEL: Record<SyncDirection, string> = {
+  all: "Tất cả",
+  purchase: "Đầu vào",
+  sold: "Đầu ra",
+};
 
 export default function SyncScheduleTab() {
   const [enabled, setEnabled] = useState(false);
@@ -28,14 +41,20 @@ export default function SyncScheduleTab() {
   const [syncPurchase, setSyncPurchase] = useState(true);
   const [syncSold, setSyncSold] = useState(true);
 
+  // Lịch sử đồng bộ THẬT — dùng chung query/cache với dialog "Đồng bộ hóa đơn".
+  const historyQuery = useSyncHistoryQuery(true);
+  const history = historyQuery.data ?? [];
+  const loadingHistory = historyQuery.isFetching;
+
   return (
     <Box>
       <Typography variant="h6" sx={{ fontWeight: 700 }}>
         Lịch tự động đồng bộ hoá đơn
       </Typography>
       <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
-        Cấu hình lịch tự động lấy hóa đơn từ Thuế điện tử và xem lại lịch sử các lần đã chạy. (Giao
-        diện minh họa — chưa nối chức năng thật.)
+        Cấu hình lịch tự động lấy hóa đơn từ Thuế điện tử và xem lại lịch sử các lần đã chạy. (Phần
+        "Lịch sử đồng bộ" bên dưới là dữ liệu thật; phần cấu hình lịch phía trên chỉ minh họa giao
+        diện — chạy nền tự động còn vướng captcha/token GDT nên chưa bật.)
       </Typography>
 
       {/* Cấu hình lịch */}
@@ -119,28 +138,54 @@ export default function SyncScheduleTab() {
               <TableCell>Thời gian</TableCell>
               <TableCell>Chiều</TableCell>
               <TableCell align="center">Trạng thái</TableCell>
-              <TableCell align="right">Số hóa đơn mới</TableCell>
-              <TableCell>Ghi chú</TableCell>
+              <TableCell align="right">Số lượng đồng bộ</TableCell>
+              <TableCell>Khoảng ngày</TableCell>
             </TableRow>
           </TableHead>
           <TableBody>
-            <TableRow>
-              <TableCell colSpan={5} sx={{ border: 0, py: 6 }}>
-                <Stack spacing={1} sx={{ alignItems: "center", color: "text.disabled" }}>
-                  <InboxRounded fontSize="large" />
-                  <Typography variant="body2">Chưa có lịch sử đồng bộ</Typography>
-                </Stack>
-              </TableCell>
-            </TableRow>
-            {/* Mẫu minh họa 1 dòng khi có lịch sử thật:
-            <TableRow>
-              <TableCell>09/07/2026 06:00</TableCell>
-              <TableCell>Đầu vào</TableCell>
-              <TableCell align="center"><Chip size="small" color="success" label="Thành công" /></TableCell>
-              <TableCell align="right">12</TableCell>
-              <TableCell>—</TableCell>
-            </TableRow>
-            */}
+            {history.length > 0 ? (
+              history.map((row) => (
+                <TableRow key={row.id} hover>
+                  <TableCell>{formatDateTimeVN(row.created_at)}</TableCell>
+                  <TableCell>{DIRECTION_LABEL[row.direction]}</TableCell>
+                  <TableCell align="center">
+                    {row.trang_thai === "done" ? (
+                      <Chip size="small" color="success" variant="outlined" label="Hoàn thành" />
+                    ) : (
+                      <Tooltip title={row.dien_giai ?? ""}>
+                        <Chip
+                          size="small"
+                          color="warning"
+                          variant="outlined"
+                          label="Chưa hoàn thành"
+                        />
+                      </Tooltip>
+                    )}
+                  </TableCell>
+                  <TableCell align="right">
+                    {row.da_luu}/{row.tong}
+                  </TableCell>
+                  <TableCell>
+                    {formatDateVN(row.tu_ngay)} – {formatDateVN(row.den_ngay)}
+                  </TableCell>
+                </TableRow>
+              ))
+            ) : (
+              <TableRow>
+                <TableCell colSpan={5} sx={{ border: 0, py: 6 }}>
+                  <Stack spacing={1} sx={{ alignItems: "center", color: "text.disabled" }}>
+                    {loadingHistory ? (
+                      <CircularProgress size={24} />
+                    ) : (
+                      <>
+                        <InboxRounded fontSize="large" />
+                        <Typography variant="body2">Chưa có lịch sử đồng bộ</Typography>
+                      </>
+                    )}
+                  </Stack>
+                </TableCell>
+              </TableRow>
+            )}
           </TableBody>
         </Table>
       </TableContainer>

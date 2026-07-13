@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import Dialog from "@mui/material/Dialog";
 import DialogContent from "@mui/material/DialogContent";
 import DialogActions from "@mui/material/DialogActions";
@@ -31,17 +31,15 @@ import CloseRounded from "@mui/icons-material/CloseRounded";
 import ExpandMoreRounded from "@mui/icons-material/ExpandMoreRounded";
 import SyncRounded from "@mui/icons-material/SyncRounded";
 import DeleteOutlineRounded from "@mui/icons-material/DeleteOutlineRounded";
-import { useAuth } from "../../auth/useAuth";
 import { useGdtSession } from "../gdtSession/useGdtSession";
 import { currentMonthRange, formatDateVN, formatDateTimeVN } from "../dateUtils";
+import { getErrorMessage } from "../../../lib/errors";
+import { type SyncDirection, type SyncKind, type SyncLog } from "../types";
 import {
-  clearSyncData,
-  getSyncHistory,
-  startSync,
-  type SyncDirection,
-  type SyncKind,
-  type SyncLog,
-} from "../api/sync";
+  useClearSyncMutation,
+  useStartSyncMutation,
+  useSyncHistoryQuery,
+} from "../api/syncQueries";
 
 interface Props {
   open: boolean;
@@ -69,50 +67,40 @@ const DIRECTION_LABEL: Record<SyncDirection, string> = {
  * hiển thị lịch sử đồng bộ thật và cho xóa dữ liệu đã đồng bộ.
  */
 export default function SyncInvoiceDialog({ open, onClose }: Props) {
-  const { accessToken } = useAuth();
   const { currentGdtMst, getGdtToken } = useGdtSession();
 
   const [direction, setDirection] = useState<SyncDirection>("all");
   const [invoiceKind, setInvoiceKind] = useState<SyncKind>("all");
   const [range, setRange] = useState(currentMonthRange);
   const [scheduleOpen, setScheduleOpen] = useState(false);
-
-  const [history, setHistory] = useState<SyncLog[]>([]);
-  const [loadingHistory, setLoadingHistory] = useState(false);
-  const [syncing, setSyncing] = useState(false);
-  const [clearing, setClearing] = useState(false);
   const [confirmClear, setConfirmClear] = useState(false);
   const [error, setError] = useState("");
   const [result, setResult] = useState<SyncLog | null>(null);
 
+  const historyQuery = useSyncHistoryQuery(open);
+  const history = historyQuery.data ?? [];
+  const loadingHistory = historyQuery.isFetching;
+  const startMutation = useStartSyncMutation();
+  const clearMutation = useClearSyncMutation();
+
+  const syncing = startMutation.isPending;
+  const clearing = clearMutation.isPending;
   const busy = syncing || clearing;
+  const displayError =
+    error ||
+    (historyQuery.isError
+      ? getErrorMessage(historyQuery.error, "Không đọc được lịch sử đồng bộ.")
+      : "");
 
-  const loadHistory = useCallback(async () => {
-    if (!accessToken) return;
-    setLoadingHistory(true);
-    try {
-      setHistory(await getSyncHistory(accessToken));
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Không đọc được lịch sử đồng bộ.");
-    } finally {
-      setLoadingHistory(false);
-    }
-  }, [accessToken]);
-
-  const handleOpen = useCallback(() => {
-    setError("");
-    setResult(null);
-    void loadHistory();
-  }, [loadHistory]);
-
-  // Mở dialog -> reset thông báo + nạp lịch sử.
+  // Mở dialog -> reset thông báo (lịch sử tự nạp qua useQuery vì enabled = open).
   useEffect(() => {
     if (!open) return;
     // eslint-disable-next-line react-hooks/set-state-in-effect
-    handleOpen();
-  }, [open, handleOpen]);
+    setError("");
+    setResult(null);
+  }, [open]);
 
-  const handleSync = async () => {
+  const handleSync = () => {
     setError("");
     setResult(null);
     if (!range.tuNgay || !range.denNgay) {
@@ -120,41 +108,31 @@ export default function SyncInvoiceDialog({ open, onClose }: Props) {
       return;
     }
     const gdtToken = currentGdtMst ? getGdtToken(currentGdtMst) : undefined;
-    if (!gdtToken || !currentGdtMst || !accessToken) {
+    if (!gdtToken || !currentGdtMst) {
       setError('Chưa đăng nhập Thuế điện tử — bấm "Đăng nhập Thuế điện tử" trước khi đồng bộ.');
       return;
     }
-    setSyncing(true);
-    try {
-      const log = await startSync(accessToken, gdtToken, {
-        tuNgay: range.tuNgay,
-        denNgay: range.denNgay,
-        direction,
-        loai: invoiceKind,
-      });
-      setResult(log);
-      await loadHistory();
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Không đồng bộ được hóa đơn.");
-    } finally {
-      setSyncing(false);
-    }
+    startMutation.mutate(
+      {
+        gdtToken,
+        body: { tuNgay: range.tuNgay, denNgay: range.denNgay, direction, loai: invoiceKind },
+      },
+      {
+        onSuccess: (log) => setResult(log),
+        onError: (e) => setError(getErrorMessage(e, "Không đồng bộ được hóa đơn.")),
+      },
+    );
   };
 
-  const handleClear = async () => {
-    if (!accessToken) return;
+  const handleClear = () => {
     setError("");
-    setClearing(true);
-    try {
-      await clearSyncData(accessToken);
-      setConfirmClear(false);
-      setResult(null);
-      await loadHistory();
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Không xóa được dữ liệu đã đồng bộ.");
-    } finally {
-      setClearing(false);
-    }
+    clearMutation.mutate(undefined, {
+      onSuccess: () => {
+        setConfirmClear(false);
+        setResult(null);
+      },
+      onError: (e) => setError(getErrorMessage(e, "Không xóa được dữ liệu đã đồng bộ.")),
+    });
   };
 
   return (
@@ -294,9 +272,9 @@ export default function SyncInvoiceDialog({ open, onClose }: Props) {
           </Collapse>
         </Box>
 
-        {error && (
+        {displayError && (
           <Alert severity="error" sx={{ mb: 2 }} onClose={() => setError("")}>
-            {error}
+            {displayError}
           </Alert>
         )}
         {result && (

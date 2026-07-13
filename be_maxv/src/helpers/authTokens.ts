@@ -1,5 +1,5 @@
 import type { FastifyReply } from 'fastify';
-import { REFRESH_COOKIE, REFRESH_PATH } from '../constants/auth';
+import { ACCESS_COOKIE, ACCESS_PATH, REFRESH_COOKIE, REFRESH_PATH } from '../constants/auth';
 import { env } from '../config/env';
 
 /** Payload access/refresh token — donViId = công ty đang chọn (null nếu chưa chọn). */
@@ -17,9 +17,20 @@ const refreshCookieOptions = {
   maxAge: env.refreshTtlSec,
 };
 
+// Access cookie: SameSite=Strict chống CSRF (app cùng origin). maxAge dài như refresh — token
+// bên trong tự hết hạn theo accessTtl (15m), hết hạn thì user đăng nhập lại (chưa auto-refresh).
+const accessCookieOptions = {
+  httpOnly: true,
+  sameSite: 'strict' as const,
+  secure: env.nodeEnv === 'production',
+  path: ACCESS_PATH,
+  maxAge: env.refreshTtlSec,
+};
+
 /**
- * Ký access (trả về body) + refresh (đặt cookie httpOnly) cho 1 user.
- * Dùng chung cho login, đổi công ty (switch), và tạo công ty (auto-switch).
+ * Ký access + refresh cho 1 user và đặt CẢ HAI vào cookie httpOnly (access: SameSite=Strict,
+ * refresh: SameSite=Lax). Dùng chung cho login, đổi công ty (switch), và tạo công ty (auto-switch).
+ * Vẫn trả về access token (phòng khi cần dùng nội bộ), nhưng client dùng cookie là chính.
  */
 export async function issueTokens(
   reply: FastifyReply,
@@ -30,6 +41,7 @@ export async function issueTokens(
     reply.jwtSign(payload, { expiresIn: env.accessTtl }),
     reply.refreshJwtSign(payload, { expiresIn: env.refreshTtlSec }),
   ]);
+  reply.setCookie(ACCESS_COOKIE, accessToken, accessCookieOptions);
   reply.setCookie(REFRESH_COOKIE, refreshToken, refreshCookieOptions);
   return accessToken;
 }

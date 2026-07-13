@@ -1,32 +1,26 @@
 import { apiFetch } from "../../../lib/http";
+import type {
+  CaptchaInfo,
+  InvoiceDirection,
+  InvoiceQuery,
+  InvoiceRaw,
+  InvoiceResult,
+  LoginPayload,
+  LoginResult,
+} from "../types";
 
-export interface CaptchaInfo {
-  key: string;
-  /** Chuỗi SVG của ảnh captcha */
-  content: string;
-}
-
-export interface LoginPayload {
-  /** Mã số thuế — đóng vai trò username trên GDT */
-  mst: string;
-  password: string;
-  /** Mã captcha người dùng gõ nhìn từ ảnh */
-  captcha: string;
-  /** `key` trả về từ getCaptcha */
-  key: string;
-}
-
-export interface LoginResult {
-  token?: string;
-  message?: string;
-}
-
-/** GET /api/v1/gdt/captcha → { key, content (SVG) } */
+/**
+ * GET /api/v1/gdt/captcha → { key, content (SVG) }.
+ * Dùng: `DialogLoginHddt` (queryFn của captchaQuery — lấy ảnh captcha mỗi lần mở dialog).
+ */
 export async function getCaptcha(): Promise<CaptchaInfo> {
   return apiFetch<CaptchaInfo>("/gdt/captcha");
 }
 
-/** POST /api/v1/gdt/login → { token } (ném error kèm message nếu thất bại) */
+/**
+ * POST /api/v1/gdt/login → { token } (ném error kèm message nếu thất bại).
+ * Dùng: `DialogLoginHddt` (mutationFn của loginMutation — đăng nhập Thuế điện tử).
+ */
 export async function loginGdt(body: LoginPayload): Promise<LoginResult> {
   const data = await apiFetch<LoginResult>("/gdt/login", {
     method: "POST",
@@ -37,9 +31,6 @@ export async function loginGdt(body: LoginPayload): Promise<LoginResult> {
   }
   return data;
 }
-
-/** "purchase" = hóa đơn đầu vào (mua vào), "sold" = hóa đơn đầu ra (bán ra). Khớp path BE `/gdt/invoices/<direction>`. */
-export type InvoiceDirection = "purchase" | "sold";
 
 /**
  * Bảng mã trạng thái hóa đơn (`tthai`) của GDT — dùng chung cho dropdown lọc
@@ -59,7 +50,10 @@ const TRANG_THAI_HD_LABEL: Record<string, string> = Object.fromEntries(
   TRANG_THAI_HD_OPTIONS.filter((o) => o.value).map((o) => [o.value, o.label]),
 );
 
-/** Nhãn tiếng Việt cho mã trạng thái hóa đơn; trả nguyên mã nếu không nằm trong bảng đã biết. */
+/**
+ * Nhãn tiếng Việt cho mã trạng thái hóa đơn; trả nguyên mã nếu không nằm trong bảng đã biết.
+ * Dùng: `InvoiceListTabs` (cột "Trạng thái hóa đơn" trong COLUMNS) và `exportInvoices`.
+ */
 export function trangThaiHdLabel(code: string): string {
   return TRANG_THAI_HD_LABEL[code] ?? code;
 }
@@ -76,73 +70,10 @@ const PARTNER_FIELD: Record<InvoiceDirection, { mst: string; ten: string; dchi: 
   sold: { mst: "nmmst", ten: "nmten", dchi: "nmdchi" },
 };
 
-export interface InvoiceQuery {
-  /** yyyy-MM-dd — bắt buộc */
-  tuNgay: string;
-  /** yyyy-MM-dd — bắt buộc */
-  denNgay: string;
-  trangThaiHd?: string;
-  ketQuaHd?: string;
-  /** MST đối tác — người bán (purchase) hoặc người mua (sold) tùy `direction` */
-  mstDoiTac?: string;
-  mauHd?: string;
-  soSeri?: string;
-  soHd?: string;
-  /** Cursor phân trang từ lần gọi trước */
-  state?: string;
-}
-
 /**
- * 1 hóa đơn đã chuẩn hóa — field đối tác (`mstDoiTac`/`tenDoiTac`) gộp chung
- * tên bất kể là hóa đơn mua vào (nbmst/nbten) hay bán ra (nmmst/nmten) từ GDT.
- * Các field còn lại giữ nguyên tên GDT trả về.
+ * Dựng query-string cho endpoint hóa đơn: map các field lọc + đổi tên MST đối tác theo chiều.
+ * Dùng: nội bộ file này — `getInvoices` và `getSavedInvoices`.
  */
-export interface InvoiceRaw {
-  id: string;
-  mstDoiTac: string;
-  tenDoiTac: string;
-  /** Địa chỉ đối tác — không phải hóa đơn nào GDT cũng trả về field này. */
-  diaChiDoiTac?: string;
-  khmshdon: string;
-  khhdon: string;
-  shdon: string;
-  tdlap: string;
-  /** Ngày ký */
-  nky?: string;
-  tthai: string;
-  ttxly: string;
-  /** Mã ngoại tệ */
-  dvtte?: string;
-  /** Tỷ giá */
-  tgia?: number;
-  /** Tổng tiền chưa thuế */
-  tgtcthue?: number;
-  /** Tổng tiền thuế */
-  tgtthue?: number;
-  /** Tổng chiết khấu thương mại */
-  ttcktmai?: number;
-  /** Tổng phí */
-  tgtphi?: number;
-  tgtttbso: number;
-  [key: string]: unknown;
-}
-
-export interface InvoiceResult {
-  total?: number;
-  state?: string;
-  datas?: InvoiceRaw[];
-  /** Số hóa đơn vừa được lưu vào vct50view/vct60view — chỉ có ở luồng tra cứu GDT (getInvoices). */
-  saved?: number;
-}
-
-export interface InvoiceAuthTokens {
-  /** JWT đăng nhập app — để BE biết ghi vào DB công ty nào khi lưu. */
-  appToken: string;
-  /** Token đăng nhập Thuế điện tử (GDT) — để BE gọi GDT thay mình. */
-  gdtToken: string;
-}
-
-/** Dựng query-string cho endpoint hóa đơn: map các field lọc + đổi tên MST đối tác theo chiều. */
 function buildInvoiceParams(direction: InvoiceDirection, query: InvoiceQuery): URLSearchParams {
   const { mstDoiTac, ...rest } = query;
   const params = new URLSearchParams();
@@ -153,7 +84,10 @@ function buildInvoiceParams(direction: InvoiceDirection, query: InvoiceQuery): U
   return params;
 }
 
-/** Chuẩn hóa danh sách hóa đơn thô -> gộp field đối tác (mstDoiTac/tenDoiTac) theo chiều hóa đơn. */
+/**
+ * Chuẩn hóa danh sách hóa đơn thô -> gộp field đối tác (mstDoiTac/tenDoiTac) theo chiều hóa đơn.
+ * Dùng: nội bộ file này — `getInvoices` và `getSavedInvoices`.
+ */
 function mapInvoiceDatas(
   direction: InvoiceDirection,
   datas: Array<Record<string, unknown>> | undefined,
@@ -172,11 +106,12 @@ function mapInvoiceDatas(
 
 /**
  * GET /api/v1/gdt/invoices/purchase|sold → tra cứu trực tiếp GDT rồi BE luôn lưu vào DB.
- * Nhận `tokens` dạng object (thay vì 2 tham số string liền kề) để tránh truyền nhầm thứ tự.
+ * Auth app qua cookie httpOnly (apiFetch tự gửi); chỉ cần truyền `gdtToken` (header X-Gdt-Token).
+ * Dùng: `useFetchGdtInvoicesMutation` (invoiceQueries) — nút "Cập nhật từ Thuế điện tử".
  */
 export async function getInvoices(
   direction: InvoiceDirection,
-  tokens: InvoiceAuthTokens,
+  gdtToken: string,
   query: InvoiceQuery,
 ): Promise<InvoiceResult> {
   const params = buildInvoiceParams(direction, query);
@@ -187,8 +122,7 @@ export async function getInvoices(
     datas?: Array<Record<string, unknown>>;
     saved?: number;
   }>(`/gdt/invoices/${direction}?${params.toString()}`, {
-    token: tokens.appToken,
-    headers: { "X-Gdt-Token": tokens.gdtToken },
+    headers: { "X-Gdt-Token": gdtToken },
   });
 
   return {
@@ -201,12 +135,12 @@ export async function getInvoices(
 
 /**
  * GET /api/v1/gdt/invoices/purchase|sold/saved → hóa đơn ĐÃ LƯU trong DB (không gọi GDT).
- * Chỉ cần `appToken` (JWT app) — không cần đăng nhập Thuế điện tử — nên xem lại dữ liệu cũ
- * bất cứ lúc nào. Trả về cùng shape với `getInvoices` để tái dùng mapping hiển thị.
+ * Auth app qua cookie httpOnly — không cần token GDT — nên xem lại dữ liệu cũ bất cứ lúc nào.
+ * Trả về cùng shape với `getInvoices` để tái dùng mapping hiển thị.
+ * Dùng: `useSavedInvoicesQuery` (invoiceQueries) — nạp bảng khi mở/lọc tab Hóa đơn.
  */
 export async function getSavedInvoices(
   direction: InvoiceDirection,
-  appToken: string,
   query: InvoiceQuery,
 ): Promise<InvoiceResult> {
   const params = buildInvoiceParams(direction, query);
@@ -214,12 +148,23 @@ export async function getSavedInvoices(
   const raw = await apiFetch<{
     total?: number;
     datas?: Array<Record<string, unknown>>;
-  }>(`/gdt/invoices/${direction}/saved?${params.toString()}`, {
-    token: appToken,
-  });
+  }>(`/gdt/invoices/${direction}/saved?${params.toString()}`);
 
   return {
     total: raw.total,
     datas: mapInvoiceDatas(direction, raw.datas),
   };
+}
+
+/**
+ * Lấy toàn bộ hóa đơn đã lưu (cả 2 chiều) để sao lưu — khoảng ngày rộng để phủ hết. Mỗi chiều
+ * tối đa theo giới hạn endpoint đọc DB; nơi gọi nên đối chiếu số lượng để cảnh báo nếu thiếu.
+ * Dùng: `SystemDataTab` — nút "Xuất / Sao lưu dữ liệu".
+ */
+export function getAllSavedInvoices(): Promise<[InvoiceResult, InvoiceResult]> {
+  const range: InvoiceQuery = { tuNgay: "2000-01-01", denNgay: "2100-12-31" };
+  return Promise.all([
+    getSavedInvoices("purchase", range),
+    getSavedInvoices("sold", range),
+  ]);
 }

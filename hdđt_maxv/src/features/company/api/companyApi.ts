@@ -1,80 +1,51 @@
 import { apiFetchData } from "../../../lib/http";
-import type { AuthCompany } from "../../auth/api/authApi";
+import type {
+  CompanyDetail,
+  CreateCompanyPayload,
+  UpdateCompanyPayload,
+} from "../types";
 
-/** Chi tiết công ty dùng cho tab "Quản lý công ty/Hộ kinh doanh". */
-export interface CompanyDetail extends AuthCompany {
-  diaChi: string | null;
-  sdt: string | null;
-  loaiHinhKinhDoanh: string | null;
-}
-
-export interface CreateCompanyPayload {
-  tenCongTy: string;
-  maSoThue: string;
-  diaChi: string;
-  sdt?: string;
-  loaiHinhKinhDoanh?: string;
-}
-
-/** MST không nằm trong đây — không sửa được sau khi tạo (đã gắn tenant DB). */
-export interface UpdateCompanyPayload {
-  tenCongTy?: string;
-  diaChi?: string;
-  sdt?: string;
-  loaiHinhKinhDoanh?: string;
-}
+// Auth qua cookie httpOnly (apiFetch tự gửi kèm) — không truyền token qua tham số nữa.
 
 /** GET /companies — danh sách công ty/MST user được phép (owner thấy hết của mình). */
-export function listCompanies(token: string): Promise<CompanyDetail[]> {
-  return apiFetchData<CompanyDetail[]>("/companies", { token });
+export function listCompanies(): Promise<CompanyDetail[]> {
+  return apiFetchData<CompanyDetail[]>("/companies");
 }
 
 /**
  * POST /companies — tạo công ty/MST mới. `activate: false` vì đang thêm từ màn Cài đặt
- * (owner có thể đang làm việc ở MST khác) — không đụng tới token/phiên hiện tại.
+ * (owner có thể đang làm việc ở MST khác) — không đổi công ty đang chọn.
  */
 export function createCompany(
-  token: string,
   payload: CreateCompanyPayload,
 ): Promise<{ company: CompanyDetail }> {
   return apiFetchData<{ company: CompanyDetail }>("/companies", {
     method: "POST",
-    token,
     body: JSON.stringify({ ...payload, activate: false }),
   });
 }
 
 /** PUT /companies/:id — sửa thông tin công ty (không sửa được `maSoThue`). */
 export function updateCompany(
-  token: string,
   id: string,
   payload: UpdateCompanyPayload,
 ): Promise<CompanyDetail> {
   return apiFetchData<CompanyDetail>(`/companies/${id}`, {
     method: "PUT",
-    token,
     body: JSON.stringify(payload),
   });
 }
 
-/** POST /companies/:id/switch — đổi công ty đang làm việc, cấp lại token nhúng donViId mới. */
-export function switchCompany(
-  token: string,
-  id: string,
-): Promise<{ accessToken: string; activeDonViId: string }> {
-  return apiFetchData<{ accessToken: string; activeDonViId: string }>(
-    `/companies/${id}/switch`,
-    { method: "POST", token },
-  );
+/** POST /companies/:id/switch — đổi công ty đang làm việc; server đặt cookie access mới nhúng donViId. */
+export function switchCompany(id: string): Promise<{ activeDonViId: string }> {
+  return apiFetchData<{ activeDonViId: string }>(`/companies/${id}/switch`, {
+    method: "POST",
+  });
 }
 
 /** DELETE /companies/:id — "xóa" (lưu trữ) công ty, không xóa dữ liệu thật. */
-export function deleteCompany(
-  token: string,
-  id: string,
-): Promise<{ id: string; status: string }> {
+export function deleteCompany(id: string): Promise<{ id: string; status: string }> {
   return apiFetchData<{ id: string; status: string }>(`/companies/${id}`, {
     method: "DELETE",
-    token,
   });
 }

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type SyntheticEvent } from "react";
+import { useMemo, useState, type ReactNode, type SyntheticEvent } from "react";
 import Box from "@mui/material/Box";
 import Tabs from "@mui/material/Tabs";
 import Tab from "@mui/material/Tab";
@@ -20,89 +20,80 @@ import DescriptionRounded from "@mui/icons-material/DescriptionRounded";
 import FileDownloadRounded from "@mui/icons-material/FileDownloadRounded";
 import VisibilityRounded from "@mui/icons-material/VisibilityRounded";
 import DownloadRounded from "@mui/icons-material/DownloadRounded";
-import { useAuth } from "../../auth/useAuth";
 import { useGdtSession } from "../gdtSession/useGdtSession";
+import { trangThaiHdLabel } from "../api/gdt";
 import {
-  getInvoices,
-  getSavedInvoices,
-  trangThaiHdLabel,
-  type InvoiceDirection,
-  type InvoiceQuery,
-  type InvoiceRaw,
-} from "../api/gdt";
-import InvoiceFilterPanel, { type InvoiceFilterValues } from "./InvoiceFilterPanel";
+  useFetchGdtInvoicesMutation,
+  useSavedInvoicesQuery,
+} from "../api/invoiceQueries";
+import type {
+  DisplayRow,
+  InvoiceDirection,
+  InvoiceFilterValues,
+  InvoiceQuery,
+} from "../types";
+import { toDisplayRow } from "../invoiceRow";
+import InvoiceFilterPanel from "./InvoiceFilterPanel";
 import InvoicePagination, { DEFAULT_ROWS_PER_PAGE } from "./InvoicePagination";
 import { exportInvoicesToCsv } from "../exportInvoices";
 import { currentMonthRange, formatDateVN } from "../dateUtils";
+import { getErrorMessage } from "../../../lib/errors";
 
 /** Cột chưa có nguồn dữ liệu (cần API/tính năng riêng, chưa xây) — hiển thị tạm "—". */
 const NO_DATA_YET = "—";
-/** Số cột của bảng "Tổng quát" — dùng cho colSpan của empty-state. */
-const COLUMN_COUNT = 27;
-
-/** Dòng hiển thị — chuẩn hóa field GDT + tách rõ bên bán/bên mua theo chiều hóa đơn. */
-export interface DisplayRow {
-  id: string;
-  mauHd: string;
-  soSeri: string;
-  soHd: string;
-  ngayLap: string;
-  sellerMst: string;
-  sellerTen: string;
-  sellerDiaChi: string;
-  buyerMst: string;
-  buyerTen: string;
-  tienChuaThue?: number;
-  tienThue?: number;
-  cktm?: number;
-  phi?: number;
-  tongTt: number;
-  maNt: string;
-  tyGia?: number;
-  trangThaiHd: string;
-  ketQuaKt: string;
-}
-
-function rowStr(v: unknown): string {
-  return typeof v === "string" ? v : v == null ? "" : String(v);
-}
 
 /**
- * GDT/DB đều trả cả 2 phía trong mỗi hàng: bên đối tác đã gộp sẵn ở `mstDoiTac`/`tenDoiTac`,
- * còn bên "mình" nằm ở field gốc còn lại (mua vào -> người mua nmmst/nmten; bán ra -> người
- * bán nbmst/nbten). Lấy trực tiếp từ hàng để hiển thị đúng kể cả khi chưa đăng nhập GDT.
+ * Định dạng số tiền theo locale vi-VN (1.234.567); không phải số thì trả chuỗi rỗng.
+ * Dùng: `COLUMNS` — các cột tiền (tổng tiền, thuế, chiết khấu, phí, tỷ giá...).
  */
-function toDisplayRow(r: InvoiceRaw, direction: InvoiceDirection): DisplayRow {
-  const isPurchase = direction === "purchase";
-  const ownMst = rowStr(isPurchase ? r.nmmst : r.nbmst);
-  const ownTen = rowStr(isPurchase ? r.nmten : r.nbten);
-  return {
-    id: r.id,
-    mauHd: r.khmshdon,
-    soSeri: r.khhdon,
-    soHd: r.shdon,
-    ngayLap: r.tdlap,
-    sellerMst: isPurchase ? r.mstDoiTac : ownMst,
-    sellerTen: isPurchase ? r.tenDoiTac : ownTen,
-    sellerDiaChi: isPurchase ? (r.diaChiDoiTac ?? "") : "",
-    buyerMst: isPurchase ? ownMst : r.mstDoiTac,
-    buyerTen: isPurchase ? ownTen : r.tenDoiTac,
-    tienChuaThue: r.tgtcthue,
-    tienThue: r.tgtthue,
-    cktm: r.ttcktmai,
-    phi: r.tgtphi,
-    tongTt: r.tgtttbso,
-    maNt: r.dvtte ?? "",
-    tyGia: r.tgia,
-    trangThaiHd: r.tthai,
-    ketQuaKt: r.ttxly,
-  };
-}
-
 function formatMoney(n?: number) {
   if (typeof n !== "number") return "";
   return n.toLocaleString("vi-VN");
 }
+
+/** 1 cột bảng "Tổng quát": tiêu đề + căn lề + hàm lấy nội dung ô từ 1 dòng (`stt` = số thứ tự). */
+interface InvoiceColumn {
+  header: string;
+  align?: "right" | "center";
+  cell: (row: DisplayRow, stt: number) => ReactNode;
+}
+
+const DISABLED_ICON_BTN = (icon: ReactNode) => (
+  <IconButton size="small" disabled>
+    {icon}
+  </IconButton>
+);
+
+/** Khai báo 27 cột 1 chỗ — header và body render chung từ đây nên luôn khớp nhau. */
+const COLUMNS: InvoiceColumn[] = [
+  { header: "STT", cell: (_r, stt) => stt },
+  { header: "Ký hiệu mẫu số", cell: (r) => r.mauHd },
+  { header: "Ký hiệu hóa đơn", cell: (r) => r.soSeri },
+  { header: "Số hóa đơn", cell: (r) => r.soHd },
+  { header: "Ngày lập", cell: (r) => formatDateVN(r.ngayLap) },
+  { header: "MST người bán/MST người xuất hàng", cell: (r) => r.sellerMst },
+  { header: "Tên người bán/Tên người xuất hàng", cell: (r) => r.sellerTen },
+  { header: "Địa chỉ người bán", cell: (r) => r.sellerDiaChi || NO_DATA_YET },
+  { header: "MST người mua/MST người nhận hàng", cell: (r) => r.buyerMst },
+  { header: "CCCD người mua", cell: () => NO_DATA_YET },
+  { header: "Tên người mua/Tên người nhận hàng", cell: (r) => r.buyerTen },
+  { header: "Tổng tiền chưa thuế", align: "right", cell: (r) => formatMoney(r.tienChuaThue) },
+  { header: "Tổng tiền thuế", align: "right", cell: (r) => formatMoney(r.tienThue) },
+  { header: "Tổng tiền chiết khấu thương mại", align: "right", cell: (r) => formatMoney(r.cktm) },
+  { header: "Tổng tiền phí", align: "right", cell: (r) => formatMoney(r.phi) },
+  { header: "Tổng tiền thanh toán", align: "right", cell: (r) => formatMoney(r.tongTt) },
+  { header: "Đơn vị tiền tệ", cell: (r) => r.maNt },
+  { header: "Tỷ giá", align: "right", cell: (r) => formatMoney(r.tyGia) },
+  { header: "Ghi chú: Hóa đơn thay thế, điều chỉnh, bị thay thế, bị điều chỉnh", cell: () => NO_DATA_YET },
+  { header: "Trạng thái hóa đơn", align: "center", cell: (r) => trangThaiHdLabel(r.trangThaiHd) },
+  { header: "Kết quả kiểm tra hóa đơn", align: "center", cell: (r) => r.ketQuaKt },
+  { header: "Website người bán", cell: () => NO_DATA_YET },
+  { header: "Url tra cứu hóa đơn gốc", cell: () => NO_DATA_YET },
+  { header: "Mã tra cứu hóa đơn gốc", cell: () => NO_DATA_YET },
+  { header: "Hóa đơn liên quan", cell: () => NO_DATA_YET },
+  { header: "Xem hóa đơn", align: "center", cell: () => DISABLED_ICON_BTN(<VisibilityRounded fontSize="small" />) },
+  { header: "Tải file", align: "center", cell: () => DISABLED_ICON_BTN(<DownloadRounded fontSize="small" />) },
+];
 
 interface InvoiceTablePanelProps {
   direction: InvoiceDirection;
@@ -125,26 +116,8 @@ function defaultMonthFilters(): InvoiceFilterValues {
   };
 }
 
-function InvoiceTablePanel({ direction, active }: InvoiceTablePanelProps) {
-  const { accessToken } = useAuth();
-  const { currentGdtMst, getGdtToken } = useGdtSession();
-  const [resultTab, setResultTab] = useState<ResultTab>("tong-quat");
-  const [rows, setRows] = useState<DisplayRow[]>([]);
-  const [searched, setSearched] = useState(false);
-  const [dbLoading, setDbLoading] = useState(false);
-  const [gdtLoading, setGdtLoading] = useState(false);
-  const [error, setError] = useState("");
-  const [savedCount, setSavedCount] = useState<number | null>(null);
-  const [page, setPage] = useState(0);
-  const [rowsPerPage, setRowsPerPage] = useState(DEFAULT_ROWS_PER_PAGE);
-
-  // Lazy init: tính 1 lần, giữ ổn định qua các lần render (không đọc ref trong render).
-  const [defaultFilters] = useState(defaultMonthFilters);
-
-  // Cắt dữ liệu theo trang (phân trang phía client trên dữ liệu đã tải).
-  const pagedRows = rows.slice(page * rowsPerPage, page * rowsPerPage + rowsPerPage);
-
-  const buildQuery = (filters: InvoiceFilterValues): InvoiceQuery => ({
+function buildQuery(filters: InvoiceFilterValues): InvoiceQuery {
+  return {
     tuNgay: filters.tuNgay,
     denNgay: filters.denNgay,
     mstDoiTac: filters.mstDoiTac || undefined,
@@ -153,89 +126,82 @@ function InvoiceTablePanel({ direction, active }: InvoiceTablePanelProps) {
     mauHd: filters.mauHd || undefined,
     soSeri: filters.soSeri || undefined,
     soHd: filters.soHd || undefined,
-  });
+  };
+}
 
-  /** Đọc hóa đơn đã lưu từ DB (không gọi GDT). */
-  const loadFromDb = async (filters: InvoiceFilterValues) => {
-    if (!accessToken) return;
+/**
+ * Nội dung 1 chiều hóa đơn (mua vào HOẶC bán ra): bộ lọc + tabs kết quả + bảng "Tổng quát" +
+ * phân trang + nút xuất Excel. Tự quản state (bộ lọc đã áp dụng, trang, lỗi) và gọi query/mutation.
+ * Dùng: render 2 lần trong `InvoiceListTabs` (mỗi chiều 1 instance, gắn `active`).
+ */
+function InvoiceTablePanel({ direction, active }: InvoiceTablePanelProps) {
+  const { currentGdtMst, getGdtToken } = useGdtSession();
+  const [resultTab, setResultTab] = useState<ResultTab>("tong-quat");
+  const [error, setError] = useState(""); // lỗi validate / GDT cục bộ
+  const [savedCount, setSavedCount] = useState<number | null>(null);
+  const [page, setPage] = useState(0);
+  const [rowsPerPage, setRowsPerPage] = useState(DEFAULT_ROWS_PER_PAGE);
+
+  // Bộ lọc mặc định (ổn định) cho form + reset; và bộ lọc "đã áp dụng" quyết định query key.
+  const [defaultFilters] = useState(defaultMonthFilters);
+  const [appliedFilters, setAppliedFilters] = useState(defaultFilters);
+
+  // useQuery tự fetch DB khi tab active + khi bộ lọc đã áp dụng đổi.
+  const savedQuery = useSavedInvoicesQuery(direction, buildQuery(appliedFilters), active);
+  const gdtMutation = useFetchGdtInvoicesMutation(direction);
+
+  const rows = useMemo(
+    () => (savedQuery.data?.datas ?? []).map((r) => toDisplayRow(r, direction)),
+    [savedQuery.data, direction],
+  );
+  const pagedRows = rows.slice(page * rowsPerPage, page * rowsPerPage + rowsPerPage);
+
+  const dbLoading = savedQuery.isFetching;
+  const gdtLoading = gdtMutation.isPending;
+  const searched = savedQuery.isFetched;
+  const displayError =
+    error ||
+    (savedQuery.isError
+      ? getErrorMessage(savedQuery.error, "Không đọc được hóa đơn đã lưu.")
+      : "");
+
+  /** Áp bộ lọc mới -> đổi query key -> useQuery tự đọc lại DB. */
+  const applyFilters = (filters: InvoiceFilterValues) => {
+    setError("");
+    setSavedCount(null);
+    setPage(0);
+    setAppliedFilters(filters);
+  };
+
+  /** Tra cứu GDT (BE luôn lưu) -> onSuccess invalidate để bảng tự nạp lại từ DB. */
+  const handleFetchGdt = (filters: InvoiceFilterValues) => {
+    setError("");
+    setSavedCount(null);
+
     if (!filters.tuNgay || !filters.denNgay) {
       setError("Vui lòng chọn đủ Từ ngày / Đến ngày.");
       return;
     }
-    setError("");
-    setDbLoading(true);
-    try {
-      const result = await getSavedInvoices(direction, accessToken, buildQuery(filters));
-      setRows((result.datas ?? []).map((r) => toDisplayRow(r, direction)));
-      setPage(0);
-      setSearched(true);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Không đọc được hóa đơn đã lưu.");
-    } finally {
-      setDbLoading(false);
-    }
-  };
-
-  const handleSearch = (filters: InvoiceFilterValues) => {
-    setSavedCount(null);
-    void loadFromDb(filters);
-  };
-
-  /** Tra cứu GDT -> lưu vào DB -> nạp lại từ DB để bảng phản ánh đúng dữ liệu đã lưu. */
-  const handleFetchGdt = async (filters: InvoiceFilterValues) => {
-    setError("");
-    setSavedCount(null);
-
-    if (!filters.tuNgay || !filters.denNgay) {
-      setError("Vui lòng chọn đủ Từ ngày / Đến ngày.");
-      return;
-    }
-
     const gdtToken = currentGdtMst ? getGdtToken(currentGdtMst) : undefined;
-    if (!gdtToken || !currentGdtMst || !accessToken) {
+    if (!gdtToken || !currentGdtMst) {
       setError(
         'Chưa đăng nhập Thuế điện tử — bấm "Đăng nhập Thuế điện tử" ở trên trước khi cập nhật.',
       );
       return;
     }
 
-    setGdtLoading(true);
-    try {
-      const gdtResult = await getInvoices(
-        direction,
-        { appToken: accessToken, gdtToken },
-        buildQuery(filters),
-      );
-      setSavedCount(gdtResult.saved ?? 0);
-
-      const dbResult = await getSavedInvoices(direction, accessToken, buildQuery(filters));
-      setRows((dbResult.datas ?? []).map((r) => toDisplayRow(r, direction)));
-      setPage(0);
-      setSearched(true);
-    } catch (e) {
-      setError(
-        e instanceof Error ? e.message : "Không cập nhật được hóa đơn từ Thuế điện tử.",
-      );
-    } finally {
-      setGdtLoading(false);
-    }
+    // Áp bộ lọc trước để bảng và query khớp nhau, rồi mới tra cứu GDT.
+    setPage(0);
+    setAppliedFilters(filters);
+    gdtMutation.mutate(
+      { gdtToken, query: buildQuery(filters) },
+      {
+        onSuccess: (res) => setSavedCount(res.saved ?? 0),
+        onError: (e) =>
+          setError(getErrorMessage(e, "Không cập nhật được hóa đơn từ Thuế điện tử.")),
+      },
+    );
   };
-
-  const handleReset = () => {
-    setSavedCount(null);
-    void loadFromDb(defaultFilters);
-  };
-
-  // Tự nạp dữ liệu DB (tháng hiện tại) 1 lần, khi tab đã hiển thị và có accessToken —
-  // tab ẩn chỉ nạp lần đầu lúc người dùng chuyển sang, tránh 1 request thừa lúc mở trang.
-  const didInit = useRef(false);
-  useEffect(() => {
-    if (!didInit.current && active && accessToken) {
-      didInit.current = true;
-      void loadFromDb(defaultFilters);
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [active, accessToken]);
 
   return (
     <Box sx={{ pt: 2.5 }}>
@@ -244,14 +210,14 @@ function InvoiceTablePanel({ direction, active }: InvoiceTablePanelProps) {
         dbLoading={dbLoading}
         gdtLoading={gdtLoading}
         initialValues={defaultFilters}
-        onSearch={handleSearch}
+        onSearch={applyFilters}
         onFetchGdt={handleFetchGdt}
-        onReset={handleReset}
+        onReset={() => applyFilters(defaultFilters)}
       />
 
-      {error && (
+      {displayError && (
         <Alert severity="error" sx={{ mb: 2 }}>
-          {error}
+          {displayError}
         </Alert>
       )}
       {savedCount !== null && (
@@ -311,79 +277,30 @@ function InvoiceTablePanel({ direction, active }: InvoiceTablePanelProps) {
         <Table size="small" sx={{ "& td, & th": { whiteSpace: "nowrap" } }}>
           <TableHead>
             <TableRow sx={{ "& th": { fontWeight: 700, bgcolor: "action.hover" } }}>
-              <TableCell>STT</TableCell>
-              <TableCell>Ký hiệu mẫu số</TableCell>
-              <TableCell>Ký hiệu hóa đơn</TableCell>
-              <TableCell>Số hóa đơn</TableCell>
-              <TableCell>Ngày lập</TableCell>
-              <TableCell>MST người bán/MST người xuất hàng</TableCell>
-              <TableCell>Tên người bán/Tên người xuất hàng</TableCell>
-              <TableCell>Địa chỉ người bán</TableCell>
-              <TableCell>MST người mua/MST người nhận hàng</TableCell>
-              <TableCell>CCCD người mua</TableCell>
-              <TableCell>Tên người mua/Tên người nhận hàng</TableCell>
-              <TableCell align="right">Tổng tiền chưa thuế</TableCell>
-              <TableCell align="right">Tổng tiền thuế</TableCell>
-              <TableCell align="right">Tổng tiền chiết khấu thương mại</TableCell>
-              <TableCell align="right">Tổng tiền phí</TableCell>
-              <TableCell align="right">Tổng tiền thanh toán</TableCell>
-              <TableCell>Đơn vị tiền tệ</TableCell>
-              <TableCell align="right">Tỷ giá</TableCell>
-              <TableCell>Ghi chú: Hóa đơn thay thế, điều chỉnh, bị thay thế, bị điều chỉnh</TableCell>
-              <TableCell align="center">Trạng thái hóa đơn</TableCell>
-              <TableCell align="center">Kết quả kiểm tra hóa đơn</TableCell>
-              <TableCell>Website người bán</TableCell>
-              <TableCell>Url tra cứu hóa đơn gốc</TableCell>
-              <TableCell>Mã tra cứu hóa đơn gốc</TableCell>
-              <TableCell>Hóa đơn liên quan</TableCell>
-              <TableCell align="center">Xem hóa đơn</TableCell>
-              <TableCell align="center">Tải file</TableCell>
+              {COLUMNS.map((col) => (
+                <TableCell key={col.header} align={col.align}>
+                  {col.header}
+                </TableCell>
+              ))}
             </TableRow>
           </TableHead>
           <TableBody>
             {rows.length > 0 ? (
-              pagedRows.map((r, i) => (
-                <TableRow key={r.id} hover>
-                  <TableCell>{page * rowsPerPage + i + 1}</TableCell>
-                  <TableCell>{r.mauHd}</TableCell>
-                  <TableCell>{r.soSeri}</TableCell>
-                  <TableCell>{r.soHd}</TableCell>
-                  <TableCell>{formatDateVN(r.ngayLap)}</TableCell>
-                  <TableCell>{r.sellerMst}</TableCell>
-                  <TableCell>{r.sellerTen}</TableCell>
-                  <TableCell>{r.sellerDiaChi || NO_DATA_YET}</TableCell>
-                  <TableCell>{r.buyerMst}</TableCell>
-                  <TableCell>{NO_DATA_YET}</TableCell>
-                  <TableCell>{r.buyerTen}</TableCell>
-                  <TableCell align="right">{formatMoney(r.tienChuaThue)}</TableCell>
-                  <TableCell align="right">{formatMoney(r.tienThue)}</TableCell>
-                  <TableCell align="right">{formatMoney(r.cktm)}</TableCell>
-                  <TableCell align="right">{formatMoney(r.phi)}</TableCell>
-                  <TableCell align="right">{formatMoney(r.tongTt)}</TableCell>
-                  <TableCell>{r.maNt}</TableCell>
-                  <TableCell align="right">{formatMoney(r.tyGia)}</TableCell>
-                  <TableCell>{NO_DATA_YET}</TableCell>
-                  <TableCell align="center">{trangThaiHdLabel(r.trangThaiHd)}</TableCell>
-                  <TableCell align="center">{r.ketQuaKt}</TableCell>
-                  <TableCell>{NO_DATA_YET}</TableCell>
-                  <TableCell>{NO_DATA_YET}</TableCell>
-                  <TableCell>{NO_DATA_YET}</TableCell>
-                  <TableCell>{NO_DATA_YET}</TableCell>
-                  <TableCell align="center">
-                    <IconButton size="small" disabled>
-                      <VisibilityRounded fontSize="small" />
-                    </IconButton>
-                  </TableCell>
-                  <TableCell align="center">
-                    <IconButton size="small" disabled>
-                      <DownloadRounded fontSize="small" />
-                    </IconButton>
-                  </TableCell>
-                </TableRow>
-              ))
+              pagedRows.map((r, i) => {
+                const stt = page * rowsPerPage + i + 1;
+                return (
+                  <TableRow key={r.id} hover>
+                    {COLUMNS.map((col) => (
+                      <TableCell key={col.header} align={col.align}>
+                        {col.cell(r, stt)}
+                      </TableCell>
+                    ))}
+                  </TableRow>
+                );
+              })
             ) : (
               <TableRow>
-                <TableCell colSpan={COLUMN_COUNT} sx={{ border: 0, py: 6 }}>
+                <TableCell colSpan={COLUMNS.length} sx={{ border: 0, py: 6 }}>
                   <Stack spacing={1} sx={{ alignItems: "center", color: "text.disabled" }}>
                     <InboxRounded fontSize="large" />
                     <Typography variant="body2">
@@ -414,9 +331,15 @@ function InvoiceTablePanel({ direction, active }: InvoiceTablePanelProps) {
   );
 }
 
+/**
+ * Component gốc của khu hóa đơn: 2 tab "Hóa đơn đầu vào/đầu ra". Mount CẢ 2 panel, ẩn tab
+ * không active bằng CSS (giữ state riêng từng chiều, không mất dữ liệu khi chuyển qua lại).
+ * Dùng: `HomePage`.
+ */
 export default function InvoiceListTabs() {
   const [tab, setTab] = useState<InvoiceDirection>("purchase");
 
+  /** Đổi tab chiều hóa đơn (purchase/sold). Dùng: `Tabs.onChange` ngay bên dưới. */
   const handleChange = (_e: SyntheticEvent, value: InvoiceDirection) => {
     setTab(value);
   };

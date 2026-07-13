@@ -4,7 +4,7 @@ import type { FastifyRequest } from 'fastify';
 import { env } from '../config/env';
 import { UnauthorizedError, ForbiddenError } from '../helpers/errors';
 import { MESSAGES } from '../constants/messages';
-import { REFRESH_COOKIE } from '../constants/auth';
+import { ACCESS_COOKIE, REFRESH_COOKIE } from '../constants/auth';
 import type { Role } from '../generated/sys';
 
 /**
@@ -15,7 +15,11 @@ import type { Role } from '../generated/sys';
  */
 export default fp(
   async (app) => {
-    app.register(fjwt, { secret: env.jwtAccessSecret });
+    // Access: jwtVerify() đọc token từ cookie httpOnly (fallback header Authorization nếu có).
+    app.register(fjwt, {
+      secret: env.jwtAccessSecret,
+      cookie: { cookieName: ACCESS_COOKIE, signed: false },
+    });
     app.register(fjwt, {
       secret: env.jwtRefreshSecret,
       namespace: 'refresh',

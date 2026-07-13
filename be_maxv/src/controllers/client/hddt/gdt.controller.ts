@@ -234,3 +234,16 @@ export async function clearSyncData(request: FastifyRequest, reply: FastifyReply
     });
   }
 }
+
+/** GET /gdt/stats — thống kê dữ liệu đã lưu (tab Dữ liệu hệ thống). */
+export async function systemStats(request: FastifyRequest, reply: FastifyReply) {
+  const tenantDb = await resolveTenantDb(request);
+  try {
+    return reply.send(await GDTService.getSystemStats(tenantDb));
+  } catch (err) {
+    request.log.error(err);
+    return reply.status(500).send({
+      message: err instanceof Error ? err.message : "Không đọc được thống kê",
+    });
+  }
+}
