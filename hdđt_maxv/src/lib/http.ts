@@ -4,24 +4,22 @@ interface ApiErrorBody {
   message?: string;
 }
 
-export interface ApiFetchOptions extends RequestInit {
-  /** Đính kèm `Authorization: Bearer <token>` */
-  token?: string;
-}
+export type ApiFetchOptions = RequestInit;
 
 /**
- * fetch tới be_maxv (`${API_BASE}${path}`) — tự set Content-Type khi có body,
- * parse JSON, và ném Error kèm `message` của server khi response không ok.
+ * fetch tới be_maxv (`${API_BASE}${path}`) — tự set Content-Type khi có body, parse JSON,
+ * và ném Error kèm `message` của server khi response không ok. Luôn gửi kèm cookie (`credentials:
+ * include`): access token nằm ở cookie httpOnly nên không truyền qua header nữa.
  * Dùng chung cho mọi API client trong app thay vì mỗi hàm tự lặp lại đoạn này.
  */
 export async function apiFetch<T>(path: string, options: ApiFetchOptions = {}): Promise<T> {
-  const { token, headers, ...rest } = options;
+  const { headers, ...rest } = options;
 
   const res = await fetch(`${API_BASE}${path}`, {
     ...rest,
+    credentials: "include",
     headers: {
       ...(rest.body ? { "Content-Type": "application/json" } : {}),
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
       ...headers,
     },
   });

@@ -1,7 +1,6 @@
 import { apiFetch } from "../../../lib/http";
 import type {
   CaptchaInfo,
-  InvoiceAuthTokens,
   InvoiceDirection,
   InvoiceQuery,
   InvoiceRaw,
@@ -107,12 +106,12 @@ function mapInvoiceDatas(
 
 /**
  * GET /api/v1/gdt/invoices/purchase|sold → tra cứu trực tiếp GDT rồi BE luôn lưu vào DB.
- * Nhận `tokens` dạng object (thay vì 2 tham số string liền kề) để tránh truyền nhầm thứ tự.
+ * Auth app qua cookie httpOnly (apiFetch tự gửi); chỉ cần truyền `gdtToken` (header X-Gdt-Token).
  * Dùng: `useFetchGdtInvoicesMutation` (invoiceQueries) — nút "Cập nhật từ Thuế điện tử".
  */
 export async function getInvoices(
   direction: InvoiceDirection,
-  tokens: InvoiceAuthTokens,
+  gdtToken: string,
   query: InvoiceQuery,
 ): Promise<InvoiceResult> {
   const params = buildInvoiceParams(direction, query);
@@ -123,8 +122,7 @@ export async function getInvoices(
     datas?: Array<Record<string, unknown>>;
     saved?: number;
   }>(`/gdt/invoices/${direction}?${params.toString()}`, {
-    token: tokens.appToken,
-    headers: { "X-Gdt-Token": tokens.gdtToken },
+    headers: { "X-Gdt-Token": gdtToken },
   });
 
   return {
@@ -137,13 +135,12 @@ export async function getInvoices(
 
 /**
  * GET /api/v1/gdt/invoices/purchase|sold/saved → hóa đơn ĐÃ LƯU trong DB (không gọi GDT).
- * Chỉ cần `appToken` (JWT app) — không cần đăng nhập Thuế điện tử — nên xem lại dữ liệu cũ
- * bất cứ lúc nào. Trả về cùng shape với `getInvoices` để tái dùng mapping hiển thị.
+ * Auth app qua cookie httpOnly — không cần token GDT — nên xem lại dữ liệu cũ bất cứ lúc nào.
+ * Trả về cùng shape với `getInvoices` để tái dùng mapping hiển thị.
  * Dùng: `useSavedInvoicesQuery` (invoiceQueries) — nạp bảng khi mở/lọc tab Hóa đơn.
  */
 export async function getSavedInvoices(
   direction: InvoiceDirection,
-  appToken: string,
   query: InvoiceQuery,
 ): Promise<InvoiceResult> {
   const params = buildInvoiceParams(direction, query);
@@ -151,9 +148,7 @@ export async function getSavedInvoices(
   const raw = await apiFetch<{
     total?: number;
     datas?: Array<Record<string, unknown>>;
-  }>(`/gdt/invoices/${direction}/saved?${params.toString()}`, {
-    token: appToken,
-  });
+  }>(`/gdt/invoices/${direction}/saved?${params.toString()}`);
 
   return {
     total: raw.total,
@@ -166,12 +161,10 @@ export async function getSavedInvoices(
  * tối đa theo giới hạn endpoint đọc DB; nơi gọi nên đối chiếu số lượng để cảnh báo nếu thiếu.
  * Dùng: `SystemDataTab` — nút "Xuất / Sao lưu dữ liệu".
  */
-export function getAllSavedInvoices(
-  appToken: string,
-): Promise<[InvoiceResult, InvoiceResult]> {
+export function getAllSavedInvoices(): Promise<[InvoiceResult, InvoiceResult]> {
   const range: InvoiceQuery = { tuNgay: "2000-01-01", denNgay: "2100-12-31" };
   return Promise.all([
-    getSavedInvoices("purchase", appToken, range),
-    getSavedInvoices("sold", appToken, range),
+    getSavedInvoices("purchase", range),
+    getSavedInvoices("sold", range),
   ]);
 }

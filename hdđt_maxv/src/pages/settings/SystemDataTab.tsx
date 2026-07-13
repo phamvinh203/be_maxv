@@ -100,7 +100,7 @@ function estimateSize(rows: number): string {
 }
 
 export default function SystemDataTab() {
-  const { accessToken } = useAuth();
+  const { isAuthenticated } = useAuth();
   const statsQuery = useSystemStatsQuery();
   const stats = statsQuery.data;
   const clearMutation = useClearSyncMutation();
@@ -138,12 +138,12 @@ export default function SystemDataTab() {
 
   /** Sao lưu toàn bộ hóa đơn đã lưu (cả 2 chiều) ra 1 file CSV. */
   const handleExport = async () => {
-    if (!accessToken) return;
+    if (!isAuthenticated) return;
     setError("");
     setNotice("");
     setExporting(true);
     try {
-      const [p, s] = await getAllSavedInvoices(accessToken);
+      const [p, s] = await getAllSavedInvoices();
       const purchase = (p.datas ?? []).map((r) => toDisplayRow(r, "purchase"));
       const sold = (s.datas ?? []).map((r) => toDisplayRow(r, "sold"));
       if (purchase.length === 0 && sold.length === 0) {

@@ -1,112 +1,76 @@
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
-import { login as loginApi, logout as logoutApi } from "./api/authApi";
-import type { AuthCompany, AuthUser } from "./types";
+import {
+  login as loginApi,
+  logout as logoutApi,
+  getMe,
+} from "./api/authApi";
 import { listCompanies, switchCompany as switchCompanyApi } from "../company/api/companyApi";
 import { queryClient } from "../../lib/queryClient";
 import { AuthContext } from "./context";
+import type { AuthCompany, AuthUser } from "./types";
 
-// Persist để sống qua F5 (không làm refresh-token/switch-company tự động — xem spec).
-const TOKEN_KEY = "hddt_auth_token";
-const USER_KEY = "hddt_auth_user";
-const COMPANIES_KEY = "hddt_auth_companies";
-const CURRENT_COMPANY_KEY = "hddt_auth_current_company";
-
-function isAuthUser(v: unknown): v is AuthUser {
-  return (
-    !!v &&
-    typeof v === "object" &&
-    typeof (v as AuthUser).id === "string" &&
-    typeof (v as AuthUser).email === "string"
-  );
-}
-
-function isAuthCompanyArray(v: unknown): v is AuthCompany[] {
-  return (
-    Array.isArray(v) &&
-    v.every((c) => c && typeof c === "object" && typeof (c as AuthCompany).id === "string")
-  );
-}
-
-/** Đọc JSON từ localStorage; nếu shape không khớp (storage cũ/hỏng) thì bỏ và xóa key thay vì tin mù. */
-function loadJson<T>(key: string, fallback: T, isValid: (v: unknown) => boolean): T {
-  try {
-    const raw = localStorage.getItem(key);
-    if (!raw) return fallback;
-    const parsed = JSON.parse(raw);
-    if (!isValid(parsed)) {
-      localStorage.removeItem(key);
-      return fallback;
-    }
-    return parsed as T;
-  } catch {
-    return fallback;
-  }
-}
-
-/** Ghi/xóa 1 key localStorage — gộp lại thay vì lặp if/else ở từng effect. */
-function persist(key: string, value: string | null) {
-  if (value !== null) localStorage.setItem(key, value);
-  else localStorage.removeItem(key);
-}
-
+/**
+ * Access/refresh token nằm ở cookie httpOnly (server quản lý) — client KHÔNG lưu token nữa.
+ * User/công ty không persist vào localStorage; lúc tải trang gọi GET /auth/me để khôi phục phiên.
+ */
 export function AuthProvider({ children }: { children: ReactNode }) {
-  const [user, setUser] = useState<AuthUser | null>(() =>
-    loadJson<AuthUser | null>(USER_KEY, null, (v) => v === null || isAuthUser(v)),
-  );
-  const [accessToken, setAccessToken] = useState<string | null>(() =>
-    localStorage.getItem(TOKEN_KEY),
-  );
-  const [companies, setCompanies] = useState<AuthCompany[]>(() =>
-    loadJson<AuthCompany[]>(COMPANIES_KEY, [], isAuthCompanyArray),
-  );
-  const [currentCompanyId, setCurrentCompanyId] = useState<string | null>(() =>
-    localStorage.getItem(CURRENT_COMPANY_KEY),
-  );
+  const [user, setUser] = useState<AuthUser | null>(null);
+  const [companies, setCompanies] = useState<AuthCompany[]>([]);
+  const [currentCompanyId, setCurrentCompanyId] = useState<string | null>(null);
+  // true khi đang gọi /auth/me lúc mở app — chưa biết đăng nhập hay chưa (tránh nháy về /login).
+  const [hydrating, setHydrating] = useState(true);
 
-  useEffect(() => persist(TOKEN_KEY, accessToken), [accessToken]);
-  useEffect(() => persist(USER_KEY, user ? JSON.stringify(user) : null), [user]);
-  useEffect(() => persist(COMPANIES_KEY, JSON.stringify(companies)), [companies]);
-  useEffect(() => persist(CURRENT_COMPANY_KEY, currentCompanyId), [currentCompanyId]);
+  // Bootstrap phiên từ cookie khi tải trang: 200 -> khôi phục; lỗi/401 -> coi như chưa đăng nhập.
+  useEffect(() => {
+    let alive = true;
+    getMe()
+      .then((data) => {
+        if (!alive) return;
+        setUser(data.user);
+        setCompanies(data.companies);
+        setCurrentCompanyId(data.activeDonViId);
+      })
+      .catch(() => {
+        /* chưa đăng nhập — giữ state rỗng */
+      })
+      .finally(() => {
+        if (alive) setHydrating(false);
+      });
+    return () => {
+      alive = false;
+    };
+  }, []);
 
   const login = useCallback(async (email: string, password: string) => {
-    const data = await loginApi(email, password);
-    // Xóa cache Query của phiên trước (nếu có) để không rò dữ liệu sang user mới.
-    queryClient.clear();
+    const data = await loginApi(email, password); // server đặt cookie access + refresh
+    queryClient.clear(); // xóa cache của phiên trước (nếu có)
     setUser(data.user);
-    setAccessToken(data.accessToken);
     setCompanies(data.companies);
     setCurrentCompanyId(data.activeDonViId);
   }, []);
 
   const logout = useCallback(async () => {
-    await logoutApi().catch(() => {});
+    await logoutApi().catch(() => {}); // server xóa cookie
     queryClient.clear();
     setUser(null);
-    setAccessToken(null);
     setCompanies([]);
     setCurrentCompanyId(null);
   }, []);
 
   const refreshCompanies = useCallback(async () => {
-    if (!accessToken) return;
-    const data = await listCompanies(accessToken);
-    setCompanies(data);
-  }, [accessToken]);
+    setCompanies(await listCompanies());
+  }, []);
 
-  const switchCompany = useCallback(
-    async (id: string) => {
-      if (!accessToken) return;
-      const data = await switchCompanyApi(accessToken, id);
-      setAccessToken(data.accessToken);
-      setCurrentCompanyId(data.activeDonViId);
-    },
-    [accessToken],
-  );
+  const switchCompany = useCallback(async (id: string) => {
+    const data = await switchCompanyApi(id); // server đặt cookie access mới nhúng donViId mới
+    setCurrentCompanyId(data.activeDonViId);
+  }, []);
 
   const value = useMemo(
     () => ({
       user,
-      accessToken,
+      isAuthenticated: !!user,
+      hydrating,
       companies,
       currentCompanyId,
       login,
@@ -116,7 +80,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }),
     [
       user,
-      accessToken,
+      hydrating,
       companies,
       currentCompanyId,
       login,

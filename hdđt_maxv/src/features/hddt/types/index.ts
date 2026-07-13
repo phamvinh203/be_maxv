@@ -89,13 +89,6 @@ export interface InvoiceResult {
   saved?: number;
 }
 
-export interface InvoiceAuthTokens {
-  /** JWT đăng nhập app — để BE biết ghi vào DB công ty nào khi lưu. */
-  appToken: string;
-  /** Token đăng nhập Thuế điện tử (GDT) — để BE gọi GDT thay mình. */
-  gdtToken: string;
-}
-
 /** Giá trị bộ lọc trên InvoiceFilterPanel. */
 export interface InvoiceFilterValues {
   tuNgay: string;

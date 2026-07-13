@@ -21,15 +21,15 @@ function invalidateTenantInvoiceData(qc: QueryClient, companyId: string | null):
 }
 
 /**
- * Lịch sử đồng bộ (không cần token GDT). Chỉ fetch khi dialog mở + có accessToken/công ty.
+ * Lịch sử đồng bộ (không cần token GDT). Chỉ fetch khi dialog mở + đã đăng nhập + có công ty.
  * Dùng: `SyncInvoiceDialog` — bảng "Lịch sử đồng bộ hóa đơn" (enabled = open).
  */
 export function useSyncHistoryQuery(enabled: boolean) {
-  const { accessToken, currentCompanyId } = useAuth();
+  const { isAuthenticated, currentCompanyId } = useAuth();
   return useQuery({
     queryKey: syncKeys.history(currentCompanyId),
-    queryFn: () => getSyncHistory(accessToken as string),
-    enabled: enabled && !!accessToken && !!currentCompanyId,
+    queryFn: () => getSyncHistory(),
+    enabled: enabled && isAuthenticated && !!currentCompanyId,
   });
 }
 
@@ -38,11 +38,11 @@ export function useSyncHistoryQuery(enabled: boolean) {
  * Dùng: `SyncInvoiceDialog.handleSync` — nút "Đồng bộ".
  */
 export function useStartSyncMutation() {
-  const { accessToken, currentCompanyId } = useAuth();
+  const { currentCompanyId } = useAuth();
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (vars: { gdtToken: string; body: SyncRequest }) =>
-      startSync(accessToken as string, vars.gdtToken, vars.body),
+      startSync(vars.gdtToken, vars.body),
     onSuccess: () => invalidateTenantInvoiceData(qc, currentCompanyId),
   });
 }
@@ -52,10 +52,10 @@ export function useStartSyncMutation() {
  * Dùng: `SyncInvoiceDialog.handleClear` — nút "Xóa dữ liệu đã đồng bộ".
  */
 export function useClearSyncMutation() {
-  const { accessToken, currentCompanyId } = useAuth();
+  const { currentCompanyId } = useAuth();
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: () => clearSyncData(accessToken as string),
+    mutationFn: () => clearSyncData(),
     onSuccess: () => invalidateTenantInvoiceData(qc, currentCompanyId),
   });
 }

@@ -11,9 +11,9 @@ export interface SystemStats {
   lastSyncAt: string | null;
 }
 
-/** GET /gdt/stats — thống kê dữ liệu đã lưu của công ty (không cần token GDT). */
-export async function getSystemStats(appToken: string): Promise<SystemStats> {
-  return apiFetch<SystemStats>("/gdt/stats", { token: appToken });
+/** GET /gdt/stats — thống kê dữ liệu đã lưu của công ty (auth qua cookie httpOnly). */
+export async function getSystemStats(): Promise<SystemStats> {
+  return apiFetch<SystemStats>("/gdt/stats");
 }
 
 export const statsKeys = {
@@ -22,10 +22,10 @@ export const statsKeys = {
 
 /** Thống kê dữ liệu hệ thống — gắn companyId để đúng theo công ty đang chọn. */
 export function useSystemStatsQuery() {
-  const { accessToken, currentCompanyId } = useAuth();
+  const { isAuthenticated, currentCompanyId } = useAuth();
   return useQuery({
     queryKey: statsKeys.system(currentCompanyId),
-    queryFn: () => getSystemStats(accessToken as string),
-    enabled: !!accessToken && !!currentCompanyId,
+    queryFn: () => getSystemStats(),
+    enabled: isAuthenticated && !!currentCompanyId,
   });
 }

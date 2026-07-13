@@ -14,9 +14,8 @@ export interface AuthCompany {
   status: string;
 }
 
-/** Dữ liệu POST /api/v1/auth/login trả về. */
-export interface LoginResponseData {
-  accessToken: string;
+/** Dữ liệu phiên trả về từ POST /auth/login và GET /auth/me (access token nằm ở cookie httpOnly). */
+export interface SessionData {
   user: AuthUser;
   /** Toàn bộ công ty/MST user được phép thao tác (owner thấy hết của mình; nhân viên thấy MST được cấp). */
   companies: AuthCompany[];
@@ -26,15 +25,18 @@ export interface LoginResponseData {
 
 export interface AuthContextValue {
   user: AuthUser | null;
-  accessToken: string | null;
-  /** Công ty/MST user được phép thao tác — nạp lúc login, làm mới qua `refreshCompanies()`. */
+  /** Đã đăng nhập (có phiên hợp lệ) — thay cho việc đọc access token (giờ ở cookie httpOnly). */
+  isAuthenticated: boolean;
+  /** Đang kiểm tra phiên (GET /auth/me) lúc tải trang — chưa biết đăng nhập hay chưa. */
+  hydrating: boolean;
+  /** Công ty/MST user được phép thao tác — nạp lúc login/me, làm mới qua `refreshCompanies()`. */
   companies: AuthCompany[];
-  /** Công ty đang active (nhúng trong JWT lúc login/switch). */
+  /** Công ty đang active (nhúng trong cookie access token lúc login/switch). */
   currentCompanyId: string | null;
   login: (email: string, password: string) => Promise<void>;
   logout: () => Promise<void>;
   /** Gọi lại GET /companies để đồng bộ sau khi thêm/sửa/xóa công ty. */
   refreshCompanies: () => Promise<void>;
-  /** Đổi công ty đang làm việc — cấp lại token nhúng donViId mới. */
+  /** Đổi công ty đang làm việc — server cấp lại cookie access nhúng donViId mới. */
   switchCompany: (id: string) => Promise<void>;
 }

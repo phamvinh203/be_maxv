@@ -26,12 +26,12 @@ export function useSavedInvoicesQuery(
   query: InvoiceQuery,
   enabled: boolean,
 ) {
-  const { accessToken, currentCompanyId } = useAuth();
+  const { isAuthenticated, currentCompanyId } = useAuth();
   return useQuery({
     queryKey: invoiceKeys.saved(currentCompanyId, direction, query),
-    queryFn: () => getSavedInvoices(direction, accessToken as string, query),
+    queryFn: () => getSavedInvoices(direction, query),
     enabled:
-      enabled && !!accessToken && !!currentCompanyId && !!query.tuNgay && !!query.denNgay,
+      enabled && isAuthenticated && !!currentCompanyId && !!query.tuNgay && !!query.denNgay,
   });
 }
 
@@ -41,15 +41,11 @@ export function useSavedInvoicesQuery(
  * Dùng: `InvoiceTablePanel.handleFetchGdt` — nút "Cập nhật từ Thuế điện tử".
  */
 export function useFetchGdtInvoicesMutation(direction: InvoiceDirection) {
-  const { accessToken, currentCompanyId } = useAuth();
+  const { currentCompanyId } = useAuth();
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (vars: { gdtToken: string; query: InvoiceQuery }) =>
-      getInvoices(
-        direction,
-        { appToken: accessToken as string, gdtToken: vars.gdtToken },
-        vars.query,
-      ),
+      getInvoices(direction, vars.gdtToken, vars.query),
     onSuccess: () =>
       qc.invalidateQueries({
         queryKey: invoiceKeys.savedByDirection(currentCompanyId, direction),

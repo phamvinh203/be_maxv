@@ -4,12 +4,15 @@ import AuthPage from "../pages/AuthPage";
 import HomePage from "../pages/HomePage";
 import SettingsPage from "../pages/settings/SettingsPage";
 import ProtectedRoute from "./ProtectedRoute";
+import FullScreenLoader from "../components/FullScreenLoader";
 import { useAuth } from "../features/auth/useAuth";
 
 /** Đã đăng nhập thì /login tự chuyển về trang chính. */
 function LoginRoute() {
-  const { user } = useAuth();
-  if (user) return <Navigate to="/" replace />;
+  const { isAuthenticated, hydrating } = useAuth();
+  // Chờ khôi phục phiên xong rồi mới quyết — tránh lộ form đăng nhập khi thực ra đã đăng nhập.
+  if (hydrating) return <FullScreenLoader />;
+  if (isAuthenticated) return <Navigate to="/" replace />;
   return <AuthPage />;
 }
 

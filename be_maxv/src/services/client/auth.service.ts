@@ -119,3 +119,35 @@ export async function loadUserForRefresh(
 
   return { id: user.id, role: user.role, donViId };
 }
+
+/**
+ * Nạp lại phiên hiện tại cho GET /auth/me (bootstrap FE khi tải trang): user + danh sách
+ * công ty + công ty đang chọn. `donViId` lấy từ access token; nếu quyền đã bị thu hồi thì rơi
+ * về công ty đầu tiên còn quyền. Cùng shape với `loginUser` để FE dùng chung.
+ */
+export async function loadUserSession(
+  userId: string,
+  tokenDonViId: string | null,
+) {
+  const user = await sysPrisma.user.findUnique({ where: { id: userId } });
+  if (!user || !user.isActive) {
+    throw new UnauthorizedError(MESSAGES.AUTH.UNAUTHORIZED);
+  }
+
+  const companies = await listAccessibleCompanies(user.id, user.role);
+  const activeDonViId =
+    tokenDonViId && (await canAccessDonVi(user.id, user.role, tokenDonViId))
+      ? tokenDonViId
+      : (companies[0]?.id ?? null);
+
+  return {
+    user: {
+      id: user.id,
+      hoTen: user.hoTen,
+      email: user.email,
+      role: user.role,
+    },
+    companies,
+    activeDonViId,
+  };
+}

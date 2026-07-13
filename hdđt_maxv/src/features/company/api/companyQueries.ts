@@ -19,11 +19,11 @@ export const companyKeys = {
 
 /** Danh sách công ty chi tiết (tab "Quản lý công ty") — gắn userId để không rò giữa các user. */
 export function useCompaniesQuery() {
-  const { accessToken, user } = useAuth();
+  const { isAuthenticated, user } = useAuth();
   return useQuery({
     queryKey: [...companyKeys.all, user?.id],
-    queryFn: () => listCompanies(accessToken as string),
-    enabled: !!accessToken,
+    queryFn: () => listCompanies(),
+    enabled: isAuthenticated,
   });
 }
 
@@ -43,29 +43,26 @@ function useInvalidateCompanies() {
 }
 
 export function useCreateCompanyMutation() {
-  const { accessToken } = useAuth();
   const invalidate = useInvalidateCompanies();
   return useMutation({
-    mutationFn: (payload: CreateCompanyPayload) => createCompany(accessToken as string, payload),
+    mutationFn: (payload: CreateCompanyPayload) => createCompany(payload),
     onSuccess: invalidate,
   });
 }
 
 export function useUpdateCompanyMutation() {
-  const { accessToken } = useAuth();
   const invalidate = useInvalidateCompanies();
   return useMutation({
     mutationFn: (vars: { id: string; payload: UpdateCompanyPayload }) =>
-      updateCompany(accessToken as string, vars.id, vars.payload),
+      updateCompany(vars.id, vars.payload),
     onSuccess: invalidate,
   });
 }
 
 export function useDeleteCompanyMutation() {
-  const { accessToken } = useAuth();
   const invalidate = useInvalidateCompanies();
   return useMutation({
-    mutationFn: (company: CompanyDetail) => deleteCompany(accessToken as string, company.id),
+    mutationFn: (company: CompanyDetail) => deleteCompany(company.id),
     onSuccess: invalidate,
   });
 }
