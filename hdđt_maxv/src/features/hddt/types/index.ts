@@ -108,6 +108,8 @@ export interface DisplayRow {
   soSeri: string;
   soHd: string;
   ngayLap: string;
+  /** Ngày ký (nky) — có thể rỗng nếu GDT/DB không trả về. */
+  ngayKy: string;
   sellerMst: string;
   sellerTen: string;
   sellerDiaChi: string;

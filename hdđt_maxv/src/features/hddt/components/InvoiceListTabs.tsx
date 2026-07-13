@@ -5,7 +5,7 @@ import Tab from "@mui/material/Tab";
 import Paper from "@mui/material/Paper";
 import Stack from "@mui/material/Stack";
 import Button from "@mui/material/Button";
-import IconButton from "@mui/material/IconButton";
+import Checkbox from "@mui/material/Checkbox";
 import Table from "@mui/material/Table";
 import TableHead from "@mui/material/TableHead";
 import TableBody from "@mui/material/TableBody";
@@ -18,8 +18,6 @@ import InboxRounded from "@mui/icons-material/InboxRounded";
 import ConstructionRounded from "@mui/icons-material/ConstructionRounded";
 import DescriptionRounded from "@mui/icons-material/DescriptionRounded";
 import FileDownloadRounded from "@mui/icons-material/FileDownloadRounded";
-import VisibilityRounded from "@mui/icons-material/VisibilityRounded";
-import DownloadRounded from "@mui/icons-material/DownloadRounded";
 import { useGdtSession } from "../gdtSession/useGdtSession";
 import { trangThaiHdLabel } from "../api/gdt";
 import {
@@ -58,41 +56,37 @@ interface InvoiceColumn {
   cell: (row: DisplayRow, stt: number) => ReactNode;
 }
 
-const DISABLED_ICON_BTN = (icon: ReactNode) => (
-  <IconButton size="small" disabled>
-    {icon}
-  </IconButton>
-);
+/** Checkbox chọn dòng — hiện chỉ là placeholder (chưa có thao tác hàng loạt để gắn vào). */
+const DISABLED_CHECKBOX = <Checkbox size="small"  sx={{ p: 0 }} />;
 
-/** Khai báo 27 cột 1 chỗ — header và body render chung từ đây nên luôn khớp nhau. */
+/**
+ * Khai báo 22 cột 1 chỗ — header và body render chung từ đây nên luôn khớp nhau.
+ * Thứ tự cột theo mẫu lưới của phần mềm kế toán. Các cột chưa có nguồn dữ liệu
+ * (T.thái tải, Mã ct hạch toán, Tên chứng từ hạch toán, Hóa đơn rủi ro) hiển thị tạm "—".
+ */
 const COLUMNS: InvoiceColumn[] = [
   { header: "STT", cell: (_r, stt) => stt },
+  { header: "Chọn", align: "center", cell: () => DISABLED_CHECKBOX },
+  { header: "T. thái tải", cell: () => NO_DATA_YET },
   { header: "Ký hiệu mẫu số", cell: (r) => r.mauHd },
   { header: "Ký hiệu hóa đơn", cell: (r) => r.soSeri },
   { header: "Số hóa đơn", cell: (r) => r.soHd },
   { header: "Ngày lập", cell: (r) => formatDateVN(r.ngayLap) },
+  { header: "Ngày ký", cell: (r) => formatDateVN(r.ngayKy) || NO_DATA_YET },
   { header: "MST người bán/MST người xuất hàng", cell: (r) => r.sellerMst },
   { header: "Tên người bán/Tên người xuất hàng", cell: (r) => r.sellerTen },
-  { header: "Địa chỉ người bán", cell: (r) => r.sellerDiaChi || NO_DATA_YET },
-  { header: "MST người mua/MST người nhận hàng", cell: (r) => r.buyerMst },
-  { header: "CCCD người mua", cell: () => NO_DATA_YET },
-  { header: "Tên người mua/Tên người nhận hàng", cell: (r) => r.buyerTen },
   { header: "Tổng tiền chưa thuế", align: "right", cell: (r) => formatMoney(r.tienChuaThue) },
   { header: "Tổng tiền thuế", align: "right", cell: (r) => formatMoney(r.tienThue) },
-  { header: "Tổng tiền chiết khấu thương mại", align: "right", cell: (r) => formatMoney(r.cktm) },
-  { header: "Tổng tiền phí", align: "right", cell: (r) => formatMoney(r.phi) },
+  { header: "Tổng CKTM", align: "right", cell: (r) => formatMoney(r.cktm) },
+  { header: "Tổng phí", align: "right", cell: (r) => formatMoney(r.phi) },
   { header: "Tổng tiền thanh toán", align: "right", cell: (r) => formatMoney(r.tongTt) },
-  { header: "Đơn vị tiền tệ", cell: (r) => r.maNt },
+  { header: "Mã nt", cell: (r) => r.maNt },
   { header: "Tỷ giá", align: "right", cell: (r) => formatMoney(r.tyGia) },
-  { header: "Ghi chú: Hóa đơn thay thế, điều chỉnh, bị thay thế, bị điều chỉnh", cell: () => NO_DATA_YET },
   { header: "Trạng thái hóa đơn", align: "center", cell: (r) => trangThaiHdLabel(r.trangThaiHd) },
-  { header: "Kết quả kiểm tra hóa đơn", align: "center", cell: (r) => r.ketQuaKt },
-  { header: "Website người bán", cell: () => NO_DATA_YET },
-  { header: "Url tra cứu hóa đơn gốc", cell: () => NO_DATA_YET },
-  { header: "Mã tra cứu hóa đơn gốc", cell: () => NO_DATA_YET },
-  { header: "Hóa đơn liên quan", cell: () => NO_DATA_YET },
-  { header: "Xem hóa đơn", align: "center", cell: () => DISABLED_ICON_BTN(<VisibilityRounded fontSize="small" />) },
-  { header: "Tải file", align: "center", cell: () => DISABLED_ICON_BTN(<DownloadRounded fontSize="small" />) },
+  { header: "Kết quả kiểm tra", align: "center", cell: (r) => r.ketQuaKt },
+  { header: "Mã ct hạch toán", cell: () => NO_DATA_YET },
+  { header: "Tên chứng từ hạch toán", cell: () => NO_DATA_YET },
+  { header: "Hóa đơn rủi ro", align: "center", cell: () => NO_DATA_YET },
 ];
 
 interface InvoiceTablePanelProps {

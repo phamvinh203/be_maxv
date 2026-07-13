@@ -21,6 +21,7 @@ export function toDisplayRow(r: InvoiceRaw, direction: InvoiceDirection): Displa
     soSeri: r.khhdon,
     soHd: r.shdon,
     ngayLap: r.tdlap,
+    ngayKy: rowStr(r.nky),
     sellerMst: isPurchase ? r.mstDoiTac : ownMst,
     sellerTen: isPurchase ? r.tenDoiTac : ownTen,
     sellerDiaChi: isPurchase ? (r.diaChiDoiTac ?? "") : "",
