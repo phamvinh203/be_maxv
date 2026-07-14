@@ -46,7 +46,7 @@ import type {
 } from "../types";
 import { toDisplayRow } from "../invoiceRow";
 import { toDetailRows } from "../detailRow";
-import { formatMoney } from "../format";
+import { formatMoney, ttTaiLabel } from "../format";
 import InvoiceFilterPanel from "./InvoiceFilterPanel";
 import InvoiceDetailPanel from "./InvoiceDetailPanel";
 import InvoicePagination, { DEFAULT_ROWS_PER_PAGE } from "./InvoicePagination";
@@ -70,13 +70,13 @@ const DISABLED_CHECKBOX = <Checkbox size="small" sx={{ p: 0 }} />;
 
 /** Ô "T. thái tải": OK (xanh) / Lỗi (đỏ) theo `tt_tai`; chưa tải -> "—". */
 function ttTaiCell(v?: string): ReactNode {
-  if (v === "OK") {
-    return <Box component="span" sx={{ color: "success.main", fontWeight: 600 }}>OK</Box>;
-  }
-  if (v === "error") {
-    return <Box component="span" sx={{ color: "error.main", fontWeight: 600 }}>Lỗi</Box>;
-  }
-  return NO_DATA_YET;
+  const label = ttTaiLabel(v);
+  if (!label) return NO_DATA_YET;
+  return (
+    <Box component="span" sx={{ color: v === "OK" ? "success.main" : "error.main", fontWeight: 600 }}>
+      {label}
+    </Box>
+  );
 }
 
 /**
@@ -339,8 +339,15 @@ function InvoiceTablePanel({ direction, active }: InvoiceTablePanelProps) {
       {
         onSuccess: (res) => {
           if (runIdRef.current !== startRun) return; // đổi công ty giữa chừng -> không chạy tiếp
-          toast.success(`Đã lưu ${res.saved ?? 0} hóa đơn vào cơ sở dữ liệu.`);
-          // Chạy tiến trình chi tiết cho đúng danh sách vừa lấy về.
+          if (res.partial) {
+            // Lấy chưa hết (lỗi GDT giữa chừng / chạm trần) — vẫn giữ + xử lý phần đã lấy được.
+            toast.warning(
+              `Đã lưu ${res.saved ?? 0} hóa đơn nhưng CHƯA lấy hết: ${res.message ?? "lỗi khi gọi Thuế điện tử"}.`,
+            );
+          } else {
+            toast.success(`Đã lưu ${res.saved ?? 0} hóa đơn vào cơ sở dữ liệu.`);
+          }
+          // Chạy tiến trình chi tiết cho đúng danh sách vừa lấy về (kể cả khi partial).
           void processInvoicesProgressively(res.datas ?? [], gdtToken);
         },
         onError: (e) =>

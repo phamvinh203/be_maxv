@@ -600,42 +600,62 @@ export async function fetchAndSaveInvoicesInRange(
   token: string,
   direction: "purchase" | "sold",
   query: PurchaseInvoiceQuery | SoldInvoiceQuery,
-): Promise<{ total: number; saved: number; datas: unknown[] }> {
+): Promise<{
+  total: number;
+  saved: number;
+  datas: unknown[];
+  /** true nếu chưa lấy hết (lỗi GDT giữa chừng, hoặc chạm trần trang) — FE nên cảnh báo. */
+  partial: boolean;
+  message: string;
+}> {
   const chunks = monthlyChunks(query.tuNgay, query.denNgay);
   let total = 0;
   let saved = 0;
   const datas: unknown[] = [];
+  let partial = false;
+  let message = "";
 
-  for (const chunk of chunks) {
-    let state: string | undefined = undefined;
-    let pages = 0;
+  // Lỗi giữa chừng (vd token GDT hết hạn) -> DỪNG nhưng GIỮ phần đã lưu, báo partial thay vì 500.
+  try {
+    for (const chunk of chunks) {
+      let state: string | undefined = undefined;
+      let pages = 0;
 
-    do {
-      // Giữ nguyên mọi filter của query, chỉ thay khoảng ngày theo cửa sổ tháng + cursor trang.
-      const pageQuery: PurchaseInvoiceQuery & SoldInvoiceQuery = {
-        ...query,
-        tuNgay: chunk.tuNgay,
-        denNgay: chunk.denNgay,
-        state,
-      };
-      const page: PurchaseInvoiceResponse | SoldInvoiceResponse =
-        direction === "purchase"
-          ? await getPurchaseInvoices(token, pageQuery)
-          : await getSoldInvoices(token, pageQuery);
+      do {
+        // Giữ nguyên mọi filter của query, chỉ thay khoảng ngày theo cửa sổ tháng + cursor trang.
+        const pageQuery: PurchaseInvoiceQuery & SoldInvoiceQuery = {
+          ...query,
+          tuNgay: chunk.tuNgay,
+          denNgay: chunk.denNgay,
+          state,
+        };
+        const page: PurchaseInvoiceResponse | SoldInvoiceResponse =
+          direction === "purchase"
+            ? await getPurchaseInvoices(token, pageQuery)
+            : await getSoldInvoices(token, pageQuery);
 
-      if (pages === 0) total += page.total ?? 0; // total giống nhau mỗi trang -> cộng 1 lần/cửa sổ
-      const rows = page.datas ?? [];
-      saved += await saveInvoices(tenantDb, direction, rows);
-      datas.push(...rows);
+        if (pages === 0) total += page.total ?? 0; // total giống nhau mỗi trang -> cộng 1 lần/cửa sổ
+        const rows = page.datas ?? [];
+        saved += await saveInvoices(tenantDb, direction, rows);
+        datas.push(...rows);
 
-      state = page.state || undefined;
-      pages += 1;
-      if (rows.length === 0) break; // trang cuối có thể vẫn trả cursor -> dừng khi hết dòng
-      if (state) await delay(SYNC_PAGE_DELAY_MS);
-    } while (state && pages < MAX_SYNC_PAGES);
+        state = page.state || undefined;
+        pages += 1;
+        if (rows.length === 0) break; // trang cuối có thể vẫn trả cursor -> dừng khi hết dòng
+        if (state) await delay(SYNC_PAGE_DELAY_MS);
+      } while (state && pages < MAX_SYNC_PAGES);
+
+      if (state && pages >= MAX_SYNC_PAGES) {
+        partial = true;
+        message = `Đạt giới hạn ${MAX_SYNC_PAGES} trang/tháng — có thể còn hóa đơn chưa lấy hết.`;
+      }
+    }
+  } catch (err) {
+    partial = true;
+    message = err instanceof Error ? err.message : "Lỗi khi gọi GDT.";
   }
 
-  return { total, saved, datas };
+  return { total, saved, datas, partial, message };
 }
 
 /** Danh sách lịch sử đồng bộ (mới nhất trước), giới hạn 100 dòng gần nhất. */

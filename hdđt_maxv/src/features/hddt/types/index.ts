@@ -89,6 +89,10 @@ export interface InvoiceResult {
   datas?: InvoiceRaw[];
   /** Số hóa đơn vừa được lưu vào vct50view/vct60view — chỉ có ở luồng tra cứu GDT (getInvoices). */
   saved?: number;
+  /** true nếu chưa lấy hết (lỗi GDT giữa chừng / chạm trần trang) — luồng "Cập nhật" nên cảnh báo. */
+  partial?: boolean;
+  /** Mô tả lý do chưa hoàn tất (đi kèm `partial`). */
+  message?: string;
 }
 
 /** Giá trị bộ lọc trên InvoiceFilterPanel. */

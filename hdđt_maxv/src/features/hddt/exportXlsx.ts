@@ -1,5 +1,6 @@
 import { trangThaiHdLabel } from "./api/gdt";
 import { formatDateVN } from "./dateUtils";
+import { ttTaiLabel } from "./format";
 import type { DetailRow, DisplayRow, InvoiceDirection } from "./types";
 
 /** 1 cột xuất Excel: tiêu đề + độ rộng + (tuỳ chọn) định dạng số + hàm lấy giá trị ô. */
@@ -17,17 +18,12 @@ const HEADER_FILL = "FFDDE6F2"; // xanh nhạt
 const HEADER_HEIGHT = 26;
 const ROW_HEIGHT = 20;
 
-/** Nhãn cột "T. thái tải" cho file xuất. */
-function ttTaiText(v?: string): string {
-  return v === "OK" ? "OK" : v === "error" ? "Lỗi" : "";
-}
-
 /** Cột bảng "Tổng quát" (khớp cột đang hiển thị, bỏ cột checkbox "Chọn"). */
 function overviewColumns(direction: InvoiceDirection): XlsxColumn<DisplayRow>[] {
   const isPurchase = direction === "purchase";
   return [
     { header: "STT", width: 6, value: (_r, i) => i + 1 },
-    { header: "T. thái tải", width: 11, value: (r) => ttTaiText(r.ttTai) },
+    { header: "T. thái tải", width: 11, value: (r) => ttTaiLabel(r.ttTai) },
     { header: "Ký hiệu mẫu số", width: 14, value: (r) => r.mauHd },
     { header: "Ký hiệu hóa đơn", width: 16, value: (r) => r.soSeri },
     { header: "Số hóa đơn", width: 12, value: (r) => r.soHd },
