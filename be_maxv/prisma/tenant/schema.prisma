@@ -441,6 +441,9 @@ model vct50view {
   thtttoan String? @db.VarChar(32) // Hình thức thanh toán
   gchu     String? @db.VarChar(1024) // Ghi chú
 
+  detail Json?   // Chi tiết hóa đơn tải riêng từ GDT (/query/invoices/detail); null nếu chưa tải
+  tt_tai String? @db.VarChar(16) // Trạng thái tải chi tiết: "OK" | "error"
+
   raw Json // Toàn bộ payload GDT gốc — đầy đủ mọi field, kể cả field mới phát sinh sau này
 
   datetime0 DateTime @default(now())
@@ -488,6 +491,9 @@ model vct60view {
 
   thtttoan String? @db.VarChar(32) // Hình thức thanh toán
   gchu     String? @db.VarChar(1024) // Ghi chú
+
+  detail Json?   // Chi tiết hóa đơn tải riêng từ GDT (/query/invoices/detail); null nếu chưa tải
+  tt_tai String? @db.VarChar(16) // Trạng thái tải chi tiết: "OK" | "error"
 
   raw Json // Toàn bộ payload GDT gốc — đầy đủ mọi field, kể cả field mới phát sinh sau này
 

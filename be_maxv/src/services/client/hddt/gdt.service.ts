@@ -15,7 +15,7 @@ import {
   SyncDirection,
   SyncInvoiceKind,
 } from "../../../types/gdt";
-import type { PrismaClient, Prisma } from "../../../generated/tenant";
+import { Prisma, type PrismaClient } from "../../../generated/tenant";
 
 /** "yyyy-MM-dd" (input FE) -> "dd/MM/yyyy" (định dạng GDT yêu cầu trong tham số `search`). */
 function toGdtDate(isoDate: string): string {
@@ -134,6 +134,43 @@ export async function getSoldInvoices(token: string, query: SoldInvoiceQuery) {
 
   return gdtFetch<SoldInvoiceResponse>(`${path}?${params.toString()}`, {
     bearerToken: token,
+  });
+}
+
+/** User-Agent kiểu trình duyệt — một số endpoint GDT (detail) khó tính hơn, gửi kèm cho chắc (giống bản C#). */
+const GDT_BROWSER_UA =
+  "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36";
+
+/** Khóa định danh 1 hóa đơn để gọi chi tiết GDT (khớp tham số endpoint detail). */
+export interface InvoiceDetailKey {
+  nbmst: string;
+  khhdon: string;
+  shdon: string;
+  khmshdon: string;
+  /** `ttxly === "8"` -> hóa đơn máy tính tiền -> đổi sang endpoint sco-query. */
+  cashRegister: boolean;
+}
+
+/**
+ * Lấy CHI TIẾT 1 hóa đơn từ GDT (`/query/invoices/detail`, hoặc `/sco-query/.../detail` cho hóa
+ * đơn máy tính tiền). Tương đương thân vòng lặp `GetEIInput` bản C#. Trả nguyên payload GDT.
+ */
+export async function getInvoiceDetail(token: string, key: InvoiceDetailKey) {
+  const path = key.cashRegister
+    ? "/sco-query/invoices/detail"
+    : "/query/invoices/detail";
+  const params = new URLSearchParams({
+    nbmst: key.nbmst,
+    khhdon: key.khhdon,
+    shdon: key.shdon,
+    khmshdon: key.khmshdon,
+  });
+  return gdtFetch<Record<string, unknown>>(`${path}?${params.toString()}`, {
+    bearerToken: token,
+    headers: {
+      "User-Agent": GDT_BROWSER_UA,
+      "Cache-Control": "no-cache, no-store, max-age=0, must-revalidate",
+    },
   });
 }
 
@@ -263,6 +300,8 @@ export interface SavedInvoiceRow {
   tgtttbso?: number;
   tthai?: string;
   ttxly?: string;
+  /** Trạng thái tải chi tiết: "OK" | "error" | undefined (chưa tải) — cột "T. thái tải". */
+  tt_tai?: string;
 }
 
 /** Ép 1 dòng DB (Decimal/Date) về kiểu JSON thuần (number/string) — tránh Decimal serialize thành chuỗi ở FE. */
@@ -289,6 +328,39 @@ function mapSavedRow(row: Record<string, unknown>): SavedInvoiceRow {
     tgtttbso: toNum(row.tgtttbso),
     tthai: toStr(row.tthai),
     ttxly: toStr(row.ttxly),
+    tt_tai: toStr(row.tt_tai),
+  };
+}
+
+/**
+ * Dựng `where` đọc hóa đơn đã lưu: khoảng ngày lập + các field khớp query (trạng thái, kết quả,
+ * mẫu số, ký hiệu, số, MST đối tác). Gom 1 chỗ để đọc danh sách và đọc chi tiết dùng chung điều kiện.
+ */
+function buildSavedWhere(
+  direction: "purchase" | "sold",
+  query: PurchaseInvoiceQuery | SoldInvoiceQuery,
+) {
+  const partnerMst =
+    direction === "purchase"
+      ? (query as PurchaseInvoiceQuery).mstNguoiBan
+      : (query as SoldInvoiceQuery).mstNguoiMua;
+  // Field MST đối tác khác tên theo chiều: mua vào lọc người bán (nbmst), bán ra lọc người mua (nmmst).
+  const partnerWhere = partnerMst
+    ? direction === "purchase"
+      ? { nbmst: partnerMst }
+      : { nmmst: partnerMst }
+    : {};
+  return {
+    tdlap: {
+      gte: new Date(`${query.tuNgay}T00:00:00`),
+      lte: new Date(`${query.denNgay}T23:59:59.999`),
+    },
+    ...(query.trangThaiHd ? { tthai: query.trangThaiHd } : {}),
+    ...(query.ketQuaHd ? { ttxly: query.ketQuaHd } : {}),
+    ...(query.mauHd ? { khmshdon: query.mauHd } : {}),
+    ...(query.soSeri ? { khhdon: query.soSeri } : {}),
+    ...(query.soHd ? { shdon: query.soHd } : {}),
+    ...partnerWhere,
   };
 }
 
@@ -302,30 +374,7 @@ export async function getSavedInvoices(
   direction: "purchase" | "sold",
   query: PurchaseInvoiceQuery | SoldInvoiceQuery,
 ): Promise<{ total: number; datas: SavedInvoiceRow[] }> {
-  const partnerMst =
-    direction === "purchase"
-      ? (query as PurchaseInvoiceQuery).mstNguoiBan
-      : (query as SoldInvoiceQuery).mstNguoiMua;
-
-  // Field MST đối tác khác tên theo chiều: mua vào lọc người bán (nbmst), bán ra lọc người mua (nmmst).
-  const partnerWhere = partnerMst
-    ? direction === "purchase"
-      ? { nbmst: partnerMst }
-      : { nmmst: partnerMst }
-    : {};
-
-  const where = {
-    tdlap: {
-      gte: new Date(`${query.tuNgay}T00:00:00`),
-      lte: new Date(`${query.denNgay}T23:59:59.999`),
-    },
-    ...(query.trangThaiHd ? { tthai: query.trangThaiHd } : {}),
-    ...(query.ketQuaHd ? { ttxly: query.ketQuaHd } : {}),
-    ...(query.mauHd ? { khmshdon: query.mauHd } : {}),
-    ...(query.soSeri ? { khhdon: query.soSeri } : {}),
-    ...(query.soHd ? { shdon: query.soHd } : {}),
-    ...partnerWhere,
-  };
+  const where = buildSavedWhere(direction, query);
 
   const rows =
     direction === "purchase"
@@ -348,6 +397,43 @@ export async function getSavedInvoices(
 
   const datas = (rows as Record<string, unknown>[]).map(mapSavedRow);
   return { total: datas.length, datas };
+}
+
+/**
+ * Đọc CHI TIẾT (cột `detail`) của các hóa đơn đã lưu trong khoảng — cho tab "Chi tiết hóa đơn"
+ * hiển thị TẤT CẢ. Chỉ trả hóa đơn đã tải chi tiết (`detail` khác null), sort ngày lập giảm dần.
+ * Mỗi phần tử là payload GDT gốc (FE bung mảng hàng hóa `hdhhdvu` thành từng dòng).
+ */
+export async function getSavedInvoiceDetails(
+  tenantDb: PrismaClient,
+  direction: "purchase" | "sold",
+  query: PurchaseInvoiceQuery | SoldInvoiceQuery,
+): Promise<Record<string, unknown>[]> {
+  // Lọc "đã tải chi tiết" ngay trong WHERE để `take` chỉ đếm dòng có detail — tránh trường hợp
+  // hóa đơn đã tải nhưng cũ hơn bị đẩy ra ngoài trần 1000 dòng khiến tab Chi tiết tưởng là rỗng.
+  const where = { ...buildSavedWhere(direction, query), detail: { not: Prisma.DbNull } };
+  const select = { detail: true } as const;
+
+  const rows =
+    direction === "purchase"
+      ? await tenantDb.vct60view.findMany({
+          where,
+          orderBy: { tdlap: "desc" },
+          take: MAX_SAVED_ROWS,
+          select,
+        })
+      : await tenantDb.vct50view.findMany({
+          where,
+          orderBy: { tdlap: "desc" },
+          take: MAX_SAVED_ROWS,
+          select,
+        });
+
+  return rows.flatMap((r) =>
+    r.detail != null && typeof r.detail === "object"
+      ? [r.detail as Record<string, unknown>]
+      : [],
+  );
 }
 
 // ============================================================
@@ -536,4 +622,107 @@ export async function getSystemStats(tenantDb: PrismaClient) {
     }),
   ]);
   return { purchase, sold, lastSyncAt: lastSync?.created_at ?? null };
+}
+
+// ============================================================
+//  TẢI CHI TIẾT HÓA ĐƠN (detail) — cột "T. thái tải" (tt_tai)
+// ============================================================
+
+/** Dòng tối thiểu cần để gọi detail GDT (khớp `DETAIL_SELECT`). */
+interface DetailCandidate {
+  id: string;
+  nbmst: string;
+  khhdon: string;
+  shdon: string;
+  khmshdon: string;
+  ttxly: string | null;
+}
+
+/**
+ * Chỉ 2 thao tác mà tải chi tiết cần trên bảng cache. Cast delegate vct60view/vct50view (cùng
+ * schema) về đây để branch `direction` ĐÚNG 1 lần — union 2 delegate Prisma vốn không gọi được.
+ */
+interface DetailInvoiceStore {
+  findMany(args: { where: object; select: object }): Promise<DetailCandidate[]>;
+  update(args: {
+    where: { id: string };
+    data: { detail?: Prisma.InputJsonValue; tt_tai: string };
+  }): Promise<unknown>;
+}
+
+/** Field khóa cần đọc để gọi detail GDT — dùng chung cho tải cả mẻ lẫn tải lẻ. */
+const DETAIL_SELECT = {
+  id: true,
+  nbmst: true,
+  khhdon: true,
+  shdon: true,
+  khmshdon: true,
+  ttxly: true,
+} as const;
+
+/** Bảng cache theo chiều, ép về DetailInvoiceStore (2 model cùng schema) để branch direction 1 lần. */
+function detailStore(
+  tenantDb: PrismaClient,
+  direction: "purchase" | "sold",
+): DetailInvoiceStore {
+  return (
+    direction === "purchase" ? tenantDb.vct60view : tenantDb.vct50view
+  ) as unknown as DetailInvoiceStore;
+}
+
+/**
+ * LÕI DÙNG CHUNG: tải chi tiết 1 hóa đơn từ GDT (theo keys của `row`) rồi lưu vào cột `detail` +
+ * đánh dấu `tt_tai`. Trả payload detail nếu thành công, `null` nếu lỗi (đã đánh dấu `tt_tai='error'`,
+ * KHÔNG ném ra để không chặn dòng sau khi chạy cả mẻ). Dùng cho cả tải mẻ lẫn tải lẻ — tránh lặp.
+ */
+async function fetchAndStoreDetail(
+  model: DetailInvoiceStore,
+  token: string,
+  row: DetailCandidate,
+): Promise<Record<string, unknown> | null> {
+  const markRow = (data: { detail?: Prisma.InputJsonValue; tt_tai: string }) =>
+    model.update({ where: { id: row.id }, data });
+
+  try {
+    const detail = await getInvoiceDetail(token, {
+      nbmst: row.nbmst,
+      khhdon: row.khhdon,
+      shdon: row.shdon,
+      khmshdon: row.khmshdon,
+      cashRegister: row.ttxly === "8",
+    });
+    await markRow({ detail: detail as Prisma.InputJsonValue, tt_tai: "OK" });
+    return detail;
+  } catch {
+    await markRow({ tt_tai: "error" }).catch(() => {});
+    return null;
+  }
+}
+
+/** Kết quả tải chi tiết 1 hóa đơn lẻ. */
+export interface OneDetailResult {
+  /** Có tìm thấy hóa đơn (theo id) trong dữ liệu đã lưu không. */
+  found: boolean;
+  /** Tải chi tiết từ GDT thành công không (tt_tai = "OK"). */
+  ok: boolean;
+  /** Payload chi tiết GDT (để FE hiển thị ngay); null nếu không tìm thấy / tải lỗi. */
+  detail: Record<string, unknown> | null;
+}
+
+/**
+ * Tải chi tiết 1 hóa đơn ĐÃ LƯU theo `id` (on-demand — nút "Xem chi tiết"). Tương đương
+ * `REConvertInput` bản C#. Không tìm thấy id -> `found=false`. Dùng chung lõi `fetchAndStoreDetail`.
+ */
+export async function downloadOneInvoiceDetail(
+  tenantDb: PrismaClient,
+  token: string,
+  direction: "purchase" | "sold",
+  id: string,
+): Promise<OneDetailResult> {
+  const model = detailStore(tenantDb, direction);
+  const [row] = await model.findMany({ where: { id }, select: DETAIL_SELECT });
+  if (!row) return { found: false, ok: false, detail: null };
+
+  const detail = await fetchAndStoreDetail(model, token, row);
+  return { found: true, ok: detail !== null, detail };
 }

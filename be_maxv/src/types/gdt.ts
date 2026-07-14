@@ -90,6 +90,11 @@ export type SyncDirection = "all" | "purchase" | "sold";
 /** Loại hóa đơn theo cách xử lý máy tính tiền (ctt = hóa đơn máy tính tiền). */
 export type SyncInvoiceKind = "all" | "except_ctt" | "only_ctt";
 
+/** Body cho POST /gdt/invoices/detail/:id — tải chi tiết 1 hóa đơn lẻ (id ở path). */
+export interface InvoiceDetailOneBody {
+  direction: "purchase" | "sold";
+}
+
 /** Body cho POST /gdt/sync — đồng bộ hóa đơn 1 khoảng ngày từ GDT vào DB. */
 export interface SyncRequestBody {
   /** Từ ngày (yyyy-MM-dd) */
