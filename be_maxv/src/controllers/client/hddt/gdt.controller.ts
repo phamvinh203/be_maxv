@@ -2,6 +2,7 @@ import { FastifyReply, FastifyRequest } from "fastify";
 import * as GDTService from "../../../services/client/hddt/gdt.service";
 import { resolveTenantDb } from "../../../helpers/resolveTenantDb";
 import {
+  InvoiceDetailOneBody,
   LoginRequest,
   PurchaseInvoiceQuery,
   SoldInvoiceQuery,
@@ -153,11 +154,101 @@ export async function savedSoldInvoices(
   return handleSavedInvoices(request, reply, "sold", request.query);
 }
 
+/**
+ * Đọc CHI TIẾT đã lưu (cột `detail`) của hóa đơn trong 1 khoảng ngày — cho tab "Chi tiết hóa đơn"
+ * hiển thị TẤT CẢ. Chỉ cần JWT app (resolveTenantDb), KHÔNG cần token GDT (đọc DB).
+ */
+async function handleSavedDetails(
+  request: FastifyRequest,
+  reply: FastifyReply,
+  direction: "purchase" | "sold",
+  query: PurchaseInvoiceQuery | SoldInvoiceQuery,
+) {
+  if (!query.tuNgay || !query.denNgay) {
+    return reply.status(400).send({ message: "Thiếu khoảng ngày (tuNgay/denNgay)" });
+  }
+
+  const tenantDb = await resolveTenantDb(request);
+
+  try {
+    const datas = await GDTService.getSavedInvoiceDetails(tenantDb, direction, query);
+    return reply.send({ datas });
+  } catch (err) {
+    request.log.error(err);
+    return reply.status(500).send({
+      message: err instanceof Error ? err.message : "Không đọc được chi tiết đã lưu",
+    });
+  }
+}
+
+export async function savedPurchaseDetails(
+  request: FastifyRequest<{ Querystring: PurchaseInvoiceQuery }>,
+  reply: FastifyReply
+) {
+  return handleSavedDetails(request, reply, "purchase", request.query);
+}
+
+export async function savedSoldDetails(
+  request: FastifyRequest<{ Querystring: SoldInvoiceQuery }>,
+  reply: FastifyReply
+) {
+  return handleSavedDetails(request, reply, "sold", request.query);
+}
+
 export async function soldInvoices(
   request: FastifyRequest<{ Querystring: SoldInvoiceQuery }>,
   reply: FastifyReply
 ) {
   return handleGdtInvoices(request, reply, "sold");
+}
+
+/**
+ * POST /gdt/invoices/detail/:id — tải chi tiết 1 hóa đơn đã lưu (on-demand, nút "Xem chi tiết").
+ * `id` ở path, `direction` ở body. Cần token GDT (X-Gdt-Token) lẫn JWT app. Trả kèm `detail` để
+ * FE hiển thị ngay; 404 nếu id không có trong dữ liệu đã lưu.
+ */
+export async function downloadOneInvoiceDetail(
+  request: FastifyRequest<{ Params: { id: string }; Body: InvoiceDetailOneBody }>,
+  reply: FastifyReply
+) {
+  const gdtToken = extractGdtToken(request);
+  if (!gdtToken) {
+    return reply.status(401).send({
+      message: "Thiếu token đăng nhập GDT (header X-Gdt-Token)",
+    });
+  }
+
+  const { id } = request.params;
+  const { direction } = request.body ?? {};
+  if (!id) {
+    return reply.status(400).send({ message: "Thiếu id hóa đơn" });
+  }
+  if (direction !== "purchase" && direction !== "sold") {
+    return reply.status(400).send({ message: "Tham số direction không hợp lệ" });
+  }
+
+  // Ngoài try/catch: lỗi quyền/tenant (403/404) trả đúng mã qua error-handler chung.
+  const tenantDb = await resolveTenantDb(request);
+
+  try {
+    const result = await GDTService.downloadOneInvoiceDetail(
+      tenantDb,
+      gdtToken,
+      direction,
+      id,
+    );
+    if (!result.found) {
+      return reply.status(404).send({
+        message: "Không tìm thấy hóa đơn trong dữ liệu đã lưu",
+      });
+    }
+    return reply.send(result);
+  } catch (err) {
+    request.log.error(err);
+    return reply.status(500).send({
+      message: err instanceof Error ? err.message : "Không tải được chi tiết hóa đơn",
+    });
+  }
 }
 
 // ============================================================

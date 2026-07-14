@@ -74,7 +74,7 @@ const PARTNER_FIELD: Record<InvoiceDirection, { mst: string; ten: string; dchi: 
  * Dựng query-string cho endpoint hóa đơn: map các field lọc + đổi tên MST đối tác theo chiều.
  * Dùng: nội bộ file này — `getInvoices` và `getSavedInvoices`.
  */
-function buildInvoiceParams(direction: InvoiceDirection, query: InvoiceQuery): URLSearchParams {
+export function buildInvoiceParams(direction: InvoiceDirection, query: InvoiceQuery): URLSearchParams {
   const { mstDoiTac, ...rest } = query;
   const params = new URLSearchParams();
   Object.entries(rest).forEach(([key, value]) => {

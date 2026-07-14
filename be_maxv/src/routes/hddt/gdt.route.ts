@@ -6,6 +6,9 @@ import {
   soldInvoices,
   savedPurchaseInvoices,
   savedSoldInvoices,
+  savedPurchaseDetails,
+  savedSoldDetails,
+  downloadOneInvoiceDetail,
   syncInvoices,
   syncHistory,
   clearSyncData,
@@ -38,6 +41,22 @@ export default async function (
   fastify.get("/invoices/sold/saved", {
     preHandler: [fastify.authenticate],
     handler: savedSoldInvoices,
+  });
+
+  // Đọc CHI TIẾT đã lưu (cột detail) để tab "Chi tiết hóa đơn" hiện tất cả — không cần X-Gdt-Token.
+  fastify.get("/invoices/purchase/saved-details", {
+    preHandler: [fastify.authenticate],
+    handler: savedPurchaseDetails,
+  });
+  fastify.get("/invoices/sold/saved-details", {
+    preHandler: [fastify.authenticate],
+    handler: savedSoldDetails,
+  });
+
+  // Tải chi tiết 1 hóa đơn theo id (nút "Cập nhật"/"Tải chi tiết" lặp từng hóa đơn); direction ở body.
+  fastify.post("/invoices/detail/:id", {
+    preHandler: [fastify.authenticate],
+    handler: downloadOneInvoiceDetail,
   });
 
   // Đồng bộ hóa đơn (dialog "Đồng bộ hóa đơn"): POST /sync chạy đồng bộ (cần X-Gdt-Token),
