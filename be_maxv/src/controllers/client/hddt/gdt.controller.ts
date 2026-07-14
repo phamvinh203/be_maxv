@@ -78,13 +78,15 @@ async function handleGdtInvoices(
   const tenantDb = await resolveTenantDb(request);
 
   try {
-    const result =
-      direction === "purchase"
-        ? await GDTService.getPurchaseInvoices(gdtToken, request.query)
-        : await GDTService.getSoldInvoices(gdtToken, request.query);
-    const saved = await GDTService.saveInvoices(tenantDb, direction, result.datas ?? []);
+    // Lấy HẾT hóa đơn trong khoảng (lặp phân trang + chia tháng), không chỉ 1 trang 50 dòng.
+    const result = await GDTService.fetchAndSaveInvoicesInRange(
+      tenantDb,
+      gdtToken,
+      direction,
+      request.query,
+    );
 
-    return reply.send({ ...result, saved });
+    return reply.send(result);
   } catch (err) {
     request.log.error(err);
 

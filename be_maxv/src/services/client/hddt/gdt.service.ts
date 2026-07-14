@@ -587,6 +587,57 @@ export async function runSync(
   });
 }
 
+/**
+ * Lấy & lưu TẤT CẢ hóa đơn 1 chiều trong khoảng của `query` — GIỮ NGUYÊN bộ lọc người dùng chọn,
+ * LẶP HẾT trang theo cursor `state`, chia theo tháng để thỏa giới hạn GDT (≤1 tháng/lần).
+ * Trả về `{ total, saved, datas }` (datas = toàn bộ dòng thô để FE hiển thị + tải chi tiết).
+ *
+ * Dùng cho nút "Cập nhật từ Thuế điện tử" — thay hàm cũ chỉ lấy 1 trang (≤50 dòng). Khác `runSync`:
+ * runSync quét nhiều nguồn (chiều × máy tính tiền) + ghi sync_log, KHÔNG áp bộ lọc UI và KHÔNG trả datas.
+ */
+export async function fetchAndSaveInvoicesInRange(
+  tenantDb: PrismaClient,
+  token: string,
+  direction: "purchase" | "sold",
+  query: PurchaseInvoiceQuery | SoldInvoiceQuery,
+): Promise<{ total: number; saved: number; datas: unknown[] }> {
+  const chunks = monthlyChunks(query.tuNgay, query.denNgay);
+  let total = 0;
+  let saved = 0;
+  const datas: unknown[] = [];
+
+  for (const chunk of chunks) {
+    let state: string | undefined = undefined;
+    let pages = 0;
+
+    do {
+      // Giữ nguyên mọi filter của query, chỉ thay khoảng ngày theo cửa sổ tháng + cursor trang.
+      const pageQuery: PurchaseInvoiceQuery & SoldInvoiceQuery = {
+        ...query,
+        tuNgay: chunk.tuNgay,
+        denNgay: chunk.denNgay,
+        state,
+      };
+      const page: PurchaseInvoiceResponse | SoldInvoiceResponse =
+        direction === "purchase"
+          ? await getPurchaseInvoices(token, pageQuery)
+          : await getSoldInvoices(token, pageQuery);
+
+      if (pages === 0) total += page.total ?? 0; // total giống nhau mỗi trang -> cộng 1 lần/cửa sổ
+      const rows = page.datas ?? [];
+      saved += await saveInvoices(tenantDb, direction, rows);
+      datas.push(...rows);
+
+      state = page.state || undefined;
+      pages += 1;
+      if (rows.length === 0) break; // trang cuối có thể vẫn trả cursor -> dừng khi hết dòng
+      if (state) await delay(SYNC_PAGE_DELAY_MS);
+    } while (state && pages < MAX_SYNC_PAGES);
+  }
+
+  return { total, saved, datas };
+}
+
 /** Danh sách lịch sử đồng bộ (mới nhất trước), giới hạn 100 dòng gần nhất. */
 export async function listSyncLogs(tenantDb: PrismaClient) {
   return tenantDb.sync_log.findMany({
