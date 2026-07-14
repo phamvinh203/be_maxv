@@ -27,7 +27,7 @@ import DescriptionRounded from "@mui/icons-material/DescriptionRounded";
 import FileDownloadRounded from "@mui/icons-material/FileDownloadRounded";
 import CloudDownloadRounded from "@mui/icons-material/CloudDownloadRounded";
 import { useGdtSession } from "../gdtSession/useGdtSession";
-import { trangThaiHdLabel } from "../api/gdt";
+import { trangThaiHdLabel, ketQuaKiemTraLabel } from "../api/gdt";
 import {
   invoiceKeys,
   useFetchGdtInvoicesMutation,
@@ -103,7 +103,7 @@ const COLUMNS: InvoiceColumn[] = [
   { header: "Mã nt", cell: (r) => r.maNt },
   { header: "Tỷ giá", align: "right", cell: (r) => formatMoney(r.tyGia) },
   { header: "Trạng thái hóa đơn", align: "center", cell: (r) => trangThaiHdLabel(r.trangThaiHd) },
-  { header: "Kết quả kiểm tra", align: "center", cell: (r) => r.ketQuaKt },
+  { header: "Kết quả kiểm tra", align: "center", cell: (r) => ketQuaKiemTraLabel(r.ketQuaKt) },
   { header: "Mã ct hạch toán", cell: () => NO_DATA_YET },
   { header: "Tên chứng từ hạch toán", cell: () => NO_DATA_YET },
   { header: "Hóa đơn rủi ro", align: "center", cell: () => NO_DATA_YET },

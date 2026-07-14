@@ -1,4 +1,4 @@
-import { trangThaiHdLabel } from "./api/gdt";
+import { trangThaiHdLabel, ketQuaKiemTraLabel } from "./api/gdt";
 import { formatDateVN } from "./dateUtils";
 import { ttTaiLabel } from "./format";
 import type { DetailRow, DisplayRow, InvoiceDirection } from "./types";
@@ -47,7 +47,7 @@ function overviewColumns(direction: InvoiceDirection): XlsxColumn<DisplayRow>[] 
     { header: "Mã nt", width: 8, value: (r) => r.maNt },
     { header: "Tỷ giá", width: 10, numFmt: NUM_FMT, value: (r) => r.tyGia ?? "" },
     { header: "Trạng thái hóa đơn", width: 18, value: (r) => trangThaiHdLabel(r.trangThaiHd) },
-    { header: "Kết quả kiểm tra", width: 16, value: (r) => r.ketQuaKt },
+    { header: "Kết quả kiểm tra", width: 16, value: (r) => ketQuaKiemTraLabel(r.ketQuaKt) },
     { header: "Mã ct hạch toán", width: 14, value: () => "" },
     { header: "Tên chứng từ hạch toán", width: 22, value: () => "" },
     { header: "Hóa đơn rủi ro", width: 13, value: () => "" },
@@ -83,7 +83,7 @@ function detailColumns(): XlsxColumn<DetailRow>[] {
     { header: "Tổng thanh toán", width: 17, numFmt: MONEY_FMT, value: (r) => r.tongTt ?? "" },
     { header: "Hình thức thanh toán", width: 18, value: (r) => r.hinhThucTt },
     { header: "Trạng thái hóa đơn", width: 18, value: (r) => trangThaiHdLabel(r.trangThaiHd) },
-    { header: "Kết quả kiểm tra", width: 16, value: (r) => r.ketQuaKt },
+    { header: "Kết quả kiểm tra", width: 16, value: (r) => ketQuaKiemTraLabel(r.ketQuaKt) },
   ];
 }
 

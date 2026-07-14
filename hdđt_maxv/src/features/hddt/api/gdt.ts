@@ -58,6 +58,29 @@ export function trangThaiHdLabel(code: string): string {
   return TRANG_THAI_HD_LABEL[code] ?? code;
 }
 
+/**
+ * Bảng mã kết quả kiểm tra hóa đơn (`ttxly`) của GDT — dùng chung cho dropdown lọc
+ * (InvoiceFilterPanel) và hiển thị nhãn ở bảng kết quả (InvoiceListTabs).
+ */
+export const KET_QUA_KIEM_TRA_OPTIONS = [
+  { value: "", label: "Tất cả" },
+  { value: "5", label: "Đã cấp mã hóa đơn" },
+  { value: "6", label: "Tổng cục thuế đã nhận không mã" },
+  { value: "8", label: "Tổng cục thuế đã nhận hóa đơn có khởi tạo từ máy tính tiền" },
+] as const;
+
+const KET_QUA_KIEM_TRA_LABEL: Record<string, string> = Object.fromEntries(
+  KET_QUA_KIEM_TRA_OPTIONS.filter((o) => o.value).map((o) => [o.value, o.label]),
+);
+
+/**
+ * Nhãn tiếng Việt cho mã kết quả kiểm tra; trả nguyên mã nếu không nằm trong bảng đã biết.
+ * Dùng: `InvoiceListTabs` (cột "Kết quả kiểm tra" trong COLUMNS) và `exportInvoices`.
+ */
+export function ketQuaKiemTraLabel(code: string): string {
+  return KET_QUA_KIEM_TRA_LABEL[code] ?? code;
+}
+
 /** Query param bên BE giữ tên MST đối tác khác nhau theo chiều hóa đơn. */
 const PARTNER_PARAM: Record<InvoiceDirection, string> = {
   purchase: "mstNguoiBan",
