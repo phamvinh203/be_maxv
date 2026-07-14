@@ -1,5 +1,6 @@
 import { trangThaiHdLabel } from "./api/gdt";
 import { formatDateVN } from "./dateUtils";
+import { ttTaiLabel } from "./format";
 import type { DetailRow, DisplayRow, InvoiceDirection } from "./types";
 
 /** 1 cột xuất Excel: tiêu đề + độ rộng + (tuỳ chọn) định dạng số + hàm lấy giá trị ô. */
@@ -17,17 +18,12 @@ const HEADER_FILL = "FFDDE6F2"; // xanh nhạt
 const HEADER_HEIGHT = 26;
 const ROW_HEIGHT = 20;
 
-/** Nhãn cột "T. thái tải" cho file xuất. */
-function ttTaiText(v?: string): string {
-  return v === "OK" ? "OK" : v === "error" ? "Lỗi" : "";
-}
-
 /** Cột bảng "Tổng quát" (khớp cột đang hiển thị, bỏ cột checkbox "Chọn"). */
 function overviewColumns(direction: InvoiceDirection): XlsxColumn<DisplayRow>[] {
   const isPurchase = direction === "purchase";
   return [
     { header: "STT", width: 6, value: (_r, i) => i + 1 },
-    { header: "T. thái tải", width: 11, value: (r) => ttTaiText(r.ttTai) },
+    { header: "T. thái tải", width: 11, value: (r) => ttTaiLabel(r.ttTai) },
     { header: "Ký hiệu mẫu số", width: 14, value: (r) => r.mauHd },
     { header: "Ký hiệu hóa đơn", width: 16, value: (r) => r.soSeri },
     { header: "Số hóa đơn", width: 12, value: (r) => r.soHd },
@@ -166,17 +162,29 @@ const DIR_LABEL: Record<InvoiceDirection, { text: string; slug: string }> = {
   sold: { text: "đầu ra", slug: "dau-ra" },
 };
 
+/** Khoảng ngày đang lọc — thêm vào tên file để dễ nhận biết file thuộc kỳ nào. */
+export interface ExportRange {
+  tuNgay: string;
+  denNgay: string;
+}
+
+/** Đuôi tên file "tu-<từ>-den-<đến>" (rỗng nếu thiếu ngày). */
+function rangeSuffix(range: ExportRange): string {
+  return range.tuNgay && range.denNgay ? `-tu-${range.tuNgay}-den-${range.denNgay}` : "";
+}
+
 /** Xuất bảng "Tổng quát" của 1 chiều ra .xlsx (tiêu đề in đậm, giãn dòng). */
 export function exportOverviewXlsx(
   rows: DisplayRow[],
   direction: InvoiceDirection,
+  range: ExportRange,
 ): Promise<void> {
   const { text, slug } = DIR_LABEL[direction];
   return buildAndDownload(
     `Tổng quát ${text}`,
     overviewColumns(direction),
     rows,
-    `hoa-don-${slug}-tong-quat.xlsx`,
+    `hoa-don-${slug}-tong-quat${rangeSuffix(range)}.xlsx`,
   );
 }
 
@@ -184,12 +192,13 @@ export function exportOverviewXlsx(
 export function exportDetailXlsx(
   rows: DetailRow[],
   direction: InvoiceDirection,
+  range: ExportRange,
 ): Promise<void> {
   const { text, slug } = DIR_LABEL[direction];
   return buildAndDownload(
     `Chi tiết ${text}`,
     detailColumns(),
     rows,
-    `hoa-don-${slug}-chi-tiet.xlsx`,
+    `hoa-don-${slug}-chi-tiet${rangeSuffix(range)}.xlsx`,
   );
 }

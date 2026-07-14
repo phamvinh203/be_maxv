@@ -121,6 +121,8 @@ export async function getInvoices(
     state?: string;
     datas?: Array<Record<string, unknown>>;
     saved?: number;
+    partial?: boolean;
+    message?: string;
   }>(`/gdt/invoices/${direction}?${params.toString()}`, {
     headers: { "X-Gdt-Token": gdtToken },
   });
@@ -129,6 +131,8 @@ export async function getInvoices(
     total: raw.total,
     state: raw.state,
     saved: raw.saved,
+    partial: raw.partial,
+    message: raw.message,
     datas: mapInvoiceDatas(direction, raw.datas),
   };
 }

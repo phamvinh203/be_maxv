@@ -18,7 +18,7 @@ function csvCell(value: string | number): string {
 
 /**
  * Ghi mảng dòng CSV ra file + kích hoạt tải về. Có BOM UTF-8 để Excel hiển thị đúng tiếng Việt.
- * Dùng: nội bộ file này — `exportInvoicesToCsv`, `exportSavedBackupCsv`.
+ * Dùng: nội bộ file này — `exportSavedBackupCsv`.
  */
 function downloadCsv(lines: string[], filename: string): void {
   const bom = String.fromCharCode(0xfeff);
