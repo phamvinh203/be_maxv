@@ -1,0 +1,7 @@
+# Secret cho docker-compose (giữ .env.example, ẩn .env thật)
+.env
+.env.*
+!.env.example
+
+# Log / tạm
+*.log

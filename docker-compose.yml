@@ -1,0 +1,76 @@
+# ============================================================
+#  maxv_v2 — db (Postgres) + api (be_maxv) + web (hddt_maxv qua nginx)
+#  Local/test:  docker compose up -d --build
+#  Production:  docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build
+#  Biến bí mật đọc từ file .env cạnh file này (xem .env.example).
+# ============================================================
+
+# Log xoay vòng cho mọi service (tránh đầy đĩa)
+x-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+
+services:
+  db:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: maxv2_sys # tạo sẵn DB control-plane lần init đầu (DB tenant thì app tự tạo)
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d maxv2_sys"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+    logging: *default-logging
+    restart: unless-stopped
+
+  api:
+    build: ./be_maxv
+    environment:
+      NODE_ENV: ${NODE_ENV:-production} # test local: đặt NODE_ENV=development trong .env (cookie không Secure -> chạy http://localhost)
+      PORT: "4000"
+      TRUST_PROXY: "true"
+      ALLOWED_ORIGINS: ${ALLOWED_ORIGINS}
+      # Control-plane + server gốc tạo DB tenant — trỏ tới service `db` (mạng nội bộ, không cần SSL)
+      DB_SYS_URL: postgresql://postgres:${POSTGRES_PASSWORD}@db:5432/maxv2_sys?schema=public
+      APP_DB_HOST: db
+      APP_DB_PORT: "5432"
+      APP_DB_USER: postgres
+      APP_DB_PASSWORD: ${POSTGRES_PASSWORD}
+      JWT_ACCESS_SECRET: ${JWT_ACCESS_SECRET}
+      JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET}
+      ACCESS_TOKEN_TTL: 15m
+      REFRESH_TOKEN_TTL_SEC: "604800"
+      TRIAL_DAYS: "7"
+      SMTP_HOST: ${SMTP_HOST}
+      SMTP_PORT: ${SMTP_PORT}
+      SMTP_USER: ${SMTP_USER}
+      SMTP_PASSWORD: ${SMTP_PASSWORD}
+      SMTP_FROM: ${SMTP_FROM}
+      HDDT_ENC_KEY: ${HDDT_ENC_KEY}
+    depends_on:
+      db:
+        condition: service_healthy
+    logging: *default-logging
+    restart: unless-stopped
+    # Không mở cổng ra ngoài — chỉ nginx (web) gọi qua mạng nội bộ.
+
+  web:
+    build:
+      context: ./hdđt_maxv
+      args:
+        VITE_API_URL: /api/v1
+    ports:
+      - "${WEB_PORT:-80}:80" # Windows hay chiếm cổng 80 -> đặt WEB_PORT=8080 trong .env khi test local
+    depends_on:
+      - api
+    logging: *default-logging
+    restart: unless-stopped
+
+volumes:
+  pgdata:

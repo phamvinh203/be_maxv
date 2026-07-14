@@ -1,0 +1,11 @@
+# Caddy tự xin + gia hạn SSL Let's Encrypt cho DOMAIN.
+# DOMAIN và ACME_EMAIL lấy từ biến môi trường (docker-compose.prod.yml -> .env).
+
+{
+	email {$ACME_EMAIL}
+}
+
+{$DOMAIN} {
+	# Chuyển hết sang web (nginx phục vụ SPA + tự proxy /api/v1 -> api:4000)
+	reverse_proxy web:80
+}

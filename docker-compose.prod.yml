@@ -1,0 +1,40 @@
+# ============================================================
+#  Override PRODUCTION — thêm Caddy (HTTPS tự động Let's Encrypt) đứng trước web.
+#  Chạy:  docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build
+#  Cần trong .env:  DOMAIN=hddt.tencongty.com   ACME_EMAIL=admin@tencongty.com
+#                   ALLOWED_ORIGINS=https://hddt.tencongty.com
+#  Yêu cầu: DNS domain đã trỏ về IP server + firewall mở 80/443.
+# ============================================================
+
+x-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+
+services:
+  # Caddy chiếm 80/443, tự xin + gia hạn SSL, proxy sang web (nginx nội bộ).
+  caddy:
+    image: caddy:2
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      DOMAIN: ${DOMAIN}
+      ACME_EMAIL: ${ACME_EMAIL}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data # chứng chỉ + trạng thái ACME (bền qua restart)
+      - caddy_config:/config
+    depends_on:
+      - web
+    logging: *default-logging
+    restart: unless-stopped
+
+  # Production: web KHÔNG mở cổng ra host nữa — chỉ Caddy gọi qua mạng nội bộ.
+  web:
+    ports: !reset []
+
+volumes:
+  caddy_data:
+  caddy_config:
