@@ -359,9 +359,10 @@ function InvoiceTablePanel({ direction, active }: InvoiceTablePanelProps) {
 
   /** Xuất Excel THEO TAB đang mở: Tổng quát -> cột tổng quát; Chi tiết -> cột chi tiết. */
   const handleExport = async () => {
+    const range = { tuNgay: appliedFilters.tuNgay, denNgay: appliedFilters.denNgay };
     try {
-      if (resultTab === "chi-tiet") await exportDetailXlsx(detailRows, direction);
-      else await exportOverviewXlsx(rows, direction);
+      if (resultTab === "chi-tiet") await exportDetailXlsx(detailRows, direction, range);
+      else await exportOverviewXlsx(rows, direction, range);
       toast.success("Đã xuất file Excel.");
     } catch (e) {
       toast.error(getErrorMessage(e, "Không xuất được file Excel."));

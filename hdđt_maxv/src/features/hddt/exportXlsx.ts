@@ -166,17 +166,29 @@ const DIR_LABEL: Record<InvoiceDirection, { text: string; slug: string }> = {
   sold: { text: "đầu ra", slug: "dau-ra" },
 };
 
+/** Khoảng ngày đang lọc — thêm vào tên file để dễ nhận biết file thuộc kỳ nào. */
+export interface ExportRange {
+  tuNgay: string;
+  denNgay: string;
+}
+
+/** Đuôi tên file "tu-<từ>-den-<đến>" (rỗng nếu thiếu ngày). */
+function rangeSuffix(range: ExportRange): string {
+  return range.tuNgay && range.denNgay ? `-tu-${range.tuNgay}-den-${range.denNgay}` : "";
+}
+
 /** Xuất bảng "Tổng quát" của 1 chiều ra .xlsx (tiêu đề in đậm, giãn dòng). */
 export function exportOverviewXlsx(
   rows: DisplayRow[],
   direction: InvoiceDirection,
+  range: ExportRange,
 ): Promise<void> {
   const { text, slug } = DIR_LABEL[direction];
   return buildAndDownload(
     `Tổng quát ${text}`,
     overviewColumns(direction),
     rows,
-    `hoa-don-${slug}-tong-quat.xlsx`,
+    `hoa-don-${slug}-tong-quat${rangeSuffix(range)}.xlsx`,
   );
 }
 
@@ -184,12 +196,13 @@ export function exportOverviewXlsx(
 export function exportDetailXlsx(
   rows: DetailRow[],
   direction: InvoiceDirection,
+  range: ExportRange,
 ): Promise<void> {
   const { text, slug } = DIR_LABEL[direction];
   return buildAndDownload(
     `Chi tiết ${text}`,
     detailColumns(),
     rows,
-    `hoa-don-${slug}-chi-tiet.xlsx`,
+    `hoa-don-${slug}-chi-tiet${rangeSuffix(range)}.xlsx`,
   );
 }
