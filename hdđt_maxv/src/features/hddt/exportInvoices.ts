@@ -1,5 +1,5 @@
 import { trangThaiHdLabel } from "./api/gdt";
-import type { DisplayRow, InvoiceDirection } from "./types";
+import type { DisplayRow } from "./types";
 import { formatDateVN } from "./dateUtils";
 
 interface Column {
@@ -8,37 +8,8 @@ interface Column {
 }
 
 /**
- * Cột xuất Excel — chỉ các cột có dữ liệu thật (bỏ cột placeholder "—" và cột nút thao tác).
- * Dùng: nội bộ file này — `exportInvoicesToCsv`.
- */
-function columns(direction: InvoiceDirection): Column[] {
-  const isPurchase = direction === "purchase";
-  return [
-    { header: "STT", value: (_r, i) => i + 1 },
-    { header: "Ký hiệu mẫu số", value: (r) => r.mauHd },
-    { header: "Ký hiệu hóa đơn", value: (r) => r.soSeri },
-    { header: "Số hóa đơn", value: (r) => r.soHd },
-    { header: "Ngày lập", value: (r) => formatDateVN(r.ngayLap) },
-    { header: isPurchase ? "MST người bán" : "MST người xuất hàng", value: (r) => r.sellerMst },
-    { header: isPurchase ? "Tên người bán" : "Tên người xuất hàng", value: (r) => r.sellerTen },
-    { header: "Địa chỉ người bán", value: (r) => r.sellerDiaChi },
-    { header: isPurchase ? "MST người mua" : "MST người nhận hàng", value: (r) => r.buyerMst },
-    { header: isPurchase ? "Tên người mua" : "Tên người nhận hàng", value: (r) => r.buyerTen },
-    { header: "Tổng tiền chưa thuế", value: (r) => r.tienChuaThue ?? "" },
-    { header: "Tổng tiền thuế", value: (r) => r.tienThue ?? "" },
-    { header: "Tổng tiền chiết khấu thương mại", value: (r) => r.cktm ?? "" },
-    { header: "Tổng tiền phí", value: (r) => r.phi ?? "" },
-    { header: "Tổng tiền thanh toán", value: (r) => r.tongTt },
-    { header: "Đơn vị tiền tệ", value: (r) => r.maNt },
-    { header: "Tỷ giá", value: (r) => r.tyGia ?? "" },
-    { header: "Trạng thái hóa đơn", value: (r) => trangThaiHdLabel(r.trangThaiHd) },
-    { header: "Kết quả kiểm tra hóa đơn", value: (r) => r.ketQuaKt },
-  ];
-}
-
-/**
  * Bọc 1 ô CSV: escape dấu nháy kép và bọc trong "" nếu chứa ký tự đặc biệt.
- * Dùng: nội bộ file này — `exportInvoicesToCsv` (cho cả header lẫn từng ô).
+ * Dùng: nội bộ file này — `exportSavedBackupCsv` (cho cả header lẫn từng ô).
  */
 function csvCell(value: string | number): string {
   const s = String(value);
@@ -60,19 +31,6 @@ function downloadCsv(lines: string[], filename: string): void {
   link.click();
   document.body.removeChild(link);
   URL.revokeObjectURL(url);
-}
-
-/**
- * Xuất danh sách hóa đơn đang hiển thị (1 chiều) ra file CSV.
- * Dùng: `InvoiceListTabs` — nút "Xuất hóa đơn (Excel)".
- */
-export function exportInvoicesToCsv(rows: DisplayRow[], direction: InvoiceDirection): void {
-  const cols = columns(direction);
-  const lines = [
-    cols.map((c) => csvCell(c.header)).join(","),
-    ...rows.map((row, i) => cols.map((c) => csvCell(c.value(row, i))).join(",")),
-  ];
-  downloadCsv(lines, `hoa-don-${direction === "purchase" ? "dau-vao" : "dau-ra"}.csv`);
 }
 
 /** Cột sao lưu — tiêu đề trung tính (dùng chung cho cả 2 chiều), thêm cột "Chiều". */
