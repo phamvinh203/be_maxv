@@ -78,6 +78,8 @@ export interface InvoiceRaw {
   /** Tổng phí */
   tgtphi?: number;
   tgtttbso: number;
+  /** Trạng thái tải chi tiết ("OK" | "error") — cột "T. thái tải". */
+  tt_tai?: string;
   [key: string]: unknown;
 }
 
@@ -124,6 +126,54 @@ export interface DisplayRow {
   tyGia?: number;
   trangThaiHd: string;
   ketQuaKt: string;
+  /** Trạng thái tải chi tiết ("OK" | "error" | undefined = chưa tải) — cột "T. thái tải". */
+  ttTai?: string;
+}
+
+// ============================================================
+//  Chi tiết hóa đơn (tab "Chi tiết hoá đơn")
+// ============================================================
+
+/** Kết quả tải chi tiết 1 hóa đơn — POST /gdt/invoices/detail/:id. */
+export interface InvoiceDetailResult {
+  found: boolean;
+  ok: boolean;
+  detail: Record<string, unknown> | null;
+}
+
+/**
+ * 1 dòng bảng "Chi tiết hóa đơn" = thông tin hóa đơn (lặp mỗi dòng) + 1 dòng hàng hóa.
+ * Field header lấy từ top-level payload, field hàng hóa từ 1 phần tử mảng `hdhhdvu`.
+ */
+export interface DetailRow {
+  // Thông tin hóa đơn (lặp mỗi dòng hàng)
+  mauHd: string;
+  kyHieu: string;
+  soHd: string;
+  ngayHd: string;
+  sellerMst: string;
+  sellerTen: string;
+  maNt: string;
+  tyGia?: number;
+  tongTienHang?: number;
+  tongThue?: number;
+  tongCk?: number;
+  tongPhi?: number;
+  tongTt?: number;
+  hinhThucTt: string;
+  trangThaiHd: string;
+  ketQuaKt: string;
+  // Dòng hàng hóa (line item)
+  tenHang: string;
+  dvt: string;
+  soLuong?: number;
+  gia?: number;
+  tienCk?: number;
+  tienChuaThue?: number;
+  thue?: number;
+  tienSauThue?: number;
+  tlCktm?: number;
+  thueSuat: string;
 }
 
 // ============================================================

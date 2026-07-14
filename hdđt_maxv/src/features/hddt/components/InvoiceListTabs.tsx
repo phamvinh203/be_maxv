@@ -1,4 +1,12 @@
-import { useMemo, useState, type ReactNode, type SyntheticEvent } from "react";
+import {
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode,
+  type SyntheticEvent,
+} from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import Box from "@mui/material/Box";
 import Tabs from "@mui/material/Tabs";
 import Tab from "@mui/material/Tab";
@@ -15,39 +23,40 @@ import TableContainer from "@mui/material/TableContainer";
 import Typography from "@mui/material/Typography";
 import Alert from "@mui/material/Alert";
 import InboxRounded from "@mui/icons-material/InboxRounded";
-import ConstructionRounded from "@mui/icons-material/ConstructionRounded";
 import DescriptionRounded from "@mui/icons-material/DescriptionRounded";
 import FileDownloadRounded from "@mui/icons-material/FileDownloadRounded";
+import CloudDownloadRounded from "@mui/icons-material/CloudDownloadRounded";
 import { useGdtSession } from "../gdtSession/useGdtSession";
 import { trangThaiHdLabel } from "../api/gdt";
 import {
+  invoiceKeys,
   useFetchGdtInvoicesMutation,
   useSavedInvoicesQuery,
 } from "../api/invoiceQueries";
+import { detailKeys, useSavedDetailsQuery } from "../api/invoiceDetailQueries";
+import { fetchOneInvoiceDetail } from "../api/invoiceDetail";
+import { useAuth } from "../../auth/useAuth";
+import { toast } from "react-toastify";
 import type {
   DisplayRow,
   InvoiceDirection,
   InvoiceFilterValues,
   InvoiceQuery,
+  InvoiceRaw,
 } from "../types";
 import { toDisplayRow } from "../invoiceRow";
+import { toDetailRows } from "../detailRow";
+import { formatMoney } from "../format";
 import InvoiceFilterPanel from "./InvoiceFilterPanel";
+import InvoiceDetailPanel from "./InvoiceDetailPanel";
 import InvoicePagination, { DEFAULT_ROWS_PER_PAGE } from "./InvoicePagination";
+import { clampPage } from "../pagination";
 import { exportInvoicesToCsv } from "../exportInvoices";
 import { currentMonthRange, formatDateVN } from "../dateUtils";
 import { getErrorMessage } from "../../../lib/errors";
 
 /** Cột chưa có nguồn dữ liệu (cần API/tính năng riêng, chưa xây) — hiển thị tạm "—". */
 const NO_DATA_YET = "—";
-
-/**
- * Định dạng số tiền theo locale vi-VN (1.234.567); không phải số thì trả chuỗi rỗng.
- * Dùng: `COLUMNS` — các cột tiền (tổng tiền, thuế, chiết khấu, phí, tỷ giá...).
- */
-function formatMoney(n?: number) {
-  if (typeof n !== "number") return "";
-  return n.toLocaleString("vi-VN");
-}
 
 /** 1 cột bảng "Tổng quát": tiêu đề + căn lề + hàm lấy nội dung ô từ 1 dòng (`stt` = số thứ tự). */
 interface InvoiceColumn {
@@ -57,7 +66,18 @@ interface InvoiceColumn {
 }
 
 /** Checkbox chọn dòng — hiện chỉ là placeholder (chưa có thao tác hàng loạt để gắn vào). */
-const DISABLED_CHECKBOX = <Checkbox size="small"  sx={{ p: 0 }} />;
+const DISABLED_CHECKBOX = <Checkbox size="small" sx={{ p: 0 }} />;
+
+/** Ô "T. thái tải": OK (xanh) / Lỗi (đỏ) theo `tt_tai`; chưa tải -> "—". */
+function ttTaiCell(v?: string): ReactNode {
+  if (v === "OK") {
+    return <Box component="span" sx={{ color: "success.main", fontWeight: 600 }}>OK</Box>;
+  }
+  if (v === "error") {
+    return <Box component="span" sx={{ color: "error.main", fontWeight: 600 }}>Lỗi</Box>;
+  }
+  return NO_DATA_YET;
+}
 
 /**
  * Khai báo 22 cột 1 chỗ — header và body render chung từ đây nên luôn khớp nhau.
@@ -67,7 +87,7 @@ const DISABLED_CHECKBOX = <Checkbox size="small"  sx={{ p: 0 }} />;
 const COLUMNS: InvoiceColumn[] = [
   { header: "STT", cell: (_r, stt) => stt },
   { header: "Chọn", align: "center", cell: () => DISABLED_CHECKBOX },
-  { header: "T. thái tải", cell: () => NO_DATA_YET },
+  { header: "T. thái tải", align: "center", cell: (r) => ttTaiCell(r.ttTai) },
   { header: "Ký hiệu mẫu số", cell: (r) => r.mauHd },
   { header: "Ký hiệu hóa đơn", cell: (r) => r.soSeri },
   { header: "Số hóa đơn", cell: (r) => r.soHd },
@@ -96,6 +116,23 @@ interface InvoiceTablePanelProps {
 }
 
 type ResultTab = "tong-quat" | "chi-tiet";
+
+/** Nghỉ giữa mỗi hóa đơn khi tải chi tiết — tránh GDT rate-limit (giống Thread.Sleep bản C#). */
+const DETAIL_LOOP_DELAY_MS = 800;
+const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
+/**
+ * Khóa toàn cục: chỉ 1 tiến trình tải chi tiết chạy 1 lúc trên toàn app. Cần thiết vì CẢ 2 panel
+ * (mua vào + bán ra) luôn mount và dùng chung token GDT — chạy song song sẽ gấp đôi request.
+ */
+let detailRunActive = false;
+
+/** Nếu đang có tiến trình tải chi tiết khác chạy: báo toast + trả true (nơi gọi return luôn). */
+function rejectIfBusy(): boolean {
+  if (!detailRunActive) return false;
+  toast.info("Đang có tiến trình tải chi tiết khác chạy — vui lòng đợi.");
+  return true;
+}
 
 /** Bộ lọc mặc định = tháng hiện tại (từ ngày 1 -> hôm nay). Dùng khi tự nạp lúc mở tab & khi "Bỏ tìm kiếm". */
 function defaultMonthFilters(): InvoiceFilterValues {
@@ -130,11 +167,23 @@ function buildQuery(filters: InvoiceFilterValues): InvoiceQuery {
  */
 function InvoiceTablePanel({ direction, active }: InvoiceTablePanelProps) {
   const { currentGdtMst, getGdtToken } = useGdtSession();
+  const { currentCompanyId } = useAuth();
+  const qc = useQueryClient();
   const [resultTab, setResultTab] = useState<ResultTab>("tong-quat");
-  const [error, setError] = useState(""); // lỗi validate / GDT cục bộ
-  const [savedCount, setSavedCount] = useState<number | null>(null);
   const [page, setPage] = useState(0);
   const [rowsPerPage, setRowsPerPage] = useState(DEFAULT_ROWS_PER_PAGE);
+
+  // Luồng chạy tiến trình từng hóa đơn (progressive): mỗi hóa đơn xử lý xong thì hiện ngay 1 dòng.
+  const [liveRows, setLiveRows] = useState<DisplayRow[]>([]);
+  const [processing, setProcessing] = useState(false);
+  // Mỗi lần chạy tăng 1; vòng lặp so khớp để tự dừng nếu người dùng chạy lượt mới (chống chồng chéo).
+  const runIdRef = useRef(0);
+
+  // Đổi công ty giữa chừng -> hủy tiến trình đang chạy (id hóa đơn thuộc tenant cũ, sai ở tenant mới).
+  // Chỉ bump ref ở đây (không setState trong effect); nhánh hủy trong vòng lặp sẽ reset state.
+  useEffect(() => {
+    runIdRef.current += 1;
+  }, [currentCompanyId]);
 
   // Bộ lọc mặc định (ổn định) cho form + reset; và bộ lọc "đã áp dụng" quyết định query key.
   const [defaultFilters] = useState(defaultMonthFilters);
@@ -143,58 +192,169 @@ function InvoiceTablePanel({ direction, active }: InvoiceTablePanelProps) {
   // useQuery tự fetch DB khi tab active + khi bộ lọc đã áp dụng đổi.
   const savedQuery = useSavedInvoicesQuery(direction, buildQuery(appliedFilters), active);
   const gdtMutation = useFetchGdtInvoicesMutation(direction);
+  // Chi tiết chỉ nạp khi tab "Chi tiết" đang mở (dữ liệu nặng, khỏi tốn request khi chưa xem).
+  const savedDetailsQuery = useSavedDetailsQuery(
+    direction,
+    buildQuery(appliedFilters),
+    active && resultTab === "chi-tiet",
+  );
 
-  const rows = useMemo(
+  const savedRows = useMemo(
     () => (savedQuery.data?.datas ?? []).map((r) => toDisplayRow(r, direction)),
     [savedQuery.data, direction],
   );
-  const pagedRows = rows.slice(page * rowsPerPage, page * rowsPerPage + rowsPerPage);
+  // Đang chạy tiến trình -> hiện dòng chạy dần (liveRows); xong -> hiện từ DB (nguồn chuẩn).
+  const rows = processing ? liveRows : savedRows;
+  const detailRows = useMemo(
+    () => (savedDetailsQuery.data ?? []).flatMap(toDetailRows),
+    [savedDetailsQuery.data],
+  );
+  // Kẹp trang trong khoảng hợp lệ (refetch nền trả ít dòng hơn -> khỏi kẹt ở trang trống).
+  const safePage = clampPage(page, rows.length, rowsPerPage);
+  const pagedRows = rows.slice(safePage * rowsPerPage, safePage * rowsPerPage + rowsPerPage);
 
   const dbLoading = savedQuery.isFetching;
   const gdtLoading = gdtMutation.isPending;
   const searched = savedQuery.isFetched;
-  const displayError =
-    error ||
-    (savedQuery.isError
-      ? getErrorMessage(savedQuery.error, "Không đọc được hóa đơn đã lưu.")
-      : "");
 
-  /** Áp bộ lọc mới -> đổi query key -> useQuery tự đọc lại DB. */
+  /** Áp bộ lọc mới -> hủy tiến trình đang chạy (nếu có) rồi đổi query key để useQuery đọc lại DB. */
   const applyFilters = (filters: InvoiceFilterValues) => {
-    setError("");
-    setSavedCount(null);
+    runIdRef.current += 1; // dừng loop cũ: bảng thôi hiện liveRows cũ, không tải nhầm HĐ đã lọc bỏ
+    setProcessing(false);
+    setLiveRows([]);
     setPage(0);
     setAppliedFilters(filters);
   };
 
-  /** Tra cứu GDT (BE luôn lưu) -> onSuccess invalidate để bảng tự nạp lại từ DB. */
-  const handleFetchGdt = (filters: InvoiceFilterValues) => {
-    setError("");
-    setSavedCount(null);
+  /**
+   * Chạy tiến trình từng hóa đơn: lần lượt tải chi tiết + hiện NGAY dòng đó (kèm T.thái tải).
+   * Tiến trình hiển thị bằng 1 toast loading tự cập nhật số đếm; xong -> nạp lại từ DB.
+   */
+  const processInvoicesProgressively = async (
+    invoices: InvoiceRaw[],
+    gdtToken: string,
+  ) => {
+    if (invoices.length === 0) return;
+    if (rejectIfBusy()) return;
+    const myRun = ++runIdRef.current;
+    detailRunActive = true;
+    setLiveRows([]);
+    setPage(0);
+    setProcessing(true);
+    const toastId = toast.loading(`Đang tải chi tiết hóa đơn 0/${invoices.length}…`);
+    // Dọn state + tắt toast khi lượt này bị hủy (đổi bộ lọc / đổi công ty / lượt mới).
+    const cancel = () => {
+      setProcessing(false);
+      setLiveRows([]);
+      toast.dismiss(toastId);
+    };
 
-    if (!filters.tuNgay || !filters.denNgay) {
-      setError("Vui lòng chọn đủ Từ ngày / Đến ngày.");
-      return;
+    let ok = 0;
+    let err = 0;
+    try {
+      for (let i = 0; i < invoices.length; i++) {
+        if (runIdRef.current !== myRun) {
+          cancel();
+          return; // finally nhả khóa
+        }
+        const raw = invoices[i];
+        toast.update(toastId, {
+          render: `Đang tải chi tiết hóa đơn ${i + 1}/${invoices.length}${
+            raw.shdon ? ` — HĐ số ${raw.shdon}` : ""
+          }…`,
+        });
+
+        let ttTai = "error";
+        try {
+          const res = await fetchOneInvoiceDetail(direction, raw.id, gdtToken);
+          ttTai = res.ok ? "OK" : "error";
+        } catch {
+          ttTai = "error";
+        }
+        if (ttTai === "OK") ok += 1;
+        else err += 1;
+
+        // Hiện ngay dòng vừa xử lý (đã có T.thái tải).
+        setLiveRows((prev) => [...prev, { ...toDisplayRow(raw, direction), ttTai }]);
+
+        // Nghỉ giữa các hóa đơn để tránh GDT rate-limit (bỏ nghỉ sau hóa đơn cuối).
+        if (i < invoices.length - 1) await sleep(DETAIL_LOOP_DELAY_MS);
+      }
+
+      if (runIdRef.current !== myRun) {
+        cancel();
+        return;
+      }
+      setProcessing(false);
+      toast.update(toastId, {
+        render: `Đã tải chi tiết ${ok}/${invoices.length} hóa đơn${
+          err > 0 ? ` (${err} lỗi)` : ""
+        }.`,
+        type: err > 0 ? "warning" : "success",
+        isLoading: false,
+        autoClose: 4000,
+      });
+      // Nạp lại nguồn chuẩn từ DB (danh sách + chi tiết) của đúng công ty + chiều này.
+      qc.invalidateQueries({
+        queryKey: invoiceKeys.savedByDirection(currentCompanyId, direction),
+      });
+      qc.invalidateQueries({
+        queryKey: detailKeys.byDirection(currentCompanyId, direction),
+      });
+    } finally {
+      detailRunActive = false;
     }
+  };
+
+  /** Lấy token GDT hiện tại; toast cảnh báo + trả undefined nếu chưa đăng nhập Thuế điện tử. */
+  const requireGdtToken = (): string | undefined => {
     const gdtToken = currentGdtMst ? getGdtToken(currentGdtMst) : undefined;
     if (!gdtToken || !currentGdtMst) {
-      setError(
-        'Chưa đăng nhập Thuế điện tử — bấm "Đăng nhập Thuế điện tử" ở trên trước khi cập nhật.',
-      );
+      toast.warning('Chưa đăng nhập Thuế điện tử — bấm "Đăng nhập Thuế điện tử" ở trên trước.');
+      return undefined;
+    }
+    return gdtToken;
+  };
+
+  /**
+   * Cập nhật từ Thuế điện tử: lấy danh sách (BE lưu) rồi CHẠY TIẾN TRÌNH từng hóa đơn — mỗi hóa
+   * đơn xử lý xong hiện ngay 1 dòng kèm chi tiết, thay vì chờ hết mới hiện.
+   */
+  const handleFetchGdt = (filters: InvoiceFilterValues) => {
+    if (!filters.tuNgay || !filters.denNgay) {
+      toast.warning("Vui lòng chọn đủ Từ ngày / Đến ngày.");
       return;
     }
+    // Chặn NGAY nếu panel kia đang chạy tiến trình — tránh lưu list xong nhưng bỏ qua tải chi tiết.
+    if (rejectIfBusy()) return;
+    const gdtToken = requireGdtToken();
+    if (!gdtToken) return;
 
-    // Áp bộ lọc trước để bảng và query khớp nhau, rồi mới tra cứu GDT.
     setPage(0);
     setAppliedFilters(filters);
+    // Chốt mốc lượt hiện tại: nếu đổi công ty giữa lúc lấy list (effect bump runIdRef), bỏ qua onSuccess.
+    const startRun = runIdRef.current;
     gdtMutation.mutate(
       { gdtToken, query: buildQuery(filters) },
       {
-        onSuccess: (res) => setSavedCount(res.saved ?? 0),
+        onSuccess: (res) => {
+          if (runIdRef.current !== startRun) return; // đổi công ty giữa chừng -> không chạy tiếp
+          toast.success(`Đã lưu ${res.saved ?? 0} hóa đơn vào cơ sở dữ liệu.`);
+          // Chạy tiến trình chi tiết cho đúng danh sách vừa lấy về.
+          void processInvoicesProgressively(res.datas ?? [], gdtToken);
+        },
         onError: (e) =>
-          setError(getErrorMessage(e, "Không cập nhật được hóa đơn từ Thuế điện tử.")),
+          toast.error(getErrorMessage(e, "Không cập nhật được hóa đơn từ Thuế điện tử.")),
       },
     );
+  };
+
+  /** Nút "Tải chi tiết" — chạy tiến trình lại cho danh sách đang có (không cập nhật list mới). */
+  const handleDownloadDetails = () => {
+    if (rejectIfBusy()) return;
+    const gdtToken = requireGdtToken();
+    if (!gdtToken) return;
+    void processInvoicesProgressively(savedQuery.data?.datas ?? [], gdtToken);
   };
 
   return (
@@ -202,21 +362,18 @@ function InvoiceTablePanel({ direction, active }: InvoiceTablePanelProps) {
       <InvoiceFilterPanel
         direction={direction}
         dbLoading={dbLoading}
-        gdtLoading={gdtLoading}
+        gdtLoading={gdtLoading || processing}
         initialValues={defaultFilters}
         onSearch={applyFilters}
         onFetchGdt={handleFetchGdt}
         onReset={() => applyFilters(defaultFilters)}
       />
 
-      {displayError && (
+      {/* Lỗi đọc DB là trạng thái kéo dài -> để inline; các thông báo sự kiện (lưu/tải/lỗi thao
+          tác) dùng toast (react-toastify) trong các handler. */}
+      {savedQuery.isError && (
         <Alert severity="error" sx={{ mb: 2 }}>
-          {displayError}
-        </Alert>
-      )}
-      {savedCount !== null && (
-        <Alert severity="success" sx={{ mb: 2 }}>
-          Đã lưu {savedCount} hóa đơn vào cơ sở dữ liệu.
+          {getErrorMessage(savedQuery.error, "Không đọc được hóa đơn đã lưu.")}
         </Alert>
       )}
 
@@ -234,37 +391,40 @@ function InvoiceTablePanel({ direction, active }: InvoiceTablePanelProps) {
           <Tab label="Chi tiết hoá đơn" value="chi-tiet" sx={{ minHeight: 0 }} />
         </Tabs>
 
-        <Button
-          variant="outlined"
-          size="small"
-          startIcon={<FileDownloadRounded fontSize="small" />}
-          sx={{ textTransform: "none", whiteSpace: "nowrap" }}
-          disabled={rows.length === 0}
-          onClick={() => exportInvoicesToCsv(rows, direction)}
-        >
-          Xuất hóa đơn (Excel)
-        </Button>
+        <Stack direction="row" spacing={1}>
+          <Button
+            variant="contained"
+            size="small"
+            startIcon={<CloudDownloadRounded fontSize="small" />}
+            sx={{ textTransform: "none", whiteSpace: "nowrap" }}
+            disabled={rows.length === 0 || processing}
+            onClick={handleDownloadDetails}
+          >
+            {processing ? "Đang tải chi tiết…" : "Tải chi tiết"}
+          </Button>
+          <Button
+            variant="outlined"
+            size="small"
+            startIcon={<FileDownloadRounded fontSize="small" />}
+            sx={{ textTransform: "none", whiteSpace: "nowrap" }}
+            disabled={rows.length === 0 || processing}
+            onClick={() => exportInvoicesToCsv(rows, direction)}
+          >
+            Xuất hóa đơn (Excel)
+          </Button>
+        </Stack>
       </Stack>
 
       {resultTab === "chi-tiet" ? (
-        <Box
-          sx={{
-            py: 8,
-            display: "flex",
-            flexDirection: "column",
-            alignItems: "center",
-            gap: 1.5,
-            color: "text.disabled",
-            border: "1px solid",
-            borderColor: "divider",
-            borderRadius: 1,
-          }}
-        >
-          <ConstructionRounded fontSize="large" />
-          <Typography variant="body2">
-            Chi tiết hóa đơn — tính năng đang phát triển.
-          </Typography>
-        </Box>
+        <InvoiceDetailPanel
+          rows={detailRows}
+          loading={savedDetailsQuery.isLoading}
+          error={
+            savedDetailsQuery.isError
+              ? getErrorMessage(savedDetailsQuery.error, "Không đọc được chi tiết đã lưu.")
+              : ""
+          }
+        />
       ) : (
       <>
       <TableContainer component={Paper} variant="outlined" sx={{ overflowX: "auto" }}>
@@ -281,7 +441,7 @@ function InvoiceTablePanel({ direction, active }: InvoiceTablePanelProps) {
           <TableBody>
             {rows.length > 0 ? (
               pagedRows.map((r, i) => {
-                const stt = page * rowsPerPage + i + 1;
+                const stt = safePage * rowsPerPage + i + 1;
                 return (
                   <TableRow key={r.id} hover>
                     {COLUMNS.map((col) => (
@@ -310,7 +470,7 @@ function InvoiceTablePanel({ direction, active }: InvoiceTablePanelProps) {
       {rows.length > 0 && (
         <InvoicePagination
           count={rows.length}
-          page={page}
+          page={safePage}
           rowsPerPage={rowsPerPage}
           onPageChange={setPage}
           onRowsPerPageChange={(value) => {

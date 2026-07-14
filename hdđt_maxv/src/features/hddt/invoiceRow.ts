@@ -36,5 +36,6 @@ export function toDisplayRow(r: InvoiceRaw, direction: InvoiceDirection): Displa
     tyGia: r.tgia,
     trangThaiHd: r.tthai,
     ketQuaKt: r.ttxly,
+    ttTai: typeof r.tt_tai === "string" ? r.tt_tai : undefined,
   };
 }
