@@ -26,6 +26,7 @@ import InboxRounded from "@mui/icons-material/InboxRounded";
 import DescriptionRounded from "@mui/icons-material/DescriptionRounded";
 import FileDownloadRounded from "@mui/icons-material/FileDownloadRounded";
 import CloudDownloadRounded from "@mui/icons-material/CloudDownloadRounded";
+import VisibilityRounded from "@mui/icons-material/VisibilityRounded";
 import { useGdtSession } from "../gdtSession/useGdtSession";
 import { trangThaiHdLabel, ketQuaKiemTraLabel } from "../api/gdt";
 import {
@@ -48,6 +49,7 @@ import { toDetailRows } from "../detailRow";
 import { formatMoney, ttTaiLabel } from "../format";
 import InvoiceFilterPanel from "./InvoiceFilterPanel";
 import InvoiceDetailPanel from "./InvoiceDetailPanel";
+import InvoiceViewDialog from "./InvoiceViewDialog";
 import InvoicePagination, { DEFAULT_ROWS_PER_PAGE } from "./InvoicePagination";
 import { clampPage } from "../pagination";
 import { exportDetailXlsx, exportOverviewXlsx } from "../exportXlsx";
@@ -63,9 +65,6 @@ interface InvoiceColumn {
   align?: "right" | "center";
   cell: (row: DisplayRow, stt: number) => ReactNode;
 }
-
-/** Checkbox chọn dòng — hiện chỉ là placeholder (chưa có thao tác hàng loạt để gắn vào). */
-const DISABLED_CHECKBOX = <Checkbox size="small" sx={{ p: 0 }} />;
 
 /** Ô "T. thái tải": OK (xanh) / Lỗi (đỏ) theo `tt_tai`; chưa tải -> "—". */
 function ttTaiCell(v?: string): ReactNode {
@@ -85,7 +84,8 @@ function ttTaiCell(v?: string): ReactNode {
  */
 const COLUMNS: InvoiceColumn[] = [
   { header: "STT", cell: (_r, stt) => stt },
-  { header: "Chọn", align: "center", cell: () => DISABLED_CHECKBOX },
+  // Cột "Chọn" render riêng trong thân bảng (cần state selectedId) — cell này không được gọi.
+  { header: "Chọn", align: "center", cell: () => null },
   { header: "T. thái tải", align: "center", cell: (r) => ttTaiCell(r.ttTai) },
   { header: "Ký hiệu mẫu số", cell: (r) => r.mauHd },
   { header: "Ký hiệu hóa đơn", cell: (r) => r.soSeri },
@@ -158,6 +158,9 @@ function InvoiceTablePanel({ direction, active }: InvoiceTablePanelProps) {
   const [resultTab, setResultTab] = useState<ResultTab>("tong-quat");
   const [page, setPage] = useState(0);
   const [rowsPerPage, setRowsPerPage] = useState(DEFAULT_ROWS_PER_PAGE);
+  // Hóa đơn đang chọn (checkbox cột "Chọn") để bật nút "Xem hóa đơn"; null = chưa chọn.
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [viewOpen, setViewOpen] = useState(false);
 
   // BE tải chi tiết chạy nền; FE poll tiến độ. `detailRunning` để khóa nút trong lúc đang poll.
   const [detailRunning, setDetailRunning] = useState(false);
@@ -206,8 +209,19 @@ function InvoiceTablePanel({ direction, active }: InvoiceTablePanelProps) {
   const applyFilters = (filters: InvoiceFilterValues) => {
     runIdRef.current += 1; // dừng poll cũ để không nhầm tiến độ của khoảng đã đổi
     setPage(0);
+    setSelectedId(null); // khoảng/bộ lọc đổi -> bỏ chọn (id cũ có thể không còn trong danh sách)
     setAppliedFilters(filters);
   };
+
+  // Đổi công ty -> bỏ hóa đơn đang chọn (id thuộc tenant cũ) và đóng dialog. Điều chỉnh state NGAY
+  // trong render theo mẫu "lưu giá trị trước" của React (tránh setState trong effect gây render dây
+  // chuyền — cùng lý do effect ở trên chỉ bump ref chứ không setState).
+  const prevCompanyRef = useRef(currentCompanyId);
+  if (prevCompanyRef.current !== currentCompanyId) {
+    prevCompanyRef.current = currentCompanyId;
+    if (selectedId !== null) setSelectedId(null);
+    if (viewOpen) setViewOpen(false);
+  }
 
   /** Nạp lại DANH SÁCH đã lưu (bảng Tổng quát) — dùng trong lúc poll khi có hóa đơn vừa tải xong. */
   const invalidateSavedList = () => {
@@ -391,6 +405,18 @@ function InvoiceTablePanel({ direction, active }: InvoiceTablePanelProps) {
         </Tabs>
 
         <Stack direction="row" spacing={1}>
+          {resultTab === "tong-quat" && (
+            <Button
+              variant="outlined"
+              size="small"
+              startIcon={<VisibilityRounded fontSize="small" />}
+              sx={{ textTransform: "none", whiteSpace: "nowrap" }}
+              disabled={!selectedId}
+              onClick={() => setViewOpen(true)}
+            >
+              Xem hóa đơn
+            </Button>
+          )}
           <Button
             variant="contained"
             size="small"
@@ -442,10 +468,22 @@ function InvoiceTablePanel({ direction, active }: InvoiceTablePanelProps) {
               pagedRows.map((r, i) => {
                 const stt = safePage * rowsPerPage + i + 1;
                 return (
-                  <TableRow key={r.id} hover>
+                  <TableRow key={r.id} hover selected={selectedId === r.id}>
                     {COLUMNS.map((col) => (
                       <TableCell key={col.header} align={col.align}>
-                        {col.cell(r, stt)}
+                        {col.header === "Chọn" ? (
+                          <Checkbox
+                            size="small"
+                            sx={{ p: 0 }}
+                            checked={selectedId === r.id}
+                            onChange={(e) =>
+                              setSelectedId(e.target.checked ? r.id : null)
+                            }
+                            slotProps={{ input: { "aria-label": `Chọn hóa đơn ${r.soHd}` } }}
+                          />
+                        ) : (
+                          col.cell(r, stt)
+                        )}
                       </TableCell>
                     ))}
                   </TableRow>
@@ -480,6 +518,13 @@ function InvoiceTablePanel({ direction, active }: InvoiceTablePanelProps) {
       )}
       </>
       )}
+
+      <InvoiceViewDialog
+        open={viewOpen}
+        onClose={() => setViewOpen(false)}
+        direction={direction}
+        id={selectedId}
+      />
     </Box>
   );
 }

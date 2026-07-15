@@ -39,6 +39,27 @@ export async function getSavedDetails(
   return raw.datas ?? [];
 }
 
+/** Kết quả đọc chi tiết đã lưu của 1 hóa đơn (GET saved-detail/:id). */
+export interface SavedInvoiceDetail {
+  found: boolean;
+  /** Payload GDT gốc (có `hdhhdvu`, bên bán/mua...) — null nếu hóa đơn chưa tải chi tiết. */
+  detail: Record<string, unknown> | null;
+}
+
+/**
+ * GET /gdt/invoices/:direction/saved-detail/:id → đọc CHI TIẾT ĐÃ LƯU của 1 hóa đơn (không gọi GDT).
+ * Dùng cho nút "Xem hóa đơn" dựng tờ hóa đơn GTGT. 404 (apiFetch ném lỗi) nếu id không có trong DB;
+ * `detail=null` nếu hóa đơn có nhưng chưa tải chi tiết. Dùng: `useSavedInvoiceDetailByIdQuery`.
+ */
+export function getSavedInvoiceDetailById(
+  direction: InvoiceDirection,
+  id: string,
+): Promise<SavedInvoiceDetail> {
+  return apiFetch<SavedInvoiceDetail>(
+    `/gdt/invoices/${direction}/saved-detail/${encodeURIComponent(id)}`,
+  );
+}
+
 /** Tiến độ lượt tải chi tiết chạy nền ở BE (FE poll qua `getDetailRunStatus`). */
 export interface DetailRunStatus {
   active: boolean;

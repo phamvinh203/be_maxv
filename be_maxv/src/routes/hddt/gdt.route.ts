@@ -8,6 +8,7 @@ import {
   savedSoldInvoices,
   savedPurchaseDetails,
   savedSoldDetails,
+  savedInvoiceDetailById,
   downloadOneInvoiceDetail,
   startPurchaseDetailRun,
   startSoldDetailRun,
@@ -55,6 +56,13 @@ export default async function (
   fastify.get("/invoices/sold/saved-details", {
     preHandler: [fastify.authenticate],
     handler: savedSoldDetails,
+  });
+
+  // Đọc CHI TIẾT ĐÃ LƯU của 1 hóa đơn theo id (nút "Xem hóa đơn" dựng tờ hóa đơn GTGT) — đọc DB,
+  // không cần X-Gdt-Token. `:direction` = purchase|sold.
+  fastify.get("/invoices/:direction/saved-detail/:id", {
+    preHandler: [fastify.authenticate],
+    handler: savedInvoiceDetailById,
   });
 
   // Tải chi tiết 1 hóa đơn theo id (nút "Cập nhật"/"Tải chi tiết" lặp từng hóa đơn); direction ở body.

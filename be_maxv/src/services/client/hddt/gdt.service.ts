@@ -820,6 +820,33 @@ export async function downloadOneInvoiceDetail(
 }
 
 /**
+ * Đọc CHI TIẾT ĐÃ LƯU (cột `detail`) của 1 hóa đơn theo `id` — cho nút "Xem hóa đơn" dựng tờ hóa đơn
+ * GTGT. KHÔNG gọi GDT (chỉ đọc DB). `found=false` nếu id không có trong dữ liệu đã lưu; `detail=null`
+ * nếu hóa đơn có nhưng CHƯA tải chi tiết (FE nhắc bấm "Tải chi tiết" trước). Branch trực tiếp 2 model
+ * (vct60view/vct50view) vì `detailStore` chỉ select field khóa, không có cột `detail`.
+ */
+export async function getSavedInvoiceDetailById(
+  tenantDb: PrismaClient,
+  direction: "purchase" | "sold",
+  id: string,
+): Promise<{ found: boolean; detail: Record<string, unknown> | null }> {
+  const args = { where: { id }, select: { detail: true }, take: 1 } as const;
+  const rows =
+    direction === "purchase"
+      ? await tenantDb.vct60view.findMany(args)
+      : await tenantDb.vct50view.findMany(args);
+  const row = rows[0];
+  if (!row) return { found: false, detail: null };
+  return {
+    found: true,
+    detail:
+      row.detail != null && typeof row.detail === "object"
+        ? (row.detail as Record<string, unknown>)
+        : null,
+  };
+}
+
+/**
  * Đánh dấu `tt_tai="error"` cho 1 hóa đơn đã lưu — KHÔNG gọi GDT. Dùng khi FE tải chi tiết bị lỗi
  * ở tầng HTTP (500/timeout/mất mạng) nên `fetchAndStoreDetail` chưa kịp đánh dấu; ghi bền để cột
  * "T. thái tải" vẫn hiện "Lỗi" sau khi nạp lại/reload. `updateMany` idempotent — id không tồn tại

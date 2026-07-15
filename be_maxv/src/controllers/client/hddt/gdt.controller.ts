@@ -203,6 +203,42 @@ export async function savedSoldDetails(
   return handleSavedDetails(request, reply, "sold", request.query);
 }
 
+/**
+ * GET /gdt/invoices/:direction/saved-detail/:id — đọc CHI TIẾT ĐÃ LƯU (cột `detail`) của 1 hóa đơn
+ * theo id, cho nút "Xem hóa đơn" dựng tờ hóa đơn GTGT. Chỉ cần JWT app (resolveTenantDb), KHÔNG cần
+ * token GDT (đọc DB). 404 nếu id không có trong dữ liệu đã lưu; `detail=null` nếu chưa tải chi tiết.
+ */
+export async function savedInvoiceDetailById(
+  request: FastifyRequest<{ Params: { direction: string; id: string } }>,
+  reply: FastifyReply
+) {
+  const { direction, id } = request.params;
+  if (direction !== "purchase" && direction !== "sold") {
+    return reply.status(400).send({ message: "Tham số direction không hợp lệ" });
+  }
+  if (!id) {
+    return reply.status(400).send({ message: "Thiếu id hóa đơn" });
+  }
+
+  // Ngoài try/catch: lỗi quyền/tenant (403/404) trả đúng mã qua error-handler chung.
+  const tenantDb = await resolveTenantDb(request);
+
+  try {
+    const result = await GDTService.getSavedInvoiceDetailById(tenantDb, direction, id);
+    if (!result.found) {
+      return reply.status(404).send({
+        message: "Không tìm thấy hóa đơn trong dữ liệu đã lưu",
+      });
+    }
+    return reply.send(result);
+  } catch (err) {
+    request.log.error(err);
+    return reply.status(500).send({
+      message: err instanceof Error ? err.message : "Không đọc được chi tiết đã lưu",
+    });
+  }
+}
+
 export async function soldInvoices(
   request: FastifyRequest<{ Querystring: SoldInvoiceQuery }>,
   reply: FastifyReply
