@@ -9,6 +9,10 @@ import {
   savedPurchaseDetails,
   savedSoldDetails,
   downloadOneInvoiceDetail,
+  startPurchaseDetailRun,
+  startSoldDetailRun,
+  purchaseDetailRunStatus,
+  soldDetailRunStatus,
   syncInvoices,
   syncHistory,
   clearSyncData,
@@ -57,6 +61,25 @@ export default async function (
   fastify.post("/invoices/detail/:id", {
     preHandler: [fastify.authenticate],
     handler: downloadOneInvoiceDetail,
+  });
+
+  // Tải chi tiết CHẠY NỀN ở BE qua pacer dùng chung (429-retry): POST bắt đầu lượt, GET poll tiến độ.
+  // Cần X-Gdt-Token cho POST (gọi GDT); GET chỉ cần JWT app (đọc tiến độ in-memory).
+  fastify.post("/invoices/purchase/detail-run", {
+    preHandler: [fastify.authenticate],
+    handler: startPurchaseDetailRun,
+  });
+  fastify.post("/invoices/sold/detail-run", {
+    preHandler: [fastify.authenticate],
+    handler: startSoldDetailRun,
+  });
+  fastify.get("/invoices/purchase/detail-run/status", {
+    preHandler: [fastify.authenticate],
+    handler: purchaseDetailRunStatus,
+  });
+  fastify.get("/invoices/sold/detail-run/status", {
+    preHandler: [fastify.authenticate],
+    handler: soldDetailRunStatus,
   });
 
   // Đồng bộ hóa đơn (dialog "Đồng bộ hóa đơn"): POST /sync chạy đồng bộ (cần X-Gdt-Token),

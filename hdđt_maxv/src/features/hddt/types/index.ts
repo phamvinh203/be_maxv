@@ -143,6 +143,8 @@ export interface InvoiceDetailResult {
   found: boolean;
   ok: boolean;
   detail: Record<string, unknown> | null;
+  /** [DIAGNOSTIC] Lý do lỗi GDT (mã/message) khi ok=false — để log khi chẩn đoán. */
+  error?: string;
 }
 
 /**

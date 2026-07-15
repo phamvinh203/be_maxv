@@ -38,3 +38,39 @@ export async function getSavedDetails(
   );
   return raw.datas ?? [];
 }
+
+/** Tiến độ lượt tải chi tiết chạy nền ở BE (FE poll qua `getDetailRunStatus`). */
+export interface DetailRunStatus {
+  active: boolean;
+  total: number;
+  done: number;
+  ok: number;
+  err: number;
+  /** true nếu lượt dừng sớm vì token GDT hết hạn — FE nhắc đăng nhập lại. */
+  authExpired?: boolean;
+}
+
+/**
+ * POST /gdt/invoices/:direction/detail-run → BE bắt đầu lượt tải chi tiết CHẠY NỀN (thay thế lượt cũ
+ * nếu đang chạy) qua pacer dùng chung (429-retry). Trả tiến độ ngay; FE poll `getDetailRunStatus`
+ * tới khi xong. Cần token GDT (BE gọi GDT). Dùng: nút "Cập nhật từ Thuế điện tử" / "Tải chi tiết".
+ */
+export function startDetailRun(
+  direction: InvoiceDirection,
+  gdtToken: string,
+  query: InvoiceQuery,
+): Promise<DetailRunStatus> {
+  const params = buildInvoiceParams(direction, query);
+  return apiFetch<DetailRunStatus>(`/gdt/invoices/${direction}/detail-run?${params.toString()}`, {
+    method: "POST",
+    headers: { "X-Gdt-Token": gdtToken },
+  });
+}
+
+/**
+ * GET /gdt/invoices/:direction/detail-run/status → tiến độ lượt tải chi tiết hiện tại (KHÔNG cần
+ * token GDT). Dùng: FE poll trong lúc BE tải chi tiết ngầm.
+ */
+export function getDetailRunStatus(direction: InvoiceDirection): Promise<DetailRunStatus> {
+  return apiFetch<DetailRunStatus>(`/gdt/invoices/${direction}/detail-run/status`);
+}

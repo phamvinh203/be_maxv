@@ -1,6 +1,7 @@
 import { FastifyReply, FastifyRequest } from "fastify";
 import * as GDTService from "../../../services/client/hddt/gdt.service";
-import { resolveTenantDb } from "../../../helpers/resolveTenantDb";
+import { resolveTenantDb, resolveTenantDbName } from "../../../helpers/resolveTenantDb";
+import { getTenantDb } from "../../../helpers/tenantClient";
 import {
   InvoiceDetailOneBody,
   LoginRequest,
@@ -75,7 +76,9 @@ async function handleGdtInvoices(
   // Ngoài try/catch riêng: lỗi quyền/tenant (403/404) cần trả đúng mã (qua error-handler
   // chung), không bị nuốt thành 500 của khối gọi GDT bên dưới. resolveTenantDb lỗi -> dừng
   // cả request (kể cả bước tra cứu GDT), vì luồng này định nghĩa là "tra cứu -> luôn lưu".
-  const tenantDb = await resolveTenantDb(request);
+  // Dùng dbName để còn kích hoạt backfill nền (chạy dài, tự getTenantDb lại giữ pool sống).
+  const dbName = await resolveTenantDbName(request);
+  const tenantDb = getTenantDb(dbName);
 
   try {
     // Lấy HẾT hóa đơn trong khoảng (lặp phân trang + chia tháng), không chỉ 1 trang 50 dòng.
@@ -85,6 +88,9 @@ async function handleGdtInvoices(
       direction,
       request.query,
     );
+
+    // Tìm tay 1 khoảng THÀNH CÔNG -> kích hoạt backfill nền 2 năm (fire-and-forget, không chặn response).
+    GDTService.ensureBackfill(dbName, tenantKeyOf(request), gdtToken);
 
     return reply.send(result);
   } catch (err) {
@@ -247,10 +253,91 @@ export async function downloadOneInvoiceDetail(
     return reply.send(result);
   } catch (err) {
     request.log.error(err);
+    // Lỗi xảy ra sau khi đã resolve tenant nhưng không được fetchAndStoreDetail đánh dấu ->
+    // ghi bền dấu lỗi (best-effort) để dòng vẫn hiện "Lỗi" sau khi nạp lại/reload.
+    await GDTService.markInvoiceDetailError(tenantDb, direction, id).catch(() => {});
     return reply.status(500).send({
       message: err instanceof Error ? err.message : "Không tải được chi tiết hóa đơn",
     });
   }
+}
+
+/** Khóa pacer/tiến độ = công ty đang chọn (donViId ~ 1 MST). resolveTenantDb đã đảm bảo tồn tại. */
+function tenantKeyOf(request: FastifyRequest): string {
+  return request.user.donViId as string;
+}
+
+/**
+ * POST /gdt/invoices/:direction/detail-run — bắt đầu lượt TẢI CHI TIẾT chạy NỀN ở BE cho khoảng đang
+ * lọc (THAY THẾ lượt manual cũ nếu đang chạy), qua pacer dùng chung (ưu tiên "manual" — chen trước
+ * job nền). Trả tiến độ để FE poll. Cần token GDT (X-Gdt-Token) lẫn JWT app.
+ */
+async function handleStartDetailRun(
+  request: FastifyRequest<{ Querystring: PurchaseInvoiceQuery | SoldInvoiceQuery }>,
+  reply: FastifyReply,
+  direction: "purchase" | "sold",
+) {
+  const gdtToken = extractGdtToken(request);
+  if (!gdtToken) {
+    return reply.status(401).send({
+      message: "Thiếu token đăng nhập GDT (header X-Gdt-Token)",
+    });
+  }
+  const { tuNgay, denNgay } = request.query;
+  if (!tuNgay || !denNgay) {
+    return reply.status(400).send({ message: "Thiếu khoảng ngày (tuNgay/denNgay)" });
+  }
+
+  // Ngoài try/catch: lỗi quyền/tenant (403/404) trả đúng mã qua error-handler chung.
+  // Dùng dbName (không phải client) vì lượt chạy nền dài — engine tự getTenantDb lại để giữ pool sống.
+  const dbName = await resolveTenantDbName(request);
+
+  // runDetailFetch KHÔNG async chặn: khởi tạo lượt nền rồi trả tiến độ ngay -> FE poll tiếp.
+  const status = GDTService.runDetailFetch(
+    dbName,
+    tenantKeyOf(request),
+    gdtToken,
+    direction,
+    request.query,
+    "manual",
+  );
+  return reply.send(status);
+}
+
+export async function startPurchaseDetailRun(
+  request: FastifyRequest<{ Querystring: PurchaseInvoiceQuery }>,
+  reply: FastifyReply,
+) {
+  return handleStartDetailRun(request, reply, "purchase");
+}
+
+export async function startSoldDetailRun(
+  request: FastifyRequest<{ Querystring: SoldInvoiceQuery }>,
+  reply: FastifyReply,
+) {
+  return handleStartDetailRun(request, reply, "sold");
+}
+
+/**
+ * GET /gdt/invoices/:direction/detail-run/status — tiến độ lượt tải chi tiết (FE poll). Chỉ cần JWT
+ * app (resolveTenantDb để lấy đúng công ty/quyền), KHÔNG cần token GDT.
+ */
+async function handleDetailRunStatus(
+  request: FastifyRequest,
+  reply: FastifyReply,
+  direction: "purchase" | "sold",
+) {
+  await resolveTenantDb(request);
+  const status = GDTService.getDetailRunStatus(tenantKeyOf(request), direction, "manual");
+  return reply.send(status ?? { active: false, total: 0, done: 0, ok: 0, err: 0 });
+}
+
+export async function purchaseDetailRunStatus(request: FastifyRequest, reply: FastifyReply) {
+  return handleDetailRunStatus(request, reply, "purchase");
+}
+
+export async function soldDetailRunStatus(request: FastifyRequest, reply: FastifyReply) {
+  return handleDetailRunStatus(request, reply, "sold");
 }
 
 // ============================================================

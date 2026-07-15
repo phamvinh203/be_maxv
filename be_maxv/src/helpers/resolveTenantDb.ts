@@ -19,6 +19,15 @@ import type { PrismaClient } from '../generated/tenant';
 export async function resolveTenantDb(
   req: FastifyRequest,
 ): Promise<PrismaClient> {
+  return getTenantDb(await resolveTenantDbName(req));
+}
+
+/**
+ * Như `resolveTenantDb` nhưng trả `dbName` (db_<MST>) thay vì client. Dùng cho tiến trình chạy
+ * NỀN kéo dài (vd `runDetailFetch`): gọi lại `getTenantDb(dbName)` định kỳ để refresh `lastUsed`,
+ * tránh bị sweeper (idle > 10') đóng pool giữa chừng rồi mọi query hỏng.
+ */
+export async function resolveTenantDbName(req: FastifyRequest): Promise<string> {
   const donViId = req.user?.donViId;
   if (!donViId) {
     throw new ForbiddenError(MESSAGES.COMPANY.NO_COMPANY);
@@ -40,7 +49,7 @@ export async function resolveTenantDb(
     throw new NotFoundError(MESSAGES.COMPANY.NO_TENANT_DB);
   }
 
-  return getTenantDb(company.dbName);
+  return company.dbName;
 }
 
 /** user_id cho cột audit (user_id0/user_id2). */

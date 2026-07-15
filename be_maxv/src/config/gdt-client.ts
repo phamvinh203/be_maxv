@@ -1,5 +1,8 @@
 const GDT_BASE_URL = "https://hoadondientu.gdt.gov.vn/api";
 
+/** Timeout mặc định mỗi request GDT — 1 socket treo không được chặn vô hạn (pacer concurrency=1). */
+const GDT_TIMEOUT_MS = 30_000;
+
 /** Phiên bỏ dở (lấy captcha nhưng không login) tự hết hạn sau ngần này. */
 const COOKIE_TTL_MS = 5 * 60 * 1000;
 
@@ -84,7 +87,12 @@ export async function gdtFetch<T>(
     headers["Content-Type"] = "application/json";
   }
 
-  const response = await fetch(`${GDT_BASE_URL}${path}`, { ...rest, headers });
+  const response = await fetch(`${GDT_BASE_URL}${path}`, {
+    ...rest,
+    headers,
+    // Tôn trọng signal caller truyền; nếu không có -> timeout mặc định để tránh treo vô hạn.
+    signal: rest.signal ?? AbortSignal.timeout(GDT_TIMEOUT_MS),
+  });
 
   if (captureCookies && cookieKey) {
     const setCookie =
