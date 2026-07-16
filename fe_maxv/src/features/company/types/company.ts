@@ -70,13 +70,7 @@ export interface RegisterCompanyResult {
   dbName: string | null;
 }
 
-/**
- * Response thật của POST /companies: backend bọc company trong { company, ... }.
- * accessToken/activeDonViId chỉ có khi activate=true (mặc định) — backend đã tự
- * switch sang MST vừa tạo; khi activate=false thì không có (phiên đứng yên).
- */
+/** Response thật của POST /companies: backend bọc company trong { company, ... }. */
 export interface RegisterCompanyResponse {
   company: RegisterCompanyResult;
-  accessToken?: string;
-  activeDonViId?: string;
 }

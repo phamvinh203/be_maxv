@@ -3,7 +3,7 @@ import { Navigate, useNavigate, useParams } from 'react-router-dom';
 import AppHeader from '../components/AppHeader';
 import AppSidebar from '../components/AppSidebar';
 import ModulePage from '../components/ModulePage';
-import { MODULES, MODULE_ORDER } from '../config/modules';
+import { MODULES, defaultModulePath } from '../config/modules';
 import { useTenantNav } from '../routes/useTenantNav';
 
 interface Props {
@@ -20,7 +20,8 @@ export default function ModulesPage({ onLogout }: Props): JSX.Element {
   const openPath = (path: string) => navigate(`/${slug}${path}`);
 
   if (!config) {
-    return <Navigate to={`/${slug}/${MODULE_ORDER[0].slug}`} replace />;
+    // slug chắc chắn có: ModulesPage chỉ render dưới RequireTenant (đã khớp slug công ty).
+    return <Navigate to={defaultModulePath(slug!)} replace />;
   }
 
   return (

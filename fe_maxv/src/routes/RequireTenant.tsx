@@ -1,18 +1,18 @@
 import type { JSX, ReactNode } from 'react';
 import { Navigate, useLocation, useParams } from 'react-router-dom';
-import { getCurrentCompany } from '@/features/auth/hooks/useAuth';
+import { useAuth } from '@/features/auth/hooks/useAuth';
 import ProtectedRoute from './ProtectedRoute';
 
 interface Props {
   children: ReactNode;
 }
 
-/** Cần đã có công ty (donVi), và :slug trên URL phải khớp slug công ty đang đăng nhập. */
+/** Cần đã có công ty (donVi), và :slug trên URL phải khớp công ty đang làm việc. */
 function TenantGuard({ children }: Props): JSX.Element {
   const location = useLocation();
   const { slug } = useParams<{ slug: string }>();
+  const { company } = useAuth();
 
-  const company = getCurrentCompany();
   if (!company) {
     return <Navigate to="/setup-company" replace />;
   }

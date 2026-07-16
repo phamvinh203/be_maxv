@@ -21,25 +21,36 @@ import DanhMucKHPage from '../pages/ban_hang/DanhMucKHPage';
 import HoaDonBanHangPage from '../pages/ban_hang/HoaDonBanHangPage';
 import ProtectedRoute from './ProtectedRoute';
 import RequireTenant from './RequireTenant';
-import { isAuthenticated, getCurrentCompany } from '@/features/auth/hooks/useAuth';
-import { MODULE_ORDER } from '../config/modules';
+import { useAuth } from '@/features/auth/hooks/useAuth';
+import { defaultModulePath } from '../config/modules';
 
-/** Chưa login -> /login; login nhưng chưa có công ty -> /setup-company; có công ty -> /:slug/:moduleSlug đầu tiên. */
-function homePath(): string {
-  if (!isAuthenticated()) return '/login';
-  const company = getCurrentCompany();
-  if (!company) return '/setup-company';
-  return `/${company.slug}/${MODULE_ORDER[0].slug}`;
+/** Đích khi đã đăng nhập: chưa có công ty -> /setup-company; có -> module đầu của MST đang chọn. */
+function useHomePath(): string {
+  const { company } = useAuth();
+  return company ? defaultModulePath(company.slug) : '/setup-company';
+}
+
+/** Route "/" — ProtectedRoute lo phần chờ /auth/me và trường hợp chưa đăng nhập. */
+function HomeRedirect() {
+  const home = useHomePath();
+  return (
+    <ProtectedRoute>
+      <Navigate to={home} replace />
+    </ProtectedRoute>
+  );
 }
 
 function LoginRoute() {
   const navigate = useNavigate();
-  return (
-    <LoginPage
-      onRegister={() => navigate('/register')}
-      onLoggedIn={() => navigate(homePath())}
-    />
-  );
+  const { isAuthenticated } = useAuth();
+  const home = useHomePath();
+
+  // KHÔNG chờ hydrating: form đăng nhập là tĩnh, không cần phiên. Khách chưa đăng nhập —
+  // phần lớn người vào /login — thấy form ngay thay vì ngồi nhìn spinner hết 2 lượt gọi API.
+  // Điều hướng khai báo: login xong -> AuthProvider set phiên -> render lại -> vào thẳng app.
+  // (Không navigate() trong callback onSuccess: lúc đó state phiên mới chưa kịp flush.)
+  if (isAuthenticated) return <Navigate to={home} replace />;
+  return <LoginPage onRegister={() => navigate('/register')} />;
 }
 
 function RegisterRoute() {
@@ -58,7 +69,7 @@ export default function AppRouter(): JSX.Element {
     <BrowserRouter>
       <Routes>
         <Route element={<App />}>
-          <Route index element={<Navigate to={homePath()} replace />} />
+          <Route index element={<HomeRedirect />} />
           <Route path="login" element={<LoginRoute />} />
           <Route path="register" element={<RegisterRoute />} />
           <Route

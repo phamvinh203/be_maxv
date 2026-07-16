@@ -35,3 +35,8 @@ export const MODULE_ORDER: { slug: string; title: string }[] = [
   { slug: 'ton_kho', title: tonKhoConfig.title },
   { slug: 'gia_thanh', title: giaThanhConfig.title },
 ];
+
+/** Trang mặc định khi vào 1 công ty (module đầu menu) — dùng chung cho mọi chỗ điều hướng. */
+export function defaultModulePath(slug: string): string {
+  return `/${slug}/${MODULE_ORDER[0].slug}`;
+}

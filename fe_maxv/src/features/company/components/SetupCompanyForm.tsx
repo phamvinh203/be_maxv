@@ -2,10 +2,9 @@ import { useState, type ChangeEvent, type FormEvent, type JSX } from 'react';
 import { Alert, Box, Button, CircularProgress, Stack, TextField, Typography } from '@mui/material';
 import { useNavigate } from 'react-router-dom';
 import { useRegisterCompany } from '@/features/company/hooks/useCompany';
-import { attachCompanyToSession, getCurrentUser } from '@/features/auth/hooks/useAuth';
-import { setToken } from '@/features/auth/token';
+import { useAuth } from '@/features/auth/hooks/useAuth';
 import { getApiError } from '@/lib/apiClient';
-import { MODULE_ORDER } from '@/config/modules';
+import { defaultModulePath } from '@/config/modules';
 import type { RegisterCompanyResponse } from '@/features/company/types/company';
 
 const MST_REGEX = /^[0-9]{10}(-[0-9]{3})?$/;
@@ -29,7 +28,7 @@ interface Props {
   maxWidth?: number | string;
   /**
    * false khi tạo THÊM MST cho tài khoản đang có sẵn công ty (vd: dialog ở Cài đặt):
-   * backend KHÔNG đụng tới token/refresh cookie hiện tại, tránh cửa sổ đua tenant.
+   * backend KHÔNG đụng tới cookie access/refresh hiện tại, tránh cửa sổ đua tenant.
    * true (mặc định) cho luồng thiết lập lần đầu — backend tự switch sang MST vừa tạo.
    */
   activate?: boolean;
@@ -49,6 +48,7 @@ export function SetupCompanyForm({
   onCreated,
 }: Props = {}): JSX.Element {
   const navigate = useNavigate();
+  const { user, addCompany } = useAuth();
   const { mutate, isPending } = useRegisterCompany();
   const [form, setForm] = useState(EMPTY_FORM);
   const [fieldErrors, setFieldErrors] = useState<Partial<Record<Field, string>>>({});
@@ -83,7 +83,6 @@ export function SetupCompanyForm({
       return;
     }
 
-    const user = getCurrentUser();
     if (!user) {
       setServerError('Phiên đăng nhập đã hết hạn, vui lòng đăng nhập lại.');
       return;
@@ -115,12 +114,11 @@ export function SetupCompanyForm({
             return;
           }
 
-          // Mặc định (luồng thiết lập lần đầu, activate=true): backend đã tự switch
-          // sang MST vừa tạo, dùng luôn token mới (đã nhúng donViId) rồi vào thẳng app.
-          const { company, accessToken } = result;
-          attachCompanyToSession(company);
-          if (accessToken) setToken(accessToken);
-          navigate(`/${company.slug}/${MODULE_ORDER[0].slug}`, { replace: true });
+          // Mặc định (luồng thiết lập lần đầu, activate=true): backend đã tự switch sang
+          // MST vừa tạo (access cookie mới đã nhúng donViId) -> chỉ cần đồng bộ phiên FE.
+          const { company } = result;
+          addCompany(company, true);
+          navigate(defaultModulePath(company.slug), { replace: true });
         },
         onError: (err) =>
           setServerError(getApiError(err, 'Tạo công ty thất bại. Vui lòng thử lại.')),

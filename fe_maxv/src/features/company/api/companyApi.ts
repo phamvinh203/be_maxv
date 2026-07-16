@@ -20,7 +20,7 @@ export function listCompanies(): Promise<Company[]> {
   return api.get<Company[]>('/companies');
 }
 
-/** Đổi công ty đang làm việc: backend cấp lại token nhúng donViId mới của MST đích. */
+/** Đổi công ty đang làm việc: backend đặt access cookie mới nhúng donViId của MST đích. */
 export function switchCompany(id: string): Promise<SwitchCompanyResult> {
   return api.post<SwitchCompanyResult>(`/companies/${id}/switch`);
 }
