@@ -12,7 +12,7 @@ export function tenantDbName(mst: string): string {
   if (!MST_REGEX.test(trimmed)) {
     throw new Error(`${MESSAGES.VALIDATION.INVALID_MST}: ${mst}`);
   }
-  return `maxv2_${normalize(trimmed)}_app`;
+  return `maxv_${normalize(trimmed)}_app`;
 }
 
 export function tenantSlug(mst: string): string {

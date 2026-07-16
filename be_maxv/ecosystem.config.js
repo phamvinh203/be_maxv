@@ -22,12 +22,12 @@ module.exports = {
 
         // Chromium cho puppeteer (xuất PDF). PM2 service chạy dưới LOCAL SYSTEM nên
         // không thấy %USERPROFILE%\.cache\puppeteer của tài khoản cài đặt.
-        PUPPETEER_CACHE_DIR: 'E:\\maxv_v1\\puppeteer-cache',
+        PUPPETEER_CACHE_DIR: 'E:\\maxv_v1\\be_maxv\\puppeteer-cache',
       },
 
       max_memory_restart: '1G',
-      error_file: 'E:\\maxv_v1\\logs\\be_maxv-err.log',
-      out_file: 'E:\\maxv_v1\\logs\\be_maxv-out.log',
+      error_file: 'E:\\maxv_v1\\be_maxv\\logs\\be_maxv-err.log',
+      out_file: 'E:\\maxv_v1\\be_maxv\\logs\\be_maxv-out.log',
       time: true,
     },
   ],
