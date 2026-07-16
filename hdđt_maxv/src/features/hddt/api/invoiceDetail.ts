@@ -1,4 +1,6 @@
+import { toast } from "react-toastify";
 import { apiFetch } from "../../../lib/http";
+import { getErrorMessage } from "../../../lib/errors";
 import { buildInvoiceParams } from "./gdt";
 import type {
   InvoiceDetailResult,
@@ -94,4 +96,76 @@ export function startDetailRun(
  */
 export function getDetailRunStatus(direction: InvoiceDirection): Promise<DetailRunStatus> {
   return apiFetch<DetailRunStatus>(`/gdt/invoices/${direction}/detail-run/status`);
+}
+
+const DETAIL_POLL_INTERVAL_MS = 1500;
+const sleepMs = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+const DETAIL_DIR_LABEL: Record<InvoiceDirection, string> = {
+  purchase: "mua vào",
+  sold: "bán ra",
+};
+
+/**
+ * Khởi động lượt tải chi tiết CHẠY NỀN ở BE cho 1 chiều rồi POLL tới khi xong, hiển thị tiến độ bằng
+ * MỘT toast cập nhật dần (loading → tiến độ → kết quả). Dùng cho dialog "Đồng bộ" (không có bảng để
+ * điền cột "T.thái tải" như `InvoiceListTabs.pollDetailRun`), nên toast-only. Toast dùng API
+ * module-level của react-toastify nên vẫn chạy tiếp khi dialog đóng. `onFinish` gọi khi lượt kết thúc
+ * (kể cả lỗi) để nơi gọi invalidate query bảng hóa đơn. `isStale` để nơi gọi báo "đổi công ty giữa
+ * chừng" -> ngừng poll (BE lấy tiến độ theo session, sẽ trả nhầm của công ty mới). Trả `true` nếu lượt
+ * dừng vì token hết hạn -> nơi gọi khỏi chạy tiếp chiều còn lại (cùng token sẽ lỗi y hệt).
+ */
+export async function pollDetailRunToast(
+  direction: InvoiceDirection,
+  gdtToken: string,
+  range: { tuNgay: string; denNgay: string },
+  opts?: { onFinish?: () => void; isStale?: () => boolean },
+): Promise<boolean> {
+  const dirLabel = DETAIL_DIR_LABEL[direction];
+  const query: InvoiceQuery = { tuNgay: range.tuNgay, denNgay: range.denNgay };
+  const toastId = toast.loading(`Đang tải chi tiết ${dirLabel}…`);
+  try {
+    let status = await startDetailRun(direction, gdtToken, query);
+    for (;;) {
+      // Đổi công ty giữa chừng (dialog đã đóng, người dùng chuyển MST khác): status endpoint lấy theo
+      // session nên sẽ trả tiến độ của công ty MỚI -> ngừng poll, gỡ toast để khỏi lẫn tenant.
+      if (opts?.isStale?.()) {
+        toast.dismiss(toastId);
+        return false;
+      }
+      toast.update(toastId, {
+        render:
+          status.total > 0
+            ? `Đang tải chi tiết ${dirLabel} ${status.done}/${status.total}${
+                status.err > 0 ? ` (${status.err} lỗi)` : ""
+              }…`
+            : `Đang kiểm tra chi tiết ${dirLabel}…`,
+      });
+      if (!status.active) break;
+      await sleepMs(DETAIL_POLL_INTERVAL_MS);
+      status = await getDetailRunStatus(direction);
+    }
+    toast.update(toastId, {
+      render: status.authExpired
+        ? `Token Thuế điện tử hết hạn — đã tải chi tiết ${dirLabel} ${status.ok}/${status.total}. Đăng nhập lại rồi bấm tải tiếp.`
+        : status.total === 0
+          ? `Tất cả hóa đơn ${dirLabel} trong khoảng đã có chi tiết.`
+          : `Đã tải chi tiết ${dirLabel} ${status.ok}/${status.total} hóa đơn${
+              status.err > 0 ? ` (${status.err} lỗi)` : ""
+            }.`,
+      type: status.authExpired || status.err > 0 ? "warning" : "success",
+      isLoading: false,
+      autoClose: 4000,
+    });
+    return status.authExpired ?? false;
+  } catch (e) {
+    toast.update(toastId, {
+      render: getErrorMessage(e, `Không tải được chi tiết ${dirLabel}.`),
+      type: "error",
+      isLoading: false,
+      autoClose: 4000,
+    });
+    return false;
+  } finally {
+    opts?.onFinish?.();
+  }
 }

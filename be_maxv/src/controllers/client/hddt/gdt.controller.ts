@@ -84,6 +84,7 @@ async function handleGdtInvoices(
     // Lấy HẾT hóa đơn trong khoảng (lặp phân trang + chia tháng), không chỉ 1 trang 50 dòng.
     const result = await GDTService.fetchAndSaveInvoicesInRange(
       tenantDb,
+      tenantKeyOf(request),
       gdtToken,
       direction,
       request.query,
@@ -410,13 +411,17 @@ export async function syncInvoices(
   const tenantDb = await resolveTenantDb(request);
 
   try {
-    const log = await GDTService.runSync(tenantDb, gdtToken, {
+    const result = await GDTService.runSync(tenantDb, tenantKeyOf(request), gdtToken, {
       tuNgay,
       denNgay,
       direction,
       loai,
     });
-    return reply.send(log);
+
+    // Việc TẢI CHI TIẾT do FE tự lái sau khi có kết quả: FE gọi startDetailRun + poll
+    // getDetailRunStatus theo từng chiều (giống nút "Cập nhật từ Thuế điện tử"). Endpoint /gdt/sync
+    // chỉ soát/bổ sung DANH SÁCH + đối chiếu (daCo/boSung) + ghi sync_log theo từng chiều.
+    return reply.send(result);
   } catch (err) {
     request.log.error(err);
     return reply.status(500).send({
