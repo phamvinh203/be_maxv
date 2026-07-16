@@ -10,6 +10,7 @@
     "generate": "prisma generate --schema=prisma/sys/schema.prisma && prisma generate --schema=prisma/tenant/schema.prisma",
     "migrate:sys": "dotenv -e .env.local -- prisma migrate dev --schema=prisma/sys/schema.prisma",
     "migrate:sys:deploy": "dotenv -e .env.local -- prisma migrate deploy --schema=prisma/sys/schema.prisma",
+    "migrate:sys:prod": "prisma migrate deploy --schema=prisma/sys/schema.prisma",
     "setup:test-app": "tsx src/scripts/setup-test-app.ts",
     "sync:tenants": "tsx src/scripts/sync-tenants.ts",
     "typecheck": "tsc --noEmit",
