@@ -425,6 +425,32 @@ export async function getSavedInvoices(
 }
 
 /**
+ * Đếm HĐ đã lưu trong khoảng/bộ lọc + số HĐ CHƯA có chi tiết (`tt_tai` null hoặc "error", giống ứng
+ * viên của `runDetailFetch`). Dùng cho nút "Xuất file tổng hợp + hóa đơn": chỉ cho xuất khi
+ * `missing === 0` (mọi HĐ đã có chi tiết để dựng HTML/XML/PDF). Chỉ đọc DB, KHÔNG gọi GDT.
+ */
+export async function countDetailComplete(
+  tenantDb: PrismaClient,
+  direction: "purchase" | "sold",
+  query: PurchaseInvoiceQuery | SoldInvoiceQuery,
+): Promise<{ total: number; missing: number }> {
+  const where = buildSavedWhere(direction, query);
+  const missingWhere = { ...where, OR: [{ tt_tai: null }, { tt_tai: "error" }] };
+  // Nhánh rõ ràng theo chiều (vct60view/vct50view là 2 delegate khác nhau) — như `countExistingIds`.
+  const [total, missing] =
+    direction === "purchase"
+      ? await Promise.all([
+          tenantDb.vct60view.count({ where }),
+          tenantDb.vct60view.count({ where: missingWhere }),
+        ])
+      : await Promise.all([
+          tenantDb.vct50view.count({ where }),
+          tenantDb.vct50view.count({ where: missingWhere }),
+        ]);
+  return { total, missing };
+}
+
+/**
  * Đọc CHI TIẾT (cột `detail`) của các hóa đơn đã lưu trong khoảng — cho tab "Chi tiết hóa đơn"
  * hiển thị TẤT CẢ. Chỉ trả hóa đơn đã tải chi tiết (`detail` khác null), sort ngày lập giảm dần.
  * Mỗi phần tử là payload GDT gốc (FE bung mảng hàng hóa `hdhhdvu` thành từng dòng).

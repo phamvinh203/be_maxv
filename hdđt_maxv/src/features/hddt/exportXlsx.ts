@@ -1,3 +1,4 @@
+import type { Workbook } from "exceljs";
 import { trangThaiHdLabel, ketQuaKiemTraLabel } from "./api/gdt";
 import { formatDateVN } from "./dateUtils";
 import { ttTaiLabel } from "./format";
@@ -103,18 +104,15 @@ function downloadXlsx(buffer: ArrayBuffer, filename: string): void {
 }
 
 /**
- * Dựng 1 sheet có tiêu đề IN ĐẬM + nền + freeze + auto-filter, GIÃN DÒNG (chiều cao hàng thoáng),
- * rồi tải file .xlsx về. Lõi dùng chung cho xuất Tổng quát và Chi tiết.
+ * Thêm 1 sheet có tiêu đề IN ĐẬM + nền + freeze + auto-filter, GIÃN DÒNG (chiều cao hàng thoáng) vào
+ * workbook. Lõi dùng chung cho xuất Tổng quát và Chi tiết (tải về hoặc ghi ra file).
  */
-async function buildAndDownload<T>(
+function addStyledSheet<T>(
+  wb: Workbook,
   sheetName: string,
   cols: XlsxColumn<T>[],
   rows: T[],
-  filename: string,
-): Promise<void> {
-  // Lazy-load exceljs (~1MB) — chỉ tải khi người dùng thực sự bấm Xuất, không nằm trong bundle chính.
-  const { Workbook } = await import("exceljs");
-  const wb = new Workbook();
+): void {
   const ws = wb.addWorksheet(sheetName, {
     views: [{ state: "frozen", ySplit: 1 }], // giữ hàng tiêu đề khi cuộn
   });
@@ -152,7 +150,21 @@ async function buildAndDownload<T>(
     from: { row: 1, column: 1 },
     to: { row: 1, column: cols.length },
   };
+}
 
+/**
+ * Dựng 1 sheet (qua `addStyledSheet`) rồi tải file .xlsx về. Dùng cho nút "Xuất Excel" đơn lẻ theo tab.
+ */
+async function buildAndDownload<T>(
+  sheetName: string,
+  cols: XlsxColumn<T>[],
+  rows: T[],
+  filename: string,
+): Promise<void> {
+  // Lazy-load exceljs (~1MB) — chỉ tải khi người dùng thực sự bấm Xuất, không nằm trong bundle chính.
+  const { Workbook } = await import("exceljs");
+  const wb = new Workbook();
+  addStyledSheet(wb, sheetName, cols, rows);
   const buffer = await wb.xlsx.writeBuffer();
   downloadXlsx(buffer as ArrayBuffer, filename);
 }
@@ -201,4 +213,28 @@ export function exportDetailXlsx(
     rows,
     `hoa-don-${slug}-chi-tiet${rangeSuffix(range)}.xlsx`,
   );
+}
+
+/**
+ * Dựng workbook "tổng hợp" 1 chiều gồm 2 sheet (Tổng quát + Chi tiết) và trả `ArrayBuffer` để GHI ra
+ * file (không tải về). Dùng cho nút "Xuất file tổng hợp + hóa đơn" (ghi Excel vào thư mục người dùng
+ * chọn qua File System Access, cạnh các file HĐ).
+ */
+export async function buildSummaryWorkbookBuffer(
+  overviewRows: DisplayRow[],
+  detailRows: DetailRow[],
+  direction: InvoiceDirection,
+): Promise<ArrayBuffer> {
+  const { Workbook } = await import("exceljs");
+  const { text } = DIR_LABEL[direction];
+  const wb = new Workbook();
+  addStyledSheet(wb, `Tổng quát ${text}`, overviewColumns(direction), overviewRows);
+  addStyledSheet(wb, `Chi tiết ${text}`, detailColumns(), detailRows);
+  return (await wb.xlsx.writeBuffer()) as ArrayBuffer;
+}
+
+/** Tên file Excel tổng hợp trong thư mục xuất (khớp `rangeSuffix`). */
+export function summaryWorkbookFilename(direction: InvoiceDirection, range: ExportRange): string {
+  const { slug } = DIR_LABEL[direction];
+  return `Tong-hop-${slug}${rangeSuffix(range)}.xlsx`;
 }

@@ -1,5 +1,5 @@
 import { toast } from "react-toastify";
-import { apiFetch } from "../../../lib/http";
+import { apiFetch, apiFetchBlob } from "../../../lib/http";
 import { getErrorMessage } from "../../../lib/errors";
 import { buildInvoiceParams } from "./gdt";
 import type {
@@ -60,6 +60,40 @@ export function getSavedInvoiceDetailById(
   return apiFetch<SavedInvoiceDetail>(
     `/gdt/invoices/${direction}/saved-detail/${encodeURIComponent(id)}`,
   );
+}
+
+/** Số HĐ + số HĐ CHƯA có chi tiết trong khoảng — gate cho nút "Xuất file tổng hợp + hóa đơn". */
+export interface DetailCompleteStatus {
+  total: number;
+  missing: number;
+}
+
+/**
+ * GET /gdt/invoices/:direction/detail-complete → đếm HĐ + số HĐ chưa có chi tiết (`tt_tai != OK`)
+ * trong khoảng/bộ lọc (đọc DB, KHÔNG cần token GDT). Dùng: dialog "Xuất file tổng hợp + hóa đơn" —
+ * chỉ cho xuất khi `missing === 0` (mọi HĐ đã có chi tiết để dựng HTML/XML/PDF).
+ */
+export function getDetailComplete(
+  direction: InvoiceDirection,
+  query: InvoiceQuery,
+): Promise<DetailCompleteStatus> {
+  const params = buildInvoiceParams(direction, query);
+  return apiFetch<DetailCompleteStatus>(
+    `/gdt/invoices/${direction}/detail-complete?${params.toString()}`,
+  );
+}
+
+/**
+ * POST /gdt/render-pdf → gửi HTML tờ hóa đơn (tự chứa) lên BE, nhận PDF vector (Chromium/puppeteer render).
+ * Dùng: orchestrator xuất file (`exportBundle`) — sinh PDF từng hóa đơn ghi vào thư mục.
+ */
+export function renderInvoicePdf(html: string): Promise<Blob> {
+  return apiFetchBlob("/gdt/render-pdf", {
+    method: "POST",
+    body: JSON.stringify({ html }),
+    // Chặn 1 request treo làm kẹt cả lượt xuất (hàng trăm HĐ tuần tự) — 60s/hóa đơn là dư.
+    signal: AbortSignal.timeout(60_000),
+  });
 }
 
 /** Tiến độ lượt tải chi tiết chạy nền ở BE (FE poll qua `getDetailRunStatus`). */

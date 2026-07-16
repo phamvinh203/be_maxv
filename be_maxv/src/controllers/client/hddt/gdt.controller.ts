@@ -2,6 +2,7 @@ import { FastifyReply, FastifyRequest } from "fastify";
 import * as GDTService from "../../../services/client/hddt/gdt.service";
 import { resolveTenantDb, resolveTenantDbName } from "../../../helpers/resolveTenantDb";
 import { getTenantDb } from "../../../helpers/tenantClient";
+import { renderPdfFromHtml } from "../../../helpers/pdfRenderer";
 import {
   InvoiceDetailOneBody,
   LoginRequest,
@@ -202,6 +203,77 @@ export async function savedSoldDetails(
   reply: FastifyReply
 ) {
   return handleSavedDetails(request, reply, "sold", request.query);
+}
+
+/**
+ * GET /gdt/invoices/:direction/detail-complete — đếm HĐ đã lưu trong khoảng/bộ lọc + số HĐ CHƯA có
+ * chi tiết (tt_tai != OK). Cho nút "Xuất file tổng hợp + hóa đơn" biết khoảng đã "đồng bộ hoàn thành"
+ * chưa (chỉ cho xuất khi missing = 0). Chỉ cần JWT app (resolveTenantDb), KHÔNG cần token GDT (đọc DB).
+ */
+async function handleDetailComplete(
+  request: FastifyRequest,
+  reply: FastifyReply,
+  direction: "purchase" | "sold",
+  query: PurchaseInvoiceQuery | SoldInvoiceQuery,
+) {
+  if (!query.tuNgay || !query.denNgay) {
+    return reply.status(400).send({ message: "Thiếu khoảng ngày (tuNgay/denNgay)" });
+  }
+
+  const tenantDb = await resolveTenantDb(request);
+
+  try {
+    const result = await GDTService.countDetailComplete(tenantDb, direction, query);
+    return reply.send(result);
+  } catch (err) {
+    request.log.error(err);
+    return reply.status(500).send({
+      message: err instanceof Error ? err.message : "Không kiểm tra được trạng thái chi tiết",
+    });
+  }
+}
+
+export async function purchaseDetailComplete(
+  request: FastifyRequest<{ Querystring: PurchaseInvoiceQuery }>,
+  reply: FastifyReply
+) {
+  return handleDetailComplete(request, reply, "purchase", request.query);
+}
+
+export async function soldDetailComplete(
+  request: FastifyRequest<{ Querystring: SoldInvoiceQuery }>,
+  reply: FastifyReply
+) {
+  return handleDetailComplete(request, reply, "sold", request.query);
+}
+
+/**
+ * POST /gdt/render-pdf — render HTML tờ hóa đơn (FE gửi, inline CSS, không tài nguyên ngoài) thành PDF
+ * vector bằng Chromium headless (puppeteer). Trả PDF (application/pdf). Chỉ cần JWT app (đăng nhập);
+ * KHÔNG đụng DB/GDT — chỉ là bộ "HTML -> PDF". Dùng: nút "Xuất file tổng hợp + hóa đơn".
+ */
+export async function renderInvoicePdf(
+  request: FastifyRequest<{ Body: { html?: string } }>,
+  reply: FastifyReply
+) {
+  const html = request.body?.html;
+  if (!html || typeof html !== "string") {
+    return reply.status(400).send({ message: "Thiếu nội dung HTML để render PDF" });
+  }
+  // Kích thước thực do `bodyLimit` của route (5MB) chặn TRƯỚC handler (theo byte) — không tự đếm ở đây.
+
+  try {
+    const pdf = await renderPdfFromHtml(html);
+    return reply
+      .header("Content-Type", "application/pdf")
+      .header("Content-Disposition", 'inline; filename="hoa-don.pdf"')
+      .send(pdf);
+  } catch (err) {
+    request.log.error(err);
+    return reply.status(500).send({
+      message: err instanceof Error ? err.message : "Không tạo được PDF",
+    });
+  }
 }
 
 /**

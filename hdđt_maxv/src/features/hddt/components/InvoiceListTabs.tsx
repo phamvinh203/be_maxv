@@ -50,9 +50,9 @@ import { formatMoney, ttTaiLabel } from "../format";
 import InvoiceFilterPanel from "./InvoiceFilterPanel";
 import InvoiceDetailPanel from "./InvoiceDetailPanel";
 import InvoiceViewDialog from "./InvoiceViewDialog";
+import ExportFileDialog from "./ExportFileDialog";
 import InvoicePagination, { DEFAULT_ROWS_PER_PAGE } from "./InvoicePagination";
 import { clampPage } from "../pagination";
-import { exportDetailXlsx, exportOverviewXlsx } from "../exportXlsx";
 import { currentMonthRange, formatDateVN } from "../dateUtils";
 import { getErrorMessage } from "../../../lib/errors";
 
@@ -354,22 +354,6 @@ function InvoiceTablePanel({ direction, active }: InvoiceTablePanelProps) {
     void pollDetailRun(gdtToken, buildQuery(appliedFilters), runIdRef.current);
   };
 
-  /** Xuất Excel THEO TAB đang mở: Tổng quát -> cột tổng quát; Chi tiết -> cột chi tiết. */
-  const handleExport = async () => {
-    const range = { tuNgay: appliedFilters.tuNgay, denNgay: appliedFilters.denNgay };
-    try {
-      if (resultTab === "chi-tiet") await exportDetailXlsx(detailRows, direction, range);
-      else await exportOverviewXlsx(rows, direction, range);
-      toast.success("Đã xuất file Excel.");
-    } catch (e) {
-      toast.error(getErrorMessage(e, "Không xuất được file Excel."));
-    }
-  };
-
-  // Nút xuất bám theo tab đang xem (rỗng thì disable).
-  const canExport =
-    (resultTab === "chi-tiet" ? detailRows.length : rows.length) > 0 && !detailRunning;
-
   return (
     <Box sx={{ pt: 2.5 }}>
       <InvoiceFilterPanel
@@ -426,16 +410,6 @@ function InvoiceTablePanel({ direction, active }: InvoiceTablePanelProps) {
             onClick={handleDownloadDetails}
           >
             {detailRunning ? "Đang tải chi tiết…" : "Tải chi tiết"}
-          </Button>
-          <Button
-            variant="outlined"
-            size="small"
-            startIcon={<FileDownloadRounded fontSize="small" />}
-            sx={{ textTransform: "none", whiteSpace: "nowrap" }}
-            disabled={!canExport}
-            onClick={() => void handleExport()}
-          >
-            Xuất Excel ({resultTab === "chi-tiet" ? "chi tiết" : "tổng quát"})
           </Button>
         </Stack>
       </Stack>
@@ -536,6 +510,8 @@ function InvoiceTablePanel({ direction, active }: InvoiceTablePanelProps) {
  */
 export default function InvoiceListTabs() {
   const [tab, setTab] = useState<InvoiceDirection>("purchase");
+  // Xuất file là thao tác CẢ 2 CHIỀU (mua vào + bán ra) nên đặt ở cấp ngoài này, không theo từng tab.
+  const [exportOpen, setExportOpen] = useState(false);
 
   /** Đổi tab chiều hóa đơn (purchase/sold). Dùng: `Tabs.onChange` ngay bên dưới. */
   const handleChange = (_e: SyntheticEvent, value: InvoiceDirection) => {
@@ -573,6 +549,7 @@ export default function InvoiceListTabs() {
             size="small"
             startIcon={<FileDownloadRounded fontSize="small" />}
             sx={{ textTransform: "none", whiteSpace: "nowrap" }}
+            onClick={() => setExportOpen(true)}
           >
             Xuất file excel tổng hợp và hóa đơn
           </Button>
@@ -587,6 +564,12 @@ export default function InvoiceListTabs() {
       <Box sx={{ display: tab === "sold" ? "block" : "none" }}>
         <InvoiceTablePanel direction="sold" active={tab === "sold"} />
       </Box>
+
+      <ExportFileDialog
+        open={exportOpen}
+        onClose={() => setExportOpen(false)}
+        defaultRange={currentMonthRange()}
+      />
     </Box>
   );
 }

@@ -8,6 +8,9 @@ import {
   savedSoldInvoices,
   savedPurchaseDetails,
   savedSoldDetails,
+  purchaseDetailComplete,
+  soldDetailComplete,
+  renderInvoicePdf,
   savedInvoiceDetailById,
   downloadOneInvoiceDetail,
   startPurchaseDetailRun,
@@ -56,6 +59,25 @@ export default async function (
   fastify.get("/invoices/sold/saved-details", {
     preHandler: [fastify.authenticate],
     handler: savedSoldDetails,
+  });
+
+  // Đếm HĐ + số HĐ chưa có chi tiết trong khoảng (nút "Xuất file tổng hợp + hóa đơn" chặn khi còn
+  // thiếu) — đọc DB, không cần X-Gdt-Token.
+  fastify.get("/invoices/purchase/detail-complete", {
+    preHandler: [fastify.authenticate],
+    handler: purchaseDetailComplete,
+  });
+  fastify.get("/invoices/sold/detail-complete", {
+    preHandler: [fastify.authenticate],
+    handler: soldDetailComplete,
+  });
+
+  // Render HTML tờ hóa đơn -> PDF vector bằng Chromium (puppeteer). POST body { html }; trả application/pdf.
+  // bodyLimit 5MB: HTML 1 hóa đơn nhiều dòng có thể vượt mặc định 1MB của Fastify (nhất là tiếng Việt UTF-8).
+  fastify.post("/render-pdf", {
+    preHandler: [fastify.authenticate],
+    bodyLimit: 5 * 1024 * 1024,
+    handler: renderInvoicePdf,
   });
 
   // Đọc CHI TIẾT ĐÃ LƯU của 1 hóa đơn theo id (nút "Xem hóa đơn" dựng tờ hóa đơn GTGT) — đọc DB,
