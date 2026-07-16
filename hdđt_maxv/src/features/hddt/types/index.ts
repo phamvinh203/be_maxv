@@ -143,6 +143,8 @@ export interface InvoiceDetailResult {
   found: boolean;
   ok: boolean;
   detail: Record<string, unknown> | null;
+  /** [DIAGNOSTIC] Lý do lỗi GDT (mã/message) khi ok=false — để log khi chẩn đoán. */
+  error?: string;
 }
 
 /**
@@ -212,6 +214,17 @@ export interface SyncLog {
   trang_thai: "done" | "partial";
   dien_giai: string | null;
   created_at: string;
+}
+
+/**
+ * Kết quả POST /gdt/sync = 1 dòng `sync_log` + số liệu đối chiếu (chỉ trả ở response, KHÔNG lưu DB).
+ * Dùng để hiện toast tóm tắt "đã có / thiếu bổ sung".
+ */
+export interface SyncResult extends SyncLog {
+  /** Số hóa đơn GDT trả về đã có sẵn trong DB trước khi đồng bộ. */
+  daCo: number;
+  /** Số hóa đơn GDT có mà DB thiếu — vừa được bổ sung. */
+  boSung: number;
 }
 
 export interface ClearSyncResult {

@@ -47,16 +47,12 @@ function tryRefresh(): Promise<boolean> {
 }
 
 /**
- * fetch tới be_maxv (`${API_BASE}${path}`) — tự set Content-Type khi có body, parse JSON,
- * và ném Error kèm `message` của server khi response không ok. Luôn gửi kèm cookie (`credentials:
- * include`): access token nằm ở cookie httpOnly nên không truyền qua header nữa.
- *
- * Access token hết hạn (15m) -> 401: tự gọi /auth/refresh (dùng refresh cookie 7 ngày) rồi thử lại
- * request ĐÚNG 1 lần. Retry an toàn kể cả với POST vì 401 do `authenticate` chặn TRƯỚC khi handler
- * chạy (thao tác chưa hề thực thi). Refresh hỏng -> onSessionExpired() để đăng xuất.
- * Dùng chung cho mọi API client trong app thay vì mỗi hàm tự lặp lại đoạn này.
+ * Lõi dùng chung: dựng `init` (luôn gửi cookie `credentials: include`; tự set Content-Type khi có body),
+ * fetch tới `${API_BASE}${path}`, và xử lý 401 = access token hết hạn -> gọi /auth/refresh (dùng refresh
+ * cookie 7 ngày) rồi lặp lại request ĐÚNG 1 lần (an toàn kể cả POST vì 401 do `authenticate` chặn TRƯỚC
+ * khi handler chạy). Refresh hỏng -> onSessionExpired(). Trả `Response` thô để caller tự parse (JSON/blob).
  */
-export async function apiFetch<T>(path: string, options: ApiFetchOptions = {}): Promise<T> {
+async function apiFetchRaw(path: string, options: ApiFetchOptions = {}): Promise<Response> {
   const { headers, ...rest } = options;
   const init: RequestInit = {
     ...rest,
@@ -68,8 +64,6 @@ export async function apiFetch<T>(path: string, options: ApiFetchOptions = {}): 
   };
 
   let res = await fetch(`${API_BASE}${path}`, init);
-
-  // Access token hết hạn: thử refresh 1 lần rồi lặp lại request; hết cửa thì báo hết phiên.
   if (res.status === 401 && canRefresh(path)) {
     if (await tryRefresh()) {
       res = await fetch(`${API_BASE}${path}`, init);
@@ -77,12 +71,33 @@ export async function apiFetch<T>(path: string, options: ApiFetchOptions = {}): 
       onSessionExpired?.();
     }
   }
+  return res;
+}
 
+/**
+ * `apiFetchRaw` rồi parse JSON + ném Error kèm `message` của server khi response không ok.
+ * Dùng chung cho mọi API client trong app thay vì mỗi hàm tự lặp lại đoạn này.
+ */
+export async function apiFetch<T>(path: string, options: ApiFetchOptions = {}): Promise<T> {
+  const res = await apiFetchRaw(path, options);
   const body = (await res.json().catch(() => ({}))) as T & ApiErrorBody;
   if (!res.ok) {
     throw new Error(body.message || `Yêu cầu thất bại (${res.status})`);
   }
   return body;
+}
+
+/**
+ * Như `apiFetch` nhưng trả BLOB nhị phân (vd PDF từ `/gdt/render-pdf`) thay vì parse JSON.
+ * Lỗi (response không ok) -> đọc `message` JSON nếu có rồi ném Error.
+ */
+export async function apiFetchBlob(path: string, options: ApiFetchOptions = {}): Promise<Blob> {
+  const res = await apiFetchRaw(path, options);
+  if (!res.ok) {
+    const body = (await res.json().catch(() => ({}))) as ApiErrorBody;
+    throw new Error(body.message || `Yêu cầu thất bại (${res.status})`);
+  }
+  return res.blob();
 }
 
 /** Envelope chuẩn `{success, data, message}` mà be_maxv trả cho mọi response (sendOk/sendCreated). */

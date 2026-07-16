@@ -1,7 +1,13 @@
 import dotenv from 'dotenv';
 import path from 'node:path';
 
-dotenv.config({ path: path.resolve(process.cwd(), '.env.local') });
+// Chọn file env theo NODE_ENV (set ở tầng OS/PM2 TRƯỚC khi app chạy):
+//   production -> .env.production   |   còn lại -> .env.local (dev, giữ nguyên như cũ).
+// Lưu ý: NODE_ENV phải được set qua biến môi trường thật (PM2 ecosystem `env`), KHÔNG phải
+// chỉ khai trong file .env — vì việc chọn file diễn ra trước khi dotenv nạp file.
+const envFile =
+  process.env.NODE_ENV === 'production' ? '.env.production' : '.env.local';
+dotenv.config({ path: path.resolve(process.cwd(), envFile) });
 
 function required(name: string): string {
   const v = process.env[name];

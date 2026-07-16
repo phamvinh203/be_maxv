@@ -1,16 +1,18 @@
 import { apiFetch } from "../../../lib/http";
-import type { ClearSyncResult, SyncLog, SyncRequest } from "../types";
+import type { ClearSyncResult, SyncLog, SyncRequest, SyncResult } from "../types";
 
 /**
- * POST /gdt/sync — chạy đồng bộ 1 khoảng ngày (BE lặp hết trang GDT + lưu DB + ghi lịch sử).
- * Auth app qua cookie httpOnly (BE biết DB công ty nào); chỉ truyền `gdtToken` (token Thuế điện tử).
- * Dùng: `useStartSyncMutation` (syncQueries) — nút "Đồng bộ" trong SyncInvoiceDialog.
+ * POST /gdt/sync — chạy đồng bộ DANH SÁCH 1 khoảng ngày (BE lặp hết trang GDT + soát/bổ sung DB +
+ * ghi lịch sử). KHÔNG tự tải chi tiết: FE tự lái sau khi có kết quả (startDetailRun + poll) theo từng
+ * chiều, giống nút "Cập nhật từ Thuế điện tử". Auth app qua cookie httpOnly; chỉ truyền `gdtToken`.
+ * Trả MẢNG kết quả — 1 phần tử/chiều (direction="all" -> 2: mua vào + bán ra), kèm số liệu đối chiếu
+ * (`daCo`/`boSung`) để hiện toast. Dùng: `useStartSyncMutation`.
  */
 export async function startSync(
   gdtToken: string,
   body: SyncRequest,
-): Promise<SyncLog> {
-  return apiFetch<SyncLog>("/gdt/sync", {
+): Promise<SyncResult[]> {
+  return apiFetch<SyncResult[]>("/gdt/sync", {
     method: "POST",
     headers: { "X-Gdt-Token": gdtToken },
     body: JSON.stringify(body),

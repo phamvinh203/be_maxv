@@ -11,7 +11,7 @@ import TableContainer from "@mui/material/TableContainer";
 import Typography from "@mui/material/Typography";
 import CircularProgress from "@mui/material/CircularProgress";
 import InboxRounded from "@mui/icons-material/InboxRounded";
-import { trangThaiHdLabel } from "../api/gdt";
+import { trangThaiHdLabel, ketQuaKiemTraLabel } from "../api/gdt";
 import { formatDateVN } from "../dateUtils";
 import { formatMoney } from "../format";
 import InvoicePagination, { DEFAULT_ROWS_PER_PAGE } from "./InvoicePagination";
@@ -53,7 +53,7 @@ const DETAIL_COLUMNS: DetailColumn[] = [
   { header: "Tổng thanh toán", align: "right", cell: (r) => formatMoney(r.tongTt) },
   { header: "Hình thức thanh toán", cell: (r) => r.hinhThucTt },
   { header: "Trạng thái hóa đơn", align: "center", cell: (r) => trangThaiHdLabel(r.trangThaiHd) },
-  { header: "Kết quả kiểm tra", align: "center", cell: (r) => r.ketQuaKt },
+  { header: "Kết quả kiểm tra", align: "center", cell: (r) => ketQuaKiemTraLabel(r.ketQuaKt) },
 ];
 
 /** Khung căn giữa dùng cho trạng thái loading / gợi ý (viền + bo góc như placeholder cũ). */

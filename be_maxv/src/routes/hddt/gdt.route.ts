@@ -8,7 +8,15 @@ import {
   savedSoldInvoices,
   savedPurchaseDetails,
   savedSoldDetails,
+  purchaseDetailComplete,
+  soldDetailComplete,
+  renderInvoicePdf,
+  savedInvoiceDetailById,
   downloadOneInvoiceDetail,
+  startPurchaseDetailRun,
+  startSoldDetailRun,
+  purchaseDetailRunStatus,
+  soldDetailRunStatus,
   syncInvoices,
   syncHistory,
   clearSyncData,
@@ -53,10 +61,55 @@ export default async function (
     handler: savedSoldDetails,
   });
 
+  // Đếm HĐ + số HĐ chưa có chi tiết trong khoảng (nút "Xuất file tổng hợp + hóa đơn" chặn khi còn
+  // thiếu) — đọc DB, không cần X-Gdt-Token.
+  fastify.get("/invoices/purchase/detail-complete", {
+    preHandler: [fastify.authenticate],
+    handler: purchaseDetailComplete,
+  });
+  fastify.get("/invoices/sold/detail-complete", {
+    preHandler: [fastify.authenticate],
+    handler: soldDetailComplete,
+  });
+
+  // Render HTML tờ hóa đơn -> PDF vector bằng Chromium (puppeteer). POST body { html }; trả application/pdf.
+  // bodyLimit 5MB: HTML 1 hóa đơn nhiều dòng có thể vượt mặc định 1MB của Fastify (nhất là tiếng Việt UTF-8).
+  fastify.post("/render-pdf", {
+    preHandler: [fastify.authenticate],
+    bodyLimit: 5 * 1024 * 1024,
+    handler: renderInvoicePdf,
+  });
+
+  // Đọc CHI TIẾT ĐÃ LƯU của 1 hóa đơn theo id (nút "Xem hóa đơn" dựng tờ hóa đơn GTGT) — đọc DB,
+  // không cần X-Gdt-Token. `:direction` = purchase|sold.
+  fastify.get("/invoices/:direction/saved-detail/:id", {
+    preHandler: [fastify.authenticate],
+    handler: savedInvoiceDetailById,
+  });
+
   // Tải chi tiết 1 hóa đơn theo id (nút "Cập nhật"/"Tải chi tiết" lặp từng hóa đơn); direction ở body.
   fastify.post("/invoices/detail/:id", {
     preHandler: [fastify.authenticate],
     handler: downloadOneInvoiceDetail,
+  });
+
+  // Tải chi tiết CHẠY NỀN ở BE qua pacer dùng chung (429-retry): POST bắt đầu lượt, GET poll tiến độ.
+  // Cần X-Gdt-Token cho POST (gọi GDT); GET chỉ cần JWT app (đọc tiến độ in-memory).
+  fastify.post("/invoices/purchase/detail-run", {
+    preHandler: [fastify.authenticate],
+    handler: startPurchaseDetailRun,
+  });
+  fastify.post("/invoices/sold/detail-run", {
+    preHandler: [fastify.authenticate],
+    handler: startSoldDetailRun,
+  });
+  fastify.get("/invoices/purchase/detail-run/status", {
+    preHandler: [fastify.authenticate],
+    handler: purchaseDetailRunStatus,
+  });
+  fastify.get("/invoices/sold/detail-run/status", {
+    preHandler: [fastify.authenticate],
+    handler: soldDetailRunStatus,
   });
 
   // Đồng bộ hóa đơn (dialog "Đồng bộ hóa đơn"): POST /sync chạy đồng bộ (cần X-Gdt-Token),

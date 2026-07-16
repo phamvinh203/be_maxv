@@ -18,7 +18,7 @@ import AddRounded from "@mui/icons-material/AddRounded";
 import SearchRounded from "@mui/icons-material/SearchRounded";
 import RestartAltRounded from "@mui/icons-material/RestartAltRounded";
 import CloudSyncRounded from "@mui/icons-material/CloudSyncRounded";
-import { TRANG_THAI_HD_OPTIONS } from "../api/gdt";
+import { TRANG_THAI_HD_OPTIONS, KET_QUA_KIEM_TRA_OPTIONS } from "../api/gdt";
 import type { InvoiceDirection, InvoiceFilterValues } from "../types";
 
 const EMPTY_FILTERS: InvoiceFilterValues = {
@@ -150,13 +150,19 @@ export default function InvoiceFilterPanel({
             </Stack>
 
             <TextField
+              select
               label="Kết quả kiểm tra"
-              placeholder="Nhập mã kết quả (vd: 1)"
               value={values.ketQuaHd}
               onChange={setField("ketQuaHd")}
               size="small"
               fullWidth
-            />
+            >
+              {KET_QUA_KIEM_TRA_OPTIONS.map((opt) => (
+                <MenuItem key={opt.value} value={opt.value}>
+                  {opt.label}
+                </MenuItem>
+              ))}
+            </TextField>
             <TextField
               label="Ký hiệu mẫu số hóa đơn"
               value={values.mauHd}

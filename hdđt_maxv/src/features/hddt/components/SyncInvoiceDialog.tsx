@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Dialog from "@mui/material/Dialog";
 import DialogContent from "@mui/material/DialogContent";
 import DialogActions from "@mui/material/DialogActions";
@@ -31,15 +31,20 @@ import CloseRounded from "@mui/icons-material/CloseRounded";
 import ExpandMoreRounded from "@mui/icons-material/ExpandMoreRounded";
 import SyncRounded from "@mui/icons-material/SyncRounded";
 import DeleteOutlineRounded from "@mui/icons-material/DeleteOutlineRounded";
+import { toast } from "react-toastify";
+import { useQueryClient } from "@tanstack/react-query";
 import { useGdtSession } from "../gdtSession/useGdtSession";
 import { currentMonthRange, formatDateVN, formatDateTimeVN } from "../dateUtils";
 import { getErrorMessage } from "../../../lib/errors";
-import { type SyncDirection, type SyncKind, type SyncLog } from "../types";
+import { type SyncDirection, type SyncKind } from "../types";
 import {
   useClearSyncMutation,
   useStartSyncMutation,
   useSyncHistoryQuery,
 } from "../api/syncQueries";
+import { invoiceKeys } from "../api/invoiceQueries";
+import { pollDetailRunToast } from "../api/invoiceDetail";
+import { useAuth } from "../../auth/useAuth";
 
 interface Props {
   open: boolean;
@@ -68,6 +73,14 @@ const DIRECTION_LABEL: Record<SyncDirection, string> = {
  */
 export default function SyncInvoiceDialog({ open, onClose }: Props) {
   const { currentGdtMst, getGdtToken } = useGdtSession();
+  const { currentCompanyId } = useAuth();
+  const qc = useQueryClient();
+  // Ref theo dõi công ty hiện tại LIVE (cập nhật cả khi dialog đóng vì component vẫn mounted) — để
+  // vòng poll tải chi tiết chạy nền biết người dùng đã đổi công ty giữa chừng thì dừng, tránh lẫn tenant.
+  const companyIdRef = useRef(currentCompanyId);
+  useEffect(() => {
+    companyIdRef.current = currentCompanyId;
+  }, [currentCompanyId]);
 
   const [direction, setDirection] = useState<SyncDirection>("all");
   const [invoiceKind, setInvoiceKind] = useState<SyncKind>("all");
@@ -75,7 +88,6 @@ export default function SyncInvoiceDialog({ open, onClose }: Props) {
   const [scheduleOpen, setScheduleOpen] = useState(false);
   const [confirmClear, setConfirmClear] = useState(false);
   const [error, setError] = useState("");
-  const [result, setResult] = useState<SyncLog | null>(null);
 
   const historyQuery = useSyncHistoryQuery(open);
   const history = historyQuery.data ?? [];
@@ -92,17 +104,15 @@ export default function SyncInvoiceDialog({ open, onClose }: Props) {
       ? getErrorMessage(historyQuery.error, "Không đọc được lịch sử đồng bộ.")
       : "");
 
-  // Mở dialog -> reset thông báo (lịch sử tự nạp qua useQuery vì enabled = open).
+  // Mở dialog -> reset lỗi (lịch sử tự nạp qua useQuery vì enabled = open).
   useEffect(() => {
     if (!open) return;
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setError("");
-    setResult(null);
   }, [open]);
 
   const handleSync = () => {
     setError("");
-    setResult(null);
     if (!range.tuNgay || !range.denNgay) {
       setError("Vui lòng chọn đủ Từ ngày / Đến ngày.");
       return;
@@ -118,7 +128,54 @@ export default function SyncInvoiceDialog({ open, onClose }: Props) {
         body: { tuNgay: range.tuNgay, denNgay: range.denNgay, direction, loai: invoiceKind },
       },
       {
-        onSuccess: (log) => setResult(log),
+        onSuccess: (results) => {
+          // Toast tóm tắt DANH SÁCH theo từng chiều (all -> 2 toast: mua vào + bán ra).
+          results.forEach((res) => {
+            const dirLabel =
+              res.direction === "purchase"
+                ? "Mua vào"
+                : res.direction === "sold"
+                  ? "Bán ra"
+                  : "Tất cả";
+            if (res.trang_thai !== "done") {
+              toast.warning(
+                `${dirLabel} — chưa hoàn thành: ${res.dien_giai ?? "lỗi khi đồng bộ"}. Đã bổ sung ${res.boSung}, đã có sẵn ${res.daCo}.`,
+              );
+            } else if (res.boSung === 0) {
+              toast.success(
+                `${dirLabel} — đầy đủ, không thiếu hóa đơn (đã có sẵn ${res.daCo}).`,
+              );
+            } else {
+              toast.success(
+                `${dirLabel} — đã bổ sung ${res.boSung} hóa đơn thiếu (đã có sẵn ${res.daCo}).`,
+              );
+            }
+          });
+
+          // Sau khi soát/bổ sung DANH SÁCH: tải CHI TIẾT giống nút "Cập nhật từ Thuế điện tử" — FE lái
+          // startDetailRun + poll getDetailRunStatus theo TỪNG CHIỀU đã đồng bộ xong, toast tiến độ
+          // cập nhật dần. Tuần tự mua vào -> bán ra (nhẹ với GDT). Chỉ tải cho chiều danh sách đã
+          // "done" (chiều lỗi giữa chừng thì danh sách chưa đủ). Chạy nền, không chặn UI; toast tự
+          // chạy tiếp kể cả khi đóng dialog.
+          const startedCompanyId = currentCompanyId;
+          const isStale = () => companyIdRef.current !== startedCompanyId;
+          void (async () => {
+            for (const res of results) {
+              if (res.trang_thai !== "done") continue;
+              if (res.direction !== "purchase" && res.direction !== "sold") continue;
+              if (isStale()) break; // đổi công ty giữa chừng -> ngừng, khỏi tải nhầm tenant
+              const authExpired = await pollDetailRunToast(res.direction, gdtToken, range, {
+                isStale,
+                // Chỉ invalidate khi vẫn đúng công ty đã đồng bộ (đổi công ty thì id đã cũ).
+                onFinish: () => {
+                  if (!isStale())
+                    qc.invalidateQueries({ queryKey: invoiceKeys.byCompany(startedCompanyId) });
+                },
+              });
+              if (authExpired) break; // token hết hạn -> chiều còn lại cũng lỗi y hệt, dừng
+            }
+          })();
+        },
         onError: (e) => setError(getErrorMessage(e, "Không đồng bộ được hóa đơn.")),
       },
     );
@@ -127,10 +184,7 @@ export default function SyncInvoiceDialog({ open, onClose }: Props) {
   const handleClear = () => {
     setError("");
     clearMutation.mutate(undefined, {
-      onSuccess: () => {
-        setConfirmClear(false);
-        setResult(null);
-      },
+      onSuccess: () => setConfirmClear(false),
       onError: (e) => setError(getErrorMessage(e, "Không xóa được dữ liệu đã đồng bộ.")),
     });
   };
@@ -275,14 +329,6 @@ export default function SyncInvoiceDialog({ open, onClose }: Props) {
         {displayError && (
           <Alert severity="error" sx={{ mb: 2 }} onClose={() => setError("")}>
             {displayError}
-          </Alert>
-        )}
-        {result && (
-          <Alert severity={result.trang_thai === "done" ? "success" : "warning"} sx={{ mb: 2 }}>
-            Đã đồng bộ {result.da_luu}/{Math.max(result.tong, result.da_luu)} hóa đơn{" "}
-            {result.trang_thai === "done"
-              ? "— hoàn thành."
-              : `— chưa hoàn thành: ${result.dien_giai ?? ""}`}
           </Alert>
         )}
 
