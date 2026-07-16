@@ -17,7 +17,7 @@ import {
 import AddRoundedIcon from '@mui/icons-material/AddRounded';
 import { AddCompanyDialog } from '@/features/company/components/AddCompanyDialog';
 import { useCompanies } from '@/features/company/hooks/useCompany';
-import { getCurrentCompany } from '@/features/auth/hooks/useAuth';
+import { useAuth } from '@/features/auth/hooks/useAuth';
 
 /**
  * Cài đặt › Công ty / MST. Bảng công ty của tài khoản (kèm địa chỉ/SĐT/loại hình)
@@ -26,7 +26,7 @@ import { getCurrentCompany } from '@/features/auth/hooks/useAuth';
 export default function CompanySettingsPage(): JSX.Element {
   const [dialogOpen, setDialogOpen] = useState(false);
   const companiesQuery = useCompanies();
-  const currentId = getCurrentCompany()?.id ?? null;
+  const currentId = useAuth().company?.id ?? null;
 
   const companies = companiesQuery.data ?? [];
 

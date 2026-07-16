@@ -12,7 +12,7 @@ import {
   Typography,
 } from '@mui/material';
 import { useInviteEmployee } from '@/features/company/hooks/useCompany';
-import { getCurrentCompany } from '@/features/auth/hooks/useAuth';
+import { useAuth } from '@/features/auth/hooks/useAuth';
 import { getApiError } from '@/lib/apiClient';
 
 interface Props {
@@ -28,7 +28,7 @@ export function InviteEmployeeDialog({ open, onClose }: Props): JSX.Element {
   const [error, setError] = useState('');
 
   // Nhân viên được cấp quyền vào đúng MST đang mở (chọn ở Select trên header).
-  const current = getCurrentCompany();
+  const { company: current } = useAuth();
 
   function set(field: keyof typeof EMPTY_FORM) {
     return (e: ChangeEvent<HTMLInputElement>) =>

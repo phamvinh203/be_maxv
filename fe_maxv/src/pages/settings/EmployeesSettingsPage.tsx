@@ -5,18 +5,18 @@ import { useCompanyInvites, useEmployees } from '@/features/company/hooks/useCom
 import { EmployeesTable } from '@/features/company/components/EmployeesTable';
 import { PendingInvitesTable } from '@/features/company/components/PendingInvitesTable';
 import { InviteEmployeeDialog } from '@/features/company/components/InviteEmployeeDialog';
-import { getUser } from '@/features/auth/token';
-import { getCurrentCompany } from '@/features/auth/hooks/useAuth';
+import { useAuth } from '@/features/auth/hooks/useAuth';
 
 export default function EmployeesSettingsPage(): JSX.Element {
   const [dialogOpen, setDialogOpen] = useState(false);
   const employeesQuery = useEmployees();
   const invitesQuery = useCompanyInvites();
-  const isOwner = getUser()?.role === 'OWNER';
+  const { user, company } = useAuth();
+  const isOwner = user?.role === 'OWNER';
 
   // Chỉ hiển thị theo MST đang chọn ở header: nhân viên được cấp quyền vào MST đó
   // (owner luôn hiện vì thấy hết mọi MST của mình), và lời mời có kèm MST đó.
-  const currentId = getCurrentCompany()?.id ?? null;
+  const currentId = company?.id ?? null;
   const employees = (employeesQuery.data ?? []).filter(
     (e) =>
       e.role === 'OWNER' ||

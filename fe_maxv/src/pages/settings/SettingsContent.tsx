@@ -2,12 +2,12 @@ import { useState, type JSX, type ReactNode } from 'react';
 import { Box, Tab, Tabs } from '@mui/material';
 import CompanySettingsPage from '@/pages/settings/CompanySettingsPage';
 import EmployeesSettingsPage from '@/pages/settings/EmployeesSettingsPage';
-import { getUser } from '@/features/auth/token';
+import { useAuth } from '@/features/auth/hooks/useAuth';
 
 /** Nội dung trang Cài đặt: chuyển giữa "Thêm công ty / MST" và "Nhân viên". */
 export default function SettingsContent(): JSX.Element {
   // Chỉ OWNER mới tạo được công ty/MST -> nhân viên (OWNER_EMPLOYEE) không thấy tab này.
-  const isOwner = getUser()?.role === 'OWNER';
+  const isOwner = useAuth().user?.role === 'OWNER';
 
   const tabs: { label: string; content: ReactNode }[] = [
     ...(isOwner

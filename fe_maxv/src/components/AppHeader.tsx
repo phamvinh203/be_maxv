@@ -1,12 +1,6 @@
 import { useEffect, useRef, useState, type ChangeEvent, type JSX } from 'react';
 import logo from '../assets/Logo-Maxv.png';
-import { getUser, setCompany, COMPANIES_CHANGED_EVENT } from '@/features/auth/token';
-import {
-  useLogout,
-  getCurrentCompany,
-  getCurrentCompanies,
-  switchToCompany,
-} from '@/features/auth/hooks/useAuth';
+import { useAuth, useLogout } from '@/features/auth/hooks/useAuth';
 import type { AuthCompany } from '@/features/auth/types/auth';
 
 interface Props {
@@ -27,21 +21,11 @@ function companyLabel(c: AuthCompany): string {
 const DIVIDER_STYLE = { width: 1, height: 24, background: 'rgba(255,255,255,0.2)' };
 
 export default function AppHeader({ onLogout, onSettings }: Props): JSX.Element {
-  const user = getUser();
+  const { user, companies, company: currentCompany, switchCompany } = useAuth();
   const [menuOpen, setMenuOpen] = useState(false);
   const [switching, setSwitching] = useState(false);
-  // Danh sách MST đọc từ localStorage (không reactive) -> giữ trong state, cập nhật
-  // khi có COMPANIES_CHANGED_EVENT (thêm MST ở trang Cài đặt).
-  const [companies, setCompanies] = useState(getCurrentCompanies);
-  const currentCompany = getCurrentCompany();
   const menuRef = useRef<HTMLDivElement>(null);
   const logoutMutation = useLogout();
-
-  useEffect(() => {
-    const handler = () => setCompanies(getCurrentCompanies());
-    window.addEventListener(COMPANIES_CHANGED_EVENT, handler);
-    return () => window.removeEventListener(COMPANIES_CHANGED_EVENT, handler);
-  }, []);
 
   useEffect(() => {
     if (!menuOpen) return;
@@ -65,7 +49,7 @@ export default function AppHeader({ onLogout, onSettings }: Props): JSX.Element 
   }
 
   /**
-   * Đổi MST đang làm việc: switch token (để tenant DB resolve đúng), lưu công ty,
+   * Đổi MST đang làm việc: switch (backend đặt access cookie mới để tenant DB resolve đúng),
    * rồi thay slug trên URL và full reload (xóa sạch cache dữ liệu của MST cũ).
    */
   async function handleChangeCompany(e: ChangeEvent<HTMLSelectElement>) {
@@ -76,8 +60,7 @@ export default function AppHeader({ onLogout, onSettings }: Props): JSX.Element 
 
     setSwitching(true);
     try {
-      await switchToCompany(id);
-      setCompany(target);
+      await switchCompany(id);
       // Giữ nguyên path sau :slug, chỉ thay MST (slug) rồi tải lại toàn trang.
       const rest = window.location.pathname.split('/').slice(2).join('/');
       window.location.assign(`/${target.slug}${rest ? `/${rest}` : ''}`);

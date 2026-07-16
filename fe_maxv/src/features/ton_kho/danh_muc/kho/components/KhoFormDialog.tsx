@@ -14,7 +14,7 @@ import {
   TextField,
 } from '@mui/material';
 import { getApiError } from '@/lib/apiClient';
-import { getCurrentCompany } from '@/features/auth/hooks/useAuth';
+import { useAuth } from '@/features/auth/hooks/useAuth';
 import {
   useCreateKho,
   useUpdateKho,
@@ -64,7 +64,7 @@ export function KhoFormDialog({ open, mode, current, onClose }: Props): JSX.Elem
   }
 
   const pending = create.isPending || update.isPending;
-  const tenDonVi = getCurrentCompany()?.tenDonVi ?? '';
+  const tenDonVi = useAuth().company?.tenDonVi ?? '';
   const { data: nhomKhoData } = useNhomKhoList();
   const nhomKhos = nhomKhoData ?? [];
 

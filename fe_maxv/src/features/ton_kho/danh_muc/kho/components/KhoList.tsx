@@ -17,7 +17,7 @@ import EditIcon from '@mui/icons-material/Edit';
 import ContentCopyIcon from '@mui/icons-material/ContentCopy';
 import DeleteIcon from '@mui/icons-material/Delete';
 import { getApiError } from '@/lib/apiClient';
-import { getCurrentCompany } from '@/features/auth/hooks/useAuth';
+import { useAuth } from '@/features/auth/hooks/useAuth';
 import DeleteDialog from '@/components/DeleteDialog';
 import { CatalogToolbar } from '@/components/catalog/CatalogToolbar';
 import { useCatalogList } from '@/components/catalog/useCatalogList';
@@ -34,7 +34,7 @@ export function KhoList(): JSX.Element {
   const { data, isLoading, isFetching, isError, error, refetch } = useKhoList();
   const del = useDeleteKho();
 
-  const tenDonVi = getCurrentCompany()?.tenDonVi ?? '';
+  const tenDonVi = useAuth().company?.tenDonVi ?? '';
   const rows = useMemo(() => data ?? [], [data]);
   const list = useCatalogList<Kho>({
     rows,

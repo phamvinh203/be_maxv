@@ -6,7 +6,6 @@ import { LoginForm } from '@/features/auth/components/LoginForm';
 
 interface Props {
   onRegister: () => void;
-  onLoggedIn: () => void;
 }
 
 const BADGES = [
@@ -15,7 +14,7 @@ const BADGES = [
   { n: '24/7', l: 'Hỗ trợ kỹ thuật' },
 ];
 
-export default function LoginPage({ onRegister, onLoggedIn }: Props): JSX.Element {
+export default function LoginPage({ onRegister }: Props): JSX.Element {
   return (
     <AuthLayout
       leftWidth={58}
@@ -43,7 +42,7 @@ export default function LoginPage({ onRegister, onLoggedIn }: Props): JSX.Elemen
         </>
       }
     >
-      <LoginForm onSuccess={onLoggedIn} onRegister={onRegister} />
+      <LoginForm onRegister={onRegister} />
     </AuthLayout>
   );
 }

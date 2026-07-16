@@ -15,11 +15,11 @@ import { getApiError } from '@/lib/apiClient';
 import { PasswordField } from '@/features/auth/components/PasswordField';
 
 interface Props {
-  onSuccess: () => void;
   onRegister: () => void;
 }
 
-export function LoginForm({ onSuccess, onRegister }: Props): JSX.Element {
+/** Đăng nhập xong KHÔNG tự điều hướng: LoginRoute thấy phiên có user rồi tự đá vào app. */
+export function LoginForm({ onRegister }: Props): JSX.Element {
   const { mutate, isPending } = useLogin();
   const { locked, remainingSec, reportFailure, reportSuccess } = useLoginBackoff();
   const [email, setEmail] = useState('');
@@ -33,10 +33,7 @@ export function LoginForm({ onSuccess, onRegister }: Props): JSX.Element {
     mutate(
       { email: email.trim(), password },
       {
-        onSuccess: () => {
-          reportSuccess();
-          onSuccess();
-        },
+        onSuccess: () => reportSuccess(),
         onError: (err) => {
           reportFailure();
           setError(getApiError(err, 'Đăng nhập thất bại. Vui lòng thử lại.'));
