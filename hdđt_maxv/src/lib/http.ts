@@ -30,15 +30,27 @@ function canRefresh(path: string): boolean {
   );
 }
 
-/** Gọi POST /auth/refresh 1 lần (single-flight); trả true nếu cấp lại token thành công. */
+/**
+ * Gọi POST /auth/refresh 1 lần (single-flight).
+ * - true  -> server đã đặt access cookie mới.
+ * - false -> refresh cookie hết hạn/bị thu hồi (401/403) = hết phiên thật.
+ * - ném lỗi -> sự cố TẠM THỜI (mạng chập, 502 lúc Node recycle sau IIS). KHÔNG phải hết
+ *   phiên: nuốt thành false ở đây sẽ đá user về /login oan dù refresh cookie còn hạn.
+ *
+ * Lưu ý: fetch KHÔNG reject khi HTTP lỗi, nên `r.ok === false` gộp cả 401 lẫn 502 —
+ * phải tự tách theo status, không được rút gọn thành `.then((r) => r.ok)`.
+ */
 function tryRefresh(): Promise<boolean> {
   if (!refreshPromise) {
     refreshPromise = fetch(`${API_BASE}/auth/refresh`, {
       method: "POST",
       credentials: "include",
     })
-      .then((r) => r.ok)
-      .catch(() => false)
+      .then((r) => {
+        if (r.ok) return true;
+        if (r.status === 401 || r.status === 403) return false;
+        throw new Error(`Refresh lỗi tạm (${r.status})`);
+      })
       .finally(() => {
         refreshPromise = null;
       });
@@ -50,7 +62,8 @@ function tryRefresh(): Promise<boolean> {
  * Lõi dùng chung: dựng `init` (luôn gửi cookie `credentials: include`; tự set Content-Type khi có body),
  * fetch tới `${API_BASE}${path}`, và xử lý 401 = access token hết hạn -> gọi /auth/refresh (dùng refresh
  * cookie 7 ngày) rồi lặp lại request ĐÚNG 1 lần (an toàn kể cả POST vì 401 do `authenticate` chặn TRƯỚC
- * khi handler chạy). Refresh hỏng -> onSessionExpired(). Trả `Response` thô để caller tự parse (JSON/blob).
+ * khi handler chạy). Refresh trả 401/403 = hết phiên -> onSessionExpired(); refresh lỗi tạm -> giữ phiên.
+ * Trả `Response` thô để caller tự parse (JSON/blob).
  */
 async function apiFetchRaw(path: string, options: ApiFetchOptions = {}): Promise<Response> {
   const { headers, ...rest } = options;
@@ -63,15 +76,22 @@ async function apiFetchRaw(path: string, options: ApiFetchOptions = {}): Promise
     },
   };
 
-  let res = await fetch(`${API_BASE}${path}`, init);
-  if (res.status === 401 && canRefresh(path)) {
-    if (await tryRefresh()) {
-      res = await fetch(`${API_BASE}${path}`, init);
-    } else {
-      onSessionExpired?.();
-    }
+  const res = await fetch(`${API_BASE}${path}`, init);
+  if (res.status !== 401 || !canRefresh(path)) return res;
+
+  let refreshed: boolean;
+  try {
+    refreshed = await tryRefresh();
+  } catch {
+    // Refresh lỗi tạm -> trả về đúng response 401 gốc, GIỮ NGUYÊN phiên để user thử lại.
+    return res;
   }
-  return res;
+
+  if (!refreshed) {
+    onSessionExpired?.();
+    return res;
+  }
+  return fetch(`${API_BASE}${path}`, init);
 }
 
 /**
