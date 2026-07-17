@@ -23,6 +23,13 @@ module.exports = {
         // Chromium cho puppeteer (xuất PDF). PM2 service chạy dưới LOCAL SYSTEM nên
         // không thấy %USERPROFILE%\.cache\puppeteer của tài khoản cài đặt.
         PUPPETEER_CACHE_DIR: 'E:\\maxv_v1\\be_maxv\\puppeteer-cache',
+
+        // Cùng lý do LOCAL SYSTEM như trên: PM2 thừa hưởng %TEMP% trỏ vào
+        // C:\Users\<người cài>\AppData\Local\Temp, mà SYSTEM đụng vào đó thì EPERM.
+        // `npx prisma db push` lúc provisioning nạp @prisma/fetch-engine -> temp-dir
+        // -> os.tmpdir() -> %TEMP%, nên tạo công ty chết ở bước đẩy schema.
+        TMP: 'E:\\maxv_v1\\be_maxv\\tmp',
+        TEMP: 'E:\\maxv_v1\\be_maxv\\tmp',
       },
 
       max_memory_restart: '1G',
