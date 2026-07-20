@@ -8,13 +8,16 @@ import './index.css';
 import { queryClient } from './lib/queryClient';
 import { router } from './routes/index.route';
 import { theme } from './theme/theme';
+import { AuthProvider } from './features/auth/AuthProvider';
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
     <QueryClientProvider client={queryClient}>
       <ThemeProvider theme={theme}>
         <CssBaseline />
-        <RouterProvider router={router} />
+        <AuthProvider>
+          <RouterProvider router={router} />
+        </AuthProvider>
       </ThemeProvider>
     </QueryClientProvider>
   </StrictMode>,

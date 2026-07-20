@@ -36,7 +36,7 @@ import BuildRoundedIcon from '@mui/icons-material/BuildRounded';
 import SearchRoundedIcon from '@mui/icons-material/SearchRounded';
 import NotificationsRoundedIcon from '@mui/icons-material/NotificationsRounded';
 import LogoutRoundedIcon from '@mui/icons-material/LogoutRounded';
-import { getCurrentUser, useLogout } from '@/features/auth/hooks/useAuth';
+import { useAuth, useLogout } from '@/features/auth/hooks/useAuth';
 
 const DRAWER_WIDTH = 264;
 
@@ -76,7 +76,7 @@ export function AdminLayout(): JSX.Element {
   const navigate = useNavigate();
   const { pathname } = useLocation();
   const matches = useMatches();
-  const user = getCurrentUser();
+  const { user } = useAuth();
   const { mutate: logout } = useLogout();
   const [menuEl, setMenuEl] = useState<null | HTMLElement>(null);
 

@@ -1,72 +1,120 @@
 import axios, {
   AxiosError,
+  type AxiosInstance,
   type AxiosRequestConfig,
   type InternalAxiosRequestConfig,
 } from 'axios';
 import { env } from '@/config/env';
 import type { ApiResponse } from '@/types/api';
-import { getToken, setToken, clearSession } from '@/features/auth/token';
 
-export const apiClient = axios.create({
-  baseURL: env.apiUrl,
-  withCredentials: true, // gửi cookie refresh token httpOnly
-});
+// withCredentials: access + refresh token đều nằm ở cookie httpOnly (JS không đọc được),
+// nên mọi request chỉ cần gửi cookie kèm — không có header Authorization nào cả.
+const clientConfig = { baseURL: env.apiUrl, withCredentials: true };
+
+export const apiClient = axios.create(clientConfig);
 
 /**
- * Client gọn cho backend envelope { success, data }: tự bóc `.data.data`.
+ * Client cho CHÍNH các lời gọi quản lý phiên (login/logout/refresh). Cố tình KHÔNG gắn
+ * interceptor: 401 ở đây là kết quả thật (sai mật khẩu, refresh cookie hết hạn), không
+ * phải "access token hết hạn" nên tự refresh là vô nghĩa — và refresh mà đi qua chính
+ * interceptor refresh thì thành đệ quy. Tách instance khiến điều đó không xảy ra được,
+ * thay vì phải nhớ liệt kê path ngoại lệ.
+ */
+const authClient = axios.create(clientConfig);
+
+/**
+ * Bọc 1 axios instance cho backend envelope { success, data }: tự bóc `.data.data`.
  * Dùng ở mọi feature API thay vì lặp lại unwrap ở từng hàm.
  */
-export const api = {
-  get: <T>(url: string, config?: AxiosRequestConfig) =>
-    apiClient.get<ApiResponse<T>>(url, config).then((r) => r.data.data),
-  post: <T>(url: string, body?: unknown, config?: AxiosRequestConfig) =>
-    apiClient.post<ApiResponse<T>>(url, body, config).then((r) => r.data.data),
-  patch: <T>(url: string, body?: unknown, config?: AxiosRequestConfig) =>
-    apiClient.patch<ApiResponse<T>>(url, body, config).then((r) => r.data.data),
-};
+function makeApi(instance: AxiosInstance) {
+  return {
+    get: <T>(url: string, config?: AxiosRequestConfig) =>
+      instance.get<ApiResponse<T>>(url, config).then((r) => r.data.data),
+    post: <T>(url: string, body?: unknown, config?: AxiosRequestConfig) =>
+      instance.post<ApiResponse<T>>(url, body, config).then((r) => r.data.data),
+    patch: <T>(url: string, body?: unknown, config?: AxiosRequestConfig) =>
+      instance.patch<ApiResponse<T>>(url, body, config).then((r) => r.data.data),
+  };
+}
 
-// Gắn Bearer access token vào mọi request.
-apiClient.interceptors.request.use((config) => {
-  const token = getToken();
-  if (token) config.headers.Authorization = `Bearer ${token}`;
-  return config;
-});
+/** API thường: 401 -> tự refresh rồi thử lại. Dùng cho mọi endpoint, kể cả /auth/me. */
+export const api = makeApi(apiClient);
 
-// 401 -> thử refresh access token 1 lần (gộp các request đồng thời), rồi retry.
-let refreshing: Promise<string | null> | null = null;
+/** API cho login/logout/refresh — xem `authClient`. KHÔNG dùng cho endpoint khác. */
+export const authApi = makeApi(authClient);
 
+export interface AuthEvents {
+  /**
+   * Refresh trả 401/403 = hết phiên hẳn. Reset state auth là đủ: ProtectedRoute tự đá
+   * về /login khi isAuthenticated=false.
+   */
+  onExpired: () => void;
+}
+
+// Do AuthProvider đăng ký (apiClient nằm ngoài React nên không tự setState được).
+let authEvents: AuthEvents | null = null;
+
+export function setAuthEventHandlers(handlers: AuthEvents | null): void {
+  authEvents = handlers;
+}
+
+// Lời gọi /auth/refresh đang chạy (nếu có) — dùng chung cho mọi request cùng dính 401 một
+// lúc, để chỉ refresh MỘT lần thay vì mỗi request tự gọi (chống "refresh storm").
+let refreshPromise: Promise<boolean> | null = null;
+
+/**
+ * Gọi POST /auth/refresh 1 lần (single-flight).
+ * - true  -> backend đã đặt access cookie mới.
+ * - false -> refresh cookie hết hạn/bị thu hồi (401/403) = hết phiên thật.
+ * - ném lỗi -> sự cố TẠM THỜI (mạng chập, 502 lúc Node recycle sau IIS). KHÔNG phải hết
+ *   phiên: nuốt thành false ở đây sẽ đá user về /login oan dù refresh cookie còn hạn.
+ */
+function tryRefresh(): Promise<boolean> {
+  if (!refreshPromise) {
+    refreshPromise = authApi
+      .post<{ activeDonViId: string | null }>('/auth/refresh')
+      .then(() => true)
+      .catch((err: unknown) => {
+        const status = (err as AxiosError).response?.status;
+        if (status === 401 || status === 403) return false;
+        throw err;
+      })
+      .finally(() => {
+        refreshPromise = null;
+      });
+  }
+  return refreshPromise;
+}
+
+/**
+ * 401 = access token hết hạn -> gọi /auth/refresh (refresh cookie còn hạn) rồi lặp lại
+ * request ĐÚNG 1 lần. An toàn kể cả với POST: 401 do preHandler `authenticate` chặn TRƯỚC
+ * khi handler chạy, nên request đầu chưa gây tác dụng phụ nào.
+ */
 apiClient.interceptors.response.use(
   (res) => res,
   async (error: AxiosError) => {
-    const original = error.config as InternalAxiosRequestConfig & {
-      _retry?: boolean;
-    };
-    if (error.response?.status === 401 && original && !original._retry) {
-      original._retry = true;
-      refreshing ??= refreshAccessToken();
-      const token = await refreshing;
-      refreshing = null;
-      if (token) {
-        original.headers.Authorization = `Bearer ${token}`;
-        return apiClient(original);
-      }
-      clearSession();
+    const original = error.config as
+      | (InternalAxiosRequestConfig & { _retry?: boolean })
+      | undefined;
+
+    if (error.response?.status !== 401 || !original || original._retry) {
+      return Promise.reject(error);
     }
+
+    original._retry = true;
+
+    let refreshed: boolean;
+    try {
+      refreshed = await tryRefresh();
+    } catch {
+      // Refresh lỗi tạm -> trả về đúng lỗi 401 gốc, GIỮ NGUYÊN phiên để user thử lại.
+      return Promise.reject(error);
+    }
+
+    if (refreshed) return apiClient(original);
+
+    authEvents?.onExpired();
     return Promise.reject(error);
   },
 );
-
-async function refreshAccessToken(): Promise<string | null> {
-  try {
-    const res = await axios.post<{ data: { accessToken: string } }>(
-      `${env.apiUrl}/auth/refresh`,
-      {},
-      { withCredentials: true },
-    );
-    const token = res.data.data.accessToken;
-    setToken(token);
-    return token;
-  } catch {
-    return null;
-  }
-}

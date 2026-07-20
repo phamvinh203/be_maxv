@@ -7,7 +7,7 @@ import {
 } from 'react';
 import { Button, MenuItem, Stack, TextField } from '@mui/material';
 import { Loading } from '@/components/Loading';
-import { getCurrentUser } from '@/features/auth/hooks/useAuth';
+import { useAuth } from '@/features/auth/hooks/useAuth';
 import { UsersTable } from '@/features/users/components/UsersTable';
 import { ChangeRoleDialog } from '@/features/users/components/ChangeRoleDialog';
 import { ResetPasswordDialog } from '@/features/users/components/ResetPasswordDialog';
@@ -48,7 +48,7 @@ function UsersSection({
   const { data } = useUsers(params);
   const setActive = useSetUserActive();
   const reset = useResetPassword();
-  const meId = getCurrentUser()?.id;
+  const meId = useAuth().user?.id;
   const [roleUser, setRoleUser] = useState<AdminUser | null>(null);
   const [resetPw, setResetPw] = useState<string | null>(null);
 
