@@ -4,6 +4,22 @@ interface ApiErrorBody {
   message?: string;
 }
 
+/**
+ * Lỗi API kèm HTTP status — để caller phân biệt được loại lỗi (vd 409 email trùng ->
+ * gắn lỗi vào đúng ô nhập thay vì Alert chung). Vẫn `extends Error` nên mọi chỗ đang
+ * bắt bằng `instanceof Error` / đọc `.message` không phải sửa.
+ * Dùng: RegisterForm (409), và bất kỳ chỗ nào cần rẽ nhánh theo status.
+ */
+export class ApiError extends Error {
+  readonly status: number;
+
+  constructor(message: string, status: number) {
+    super(message);
+    this.name = "ApiError";
+    this.status = status;
+  }
+}
+
 export type ApiFetchOptions = RequestInit;
 
 /**
@@ -102,7 +118,7 @@ export async function apiFetch<T>(path: string, options: ApiFetchOptions = {}): 
   const res = await apiFetchRaw(path, options);
   const body = (await res.json().catch(() => ({}))) as T & ApiErrorBody;
   if (!res.ok) {
-    throw new Error(body.message || `Yêu cầu thất bại (${res.status})`);
+    throw new ApiError(body.message || `Yêu cầu thất bại (${res.status})`, res.status);
   }
   return body;
 }
@@ -115,7 +131,7 @@ export async function apiFetchBlob(path: string, options: ApiFetchOptions = {}):
   const res = await apiFetchRaw(path, options);
   if (!res.ok) {
     const body = (await res.json().catch(() => ({}))) as ApiErrorBody;
-    throw new Error(body.message || `Yêu cầu thất bại (${res.status})`);
+    throw new ApiError(body.message || `Yêu cầu thất bại (${res.status})`, res.status);
   }
   return res.blob();
 }

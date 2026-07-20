@@ -139,7 +139,7 @@ export default function AppHeader() {
                       primary="Đăng nhập hóa đơn điện tử"
                       secondary={
                         gdtLoggedIn
-                          ? `Đã đăng nhập ${currentMst} trong phiên này`
+                          ? `Đã đăng nhập ${currentMst}`
                           : `MST ${currentMst}`
                       }
                     />

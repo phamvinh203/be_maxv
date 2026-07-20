@@ -5,6 +5,45 @@ export interface AuthUser {
   role: string;
 }
 
+/**
+ * Body gửi lên POST /auth/register. Khớp `registerSchema` (zod) bên be_maxv —
+ * `xacNhanMatKhau` KHÔNG nằm ở đây vì backend không nhận, đó là validate thuần FE.
+ */
+export interface RegisterPayload {
+  hoTen: string;
+  email: string;
+  sdt: string;
+  password: string;
+}
+
+/**
+ * Lỗi theo từng ô của form đăng ký. Khóa trùng tên trường trên form; ô nào có giá trị
+ * thì ô đó chuyển đỏ kèm `helperText`.
+ * Dùng: `RegisterForm`, `validateRegisterForm` (features/auth/validators).
+ */
+export interface RegisterFieldErrors {
+  hoTen?: string;
+  email?: string;
+  sdt?: string;
+  password?: string;
+  xacNhanMatKhau?: string;
+}
+
+/**
+ * Giá trị các ô của form đăng ký — suy ra từ `RegisterFieldErrors` để danh sách trường
+ * chỉ khai báo một lần. Khác `RegisterPayload`: có thêm `xacNhanMatKhau` (chỉ FE) và
+ * mọi giá trị đều là chuỗi thô chưa `trim()`.
+ */
+export type RegisterFormValues = Record<keyof RegisterFieldErrors, string>;
+
+/** Dữ liệu POST /auth/register trả về (201). Không có token — đăng ký xong CHƯA đăng nhập. */
+export interface RegisterResult {
+  id: string;
+  hoTen: string;
+  email: string;
+  sdt: string | null;
+}
+
 /** Bản tóm tắt công ty/MST trả về lúc login (chi tiết đầy đủ hơn xem `features/company/types`). */
 export interface AuthCompany {
   id: string;
