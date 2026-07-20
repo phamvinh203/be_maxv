@@ -19,7 +19,6 @@ import CloseRounded from "@mui/icons-material/CloseRounded";
 import FolderOpenRounded from "@mui/icons-material/FolderOpenRounded";
 import FileDownloadRounded from "@mui/icons-material/FileDownloadRounded";
 import { toast } from "react-toastify";
-import { useGdtSession } from "../gdtSession/useGdtSession";
 import { useDetailCompleteQuery } from "../api/invoiceDetailQueries";
 import { exportInvoiceBundle, type ExportFormats } from "../exportBundle";
 import {
@@ -28,6 +27,7 @@ import {
   type FsDirHandle,
 } from "../../../lib/fileSystemAccess";
 import { getErrorMessage } from "../../../lib/errors";
+import { useActiveCompanyMst } from "../../auth/useActiveCompanyMst";
 import type { InvoiceQuery } from "../types";
 
 interface Props {
@@ -44,7 +44,8 @@ interface Props {
  * thành" (mọi HĐ có chi tiết). Mở từ tab Hóa đơn.
  */
 export default function ExportFileDialog({ open, onClose, defaultRange }: Props) {
-  const { currentGdtMst } = useGdtSession();
+  // MST công ty đang chọn — tên thư mục xuất + gate; KHÔNG dùng currentGdtMst (xem useActiveCompanyMst).
+  const activeMst = useActiveCompanyMst();
   const canPick = supportsDirectoryPicker();
   const [loai, setLoai] = useState<"all" | "ctt">("all");
   const [range, setRange] = useState(defaultRange);
@@ -72,7 +73,7 @@ export default function ExportFileDialog({ open, onClose, defaultRange }: Props)
   const synced = bothLoaded && pData.missing === 0 && sData.missing === 0;
   const totalInvoices = (pData?.total ?? 0) + (sData?.total ?? 0);
   const canExport =
-    canPick && !!dir && !!currentGdtMst && anyFormat && hasRange && synced && !exporting;
+    canPick && !!dir && !!activeMst && anyFormat && hasRange && synced && !exporting;
 
   const toggle = (k: keyof ExportFormats) => setFormats((f) => ({ ...f, [k]: !f[k] }));
 
@@ -86,12 +87,12 @@ export default function ExportFileDialog({ open, onClose, defaultRange }: Props)
   };
 
   const handleExport = async () => {
-    if (!dir || !currentGdtMst) return;
+    if (!dir || !activeMst) return;
     setExporting(true);
     const toastId = toast.loading("Đang chuẩn bị xuất…");
     try {
       const res = await exportInvoiceBundle({
-        mst: currentGdtMst,
+        mst: activeMst,
         query,
         range: { tuNgay: range.tuNgay, denNgay: range.denNgay },
         formats,
@@ -132,7 +133,7 @@ export default function ExportFileDialog({ open, onClose, defaultRange }: Props)
       <DialogContent dividers>
         <Alert severity="info" sx={{ mb: 2 }}>
           Xuất CẢ 2 chiều (mua vào + bán ra) trong khoảng đã đồng bộ hoàn thành. Cấu trúc:{" "}
-          <b>{currentGdtMst ?? "MST"}</b> / <b>khoảng ngày</b> / {"{purchase, sold}"} /{" "}
+          <b>{activeMst ?? "MST"}</b> / <b>khoảng ngày</b> / {"{purchase, sold}"} /{" "}
           {"{html, xml, pdf}"} + 2 file Excel. Phần mềm cần chút thời gian để render PDF.
         </Alert>
 
@@ -141,10 +142,9 @@ export default function ExportFileDialog({ open, onClose, defaultRange }: Props)
             Trình duyệt hiện tại không hỗ trợ chọn thư mục để lưu. Vui lòng dùng Chrome hoặc Edge.
           </Alert>
         )}
-        {!currentGdtMst && (
+        {!activeMst && (
           <Alert severity="warning" sx={{ mb: 2 }}>
-            Chưa có MST (chưa đăng nhập Thuế điện tử) — không đặt được tên thư mục gốc. Hãy đăng nhập
-            Thuế điện tử trước.
+            Chưa chọn công ty có MST — không đặt được tên thư mục gốc. Hãy chọn công ty (có MST) trước.
           </Alert>
         )}
 

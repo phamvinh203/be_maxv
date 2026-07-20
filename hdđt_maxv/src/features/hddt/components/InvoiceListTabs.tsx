@@ -27,7 +27,7 @@ import InboxRounded from "@mui/icons-material/InboxRounded";
 import FileDownloadRounded from "@mui/icons-material/FileDownloadRounded";
 import CloudDownloadRounded from "@mui/icons-material/CloudDownloadRounded";
 import VisibilityRounded from "@mui/icons-material/VisibilityRounded";
-import { useGdtSession } from "../gdtSession/useGdtSession";
+import { useActiveGdtToken } from "../gdtSession/useActiveGdtToken";
 import { trangThaiHdLabel, ketQuaKiemTraLabel } from "../api/gdt";
 import {
   invoiceKeys,
@@ -81,32 +81,42 @@ function ttTaiCell(v?: string): ReactNode {
  * Khai báo 22 cột 1 chỗ — header và body render chung từ đây nên luôn khớp nhau.
  * Thứ tự cột theo mẫu lưới của phần mềm kế toán. Các cột chưa có nguồn dữ liệu
  * (T.thái tải, Mã ct hạch toán, Tên chứng từ hạch toán, Hóa đơn rủi ro) hiển thị tạm "—".
+ *
+ * Cột đối tác đổi theo chiều: mua vào (đầu vào) hiện NGƯỜI BÁN; bán ra (đầu ra) hiện NGƯỜI MUA
+ * (nmmst/nmten) — vì bên "mình" (người bán) đã là công ty đang chọn, đối tác mới là thông tin cần xem.
  */
-const COLUMNS: InvoiceColumn[] = [
-  { header: "STT", cell: (_r, stt) => stt },
-  // Cột "Chọn" render riêng trong thân bảng (cần state selectedId) — cell này không được gọi.
-  { header: "Chọn", align: "center", cell: () => null },
-  { header: "T. thái tải", align: "center", cell: (r) => ttTaiCell(r.ttTai) },
-  { header: "Ký hiệu mẫu số", cell: (r) => r.mauHd },
-  { header: "Ký hiệu hóa đơn", cell: (r) => r.soSeri },
-  { header: "Số hóa đơn", cell: (r) => r.soHd },
-  { header: "Ngày lập", cell: (r) => formatDateVN(r.ngayLap) },
-  { header: "Ngày ký", cell: (r) => formatDateVN(r.ngayKy) || NO_DATA_YET },
-  { header: "MST người bán/MST người xuất hàng", cell: (r) => r.sellerMst },
-  { header: "Tên người bán/Tên người xuất hàng", cell: (r) => r.sellerTen },
-  { header: "Tổng tiền chưa thuế", align: "right", cell: (r) => formatMoney(r.tienChuaThue) },
-  { header: "Tổng tiền thuế", align: "right", cell: (r) => formatMoney(r.tienThue) },
-  { header: "Tổng CKTM", align: "right", cell: (r) => formatMoney(r.cktm) },
-  { header: "Tổng phí", align: "right", cell: (r) => formatMoney(r.phi) },
-  { header: "Tổng tiền thanh toán", align: "right", cell: (r) => formatMoney(r.tongTt) },
-  { header: "Mã nt", cell: (r) => r.maNt },
-  { header: "Tỷ giá", align: "right", cell: (r) => formatMoney(r.tyGia) },
-  { header: "Trạng thái hóa đơn", align: "center", cell: (r) => trangThaiHdLabel(r.trangThaiHd) },
-  { header: "Kết quả kiểm tra", align: "center", cell: (r) => ketQuaKiemTraLabel(r.ketQuaKt) },
-  { header: "Mã ct hạch toán", cell: () => NO_DATA_YET },
-  { header: "Tên chứng từ hạch toán", cell: () => NO_DATA_YET },
-  { header: "Hóa đơn rủi ro", align: "center", cell: () => NO_DATA_YET },
-];
+function columnsFor(direction: InvoiceDirection): InvoiceColumn[] {
+  const isPurchase = direction === "purchase";
+  return [
+    { header: "STT", cell: (_r, stt) => stt },
+    // Cột "Chọn" render riêng trong thân bảng (cần state selectedId) — cell này không được gọi.
+    { header: "Chọn", align: "center", cell: () => null },
+    { header: "T. thái tải", align: "center", cell: (r) => ttTaiCell(r.ttTai) },
+    { header: "Ký hiệu mẫu số", cell: (r) => r.mauHd },
+    { header: "Ký hiệu hóa đơn", cell: (r) => r.soSeri },
+    { header: "Số hóa đơn", cell: (r) => r.soHd },
+    { header: "Ngày lập", cell: (r) => formatDateVN(r.ngayLap) },
+    { header: "Ngày ký", cell: (r) => formatDateVN(r.ngayKy) || NO_DATA_YET },
+    isPurchase
+      ? { header: "MST người bán/MST người xuất hàng", cell: (r) => r.sellerMst }
+      : { header: "MST người mua", cell: (r) => r.buyerMst },
+    isPurchase
+      ? { header: "Tên người bán/Tên người xuất hàng", cell: (r) => r.sellerTen }
+      : { header: "Tên người mua", cell: (r) => r.buyerTen },
+    { header: "Tổng tiền chưa thuế", align: "right", cell: (r) => formatMoney(r.tienChuaThue) },
+    { header: "Tổng tiền thuế", align: "right", cell: (r) => formatMoney(r.tienThue) },
+    { header: "Tổng CKTM", align: "right", cell: (r) => formatMoney(r.cktm) },
+    { header: "Tổng phí", align: "right", cell: (r) => formatMoney(r.phi) },
+    { header: "Tổng tiền thanh toán", align: "right", cell: (r) => formatMoney(r.tongTt) },
+    { header: "Mã nt", cell: (r) => r.maNt },
+    { header: "Tỷ giá", align: "right", cell: (r) => formatMoney(r.tyGia) },
+    { header: "Trạng thái hóa đơn", align: "center", cell: (r) => trangThaiHdLabel(r.trangThaiHd) },
+    { header: "Kết quả kiểm tra", align: "center", cell: (r) => ketQuaKiemTraLabel(r.ketQuaKt) },
+    { header: "Mã ct hạch toán", cell: () => NO_DATA_YET },
+    { header: "Tên chứng từ hạch toán", cell: () => NO_DATA_YET },
+    { header: "Hóa đơn rủi ro", align: "center", cell: () => NO_DATA_YET },
+  ];
+}
 
 interface InvoiceTablePanelProps {
   direction: InvoiceDirection;
@@ -152,8 +162,11 @@ function buildQuery(filters: InvoiceFilterValues): InvoiceQuery {
  * Dùng: render 2 lần trong `InvoiceListTabs` (mỗi chiều 1 instance, gắn `active`).
  */
 function InvoiceTablePanel({ direction, active }: InvoiceTablePanelProps) {
-  const { currentGdtMst, getGdtToken } = useGdtSession();
   const { currentCompanyId } = useAuth();
+  // Token GDT của ĐÚNG công ty đang chọn (điểm chọn token duy nhất — chống rò rỉ giữa tenant).
+  const { activeMst, token: activeGdtToken } = useActiveGdtToken();
+  // Cột đối tác đổi theo chiều (mua vào: người bán; bán ra: người mua) -> tính theo direction.
+  const columns = useMemo(() => columnsFor(direction), [direction]);
   const qc = useQueryClient();
   const [resultTab, setResultTab] = useState<ResultTab>("tong-quat");
   const [page, setPage] = useState(0);
@@ -299,14 +312,20 @@ function InvoiceTablePanel({ direction, active }: InvoiceTablePanelProps) {
     }
   };
 
-  /** Lấy token GDT hiện tại; toast cảnh báo + trả undefined nếu chưa đăng nhập Thuế điện tử. */
+  /**
+   * Token GDT của ĐÚNG công ty đang chọn (theo MST), KHÔNG mượn phiên MST khác — tránh fetch data
+   * MST này rồi ghi vào DB tenant kia. Chưa đăng nhập GDT cho MST đó -> toast cảnh báo + undefined.
+   */
   const requireGdtToken = (): string | undefined => {
-    const gdtToken = currentGdtMst ? getGdtToken(currentGdtMst) : undefined;
-    if (!gdtToken || !currentGdtMst) {
-      toast.warning('Chưa đăng nhập Thuế điện tử — bấm "Đăng nhập Thuế điện tử" ở trên trước.');
+    if (!activeGdtToken) {
+      toast.warning(
+        activeMst
+          ? `Chưa đăng nhập Thuế điện tử cho MST ${activeMst} — bấm "Đăng nhập Thuế điện tử" ở trên trước.`
+          : "Chưa chọn công ty có MST để đăng nhập Thuế điện tử.",
+      );
       return undefined;
     }
-    return gdtToken;
+    return activeGdtToken;
   };
 
   /**
@@ -430,7 +449,7 @@ function InvoiceTablePanel({ direction, active }: InvoiceTablePanelProps) {
         <Table size="small" sx={{ "& td, & th": { whiteSpace: "nowrap" } }}>
           <TableHead>
             <TableRow sx={{ "& th": { fontWeight: 700, bgcolor: "action.hover" } }}>
-              {COLUMNS.map((col) => (
+              {columns.map((col) => (
                 <TableCell key={col.header} align={col.align}>
                   {col.header}
                 </TableCell>
@@ -443,7 +462,7 @@ function InvoiceTablePanel({ direction, active }: InvoiceTablePanelProps) {
                 const stt = safePage * rowsPerPage + i + 1;
                 return (
                   <TableRow key={r.id} hover selected={selectedId === r.id}>
-                    {COLUMNS.map((col) => (
+                    {columns.map((col) => (
                       <TableCell key={col.header} align={col.align}>
                         {col.header === "Chọn" ? (
                           <Checkbox
@@ -465,7 +484,7 @@ function InvoiceTablePanel({ direction, active }: InvoiceTablePanelProps) {
               })
             ) : (
               <TableRow>
-                <TableCell colSpan={COLUMNS.length} sx={{ border: 0, py: 6 }}>
+                <TableCell colSpan={columns.length} sx={{ border: 0, py: 6 }}>
                   <Stack spacing={1} sx={{ alignItems: "center", color: "text.disabled" }}>
                     <InboxRounded fontSize="large" />
                     <Typography variant="body2">

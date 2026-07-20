@@ -1,22 +1,33 @@
 /**
- * Định dạng ngày (chuỗi ISO/date) -> dd/MM/yyyy kiểu Việt Nam; rỗng/không hợp lệ trả lại nguyên input.
- * Dùng: `InvoiceListTabs` (cột Ngày lập), `SyncInvoiceDialog` (cột Từ/Đến ngày), `exportInvoices`.
+ * Định dạng ngày -> dd/MM/yyyy có ĐỆM 0 (01/01/2026, không phải 1/1/2026).
+ * Tự ghép thay vì `toLocaleDateString("vi-VN")` — locale này bỏ số 0 đứng đầu.
+ * Dùng: nội bộ file này (formatDateVN/formatDateTimeVN).
+ */
+function padDateVN(d: Date): string {
+  return `${String(d.getDate()).padStart(2, "0")}/${String(
+    d.getMonth() + 1,
+  ).padStart(2, "0")}/${d.getFullYear()}`;
+}
+
+/**
+ * Định dạng ngày (chuỗi ISO/date) -> dd/MM/yyyy có đệm 0; rỗng/không hợp lệ trả lại nguyên input.
+ * Dùng: `InvoiceListTabs` (cột Ngày lập/Ngày ký), `SyncInvoiceDialog` (cột Từ/Đến ngày), `exportInvoices`.
  */
 export function formatDateVN(s?: string): string {
   if (!s) return "";
   const d = new Date(s);
-  return Number.isNaN(d.getTime()) ? s : d.toLocaleDateString("vi-VN");
+  return Number.isNaN(d.getTime()) ? s : padDateVN(d);
 }
 
 /**
- * Định dạng ngày giờ -> dd/MM/yyyy HH:mm kiểu Việt Nam.
+ * Định dạng ngày giờ -> dd/MM/yyyy HH:mm (ngày có đệm 0) kiểu Việt Nam.
  * Dùng: `SyncInvoiceDialog` (cột "Ngày đồng bộ" trong bảng lịch sử).
  */
 export function formatDateTimeVN(s?: string): string {
   if (!s) return "";
   const d = new Date(s);
   if (Number.isNaN(d.getTime())) return s;
-  return `${d.toLocaleDateString("vi-VN")} ${d.toLocaleTimeString("vi-VN", {
+  return `${padDateVN(d)} ${d.toLocaleTimeString("vi-VN", {
     hour: "2-digit",
     minute: "2-digit",
   })}`;
