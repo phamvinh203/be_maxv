@@ -34,7 +34,8 @@ export function useSavedDetailsQuery(
     queryFn: () => getSavedDetails(direction, query),
     enabled:
       enabled && isAuthenticated && !!currentCompanyId && !!query.tuNgay && !!query.denNgay,
-    // Payload chi tiết nặng (tối đa 1000 blob) — giữ cache 5 phút để đổi qua lại tab không refetch.
+    // Payload chi tiết nặng (1 blob JSON/hóa đơn, không giới hạn số dòng nên khoảng ngày rộng
+    // sẽ rất nặng) — giữ cache 5 phút để đổi qua lại tab không phải tải lại.
     // Sau khi tải chi tiết xong đã invalidate detailKeys.byDirection nên vẫn luôn mới khi cần.
     staleTime: 5 * 60 * 1000,
   });

@@ -299,8 +299,38 @@ async function countExistingIds(
   return rows.length;
 }
 
-/** Trần số dòng đọc từ DB 1 lần — đủ cho 1 khoảng ngày; vượt trần sẽ log cảnh báo. */
-const MAX_SAVED_ROWS = 1000;
+/**
+ * Cột cần cho danh sách hóa đơn — ĐÚNG các field `mapSavedRow` đọc.
+ *
+ * BẮT BUỘC phải liệt kê tường minh: `vct50view`/`vct60view` còn 2 cột JSON nặng là `detail`
+ * (chi tiết hóa đơn) và `raw` (toàn bộ payload GDT gốc). findMany không có `select` sẽ kéo cả
+ * hai về cho MỌI dòng rồi `mapSavedRow` vứt đi — vô ích, và là thứ khiến việc bỏ trần số dòng
+ * trở nên nguy hiểm. Với `select` này mỗi dòng chỉ còn vài trăm byte.
+ */
+const SAVED_LIST_SELECT = {
+  id: true,
+  khmshdon: true,
+  khhdon: true,
+  shdon: true,
+  tdlap: true,
+  nky: true,
+  nbmst: true,
+  nbten: true,
+  nbdchi: true,
+  nmmst: true,
+  nmten: true,
+  nmdchi: true,
+  dvtte: true,
+  tgia: true,
+  tgtcthue: true,
+  tgtthue: true,
+  ttcktmai: true,
+  tgtphi: true,
+  tgtttbso: true,
+  tthai: true,
+  ttxly: true,
+  tt_tai: true,
+} as const;
 
 /** 1 hóa đơn đã lưu, chuẩn hóa lại đúng tên field GDT để FE dùng chung mapping với luồng tra cứu GDT. */
 export interface SavedInvoiceRow {
@@ -392,7 +422,12 @@ function buildSavedWhere(
 /**
  * Đọc hóa đơn đã lưu trong DB tenant (không gọi GDT) — `vct60view` cho chiều mua vào,
  * `vct50view` cho chiều bán ra. Lọc theo khoảng `tdlap` + các field khớp query; sort
- * ngày lập giảm dần, giới hạn `MAX_SAVED_ROWS`. `total` là số dòng thực đọc được.
+ * ngày lập giảm dần.
+ *
+ * KHÔNG giới hạn số dòng: trả về TOÀN BỘ hóa đơn khớp bộ lọc, nên `total` là tổng thật
+ * (trước đây cắt ở 1000 dòng khiến hóa đơn cũ hơn không cách nào xem tới, mà `total` lại
+ * báo đúng 1000 như thể đó là tổng). Khối lượng do khoảng ngày người dùng chọn quyết định
+ * — đọc bằng `SAVED_LIST_SELECT` (dòng nhẹ) + index `tdlap` nên khoảng rộng vẫn chịu được.
  */
 export async function getSavedInvoices(
   tenantDb: PrismaClient,
@@ -406,19 +441,13 @@ export async function getSavedInvoices(
       ? await tenantDb.vct60view.findMany({
           where,
           orderBy: { tdlap: "desc" },
-          take: MAX_SAVED_ROWS,
+          select: SAVED_LIST_SELECT,
         })
       : await tenantDb.vct50view.findMany({
           where,
           orderBy: { tdlap: "desc" },
-          take: MAX_SAVED_ROWS,
+          select: SAVED_LIST_SELECT,
         });
-
-  if (rows.length === MAX_SAVED_ROWS) {
-    console.warn(
-      `[gdt.getSavedInvoices] (${direction}) chạm trần ${MAX_SAVED_ROWS} dòng — có thể còn hóa đơn chưa hiển thị, cần thu hẹp khoảng ngày.`,
-    );
-  }
 
   const datas = (rows as Record<string, unknown>[]).map(mapSavedRow);
   return { total: datas.length, datas };
@@ -460,8 +489,7 @@ export async function getSavedInvoiceDetails(
   direction: "purchase" | "sold",
   query: PurchaseInvoiceQuery | SoldInvoiceQuery,
 ): Promise<Record<string, unknown>[]> {
-  // Lọc "đã tải chi tiết" ngay trong WHERE để `take` chỉ đếm dòng có detail — tránh trường hợp
-  // hóa đơn đã tải nhưng cũ hơn bị đẩy ra ngoài trần 1000 dòng khiến tab Chi tiết tưởng là rỗng.
+  // Lọc "đã tải chi tiết" ngay trong WHERE để chỉ kéo về dòng thực sự có detail.
   const where = { ...buildSavedWhere(direction, query), detail: { not: Prisma.DbNull } };
   const select = { detail: true } as const;
 
@@ -470,13 +498,11 @@ export async function getSavedInvoiceDetails(
       ? await tenantDb.vct60view.findMany({
           where,
           orderBy: { tdlap: "desc" },
-          take: MAX_SAVED_ROWS,
           select,
         })
       : await tenantDb.vct50view.findMany({
           where,
           orderBy: { tdlap: "desc" },
-          take: MAX_SAVED_ROWS,
           select,
         });
 

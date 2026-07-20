@@ -59,12 +59,7 @@ export interface ExportBundleResult {
   err: number;
   /** Thông báo lỗi ĐẦU TIÊN gặp phải (để FE hiện thay vì nuốt im lặng). */
   firstError?: string;
-  /** true nếu 1 chiều chạm trần đọc DB (có thể còn HĐ chưa xuất) -> FE cảnh báo thu hẹp khoảng ngày. */
-  truncated?: boolean;
 }
-
-/** Trần số dòng BE trả 1 lần (khớp MAX_SAVED_ROWS ở getSavedInvoices) — chạm trần = có thể còn HĐ. */
-const EXPORT_ROW_CAP = 1000;
 
 /** Tên folder khoảng ngày: "tu-<từ>-den-<đến>". */
 function rangeFolderName(range: ExportRange): string {
@@ -136,11 +131,6 @@ export async function exportInvoiceBundle(opts: ExportBundleOptions): Promise<Ex
   );
 
   const total = perDir.reduce((s, d) => s + d.views.length, 0);
-  // Chạm trần đọc DB ở BẤT KỲ chiều nào -> có thể còn HĐ chưa lấy về (getSavedInvoices/getSavedDetails
-  // đều cắt ở EXPORT_ROW_CAP). Cảnh báo để người dùng thu hẹp khoảng ngày.
-  const truncated = perDir.some(
-    (d) => (d.saved.datas?.length ?? 0) >= EXPORT_ROW_CAP || d.details.length >= EXPORT_ROW_CAP,
-  );
   let ok = 0;
   let err = 0;
   let firstError = "";
@@ -189,5 +179,5 @@ export async function exportInvoiceBundle(opts: ExportBundleOptions): Promise<Ex
     onProgress?.(done, total);
   });
 
-  return { total, ok, err, firstError: firstError || undefined, truncated };
+  return { total, ok, err, firstError: firstError || undefined };
 }

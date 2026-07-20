@@ -151,11 +151,13 @@ export default function SystemDataTab() {
         return;
       }
       exportSavedBackupCsv(purchase, sold);
-      // Endpoint đọc DB giới hạn 1000 dòng/chiều — cảnh báo nếu backup chưa đủ so với thống kê.
+      // Backup lấy theo khoảng ngày nên vẫn có thể ít hơn tổng trong DB (HĐ ngoài khoảng) —
+      // đối chiếu với thống kê để người dùng biết bản sao lưu chưa phủ hết dữ liệu.
       if (purchase.length < (stats?.purchase ?? 0) || sold.length < (stats?.sold ?? 0)) {
         setNotice(
-          `Bản sao lưu chỉ gồm tối đa 1000 hóa đơn mới nhất mỗi chiều ` +
-            `(${purchase.length}/${stats?.purchase ?? 0} mua vào, ${sold.length}/${stats?.sold ?? 0} bán ra) — chưa đầy đủ.`,
+          `Bản sao lưu chưa gồm toàn bộ hóa đơn trong hệ thống ` +
+            `(${purchase.length}/${stats?.purchase ?? 0} mua vào, ${sold.length}/${stats?.sold ?? 0} bán ra) — ` +
+            `hãy mở rộng khoảng ngày rồi sao lưu lại.`,
         );
       }
     } catch (e) {
