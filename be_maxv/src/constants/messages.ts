@@ -88,6 +88,7 @@ export const MESSAGES = {
 
   VALIDATION: {
     INVALID_MST: 'Mã số thuế không hợp lệ',
+    INVALID_NAME: 'Họ tên không hợp lệ',
     INVALID_PHONE: 'Số điện thoại không hợp lệ',
     PASSWORD_MIN: 'Mật khẩu tối thiểu 8 ký tự',
     PASSWORD_LETTER: 'Phải có chữ',

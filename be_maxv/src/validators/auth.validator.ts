@@ -3,7 +3,15 @@ import { MESSAGES } from '../constants/messages';
 
 // Bước 1: đăng ký người dùng (lưu vào maxv2_sys)
 export const registerSchema = z.object({
-  hoTen: z.string().min(1),
+  // Chặn độ dài + xuống dòng: `hoTen` được nhúng nguyên văn vào email chào mừng gửi từ
+  // địa chỉ đã xác thực của hệ thống (xem welcomeEmail). Không giới hạn thì /register —
+  // vốn không cần đăng nhập — thành kênh phát tán nội dung tùy ý dưới danh nghĩa MaxV.
+  hoTen: z
+    .string()
+    .trim()
+    .min(1)
+    .max(100)
+    .regex(/^[^\r\n]+$/, MESSAGES.VALIDATION.INVALID_NAME),
   email: z.string().email(),
   sdt: z
     .string()

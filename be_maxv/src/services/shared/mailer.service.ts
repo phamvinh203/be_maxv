@@ -1,14 +1,20 @@
 import nodemailer from 'nodemailer';
 import { env } from '../../config/env';
 
+// Timeout tường minh: mặc định của nodemailer là 2 phút cho connection — quá dài,
+// đủ để treo cả request HTTP đang chờ gửi mail (vd adminApproveInvite bắt buộc await).
+// Cổng 587 bị firewall chặn là tình huống hay gặp trên VPS.
 const transporter = nodemailer.createTransport({
   host: env.smtpHost,
   port: env.smtpPort,
   secure: env.smtpPort === 465,
   auth: { user: env.smtpUser, pass: env.smtpPassword },
+  connectionTimeout: 10_000,
+  greetingTimeout: 10_000,
+  socketTimeout: 20_000,
 });
 
-interface SendMailInput {
+export interface SendMailInput {
   to: string | string[];
   subject: string;
   text: string;

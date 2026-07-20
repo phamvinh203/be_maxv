@@ -1,6 +1,8 @@
 import { sysPrisma } from '../../config/db.sys';
 import { hashPassword, verifyPassword, DUMMY_HASH } from '../../utils/password';
 import { writeLog } from '../shared/syslog.service';
+import { sendMail } from '../shared/mailer.service';
+import { welcomeEmail } from '../../helpers/mailTemplates';
 import { createTrialSubscription } from '../shared/subscription.service';
 import { listAccessibleCompanies } from '../shared/companyAccess.service';
 import { canAccessDonVi } from '../../helpers/access';
@@ -48,6 +50,21 @@ export async function registerUser(input: RegisterInput) {
   );
 
   await writeLog({ hanhDong: 'REGISTER', userId: user.id, chiTiet: { email } });
+
+  // Email chào mừng — BEST-EFFORT: SMTP lỗi KHÔNG được hủy đăng ký. Khác với
+  // adminInvite (rollback khi gửi lỗi vì mật khẩu chỉ tồn tại trong email đó):
+  // ở đây người dùng tự đặt mật khẩu nên vẫn đăng nhập được dù mail không tới.
+  //
+  // KHÔNG await: `.catch()` chỉ chặn unhandled rejection chứ không rút ngắn thời gian
+  // chờ. Nếu cổng SMTP bị firewall chặn, await sẽ treo request đăng ký tới khi timeout
+  // -> user tưởng lỗi, bấm lại và nhận 409 dù tài khoản đã tạo xong. Không dòng nào
+  // phía sau phụ thuộc kết quả gửi mail.
+  // Giữ userId riêng: closure dưới chỉ cần id, không nên neo cả bản ghi `user`
+  // (có `password` hash) sống thêm tới khi SMTP settle.
+  const userId = user.id;
+  void sendMail({ to: email, ...welcomeEmail({ hoTen, email }) }).catch((err) =>
+    console.error(`[registerUser] sendMail lỗi cho owner ${userId}:`, err),
+  );
 
   return { id: user.id, hoTen, email, sdt: user.sdt };
 }
