@@ -33,8 +33,8 @@ export async function login(email: string, password: string): Promise<SessionDat
 
 /**
  * POST /api/v1/auth/forgot-password — xin mã OTP gửi về email.
- * Server LUÔN trả 200 với cùng một message dù email có tồn tại hay không (chống dò tài
- * khoản), nên đừng suy ra sự tồn tại của tài khoản từ kết quả hàm này.
+ * Ném lỗi kèm message rõ ràng nếu email chưa đăng ký (404), tài khoản chưa kích hoạt
+ * (401), hoặc đã xin mã quá nhiều lần trong 1 giờ (409).
  */
 export async function forgotPassword(email: string): Promise<{ message: string }> {
   return apiFetchData<{ message: string }>(

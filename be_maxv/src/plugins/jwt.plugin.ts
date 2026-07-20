@@ -28,6 +28,12 @@ export default fp(
     });
 
     // Throw UnauthorizedError -> errorHandler.plugin ánh xạ 401 (một đường duy nhất).
+    //
+    // CHỦ Ý: access token KHÔNG được đối chiếu `users.tokenVersion` ở đây. Thu hồi phiên
+    // chỉ diễn ra lúc refresh (`loadUserForRefresh`), nên sau khi đặt lại mật khẩu, access
+    // token cũ vẫn sống hết TTL (env.accessTtl). Đổi lại: không tốn 1 truy vấn DB mỗi
+    // request. Hệ quả quan trọng: `req.user.tokenVersion` là giá trị CŨ theo thiết kế —
+    // TUYỆT ĐỐI không dùng nó để ký token mới, hãy đọc từ DB (currentTokenVersion).
     app.decorate('authenticate', async (req: FastifyRequest) => {
       try {
         await req.jwtVerify();

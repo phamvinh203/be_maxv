@@ -20,6 +20,8 @@ export const OTP_LENGTH = 6;
 /** Khớp `OTP_TTL_MINUTES` — chỉ dùng để hiển thị cho người dùng. */
 export const OTP_TTL_MINUTES = 10;
 
+const OTP_RE = new RegExp(`^[0-9]{${OTP_LENGTH}}$`);
+
 export function checkEmail(v: string): string | undefined {
   const email = v.trim();
   if (!email) return "Vui lòng nhập email.";
@@ -53,20 +55,31 @@ export function checkPasswordConfirm(
 }
 
 /**
- * Bỏ các khóa có giá trị `undefined` khỏi object lỗi, để `Object.keys(errors).length`
- * phản ánh đúng số lỗi thật (gán `errors.x = checkX(...)` luôn tạo khóa, kể cả khi hợp lệ).
- * Dùng: các validator trong thư mục này.
+ * Bỏ các khóa rỗng khỏi object lỗi, để `Object.keys(errors).length` phản ánh đúng số lỗi
+ * thật (gán `errors.x = checkX(...)` luôn tạo khóa, kể cả khi hợp lệ).
+ *
+ * Lọc cả `undefined` LẪN chuỗi rỗng: nếu sau này có hàm check trả `""` cho trường hợp hợp
+ * lệ thì khóa đó vẫn tính là lỗi, chặn submit mà không hiện chữ nào — lỗi rất khó lần ra.
+ * Trả `Partial<T>` chứ không phải `T`: hàm này XOÁ khóa nên không thể hứa giữ nguyên kiểu.
  */
-export function pruneEmpty<T extends object>(errors: T): T {
+export function pruneEmpty<T extends object>(errors: T): Partial<T> {
   return Object.fromEntries(
-    Object.entries(errors).filter(([, v]) => v !== undefined),
-  ) as T;
+    Object.entries(errors).filter(([, v]) => v),
+  ) as Partial<T>;
 }
 
 export function checkOtp(v: string): string | undefined {
   const otp = v.trim();
   if (!otp) return "Vui lòng nhập mã xác thực.";
-  if (!new RegExp(`^[0-9]{${OTP_LENGTH}}$`).test(otp))
-    return `Mã xác thực gồm ${OTP_LENGTH} chữ số.`;
+  if (!OTP_RE.test(otp)) return `Mã xác thực gồm ${OTP_LENGTH} chữ số.`;
+  return undefined;
+}
+
+/** Khớp `hoTen` trong `registerSchema`: bắt buộc, tối đa 100 ký tự, không xuống dòng. */
+export function checkHoTen(v: string): string | undefined {
+  const hoTen = v.trim();
+  if (!hoTen) return "Vui lòng nhập họ tên.";
+  if (hoTen.length > HO_TEN_MAX) return `Họ tên tối đa ${HO_TEN_MAX} ký tự.`;
+  if (/[\r\n]/.test(hoTen)) return "Họ tên không được xuống dòng.";
   return undefined;
 }

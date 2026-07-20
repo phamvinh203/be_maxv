@@ -14,6 +14,7 @@ import {
   setEmployeeAccess,
   updateCompanyInfo,
 } from '../../services/client/company.service';
+import { currentTokenVersion } from '../../services/client/auth.service';
 import {
   listAccessibleCompaniesDetailed,
   resolveAccountOwnerId,
@@ -53,7 +54,7 @@ export async function createCompany(req: FastifyRequest, reply: FastifyReply) {
     userId: req.user.userId,
     donViId: company.id,
     role: req.user.role,
-    tokenVersion: req.user.tokenVersion,
+    tokenVersion: await currentTokenVersion(req.user.userId),
   });
   return sendCreated(reply, {
     company,
@@ -85,7 +86,7 @@ export async function switchCompany(req: FastifyRequest, reply: FastifyReply) {
     userId: req.user.userId,
     donViId: id,
     role: req.user.role,
-    tokenVersion: req.user.tokenVersion,
+    tokenVersion: await currentTokenVersion(req.user.userId),
   });
   return sendOk(reply, { activeDonViId: id });
 }

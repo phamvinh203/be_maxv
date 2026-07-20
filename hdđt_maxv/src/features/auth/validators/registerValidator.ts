@@ -1,7 +1,7 @@
 import type { RegisterFieldErrors, RegisterFormValues } from "../types";
 import {
-  HO_TEN_MAX,
   checkEmail,
+  checkHoTen,
   checkPassword,
   checkPasswordConfirm,
   checkPhone,
@@ -26,17 +26,11 @@ export const EMPTY_REGISTER_FORM: RegisterFormValues = {
  * Dùng: `RegisterForm` (lúc submit).
  */
 export function validateRegisterForm(v: RegisterFormValues): RegisterFieldErrors {
-  const errors: RegisterFieldErrors = {};
-
-  const hoTen = v.hoTen.trim();
-  if (!hoTen) errors.hoTen = "Vui lòng nhập họ tên.";
-  else if (hoTen.length > HO_TEN_MAX) errors.hoTen = `Họ tên tối đa ${HO_TEN_MAX} ký tự.`;
-  else if (/[\r\n]/.test(hoTen)) errors.hoTen = "Họ tên không được xuống dòng.";
-
-  errors.email = checkEmail(v.email);
-  errors.sdt = checkPhone(v.sdt);
-  errors.password = checkPassword(v.password);
-  errors.xacNhanMatKhau = checkPasswordConfirm(v.password, v.xacNhanMatKhau);
-
-  return pruneEmpty(errors);
+  return pruneEmpty<RegisterFieldErrors>({
+    hoTen: checkHoTen(v.hoTen),
+    email: checkEmail(v.email),
+    sdt: checkPhone(v.sdt),
+    password: checkPassword(v.password),
+    xacNhanMatKhau: checkPasswordConfirm(v.password, v.xacNhanMatKhau),
+  });
 }

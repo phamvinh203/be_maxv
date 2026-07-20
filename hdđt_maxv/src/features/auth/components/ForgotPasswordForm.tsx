@@ -40,8 +40,9 @@ export default function ForgotPasswordForm() {
   const [form, setForm] = useState<ResetPasswordFormValues>(EMPTY_RESET_FORM);
   const [fieldErrors, setFieldErrors] = useState<ResetPasswordFieldErrors>({});
 
-  const [error, setError] = useState("");
   const [submitting, setSubmitting] = useState(false);
+
+  const submitLabel = step === "email" ? "Gửi mã xác thực" : "Đặt lại mật khẩu";
 
   const setField =
     (key: keyof ResetPasswordFormValues) =>
@@ -52,7 +53,6 @@ export default function ForgotPasswordForm() {
   const handleRequestOtp = async (e: FormEvent) => {
     e.preventDefault();
     if (submitting) return;
-    setError("");
 
     const err = checkEmail(email);
     setEmailError(err);
@@ -63,7 +63,8 @@ export default function ForgotPasswordForm() {
       await forgotPassword(email.trim());
       setStep("otp");
     } catch (err) {
-      setError(getErrorMessage(err, "Không gửi được mã xác thực."));
+      // Gắn vào ô email luôn — bước này chỉ có đúng một ô, Alert riêng là thừa.
+      setEmailError(getErrorMessage(err, "Không gửi được mã xác thực."));
     } finally {
       setSubmitting(false);
     }
@@ -73,7 +74,6 @@ export default function ForgotPasswordForm() {
   const handleReset = async (e: FormEvent) => {
     e.preventDefault();
     if (submitting) return;
-    setError("");
 
     const errors = validateResetPasswordForm(form);
     setFieldErrors(errors);
@@ -135,9 +135,9 @@ export default function ForgotPasswordForm() {
           </>
         ) : (
           <>
-            <Alert severity="info">
-              Nếu email <b>{email.trim()}</b> tồn tại trong hệ thống, mã xác thực đã được
-              gửi tới hộp thư. Mã có hiệu lực {OTP_TTL_MINUTES} phút.
+            <Alert severity="success">
+              Mã xác thực đã được gửi tới <b>{email.trim()}</b>. Mã có hiệu lực{" "}
+              {OTP_TTL_MINUTES} phút.
             </Alert>
             <TextField
               label="Mã xác thực"
@@ -165,16 +165,8 @@ export default function ForgotPasswordForm() {
           </>
         )}
 
-        {error && <Alert severity="error">{error}</Alert>}
-
         <Button type="submit" variant="contained" disabled={submitting}>
-          {submitting ? (
-            <CircularProgress size={22} color="inherit" />
-          ) : step === "email" ? (
-            "Gửi mã xác thực"
-          ) : (
-            "Đặt lại mật khẩu"
-          )}
+          {submitting ? <CircularProgress size={22} color="inherit" /> : submitLabel}
         </Button>
 
         <Stack direction="row" sx={{ justifyContent: "space-between" }}>
@@ -187,7 +179,6 @@ export default function ForgotPasswordForm() {
               variant="body2"
               onClick={() => {
                 setStep("email");
-                setError("");
                 setFieldErrors({});
               }}
             >
