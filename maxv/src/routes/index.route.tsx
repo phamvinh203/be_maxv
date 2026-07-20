@@ -1,4 +1,4 @@
-import { createRoute, createRouter, redirect } from '@tanstack/react-router';
+import { createRoute, createRouter } from '@tanstack/react-router';
 import { rootRoute } from './root.route';
 import { loginRoute } from './login.route';
 import { adminRoute } from './admin.route';
@@ -9,15 +9,13 @@ import { subscriptionsRoute } from './subscriptions.route';
 import { usersRoute } from './users.route';
 import { invitesRoute } from './invites.route';
 import { dashboardRoute, opsRoute } from './stubs.route';
-import { isAuthenticated } from '@/features/auth/hooks/useAuth';
+import { IndexRedirect } from './IndexRedirect';
 
-// "/" -> điều hướng theo trạng thái đăng nhập.
+// "/" -> điều hướng theo trạng thái đăng nhập (xem IndexRedirect).
 const indexRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: '/',
-  beforeLoad: () => {
-    throw redirect({ to: isAuthenticated() ? '/dashboard' : '/login' });
-  },
+  component: IndexRedirect,
 });
 
 const routeTree = rootRoute.addChildren([

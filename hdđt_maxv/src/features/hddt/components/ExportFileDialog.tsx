@@ -99,18 +99,15 @@ export default function ExportFileDialog({ open, onClose, defaultRange }: Props)
         onProgress: (done, total) =>
           toast.update(toastId, { render: `Đang xuất hóa đơn ${done}/${total}…` }),
       });
-      const truncWarn = res.truncated
-        ? " ⚠ Khoảng có >1000 HĐ/chiều nên có thể còn thiếu — hãy thu hẹp khoảng ngày rồi xuất lại."
-        : "";
       toast.update(toastId, {
         render:
-          (res.err > 0
+          res.err > 0
             ? `Đã xuất ${res.ok}/${res.total} hóa đơn (${res.err} lỗi) + Excel vào "${dir.name}".` +
               (res.firstError ? ` Lỗi: ${res.firstError}` : "")
-            : `Đã xuất ${res.ok} hóa đơn (2 chiều) + Excel vào thư mục "${dir.name}".`) + truncWarn,
-        type: res.err > 0 || res.truncated ? "warning" : "success",
+            : `Đã xuất ${res.ok} hóa đơn (2 chiều) + Excel vào thư mục "${dir.name}".`,
+        type: res.err > 0 ? "warning" : "success",
         isLoading: false,
-        autoClose: res.err > 0 || res.truncated ? 10000 : 5000,
+        autoClose: res.err > 0 ? 10000 : 5000,
       });
     } catch (e) {
       toast.update(toastId, {
