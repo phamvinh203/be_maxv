@@ -5,6 +5,8 @@ interface JwtPayload {
   userId: string;
   donViId: string | null;
   role: string;
+  // Bản token — xem TokenPayload ở helpers/authTokens.ts.
+  tokenVersion: number;
 }
 
 declare module 'fastify' {

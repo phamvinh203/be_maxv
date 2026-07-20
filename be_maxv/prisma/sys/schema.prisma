@@ -27,6 +27,10 @@ model User {
   status   UserStatus @default(ACTIVE)
   isActive Boolean    @default(false) // true sau khi xác thực email / được duyệt
 
+  // Nhúng vào JWT; tăng lên khi đổi/đặt lại mật khẩu để vô hiệu MỌI refresh token đã phát.
+  // loadUserForRefresh so version trong token với cột này -> lệch là chặn.
+  tokenVersion Int @default(0)
+
   // Chủ tài khoản (owner) = đơn vị billing. Nhân viên trỏ ownerId về owner; owner/admin = null.
   ownerId   String?
   owner     User?  @relation("AccountMembers", fields: [ownerId], references: [id], onDelete: Cascade)
@@ -41,6 +45,9 @@ model User {
 
   // Lời mời nhân viên do owner này tạo
   invites InviteRequest[] @relation("AccountInvites")
+
+  // OTP đặt lại mật khẩu đã phát cho user này
+  passwordResetOtps PasswordResetOtp[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -225,4 +232,27 @@ enum InviteStatus {
   PENDING
   APPROVED
   REJECTED
+}
+
+// ---------------- OTP đặt lại mật khẩu ----------------
+
+/// OTP quên mật khẩu gửi qua email: sống ngắn, dùng đúng 1 lần, đếm số lần nhập sai.
+/// Lưu HASH của OTP chứ không lưu OTP thô — rò DB không đồng nghĩa lộ mã đang hiệu lực.
+model PasswordResetOtp {
+  id     String @id @default(uuid())
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  otpHash String // bcrypt hash của mã 6 số
+  /// Số lần nhập sai — chạm trần thì OTP coi như chết (chống dò 6 chữ số).
+  attemptCount Int @default(0)
+
+  expiresAt DateTime
+  /// Khác null = đã dùng để đổi mật khẩu, không dùng lại được.
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  // Truy vấn chính: tìm OTP còn sống mới nhất của 1 user.
+  @@index([userId, createdAt])
+  @@map("password_reset_otps")
 }

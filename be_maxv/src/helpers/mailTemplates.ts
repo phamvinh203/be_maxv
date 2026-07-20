@@ -84,6 +84,33 @@ export function inviteApprovedEmail(input: {
 }
 
 /**
+ * Email chứa mã OTP đặt lại mật khẩu.
+ * KHÔNG kèm mật khẩu cũ/mới và không kèm link bấm — chỉ có mã để người dùng tự nhập
+ * lại trên trang đang mở, nên mã bị chuyển tiếp nhầm cũng không tự động đổi được gì.
+ * Dùng: `requestPasswordReset` (services/client/auth.service.ts).
+ */
+export function resetPasswordOtpEmail(input: {
+  hoTen: string;
+  otp: string;
+  expiresInMinutes: number;
+}): MailContent {
+  return {
+    subject: 'Mã xác thực đặt lại mật khẩu MaxV',
+    text: [
+      `Xin chào ${input.hoTen},`,
+      '',
+      'Bạn (hoặc ai đó) vừa yêu cầu đặt lại mật khẩu cho tài khoản MaxV.',
+      '',
+      `Mã xác thực: ${input.otp}`,
+      `Mã có hiệu lực trong ${input.expiresInMinutes} phút và chỉ dùng được một lần.`,
+      '',
+      'Nếu bạn không yêu cầu, hãy bỏ qua email này — mật khẩu hiện tại vẫn giữ nguyên.',
+      'Tuyệt đối không chia sẻ mã này cho bất kỳ ai, kể cả người tự xưng là nhân viên MaxV.',
+    ].join('\n'),
+  };
+}
+
+/**
  * Email báo cho admin hệ thống có lời mời nhân viên mới đang chờ duyệt.
  * Gửi tới nhiều admin cùng lúc — caller truyền mảng địa chỉ vào `to`.
  * Dùng: `notifyAdminsOfNewInvite` (services/client/company.service.ts).
