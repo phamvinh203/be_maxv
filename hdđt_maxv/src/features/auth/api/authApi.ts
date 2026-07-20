@@ -1,5 +1,10 @@
 import { apiFetch, apiFetchData } from "../../../lib/http";
-import type { RegisterPayload, RegisterResult, SessionData } from "../types";
+import type {
+  RegisterPayload,
+  RegisterResult,
+  ResetPasswordPayload,
+  SessionData,
+} from "../types";
 
 /**
  * POST /api/v1/auth/register → tài khoản mới (201). Server KHÔNG đặt cookie phiên ở bước này,
@@ -23,6 +28,34 @@ export async function login(email: string, password: string): Promise<SessionDat
     "/auth/login",
     { method: "POST", body: JSON.stringify({ email, password }) },
     "Đăng nhập thất bại",
+  );
+}
+
+/**
+ * POST /api/v1/auth/forgot-password — xin mã OTP gửi về email.
+ * Server LUÔN trả 200 với cùng một message dù email có tồn tại hay không (chống dò tài
+ * khoản), nên đừng suy ra sự tồn tại của tài khoản từ kết quả hàm này.
+ */
+export async function forgotPassword(email: string): Promise<{ message: string }> {
+  return apiFetchData<{ message: string }>(
+    "/auth/forgot-password",
+    { method: "POST", body: JSON.stringify({ email }) },
+    "Không gửi được mã xác thực",
+  );
+}
+
+/**
+ * POST /api/v1/auth/reset-password — đối chiếu OTP + đặt mật khẩu mới.
+ * Thành công thì server xoá cookie phiên và vô hiệu mọi refresh token cũ -> phải đăng nhập lại.
+ * Mọi lý do thất bại đều trả CÙNG một message (sai mã / hết hạn / quá số lần).
+ */
+export async function resetPassword(
+  payload: ResetPasswordPayload,
+): Promise<{ message: string }> {
+  return apiFetchData<{ message: string }>(
+    "/auth/reset-password",
+    { method: "POST", body: JSON.stringify(payload) },
+    "Đặt lại mật khẩu thất bại",
   );
 }
 

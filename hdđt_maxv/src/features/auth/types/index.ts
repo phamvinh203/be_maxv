@@ -36,6 +36,23 @@ export interface RegisterFieldErrors {
  */
 export type RegisterFormValues = Record<keyof RegisterFieldErrors, string>;
 
+/** Body POST /auth/reset-password. `xacNhanMatKhau` không nằm ở đây — backend không nhận. */
+export interface ResetPasswordPayload {
+  email: string;
+  otp: string;
+  newPassword: string;
+}
+
+/** Lỗi theo từng ô ở bước 2 của luồng quên mật khẩu. */
+export interface ResetPasswordFieldErrors {
+  otp?: string;
+  newPassword?: string;
+  xacNhanMatKhau?: string;
+}
+
+/** Giá trị các ô ở bước 2 — suy ra từ `ResetPasswordFieldErrors`. */
+export type ResetPasswordFormValues = Record<keyof ResetPasswordFieldErrors, string>;
+
 /** Dữ liệu POST /auth/register trả về (201). Không có token — đăng ký xong CHƯA đăng nhập. */
 export interface RegisterResult {
   id: string;

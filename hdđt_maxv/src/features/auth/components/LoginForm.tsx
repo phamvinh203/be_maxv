@@ -99,13 +99,7 @@ export default function LoginForm() {
           direction="row"
           sx={{ justifyContent: "space-between", alignItems: "center" }}
         >
-          {/* Chưa có API đặt lại mật khẩu — chỉ báo trạng thái, không dựng luồng giả. */}
-          <Link
-            component="button"
-            type="button"
-            variant="body2"
-            onClick={() => alert("Chức năng chưa có.") }
-          >
+          <Link component={RouterLink} to="/forgot-password" variant="body2">
             Quên mật khẩu?
           </Link>
           <Typography variant="body2">
