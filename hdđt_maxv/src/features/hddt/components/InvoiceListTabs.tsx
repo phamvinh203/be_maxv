@@ -23,7 +23,7 @@ import TableContainer from "@mui/material/TableContainer";
 import Typography from "@mui/material/Typography";
 import Alert from "@mui/material/Alert";
 import InboxRounded from "@mui/icons-material/InboxRounded";
-import DescriptionRounded from "@mui/icons-material/DescriptionRounded";
+// import DescriptionRounded from "@mui/icons-material/DescriptionRounded";
 import FileDownloadRounded from "@mui/icons-material/FileDownloadRounded";
 import CloudDownloadRounded from "@mui/icons-material/CloudDownloadRounded";
 import VisibilityRounded from "@mui/icons-material/VisibilityRounded";
@@ -536,14 +536,14 @@ export default function InvoiceListTabs() {
         </Tabs>
 
         <Stack direction="row" spacing={1} sx={{ pb: { xs: 1, sm: 0 } }}>
-          <Button
+          {/* <Button
             variant="outlined"
             size="small"
             startIcon={<DescriptionRounded fontSize="small" />}
             sx={{ textTransform: "none", whiteSpace: "nowrap" }}
           >
             Lập tờ khai và bảng kê
-          </Button>
+          </Button> */}
           <Button
             variant="outlined"
             size="small"
