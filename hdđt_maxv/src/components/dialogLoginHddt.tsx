@@ -1,4 +1,4 @@
-import { useEffect, useId, useMemo, useState } from "react";
+import { useEffect, useId, useMemo, useState, type FormEvent } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import Dialog from "@mui/material/Dialog";
 import DialogContent from "@mui/material/DialogContent";
@@ -93,19 +93,22 @@ export default function DialogLoginHddt({
     setDone(false);
   }, [open, initialUsername]);
 
-  /** Validate + gọi loginGdt; thành công báo lên qua onLoginSuccess, thất bại thì lấy captcha mới. Dùng: nút "Đăng nhập". */
-  const handleSubmit = () => {
+  /** Validate + gọi loginGdt; thành công báo lên qua onLoginSuccess, thất bại thì lấy captcha mới. Dùng: submit form (nút "Đăng nhập" hoặc phím Enter). */
+  const handleSubmit = (e: FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    if (submitting || done) return;
     setError("");
     if (!username || !password || !captchaInput || !captcha?.key) {
       setError("Vui lòng nhập đầy đủ thông tin.");
       return;
     }
+    const mst = username.trim();
     loginMutation.mutate(
-      { mst: username.trim(), password, captcha: captchaInput.trim(), key: captcha.key },
+      { mst, password, captcha: captchaInput.trim(), key: captcha.key },
       {
         onSuccess: (res) => {
           setDone(true);
-          if (res.token) onLoginSuccess?.(res.token, username.trim());
+          if (res.token) onLoginSuccess?.(res.token, mst);
         },
         onError: (e) => {
           setError(getErrorMessage(e, "Đăng nhập thất bại."));
@@ -153,155 +156,158 @@ export default function DialogLoginHddt({
       </Box>
       <Box sx={{ height: 3, bgcolor: "primary.main" }} />
 
-      <DialogContent sx={{ pt: 3, pb: 1 }}>
-        <Box
-          sx={{
-            display: "grid",
-            gridTemplateColumns: { xs: "1fr", sm: "1fr 1fr" },
-            gap: 2.5,
-            mb: 3,
-          }}
-        >
-          <TextField
-            label="Tên đăng nhập"
-            value={username}
-            onChange={(e) => setUsername(e.target.value)}
-            fullWidth
-            autoFocus={!initialUsername}
-            autoComplete="username"
-          />
-
-          <TextField
-            label="Mật khẩu"
-            type={showPw ? "text" : "password"}
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            fullWidth
-            autoFocus={!!initialUsername}
-            autoComplete="current-password"
-            slotProps={{
-              input: {
-                endAdornment: (
-                  <InputAdornment position="end">
-                    <IconButton
-                      aria-label={showPw ? "Ẩn mật khẩu" : "Hiện mật khẩu"}
-                      onClick={() => setShowPw((s) => !s)}
-                      edge="end"
-                    >
-                      {showPw ? <VisibilityOff /> : <Visibility />}
-                    </IconButton>
-                  </InputAdornment>
-                ),
-              },
+      {/* Bọc form để nhấn Enter ở bất kỳ ô nhập nào cũng submit được. */}
+      <Box component="form" onSubmit={handleSubmit} noValidate>
+        <DialogContent sx={{ pt: 3, pb: 1 }}>
+          <Box
+            sx={{
+              display: "grid",
+              gridTemplateColumns: { xs: "1fr", sm: "1fr 1fr" },
+              gap: 2.5,
+              mb: 3,
             }}
-          />
-        </Box>
-
-        <Box
-          sx={{
-            display: "grid",
-            gridTemplateColumns: { xs: "1fr", sm: "1fr 1fr" },
-            gap: 2.5,
-            alignItems: "start",
-          }}
-        >
-          <Box>
-            <Typography variant="body2" sx={{ fontWeight: 600, mb: 0.5 }}>
-              Mã captcha
-            </Typography>
-            <Stack direction="row" spacing={1} sx={{ alignItems: "center" }}>
-              <Box
-                sx={{
-                  height: 48,
-                  minWidth: 150,
-                  px: 1,
-                  border: "1px solid",
-                  borderColor: "divider",
-                  borderRadius: 1,
-                  bgcolor: "action.hover",
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                }}
-              >
-                {loadingCaptcha ? (
-                  <CircularProgress size={22} />
-                ) : captchaSrc ? (
-                  <Box
-                    component="img"
-                    src={captchaSrc}
-                    alt="captcha"
-                    sx={{ height: 38 }}
-                  />
-                ) : (
-                  <Typography variant="caption" color="text.disabled">
-                    —
-                  </Typography>
-                )}
-              </Box>
-              <IconButton
-                aria-label="Lấy captcha mới"
-                onClick={refreshCaptcha}
-                disabled={loadingCaptcha}
-                size="small"
-              >
-                <Refresh />
-              </IconButton>
-            </Stack>
-          </Box>
-
-          <Box>
-            <Typography variant="body2" sx={{ fontWeight: 600, mb: 0.5 }}>
-              <Typography component="span" color="error">
-                *{" "}
-              </Typography>
-              Nhập mã captcha
-            </Typography>
+          >
             <TextField
-              placeholder="Nhập mã captcha"
-              value={captchaInput}
-              onChange={(e) => setCaptchaInput(e.target.value)}
-              size="small"
+              label="Tên đăng nhập"
+              value={username}
+              onChange={(e) => setUsername(e.target.value)}
               fullWidth
+              autoFocus={!initialUsername}
+              autoComplete="username"
+            />
+
+            <TextField
+              label="Mật khẩu"
+              type={showPw ? "text" : "password"}
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              fullWidth
+              autoFocus={!!initialUsername}
+              autoComplete="current-password"
+              slotProps={{
+                input: {
+                  endAdornment: (
+                    <InputAdornment position="end">
+                      <IconButton
+                        aria-label={showPw ? "Ẩn mật khẩu" : "Hiện mật khẩu"}
+                        onClick={() => setShowPw((s) => !s)}
+                        edge="end"
+                      >
+                        {showPw ? <VisibilityOff /> : <Visibility />}
+                      </IconButton>
+                    </InputAdornment>
+                  ),
+                },
+              }}
             />
           </Box>
-        </Box>
 
-        <Typography
-          variant="body2"
-          color="primary"
-          sx={{ cursor: "pointer", alignSelf: "flex-start", mt: 2 }}
-        >
-          Quên mật khẩu
-        </Typography>
+          <Box
+            sx={{
+              display: "grid",
+              gridTemplateColumns: { xs: "1fr", sm: "1fr 1fr" },
+              gap: 2.5,
+              alignItems: "start",
+            }}
+          >
+            <Box>
+              <Typography variant="body2" sx={{ fontWeight: 600, mb: 0.5 }}>
+                Mã captcha
+              </Typography>
+              <Stack direction="row" spacing={1} sx={{ alignItems: "center" }}>
+                <Box
+                  sx={{
+                    height: 48,
+                    minWidth: 150,
+                    px: 1,
+                    border: "1px solid",
+                    borderColor: "divider",
+                    borderRadius: 1,
+                    bgcolor: "action.hover",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                  }}
+                >
+                  {loadingCaptcha ? (
+                    <CircularProgress size={22} />
+                  ) : captchaSrc ? (
+                    <Box
+                      component="img"
+                      src={captchaSrc}
+                      alt="captcha"
+                      sx={{ height: 38 }}
+                    />
+                  ) : (
+                    <Typography variant="caption" color="text.disabled">
+                      —
+                    </Typography>
+                  )}
+                </Box>
+                <IconButton
+                  aria-label="Lấy captcha mới"
+                  onClick={refreshCaptcha}
+                  disabled={loadingCaptcha}
+                  size="small"
+                >
+                  <Refresh />
+                </IconButton>
+              </Stack>
+            </Box>
 
-        {displayError && (
-          <Alert severity="error" sx={{ mt: 2 }}>
-            {displayError}
-          </Alert>
-        )}
-        {done && (
-          <Alert severity="success" sx={{ mt: 2 }}>
-            Đăng nhập thành công.
-          </Alert>
-        )}
-      </DialogContent>
+            <Box>
+              <Typography variant="body2" sx={{ fontWeight: 600, mb: 0.5 }}>
+                <Typography component="span" color="error">
+                  *{" "}
+                </Typography>
+                Nhập mã captcha
+              </Typography>
+              <TextField
+                placeholder="Nhập mã captcha"
+                value={captchaInput}
+                onChange={(e) => setCaptchaInput(e.target.value)}
+                size="small"
+                fullWidth
+              />
+            </Box>
+          </Box>
 
-      <DialogActions sx={{ justifyContent: "center", pb: 3 }}>
-        <Button
-          variant="contained"
-          color="primary"
-          onClick={handleSubmit}
-          disabled={submitting || done}
-          sx={{ px: 5, fontWeight: 700 }}
-        >
-          {submitting ? (
-            <CircularProgress size={22} color="inherit" />
-          ) : (
-            "Đăng nhập"
+          <Typography
+            variant="body2"
+            color="primary"
+            sx={{ cursor: "pointer", alignSelf: "flex-start", mt: 2 }}
+          >
+            Quên mật khẩu
+          </Typography>
+
+          {displayError && (
+            <Alert severity="error" sx={{ mt: 2 }}>
+              {displayError}
+            </Alert>
           )}
-        </Button>
-      </DialogActions>
+          {done && (
+            <Alert severity="success" sx={{ mt: 2 }}>
+              Đăng nhập thành công.
+            </Alert>
+          )}
+        </DialogContent>
+
+        <DialogActions sx={{ justifyContent: "center", pb: 3 }}>
+          <Button
+            type="submit"
+            variant="contained"
+            color="primary"
+            disabled={submitting || done}
+            sx={{ px: 5, fontWeight: 700 }}
+          >
+            {submitting ? (
+              <CircularProgress size={22} color="inherit" />
+            ) : (
+              "Đăng nhập"
+            )}
+          </Button>
+        </DialogActions>
+      </Box>
     </Dialog>
   );
 }

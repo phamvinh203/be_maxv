@@ -15,28 +15,36 @@ import Divider from "@mui/material/Divider";
 import CircularProgress from "@mui/material/CircularProgress";
 import Snackbar from "@mui/material/Snackbar";
 import Alert from "@mui/material/Alert";
+import Badge from "@mui/material/Badge";
 import SettingsRounded from "@mui/icons-material/SettingsRounded";
 import ExpandMoreRounded from "@mui/icons-material/ExpandMoreRounded";
 import ApartmentRounded from "@mui/icons-material/ApartmentRounded";
 import CheckRounded from "@mui/icons-material/CheckRounded";
+import LoginRounded from "@mui/icons-material/LoginRounded";
+import HowToRegRounded from "@mui/icons-material/HowToRegRounded";
 import { useAuth } from "../features/auth/useAuth";
 import { useGdtSession } from "../features/hddt/gdtSession/useGdtSession";
 import { useCompanySwitch } from "../features/company/hooks/useCompanySwitch";
+import DialogLoginHddt from "./dialogLoginHddt";
 import logoMaxv from "../assets/Logo_Maxv.png";
 
 export default function AppHeader() {
   const { user, logout, companies, currentCompanyId } = useAuth();
-  const { clearGdtSession } = useGdtSession();
+  const { clearGdtSession, getGdtToken, setGdtToken } = useGdtSession();
   const { switchingId, error: switchError, switchTo, clearError } = useCompanySwitch();
   const navigate = useNavigate();
   const [userMenuEl, setUserMenuEl] = useState<HTMLElement | null>(null);
   const [companyMenuEl, setCompanyMenuEl] = useState<HTMLElement | null>(null);
+  const [gdtLoginOpen, setGdtLoginOpen] = useState(false);
 
   if (!user) return null;
 
   const initial = user.hoTen.trim().charAt(0).toUpperCase();
   const currentCompany = companies.find((c) => c.id === currentCompanyId);
   const switching = switchingId !== null;
+  // Chỉ hiện nút đăng nhập HĐĐT khi công ty đang chọn đã có MST (không có MST thì không login GDT được).
+  const currentMst = currentCompany?.maSoThue?.trim() || undefined;
+  const gdtLoggedIn = !!currentMst && !!getGdtToken(currentMst);
 
   const handleSelectCompany = (id: string) => {
     setCompanyMenuEl(null);
@@ -73,6 +81,15 @@ export default function AppHeader() {
                 startIcon={
                   switching ? (
                     <CircularProgress size={16} color="inherit" />
+                  ) : currentMst ? (
+                    // Chấm trạng thái phiên HĐĐT của công ty đang chọn (xanh = đã đăng nhập trong tab này).
+                    <Badge
+                      variant="dot"
+                      overlap="circular"
+                      color={gdtLoggedIn ? "success" : "warning"}
+                    >
+                      <ApartmentRounded fontSize="small" />
+                    </Badge>
                   ) : (
                     <ApartmentRounded fontSize="small" />
                   )
@@ -103,6 +120,31 @@ export default function AppHeader() {
                   </MenuItem>
                 ))}
                 <Divider />
+                {/* Chỉ mở được khi công ty đang chọn đã có MST — không có MST thì không login GDT được. */}
+                {currentMst && (
+                  <MenuItem
+                    onClick={() => {
+                      setCompanyMenuEl(null);
+                      setGdtLoginOpen(true);
+                    }}
+                  >
+                    <ListItemIcon>
+                      {gdtLoggedIn ? (
+                        <HowToRegRounded fontSize="small" color="success" />
+                      ) : (
+                        <LoginRounded fontSize="small" />
+                      )}
+                    </ListItemIcon>
+                    <ListItemText
+                      primary="Đăng nhập hóa đơn điện tử"
+                      secondary={
+                        gdtLoggedIn
+                          ? `Đã đăng nhập ${currentMst} trong phiên này`
+                          : `MST ${currentMst}`
+                      }
+                    />
+                  </MenuItem>
+                )}
                 <MenuItem
                   onClick={() => {
                     setCompanyMenuEl(null);
@@ -153,6 +195,13 @@ export default function AppHeader() {
           </Menu>
         </Stack>
       </Toolbar>
+
+      <DialogLoginHddt
+        open={gdtLoginOpen}
+        onClose={() => setGdtLoginOpen(false)}
+        initialUsername={currentMst}
+        onLoginSuccess={(token, mst) => setGdtToken(mst, token)}
+      />
 
       <Snackbar open={!!switchError} autoHideDuration={4000} onClose={clearError}>
         <Alert severity="error" onClose={clearError}>
