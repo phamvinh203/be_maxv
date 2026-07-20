@@ -1,6 +1,10 @@
 import { FastifyReply, FastifyRequest } from "fastify";
 import * as GDTService from "../../../services/client/hddt/gdt.service";
-import { resolveTenantDb, resolveTenantDbName } from "../../../helpers/resolveTenantDb";
+import {
+  resolveTenantDb,
+  resolveTenantDbName,
+  resolveTenantInfo,
+} from "../../../helpers/resolveTenantDb";
 import { getTenantDb } from "../../../helpers/tenantClient";
 import { renderPdfFromHtml } from "../../../helpers/pdfRenderer";
 import {
@@ -78,7 +82,8 @@ async function handleGdtInvoices(
   // chung), không bị nuốt thành 500 của khối gọi GDT bên dưới. resolveTenantDb lỗi -> dừng
   // cả request (kể cả bước tra cứu GDT), vì luồng này định nghĩa là "tra cứu -> luôn lưu".
   // Dùng dbName để còn kích hoạt backfill nền (chạy dài, tự getTenantDb lại giữ pool sống).
-  const dbName = await resolveTenantDbName(request);
+  // maSoThue: guard chống ghi nhầm data MST khác (token GDT có thể của công ty khác công ty đang chọn).
+  const { dbName, maSoThue } = await resolveTenantInfo(request);
   const tenantDb = getTenantDb(dbName);
 
   try {
@@ -89,10 +94,11 @@ async function handleGdtInvoices(
       gdtToken,
       direction,
       request.query,
+      maSoThue,
     );
 
     // Tìm tay 1 khoảng THÀNH CÔNG -> kích hoạt backfill nền 2 năm (fire-and-forget, không chặn response).
-    GDTService.ensureBackfill(dbName, tenantKeyOf(request), gdtToken);
+    GDTService.ensureBackfill(dbName, tenantKeyOf(request), gdtToken, maSoThue);
 
     return reply.send(result);
   } catch (err) {
@@ -480,15 +486,18 @@ export async function syncInvoices(
   }
 
   // Ngoài try/catch: lỗi quyền/tenant (403/404) trả đúng mã qua error-handler chung.
-  const tenantDb = await resolveTenantDb(request);
+  // maSoThue: guard chống ghi nhầm data MST khác vào DB tenant đang chọn.
+  const { dbName, maSoThue } = await resolveTenantInfo(request);
+  const tenantDb = getTenantDb(dbName);
 
   try {
-    const result = await GDTService.runSync(tenantDb, tenantKeyOf(request), gdtToken, {
-      tuNgay,
-      denNgay,
-      direction,
-      loai,
-    });
+    const result = await GDTService.runSync(
+      tenantDb,
+      tenantKeyOf(request),
+      gdtToken,
+      { tuNgay, denNgay, direction, loai },
+      maSoThue,
+    );
 
     // Việc TẢI CHI TIẾT do FE tự lái sau khi có kết quả: FE gọi startDetailRun + poll
     // getDetailRunStatus theo từng chiều (giống nút "Cập nhật từ Thuế điện tử"). Endpoint /gdt/sync

@@ -208,14 +208,14 @@ const toDate = (v: unknown): Date | undefined => {
  * ràng buộc NOT NULL của Prisma — GDT luôn trả đủ các field này trên thực tế, nên fallback
  * kích hoạt nghĩa là dữ liệu bất thường (xem cảnh báo log ở `saveInvoices` bên dưới).
  */
-function toVctData(row: Record<string, unknown>) {
+export function toVctData(row: Record<string, unknown>) {
   return {
     khmshdon: toStr(row.khmshdon) ?? "",
     khhdon: toStr(row.khhdon) ?? "",
     shdon: toStr(row.shdon) ?? "",
     mhdon: toStr(row.mhdon),
     tdlap: toDate(row.tdlap) ?? new Date(),
-    nky: toDate(row.nky),
+    nky: toDate(row.nky) ?? toDate(row.ntao) ?? toDate(row.ncnhat),
     nbmst: toStr(row.nbmst) ?? "",
     nbten: toStr(row.nbten) ?? "",
     nbdchi: toStr(row.nbdchi),
@@ -243,16 +243,63 @@ function toVctData(row: Record<string, unknown>) {
 /** Các field GDT được kỳ vọng luôn có mặt — thiếu field nào nghĩa là `toVctData` đã phải dùng fallback. */
 const REQUIRED_GDT_FIELDS = ["khmshdon", "khhdon", "shdon", "nbmst", "tdlap"] as const;
 
+/** MST gốc (bỏ đuôi chi nhánh "-xxx", khoảng trắng) để so khớp tenant vs chủ hóa đơn. */
+const baseMst = (v: unknown): string => {
+  if (typeof v !== "string") return "";
+  const dash = v.indexOf("-"); // slice thay split -> không cấp phát mảng mỗi dòng (chạy per-row)
+  return (dash === -1 ? v : v.slice(0, dash)).trim();
+};
+
+/**
+ * Tìm các MST "lạ" trong lô hóa đơn — chủ hóa đơn KHÔNG phải MST của tenant đang ghi.
+ * Chủ hóa đơn: mua vào = người mua (`nmmst`), bán ra = người bán (`nbmst`) — phải = MST tenant.
+ *
+ * Đây là lưới an toàn chống ghi nhầm data MST khác vào DB tenant (bug: token GDT tách rời khỏi
+ * công ty app đang chọn — fetch data MST này nhưng ghi vào DB tenant kia). So theo MST gốc để
+ * hóa đơn chi nhánh (đuôi "-001") vẫn khớp. Bỏ qua dòng thiếu MST chủ (không đủ căn cứ để chặn).
+ * Trả mảng MST lạ duy nhất (rỗng nếu lô sạch).
+ */
+export function findForeignOwnerMsts(
+  direction: "purchase" | "sold",
+  rows: unknown[],
+  ownMst: string,
+): string[] {
+  const own = baseMst(ownMst);
+  const ownerField = direction === "purchase" ? "nmmst" : "nbmst";
+  const foreign = new Set<string>();
+  for (const raw of rows) {
+    if (!raw || typeof raw !== "object") continue;
+    const val = (raw as Record<string, unknown>)[ownerField];
+    const mst = baseMst(val);
+    if (mst && mst !== own) foreign.add(String(val));
+  }
+  return [...foreign];
+}
+
 /**
  * Lưu (upsert) danh sách hóa đơn thô GDT vào DB tenant — `vct60view` cho chiều
  * mua vào, `vct50view` cho chiều bán ra. Khóa theo id GDT (`row.id`); hóa đơn tra
  * lại (vd đổi trạng thái) sẽ được cập nhật thay vì tạo trùng. Bỏ qua dòng thiếu id.
+ *
+ * `ownMst` = MST của tenant đang ghi. NÉM lỗi (không ghi gì) nếu lô chứa hóa đơn của MST khác —
+ * chặn nhiễm dữ liệu ngay tại tầng ghi, kể cả khi FE gửi nhầm token GDT của công ty khác.
  */
 export async function saveInvoices(
   tenantDb: PrismaClient,
   direction: "purchase" | "sold",
   rows: unknown[],
+  ownMst: string,
 ): Promise<number> {
+  // Guard chạy TRƯỚC khi dựng op/mở transaction: phát hiện data MST lạ -> dừng cả lô, báo rõ lý do
+  // để người dùng biết đang đăng nhập Thuế điện tử bằng MST không khớp công ty đang chọn.
+  const foreign = findForeignOwnerMsts(direction, rows, ownMst);
+  if (foreign.length > 0) {
+    throw new Error(
+      `Dữ liệu tải về thuộc MST ${foreign.join(", ")} không khớp công ty đang chọn (MST ${ownMst}). ` +
+        `Có thể bạn đang đăng nhập Thuế điện tử bằng MST khác — đăng nhập lại đúng MST rồi thử lại.`,
+    );
+  }
+
   // Gom các upsert rồi ghi trong 1 transaction: 1 round-trip thay vì N await tuần tự,
   // đồng thời đảm bảo hoặc lưu trọn cả trang hoặc không lưu gì (idempotent, tra lại vẫn đúng).
   const ops: Prisma.PrismaPromise<unknown>[] = [];
@@ -596,6 +643,7 @@ export async function runSync(
   tenantKey: string,
   gdtToken: string,
   params: SyncParams,
+  ownMst: string,
 ): Promise<SyncRunResult[]> {
   const sources = resolveSyncSources(params.direction, params.loai);
   const chunks = monthlyChunks(params.tuNgay, params.denNgay);
@@ -655,7 +703,7 @@ export async function runSync(
             const existed = await countExistingIds(tenantDb, source.direction, ids);
             daCo += existed;
             boSung += ids.length - existed;
-            saved += await saveInvoices(tenantDb, source.direction, rows);
+            saved += await saveInvoices(tenantDb, source.direction, rows, ownMst);
 
             state = page.state || undefined;
             pages += 1;
@@ -722,6 +770,7 @@ export async function fetchAndSaveInvoicesInRange(
   token: string,
   direction: "purchase" | "sold",
   query: PurchaseInvoiceQuery | SoldInvoiceQuery,
+  ownMst: string,
 ): Promise<{
   total: number;
   saved: number;
@@ -757,7 +806,7 @@ export async function fetchAndSaveInvoicesInRange(
 
         if (pages === 0) total += page.total ?? 0; // total giống nhau mỗi trang -> cộng 1 lần/cửa sổ
         const rows = page.datas ?? [];
-        saved += await saveInvoices(tenantDb, direction, rows);
+        saved += await saveInvoices(tenantDb, direction, rows, ownMst);
         datas.push(...rows);
 
         state = page.state || undefined;
@@ -1254,6 +1303,7 @@ async function backfillListRange(
   direction: "purchase" | "sold",
   tuNgay: string,
   denNgay: string,
+  ownMst: string,
 ): Promise<"done" | "auth"> {
   let saved = 0;
   // Tháng GIẢM DẦN (mới -> cũ) để dữ liệu gần đây được lưu trước.
@@ -1298,7 +1348,7 @@ async function backfillListRange(
       if (!page) break;
 
       const rows = page.datas ?? [];
-      saved += await saveInvoices(getTenantDb(dbName), direction, rows);
+      saved += await saveInvoices(getTenantDb(dbName), direction, rows, ownMst);
       state = page.state || undefined;
       pages += 1;
       if (rows.length === 0) break;
@@ -1322,7 +1372,12 @@ const backfillFullListDone = new Set<string>();
  *  - Pha B: `runDetailFetch` làn "background" cho cả 2 chiều trên khoảng 2 năm (skip đã OK, retry, dừng 401).
  * Token đi theo closure; hết hạn -> dừng, login lần sau tự resume phần còn thiếu (nhờ skip-OK).
  */
-export function ensureBackfill(dbName: string, tenantKey: string, token: string): void {
+export function ensureBackfill(
+  dbName: string,
+  tenantKey: string,
+  token: string,
+  ownMst: string,
+): void {
   if (backfillKicking.has(tenantKey)) return; // đang có chuỗi kickoff cho MST này
   backfillKicking.add(tenantKey);
   void (async () => {
@@ -1343,6 +1398,7 @@ export function ensureBackfill(dbName: string, tenantKey: string, token: string)
           direction,
           listRange.tuNgay,
           listRange.denNgay,
+          ownMst,
         );
         if (r === "auth") {
           console.log(`[gdt.backfill] tenant=${tenantKey} DỪNG: token GDT hết hạn (login lại để resume).`);

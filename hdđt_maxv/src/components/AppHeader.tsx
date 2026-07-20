@@ -23,6 +23,7 @@ import CheckRounded from "@mui/icons-material/CheckRounded";
 import LoginRounded from "@mui/icons-material/LoginRounded";
 import HowToRegRounded from "@mui/icons-material/HowToRegRounded";
 import { useAuth } from "../features/auth/useAuth";
+import { useActiveCompanyMst } from "../features/auth/useActiveCompanyMst";
 import { useGdtSession } from "../features/hddt/gdtSession/useGdtSession";
 import { useCompanySwitch } from "../features/company/hooks/useCompanySwitch";
 import DialogLoginHddt from "./dialogLoginHddt";
@@ -30,6 +31,8 @@ import logoMaxv from "../assets/Logo_Maxv.png";
 
 export default function AppHeader() {
   const { user, logout, companies, currentCompanyId } = useAuth();
+  // MST công ty đang chọn — 1 định nghĩa duy nhất (dùng chung với luồng chọn token GDT).
+  const currentMst = useActiveCompanyMst();
   const { clearGdtSession, getGdtToken, setGdtToken } = useGdtSession();
   const { switchingId, error: switchError, switchTo, clearError } = useCompanySwitch();
   const navigate = useNavigate();
@@ -43,7 +46,6 @@ export default function AppHeader() {
   const currentCompany = companies.find((c) => c.id === currentCompanyId);
   const switching = switchingId !== null;
   // Chỉ hiện nút đăng nhập HĐĐT khi công ty đang chọn đã có MST (không có MST thì không login GDT được).
-  const currentMst = currentCompany?.maSoThue?.trim() || undefined;
   const gdtLoggedIn = !!currentMst && !!getGdtToken(currentMst);
 
   const handleSelectCompany = (id: string) => {

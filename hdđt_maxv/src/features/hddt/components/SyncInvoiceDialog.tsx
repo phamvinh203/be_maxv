@@ -33,7 +33,6 @@ import SyncRounded from "@mui/icons-material/SyncRounded";
 import DeleteOutlineRounded from "@mui/icons-material/DeleteOutlineRounded";
 import { toast } from "react-toastify";
 import { useQueryClient } from "@tanstack/react-query";
-import { useGdtSession } from "../gdtSession/useGdtSession";
 import { currentMonthRange, formatDateVN, formatDateTimeVN } from "../dateUtils";
 import { getErrorMessage } from "../../../lib/errors";
 import { type SyncDirection, type SyncKind } from "../types";
@@ -45,6 +44,7 @@ import {
 import { invoiceKeys } from "../api/invoiceQueries";
 import { pollDetailRunToast } from "../api/invoiceDetail";
 import { useAuth } from "../../auth/useAuth";
+import { useActiveGdtToken } from "../gdtSession/useActiveGdtToken";
 
 interface Props {
   open: boolean;
@@ -72,8 +72,9 @@ const DIRECTION_LABEL: Record<SyncDirection, string> = {
  * hiển thị lịch sử đồng bộ thật và cho xóa dữ liệu đã đồng bộ.
  */
 export default function SyncInvoiceDialog({ open, onClose }: Props) {
-  const { currentGdtMst, getGdtToken } = useGdtSession();
   const { currentCompanyId } = useAuth();
+  // Token GDT của ĐÚNG công ty đang chọn (điểm chọn token duy nhất — chống rò rỉ giữa tenant).
+  const { activeMst, token: activeGdtToken } = useActiveGdtToken();
   const qc = useQueryClient();
   // Ref theo dõi công ty hiện tại LIVE (cập nhật cả khi dialog đóng vì component vẫn mounted) — để
   // vòng poll tải chi tiết chạy nền biết người dùng đã đổi công ty giữa chừng thì dừng, tránh lẫn tenant.
@@ -117,11 +118,15 @@ export default function SyncInvoiceDialog({ open, onClose }: Props) {
       setError("Vui lòng chọn đủ Từ ngày / Đến ngày.");
       return;
     }
-    const gdtToken = currentGdtMst ? getGdtToken(currentGdtMst) : undefined;
-    if (!gdtToken || !currentGdtMst) {
-      setError('Chưa đăng nhập Thuế điện tử — bấm "Đăng nhập Thuế điện tử" trước khi đồng bộ.');
+    if (!activeGdtToken) {
+      setError(
+        activeMst
+          ? `Chưa đăng nhập Thuế điện tử cho MST ${activeMst} — đăng nhập đúng MST trước khi đồng bộ.`
+          : "Chưa chọn công ty có MST để đăng nhập Thuế điện tử.",
+      );
       return;
     }
+    const gdtToken = activeGdtToken;
     startMutation.mutate(
       {
         gdtToken,
