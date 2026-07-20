@@ -1,6 +1,7 @@
 import { sysPrisma } from '../../config/db.sys';
 import { generatePassword, hashPassword } from '../../utils/password';
 import { sendMail } from '../shared/mailer.service';
+import { inviteApprovedEmail } from '../../helpers/mailTemplates';
 import { writeLog } from '../shared/syslog.service';
 import { ConflictError, MailError, NotFoundError } from '../../helpers/errors';
 import { MESSAGES } from '../../constants/messages';
@@ -101,15 +102,7 @@ export async function adminApproveInvite(id: string, adminId: string) {
   try {
     await sendMail({
       to: invite.email,
-      subject: 'Tài khoản nhân viên của bạn đã được duyệt',
-      text: [
-        `Công ty được cấp: ${congTy
-          .map((c) => `${c.tenDonVi} (${c.maSoThue})`)
-          .join(', ')}`,
-        `Email đăng nhập: ${invite.email}`,
-        `Mật khẩu: ${password}`,
-        'Vui lòng đăng nhập và đổi mật khẩu ngay lần đầu sử dụng.',
-      ].join('\n'),
+      ...inviteApprovedEmail({ email: invite.email, password, congTy }),
     });
   } catch {
     // Chưa ai biết mật khẩu -> hủy tạo User (cascade xóa DonViAccess), invite về lại PENDING.

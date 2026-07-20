@@ -5,6 +5,7 @@ import { createTrialSubscription } from '../shared/subscription.service';
 import { assertMstLimit, assertUserLimit } from '../shared/limits.service';
 import { writeLog } from '../shared/syslog.service';
 import { sendMail } from '../shared/mailer.service';
+import { newInviteNoticeEmail } from '../../helpers/mailTemplates';
 import {
   ConflictError,
   ForbiddenError,
@@ -171,15 +172,7 @@ async function notifyAdminsOfNewInvite(n: NewInviteNotice): Promise<void> {
   try {
     await sendMail({
       to: admins.map((a) => a.email),
-      subject: 'Yêu cầu duyệt lời mời nhân viên mới',
-      text: [
-        `Người gửi mời: ${n.ownerHoTen}`,
-        `Nhân viên được mời: ${n.hoTen} <${n.email}>`,
-        `Chức vụ: ${n.chucVu}`,
-        `Công ty được cấp: ${n.congTy
-          .map((c) => `${c.tenDonVi} (${c.maSoThue})`)
-          .join(', ')}`,
-      ].join('\n'),
+      ...newInviteNoticeEmail(n),
     });
   } catch {
     throw new MailError(MESSAGES.COMPANY.INVITE_NOTIFY_FAILED);
