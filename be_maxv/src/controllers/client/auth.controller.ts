@@ -1,10 +1,17 @@
 import type { FastifyRequest, FastifyReply } from 'fastify';
-import { registerSchema, loginSchema } from '../../validators/auth.validator';
+import {
+  registerSchema,
+  loginSchema,
+  forgotPasswordSchema,
+  resetPasswordSchema,
+} from '../../validators/auth.validator';
 import {
   registerUser,
   loginUser,
   loadUserForRefresh,
   loadUserSession,
+  requestPasswordReset,
+  resetPasswordWithOtp,
 } from '../../services/client/auth.service';
 import { validateBody } from '../../utils/validate';
 import { sendCreated, sendOk } from '../../helpers/response';
@@ -26,15 +33,37 @@ export async function register(req: FastifyRequest, reply: FastifyReply) {
 
 /** POST /api/v1/auth/login — đăng nhập; access + refresh đặt vào cookie httpOnly, body chỉ trả user/công ty. */
 export async function login(req: FastifyRequest, reply: FastifyReply) {
-  const { user, companies, activeDonViId } = await loginUser(
+  const { user, tokenVersion, companies, activeDonViId } = await loginUser(
     validateBody(loginSchema, req.body),
   );
   await issueTokens(reply, {
     userId: user.id,
     donViId: activeDonViId,
     role: user.role,
+    tokenVersion,
   });
   return sendOk(reply, { user, companies, activeDonViId });
+}
+
+/**
+ * POST /api/v1/auth/forgot-password — gửi OTP về email.
+ * LUÔN trả cùng một message dù email có tồn tại hay không (chống dò tài khoản).
+ */
+export async function forgotPassword(req: FastifyRequest, reply: FastifyReply) {
+  await requestPasswordReset(validateBody(forgotPasswordSchema, req.body));
+  return sendOk(reply, { message: MESSAGES.AUTH.FORGOT_PASSWORD_SENT });
+}
+
+/**
+ * POST /api/v1/auth/reset-password — đối chiếu OTP + đặt mật khẩu mới.
+ * Thành công thì mọi refresh token cũ hết hiệu lực -> người dùng phải đăng nhập lại.
+ */
+export async function resetPassword(req: FastifyRequest, reply: FastifyReply) {
+  await resetPasswordWithOtp(validateBody(resetPasswordSchema, req.body));
+  // Xoá luôn cookie của chính trình duyệt đang thao tác cho khỏi treo phiên nửa vời.
+  reply.clearCookie(ACCESS_COOKIE, { path: ACCESS_PATH });
+  reply.clearCookie(REFRESH_COOKIE, { path: REFRESH_PATH });
+  return sendOk(reply, { message: MESSAGES.AUTH.RESET_PASSWORD_OK });
 }
 
 /** GET /api/v1/auth/me — nạp phiên hiện tại từ access cookie (bootstrap FE khi tải trang). */
@@ -47,17 +76,19 @@ export async function me(req: FastifyRequest, reply: FastifyReply) {
 export async function refresh(req: FastifyRequest, reply: FastifyReply) {
   let userId: string;
   let donViId: string | null;
+  let tokenVersion: number;
   try {
-    ({ userId, donViId } = await req.refreshJwtVerify());
+    ({ userId, donViId, tokenVersion } = await req.refreshJwtVerify());
   } catch {
     throw new UnauthorizedError(MESSAGES.AUTH.REFRESH_INVALID);
   }
 
-  const ctx = await loadUserForRefresh(userId, donViId);
+  const ctx = await loadUserForRefresh(userId, donViId, tokenVersion);
   await issueTokens(reply, {
     userId: ctx.id,
     donViId: ctx.donViId,
     role: ctx.role,
+    tokenVersion: ctx.tokenVersion,
   });
   return sendOk(reply, { activeDonViId: ctx.donViId });
 }

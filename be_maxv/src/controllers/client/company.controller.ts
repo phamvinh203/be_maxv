@@ -53,6 +53,7 @@ export async function createCompany(req: FastifyRequest, reply: FastifyReply) {
     userId: req.user.userId,
     donViId: company.id,
     role: req.user.role,
+    tokenVersion: req.user.tokenVersion,
   });
   return sendCreated(reply, {
     company,
@@ -84,6 +85,7 @@ export async function switchCompany(req: FastifyRequest, reply: FastifyReply) {
     userId: req.user.userId,
     donViId: id,
     role: req.user.role,
+    tokenVersion: req.user.tokenVersion,
   });
   return sendOk(reply, { activeDonViId: id });
 }

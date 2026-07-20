@@ -7,6 +7,12 @@ export interface TokenPayload {
   userId: string;
   donViId: string | null;
   role: string;
+  /**
+   * Bản của bộ token. `loadUserForRefresh` so với `users.tokenVersion`; đổi/đặt lại mật
+   * khẩu sẽ tăng cột đó khiến mọi refresh token đã phát trở nên vô hiệu.
+   * Lưu ý: access token (15 phút) KHÔNG đối chiếu DB, nên nó vẫn sống tới khi tự hết hạn.
+   */
+  tokenVersion: number;
 }
 
 const refreshCookieOptions = {

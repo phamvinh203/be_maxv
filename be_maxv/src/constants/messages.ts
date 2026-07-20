@@ -17,6 +17,12 @@ export const MESSAGES = {
     ACCOUNT_INACTIVE: 'Tài khoản chưa được kích hoạt',
     REFRESH_INVALID: 'Phiên đăng nhập hết hạn, vui lòng đăng nhập lại',
     LOGOUT_OK: 'Đã đăng xuất',
+    // Cố tình mơ hồ: KHÔNG tiết lộ email có tồn tại hay không (chống dò tài khoản).
+    FORGOT_PASSWORD_SENT:
+      'Nếu email tồn tại trong hệ thống, mã xác thực đã được gửi tới hộp thư của bạn',
+    // Gộp 1 message cho cả "sai mã", "hết hạn", "đã dùng", "nhập sai quá số lần".
+    OTP_INVALID: 'Mã xác thực không đúng hoặc đã hết hạn',
+    RESET_PASSWORD_OK: 'Đặt lại mật khẩu thành công, vui lòng đăng nhập lại',
   },
 
   COMPANY: {
@@ -89,6 +95,7 @@ export const MESSAGES = {
   VALIDATION: {
     INVALID_MST: 'Mã số thuế không hợp lệ',
     INVALID_NAME: 'Họ tên không hợp lệ',
+    INVALID_OTP: 'Mã xác thực phải gồm 6 chữ số',
     INVALID_PHONE: 'Số điện thoại không hợp lệ',
     PASSWORD_MIN: 'Mật khẩu tối thiểu 8 ký tự',
     PASSWORD_LETTER: 'Phải có chữ',
