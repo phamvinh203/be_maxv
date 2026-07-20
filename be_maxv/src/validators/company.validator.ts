@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { MST_REGEX } from '../utils/dbName';
 import { MESSAGES } from '../constants/messages';
+import { emailRule } from './auth.validator';
 
 
 // Bước 2: đăng ký công ty (tạo maxv2_<mst>_app). ownerId lấy từ JWT, không nhận từ body.
@@ -25,7 +26,9 @@ export const updateCompanySchema = registerCompanySchema
 // POST /api/v1/companies/invite
 // Role luôn là OWNER_EMPLOYEE (gán ở service) — owner đặt tên + chức vụ + chọn MST cấp quyền.
 export const inviteUserSchema = z.object({
-  email: z.string().email(),
+  // Phải chuẩn hoá như mọi email khác: mời "Ketoan@ABC.vn" sẽ tạo user đúng chữ hoa đó,
+  // rồi luồng quên mật khẩu (gõ chữ thường) không tìm thấy và im lặng không gửi gì.
+  email: emailRule,
   hoTen: z.string().min(1),
   chucVu: z.string().trim().min(1).max(100),
   donViIds: z.array(z.string().uuid()).min(1), // các MST (của owner) cấp cho nhân viên

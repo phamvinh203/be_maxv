@@ -6,14 +6,20 @@ import {
   OTP_MAX_PER_HOUR,
   OTP_TTL_MINUTES,
 } from '../../constants/auth';
-import { resetPasswordOtpEmail } from '../../helpers/mailTemplates';
+import {
+  resetPasswordOtpEmail,
+  welcomeEmail,
+} from '../../helpers/mailTemplates';
 import { writeLog } from '../shared/syslog.service';
 import { sendMail } from '../shared/mailer.service';
-import { welcomeEmail } from '../../helpers/mailTemplates';
 import { createTrialSubscription } from '../shared/subscription.service';
 import { listAccessibleCompanies } from '../shared/companyAccess.service';
 import { canAccessDonVi } from '../../helpers/access';
-import { ConflictError, UnauthorizedError } from '../../helpers/errors';
+import {
+  ConflictError,
+  NotFoundError,
+  UnauthorizedError,
+} from '../../helpers/errors';
 import { MESSAGES } from '../../constants/messages';
 import type {
   RegisterInput,
@@ -125,15 +131,20 @@ export async function loginUser(input: LoginInput) {
 /**
  * BƯỚC 1 QUÊN MẬT KHẨU — phát OTP gửi về email.
  *
- * KHÔNG bao giờ tiết lộ email có tồn tại hay không: mọi nhánh đều kết thúc êm, controller
- * trả đúng một message. Nếu phân biệt được thì endpoint này thành công cụ dò tài khoản.
+ * BÁO RÕ khi email chưa đăng ký, thay vì im lặng trả 200 như thiết kế chống dò tài khoản
+ * kinh điển. Lý do: `/auth/register` vốn đã trả 409 "Email đã tồn tại" với cùng rate limit,
+ * nên khả năng dò tài khoản ĐÃ tồn tại sẵn — giấu ở đây không mua thêm bảo mật, chỉ khiến
+ * người gõ nhầm email ngồi chờ mã không bao giờ tới mà không hiểu vì sao.
+ * Muốn thật sự chống dò thì phải xử lý cả `/auth/register` trước, rồi mới quay lại đây.
  */
 export async function requestPasswordReset(input: ForgotPasswordInput) {
   const { email } = input;
-  const user = await sysPrisma.user.findUnique({ where: { email } });
 
-  // Email không tồn tại / tài khoản bị khoá -> im lặng bỏ qua, vẫn báo "đã gửi".
-  if (!user || !user.isActive) return;
+  const user = await sysPrisma.user.findUnique({ where: { email } });
+  if (!user) throw new NotFoundError(MESSAGES.AUTH.EMAIL_NOT_REGISTERED);
+  if (!user.isActive) {
+    throw new UnauthorizedError(MESSAGES.AUTH.ACCOUNT_INACTIVE);
+  }
 
   // Trần theo email: rate limit của Fastify tính theo IP nên không chặn được kẻ đổi IP
   // để dội mail vào hộp thư nạn nhân.
@@ -141,14 +152,21 @@ export async function requestPasswordReset(input: ForgotPasswordInput) {
   const recentCount = await sysPrisma.passwordResetOtp.count({
     where: { userId: user.id, createdAt: { gte: oneHourAgo } },
   });
-  if (recentCount >= OTP_MAX_PER_HOUR) return;
+  if (recentCount >= OTP_MAX_PER_HOUR) {
+    throw new ConflictError(MESSAGES.AUTH.OTP_TOO_MANY_REQUESTS);
+  }
 
   const otp = generateOtp();
   const otpHash = await hashPassword(otp);
   const expiresAt = new Date(Date.now() + OTP_TTL_MINUTES * 60 * 1000);
 
   // Huỷ mã cũ còn sống rồi mới phát mã mới — mỗi lúc chỉ tồn tại đúng 1 mã dùng được.
+  // Kèm dọn bản ghi cũ hơn cửa sổ đếm: bảng này chỉ ghi thêm, không có job dọn nào khác.
+  // Mốc `oneHourAgo` chọn đúng bằng cửa sổ của OTP_MAX_PER_HOUR để không phá phép đếm ở trên.
   await sysPrisma.$transaction([
+    sysPrisma.passwordResetOtp.deleteMany({
+      where: { userId: user.id, createdAt: { lt: oneHourAgo } },
+    }),
     sysPrisma.passwordResetOtp.updateMany({
       where: { userId: user.id, usedAt: null },
       data: { usedAt: new Date() },
@@ -187,47 +205,87 @@ export async function requestPasswordReset(input: ForgotPasswordInput) {
  */
 export async function resetPasswordWithOtp(input: ResetPasswordInput) {
   const { email, otp, newPassword } = input;
-  const user = await sysPrisma.user.findUnique({ where: { email } });
-  if (!user) throw new UnauthorizedError(MESSAGES.AUTH.OTP_INVALID);
-
-  const record = await sysPrisma.passwordResetOtp.findFirst({
-    where: { userId: user.id, usedAt: null, expiresAt: { gt: new Date() } },
-    orderBy: { createdAt: 'desc' },
-  });
-  if (!record || record.attemptCount >= OTP_MAX_ATTEMPTS) {
+  /**
+   * Mọi lý do hỏng ở bước này (sai mã / hết hạn / đã dùng / hết lượt) đều trả CÙNG một
+   * message. Đây KHÔNG phải chống dò tài khoản (bước 1 đã báo rõ email có tồn tại hay
+   * không) mà là để người đang dò mã không biết mình đã bị chặn hay chỉ đoán sai.
+   */
+  // Chú thích kiểu đặt trên BIẾN (không phải trên arrow) — đó là điều kiện để TypeScript
+  // coi lời gọi là điểm kết thúc luồng và thu hẹp `user`/`record` thành non-null bên dưới.
+  const rejectOtp: () => never = () => {
     throw new UnauthorizedError(MESSAGES.AUTH.OTP_INVALID);
-  }
+  };
+
+  const user = await sysPrisma.user.findUnique({ where: { email } });
+
+  // Tài khoản bị khoá thì khỏi truy vấn OTP — kết cục vẫn là từ chối.
+  const record = user?.isActive
+    ? await sysPrisma.passwordResetOtp.findFirst({
+        where: { userId: user.id, usedAt: null, expiresAt: { gt: new Date() } },
+        orderBy: { createdAt: 'desc' },
+      })
+    : null;
+
+  if (!user || !record) rejectOtp();
+
+  // Tăng bộ đếm TRƯỚC khi so mã, bằng UPDATE có điều kiện: đọc-rồi-ghi sẽ hở ~100ms
+  // (thời gian bcrypt) đủ để hàng trăm request song song cùng đọc attemptCount=0 và cùng
+  // được đoán một lần -> trần 5 lần thành vô nghĩa. `count === 0` = đã hết lượt hoặc mã
+  // vừa bị request khác tiêu mất.
+  const { count: allowed } = await sysPrisma.passwordResetOtp.updateMany({
+    where: {
+      id: record.id,
+      usedAt: null,
+      attemptCount: { lt: OTP_MAX_ATTEMPTS },
+    },
+    data: { attemptCount: { increment: 1 } },
+  });
+  if (allowed === 0) rejectOtp();
 
   const ok = await verifyPassword(otp, record.otpHash);
-  if (!ok) {
-    // Đếm lần sai TRƯỚC khi trả lỗi — chạm trần thì lần sau vào nhánh chết ở trên.
-    await sysPrisma.passwordResetOtp.update({
-      where: { id: record.id },
-      data: { attemptCount: { increment: 1 } },
-    });
-    throw new UnauthorizedError(MESSAGES.AUTH.OTP_INVALID);
-  }
+  if (!ok) throw new UnauthorizedError(MESSAGES.AUTH.OTP_INVALID);
 
   const passwordHash = await hashPassword(newPassword);
 
-  // Một transaction: đổi mật khẩu + đá mọi phiên cũ + đánh dấu mã đã dùng.
-  // Tách rời sẽ có cửa sổ mà mã đã tiêu nhưng mật khẩu chưa đổi (hoặc ngược lại).
-  await sysPrisma.$transaction([
-    sysPrisma.user.update({
+  // Tiêu mã bằng UPDATE có điều kiện `usedAt: null` NGAY TRONG transaction: hai request
+  // cùng mang một mã đúng đều qua được các bước trên, chỉ request thắng cuộc mới đổi được
+  // mật khẩu. Thiếu điều kiện này thì cả hai cùng ghi, tokenVersion tăng 2 lần và mật khẩu
+  // cuối cùng là của request về sau — người dùng đặt mật khẩu A nhưng nhận mật khẩu B.
+  await sysPrisma.$transaction(async (tx) => {
+    const { count: consumed } = await tx.passwordResetOtp.updateMany({
+      where: { id: record.id, usedAt: null },
+      data: { usedAt: new Date() },
+    });
+    if (consumed === 0) throw new UnauthorizedError(MESSAGES.AUTH.OTP_INVALID);
+
+    await tx.user.update({
       where: { id: user.id },
       data: { password: passwordHash, tokenVersion: { increment: 1 } },
-    }),
-    sysPrisma.passwordResetOtp.update({
-      where: { id: record.id },
-      data: { usedAt: new Date() },
-    }),
-  ]);
+    });
+  });
 
   await writeLog({
     hanhDong: 'RESET_PASSWORD',
     userId: user.id,
     chiTiet: { email },
   });
+}
+
+/**
+ * `tokenVersion` HIỆN TẠI trong DB của 1 user.
+ *
+ * Dùng khi cấp lại bộ token ngoài luồng login/refresh (đổi công ty, tạo công ty). Không
+ * lấy từ `req.user.tokenVersion`: access token không được đối chiếu DB, nên nếu vừa có
+ * đợt đặt lại mật khẩu thì payload đó đã cũ và ta sẽ ký ra refresh token chết ngay từ đầu.
+ * Bất biến cần giữ: mọi refresh token vừa phát đều mang version khớp DB.
+ */
+export async function currentTokenVersion(userId: string): Promise<number> {
+  const user = await sysPrisma.user.findUnique({
+    where: { id: userId },
+    select: { tokenVersion: true },
+  });
+  if (!user) throw new UnauthorizedError(MESSAGES.AUTH.UNAUTHORIZED);
+  return user.tokenVersion;
 }
 
 /**
@@ -241,10 +299,18 @@ export async function resetPasswordWithOtp(input: ResetPasswordInput) {
 export async function loadUserForRefresh(
   userId: string,
   tokenDonViId: string | null,
-  tokenVersion: number,
+  // undefined = token ký TRƯỚC khi có tokenVersion. Coi như 0 để khớp giá trị migration
+  // backfill cho mọi user cũ, tránh đá toàn bộ phiên đang đăng nhập ngay lúc deploy.
+  // Bỏ `?? 0` được sau khi mọi refresh token cũ đã hết hạn (quá refreshTtl).
+  tokenVersion: number | undefined,
 ) {
-  const user = await sysPrisma.user.findUnique({ where: { id: userId } });
-  if (!user || !user.isActive || user.tokenVersion !== tokenVersion) {
+  // Chỉ lấy 4 cột thật sự dùng: hàm này chạy mỗi lần access token hết hạn của MỌI phiên
+  // đang mở, không cần kéo cả bản ghi (gồm cả hash mật khẩu) về.
+  const user = await sysPrisma.user.findUnique({
+    where: { id: userId },
+    select: { id: true, role: true, isActive: true, tokenVersion: true },
+  });
+  if (!user || !user.isActive || user.tokenVersion !== (tokenVersion ?? 0)) {
     throw new UnauthorizedError(MESSAGES.AUTH.REFRESH_INVALID);
   }
 

@@ -2,6 +2,8 @@
  * Toàn bộ chuỗi thông báo tiếng Việt gom một chỗ.
  * Dễ rà soát, sửa đổi, và sau này tách i18n.
  */
+import { OTP_LENGTH } from './auth';
+
 export const MESSAGES = {
   COMMON: {
     INTERNAL_ERROR: 'Lỗi máy chủ nội bộ',
@@ -17,9 +19,10 @@ export const MESSAGES = {
     ACCOUNT_INACTIVE: 'Tài khoản chưa được kích hoạt',
     REFRESH_INVALID: 'Phiên đăng nhập hết hạn, vui lòng đăng nhập lại',
     LOGOUT_OK: 'Đã đăng xuất',
-    // Cố tình mơ hồ: KHÔNG tiết lộ email có tồn tại hay không (chống dò tài khoản).
-    FORGOT_PASSWORD_SENT:
-      'Nếu email tồn tại trong hệ thống, mã xác thực đã được gửi tới hộp thư của bạn',
+    FORGOT_PASSWORD_SENT: 'Mã xác thực đã được gửi tới hộp thư của bạn',
+    EMAIL_NOT_REGISTERED: 'Email này chưa được đăng ký',
+    OTP_TOO_MANY_REQUESTS:
+      'Bạn đã yêu cầu mã xác thực quá nhiều lần. Vui lòng thử lại sau 1 giờ',
     // Gộp 1 message cho cả "sai mã", "hết hạn", "đã dùng", "nhập sai quá số lần".
     OTP_INVALID: 'Mã xác thực không đúng hoặc đã hết hạn',
     RESET_PASSWORD_OK: 'Đặt lại mật khẩu thành công, vui lòng đăng nhập lại',
@@ -95,7 +98,7 @@ export const MESSAGES = {
   VALIDATION: {
     INVALID_MST: 'Mã số thuế không hợp lệ',
     INVALID_NAME: 'Họ tên không hợp lệ',
-    INVALID_OTP: 'Mã xác thực phải gồm 6 chữ số',
+    INVALID_OTP: `Mã xác thực phải gồm ${OTP_LENGTH} chữ số`,
     INVALID_PHONE: 'Số điện thoại không hợp lệ',
     PASSWORD_MIN: 'Mật khẩu tối thiểu 8 ký tự',
     PASSWORD_LETTER: 'Phải có chữ',
