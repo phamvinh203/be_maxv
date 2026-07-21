@@ -21,7 +21,6 @@ import {
   schedule as pacerSchedule,
   reportOk as pacerReportOk,
   reportRateLimited as pacerReportRateLimited,
-  type PacerPriority,
 } from "./gdtPacer";
 
 /** "yyyy-MM-dd" (input FE) -> "dd/MM/yyyy" (định dạng GDT yêu cầu trong tham số `search`). */
@@ -1045,23 +1044,19 @@ export interface DetailRunStatus {
 /** Số lần thử tối đa 1 hóa đơn trước khi bỏ qua (429/500 tạm thời) — lượt sau/"Đồng bộ" thử lại. */
 const MAX_DETAIL_RETRY = 8;
 
-/** Tiến độ theo (MST + chiều + mức ưu tiên): manual và background là 2 lượt riêng, cùng chạy được. */
+/** Tiến độ theo (MST + chiều): mỗi chiều 1 lượt tải chi tiết do người dùng bấm. */
 const detailRuns = new Map<string, DetailRunStatus>();
 /** "Thế hệ" hiện tại của mỗi khóa — lượt mới bump lên để lượt cũ (đổi khoảng/bộ lọc) tự dừng. */
 const detailRunGen = new Map<string, number>();
-const detailRunKey = (
-  tenantKey: string,
-  direction: "purchase" | "sold",
-  priority: PacerPriority,
-) => `${tenantKey}:${direction}:${priority}`;
+const detailRunKey = (tenantKey: string, direction: "purchase" | "sold") =>
+  `${tenantKey}:${direction}`;
 
 /** Đọc tiến độ lượt tải chi tiết (FE poll). null nếu chưa từng chạy. */
 export function getDetailRunStatus(
   tenantKey: string,
   direction: "purchase" | "sold",
-  priority: PacerPriority = "manual",
 ): DetailRunStatus | null {
-  return detailRuns.get(detailRunKey(tenantKey, direction, priority)) ?? null;
+  return detailRuns.get(detailRunKey(tenantKey, direction)) ?? null;
 }
 
 const engineSleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
@@ -1094,22 +1089,20 @@ const MAX_LIST_RETRY = 4;
 /**
  * Lấy 1 TRANG danh sách hóa đơn qua PACER dùng chung của MST — điều tiết nhịp CÙNG token với luồng
  * tải chi tiết (concurrency=1, tránh 2 luồng GDT tranh nhau trên 1 token gây timeout) — kèm RETRY lỗi
- * tạm thời (timeout/429/5xx) như engine chi tiết. `priority` "manual" (thao tác người dùng: "Đồng bộ"
- * và "Cập nhật") chen trước job nền. Lỗi auth (401/403) hoặc hết retry -> ném lại cho caller để đánh
- * dấu `partial` đúng lý do (không nuốt).
+ * tạm thời (timeout/429/5xx) như engine chi tiết. Lỗi auth (401/403) hoặc hết retry -> ném lại cho
+ * caller để đánh dấu `partial` đúng lý do (không nuốt).
  */
 async function fetchListPagePaced(
   tenantKey: string,
   gdtToken: string,
   direction: "purchase" | "sold",
   query: PurchaseInvoiceQuery,
-  priority: PacerPriority = "manual",
 ): Promise<PurchaseInvoiceResponse | SoldInvoiceResponse> {
   let attempt = 0;
   for (;;) {
     attempt += 1;
     try {
-      const page = await pacerSchedule(tenantKey, priority, () =>
+      const page = await pacerSchedule(tenantKey, () =>
         direction === "purchase"
           ? getPurchaseInvoices(gdtToken, query)
           : getSoldInvoices(gdtToken, query),
@@ -1130,13 +1123,13 @@ async function fetchListPagePaced(
 
 /**
  * Tải chi tiết cho các hóa đơn CHƯA tải/LỖI (tt_tai null hoặc "error") trong khoảng `query`, qua
- * PACER dùng chung của MST (nhịp thích ứng + ưu tiên manual>background). Mỗi hóa đơn retry ≤
+ * PACER dùng chung của MST (nhịp thích ứng). Mỗi hóa đơn retry ≤
  * MAX_DETAIL_RETRY lần với lỗi tạm thời (429/500/timeout); hết retry hoặc lỗi thật -> đánh dấu
  * `tt_tai="error"` và ĐI TIẾP (không kẹt cả lượt). Chạy NỀN (không chặn caller) — trả `status` để
  * FE poll. Lượt mới cùng khóa THAY THẾ lượt cũ (đổi khoảng/bộ lọc -> tải đúng phần mới).
  * Nhận `dbName` (không phải client): mỗi hóa đơn gọi lại `getTenantDb` để refresh `lastUsed`, tránh
  * bị sweeper đóng pool giữa lượt dài. Token GDT hết hạn (401) -> DỪNG lượt, không đánh lỗi giả.
- * Dùng: manual "Cập nhật/Tải chi tiết" (priority="manual") và job backfill nền (Sub-project 2).
+ * CHỈ chạy khi người dùng bấm "Cập nhật/Tải chi tiết" — không có lượt tự động nào gọi hàm này.
  */
 export function runDetailFetch(
   dbName: string,
@@ -1144,9 +1137,8 @@ export function runDetailFetch(
   token: string,
   direction: "purchase" | "sold",
   query: PurchaseInvoiceQuery | SoldInvoiceQuery,
-  priority: PacerPriority = "manual",
 ): DetailRunStatus {
-  const key = detailRunKey(tenantKey, direction, priority);
+  const key = detailRunKey(tenantKey, direction);
   // Lượt mới THAY THẾ lượt cũ cùng khóa (đổi khoảng/bộ lọc rồi bấm lại -> tải đúng phần mới).
   const gen = (detailRunGen.get(key) ?? 0) + 1;
   detailRunGen.set(key, gen);
@@ -1172,7 +1164,7 @@ export function runDetailFetch(
   // Chạy nền: caller trả về ngay, FE poll `status`. Lỗi tổng thể (vd đọc DB) -> đóng lượt.
   void (async () => {
     try {
-      // orderBy tdlap desc: tải chi tiết hóa đơn MỚI trước, giảm dần về cũ (khớp backfill nền mới->cũ).
+      // orderBy tdlap desc: tải chi tiết hóa đơn MỚI trước, giảm dần về cũ.
       const candidates = await freshModel().findMany({
         where,
         select: DETAIL_SELECT,
@@ -1180,7 +1172,7 @@ export function runDetailFetch(
       });
       status.total = candidates.length;
       console.log(
-        `[gdt.detailRun] ${direction}/${priority} BẮT ĐẦU: ${status.total} hóa đơn cần tải chi tiết.`,
+        `[gdt.detailRun] ${direction} BẮT ĐẦU: ${status.total} hóa đơn cần tải chi tiết.`,
       );
 
       for (const row of candidates) {
@@ -1189,7 +1181,7 @@ export function runDetailFetch(
         for (;;) {
           attempt += 1;
           try {
-            const detail = await pacerSchedule(tenantKey, priority, () =>
+            const detail = await pacerSchedule(tenantKey, () =>
               getInvoiceDetail(token, {
                 nbmst: row.nbmst,
                 khhdon: row.khhdon,
@@ -1211,7 +1203,7 @@ export function runDetailFetch(
               // Token GDT hết hạn -> KHÔNG đánh lỗi HĐ này (không phải lỗi của nó); dừng cả lượt,
               // các HĐ còn lại giữ nguyên (tt_tai null/error) để đăng nhập lại rồi chạy tiếp.
               console.warn(
-                `[gdt.detailRun] token GDT hết hạn (${direction}/${priority}) -> dừng lượt ở ${status.done}/${status.total}.`,
+                `[gdt.detailRun] token GDT hết hạn (${direction}) -> dừng lượt ở ${status.done}/${status.total}.`,
               );
               status.authExpired = true;
               return;
@@ -1235,16 +1227,16 @@ export function runDetailFetch(
           }
         }
         status.done += 1;
-        // Log tiến độ mỗi 20 hóa đơn để theo dõi lượt chạy (nhất là chạy nền) ở terminal BE.
+        // Log tiến độ mỗi 20 hóa đơn để theo dõi lượt chạy ở terminal BE.
         if (status.done % 20 === 0) {
           console.log(
-            `[gdt.detailRun] ${direction}/${priority} tiến độ ${status.done}/${status.total} (ok ${status.ok}, lỗi ${status.err}).`,
+            `[gdt.detailRun] ${direction} tiến độ ${status.done}/${status.total} (ok ${status.ok}, lỗi ${status.err}).`,
           );
         }
       }
     } catch (err) {
       console.warn(
-        `[gdt.detailRun] lượt (${direction}/${priority}) dừng do lỗi: ${
+        `[gdt.detailRun] lượt (${direction}) dừng do lỗi: ${
           err instanceof Error ? err.message : String(err)
         }`,
       );
@@ -1254,7 +1246,7 @@ export function runDetailFetch(
         status.active = false;
         status.finishedAt = Date.now();
         console.log(
-          `[gdt.detailRun] ${direction}/${priority} XONG: ok ${status.ok}/${status.total}, lỗi ${status.err}${
+          `[gdt.detailRun] ${direction} XONG: ok ${status.ok}/${status.total}, lỗi ${status.err}${
             status.authExpired ? " (dừng vì token GDT hết hạn)" : ""
           }.`,
         );
@@ -1263,163 +1255,4 @@ export function runDetailFetch(
   })();
 
   return status;
-}
-
-// ============================================================
-//  BACKFILL NỀN 2 NĂM (Sub-project 2) — tự động sau khi user tìm tay 1 tháng thành công
-// ============================================================
-
-/**
- * Cửa sổ backfill nền: 2 năm gần nhất NHƯNG tới hết THÁNG TRƯỚC (tháng hiện tại do "Cập nhật" tay lo).
- * Ví dụ hôm nay 7/2026 -> [1/7/2024 .. 30/6/2026]; xử lý giảm dần 6/2026 -> ... -> 7/2024.
- */
-function backfillRange(): { tuNgay: string; denNgay: string } {
-  const now = new Date();
-  const end = new Date(now.getFullYear(), now.getMonth(), 0); // ngày cuối THÁNG TRƯỚC
-  const start = new Date(now.getFullYear() - 2, now.getMonth(), 1); // đầu tháng, 2 năm trước
-  return { tuNgay: toYmd(start), denNgay: toYmd(end) };
-}
-
-/** Cửa sổ "gần đây" (chỉ tháng trước) — trigger sau khi đã backfill đủ, để bắt HĐ phát sinh muộn. */
-function recentListRange(): { tuNgay: string; denNgay: string } {
-  const now = new Date();
-  const start = new Date(now.getFullYear(), now.getMonth() - 1, 1);
-  const end = new Date(now.getFullYear(), now.getMonth(), 0); // cuối tháng trước
-  return { tuNgay: toYmd(start), denNgay: toYmd(end) };
-}
-
-/** Số lần thử tối đa 1 trang danh sách khi backfill nền gặp lỗi tạm thời (429/5xx). */
-const BACKFILL_LIST_RETRY = 5;
-
-/**
- * Backfill DANH SÁCH 1 chiều trong khoảng, qua PACER (làn "background" — nhường manual). Page->save,
- * KHÔNG gom datas (nhẹ RAM cho 2 năm). Trả "auth" nếu token GDT hết hạn (dừng để login lại), "done"
- * khi xong. Lỗi tạm thời -> retry trang; lỗi thật -> bỏ chunk tháng, đi tiếp.
- */
-async function backfillListRange(
-  dbName: string,
-  tenantKey: string,
-  token: string,
-  direction: "purchase" | "sold",
-  tuNgay: string,
-  denNgay: string,
-  ownMst: string,
-): Promise<"done" | "auth"> {
-  let saved = 0;
-  // Tháng GIẢM DẦN (mới -> cũ) để dữ liệu gần đây được lưu trước.
-  for (const chunk of monthlyChunks(tuNgay, denNgay).reverse()) {
-    let state: string | undefined = undefined;
-    let pages = 0;
-    do {
-      const pageQuery = {
-        tuNgay: chunk.tuNgay,
-        denNgay: chunk.denNgay,
-        state,
-      } as PurchaseInvoiceQuery & SoldInvoiceQuery;
-
-      let attempt = 0;
-      let page: PurchaseInvoiceResponse | SoldInvoiceResponse | null = null;
-      for (;;) {
-        attempt += 1;
-        try {
-          page = await pacerSchedule(tenantKey, "background", () =>
-            direction === "purchase"
-              ? getPurchaseInvoices(token, pageQuery)
-              : getSoldInvoices(token, pageQuery),
-          );
-          pacerReportOk(tenantKey);
-          break;
-        } catch (err) {
-          const kind = classifyGdtError(err);
-          if (kind === "auth") return "auth";
-          if (kind === "transient" && attempt < BACKFILL_LIST_RETRY) {
-            pacerReportRateLimited(tenantKey);
-            await engineSleep(Math.min(5000, 500 * 2 ** (attempt - 1)));
-            continue;
-          }
-          console.warn(
-            `[gdt.backfill] list (${direction}) bỏ chunk ${chunk.tuNgay}..${chunk.denNgay} sau ${attempt} lần: ${
-              err instanceof Error ? err.message : String(err)
-            }`,
-          );
-          break; // page vẫn null -> bỏ chunk
-        }
-      }
-      if (!page) break;
-
-      const rows = page.datas ?? [];
-      saved += await saveInvoices(getTenantDb(dbName), direction, rows, ownMst);
-      state = page.state || undefined;
-      pages += 1;
-      if (rows.length === 0) break;
-    } while (state && pages < MAX_SYNC_PAGES);
-  }
-  console.log(
-    `[gdt.backfill] list ${direction}: đã lưu ${saved} hóa đơn (${tuNgay}..${denNgay}).`,
-  );
-  return "done";
-}
-
-/** Guard 1 chuỗi kickoff/tenant + đã list đủ 2 năm chưa (in-memory; restart BE thì làm lại, rẻ nhờ skip-OK). */
-const backfillKicking = new Set<string>();
-const backfillFullListDone = new Set<string>();
-
-/**
- * KÍCH HOẠT backfill nền 2 năm cho 1 MST — gọi SAU KHI user "Cập nhật từ Thuế điện tử" tay THÀNH CÔNG
- * (không chạy lúc login). Fire-and-forget: trả về ngay, chạy nền tiếp cả khi đóng trình duyệt tới hết
- * hoặc token hết hạn.
- *  - Pha A: backfill DANH SÁCH (lần đầu: đủ 2 năm; lần sau: chỉ tháng gần đây để bắt HĐ mới).
- *  - Pha B: `runDetailFetch` làn "background" cho cả 2 chiều trên khoảng 2 năm (skip đã OK, retry, dừng 401).
- * Token đi theo closure; hết hạn -> dừng, login lần sau tự resume phần còn thiếu (nhờ skip-OK).
- */
-export function ensureBackfill(
-  dbName: string,
-  tenantKey: string,
-  token: string,
-  ownMst: string,
-): void {
-  if (backfillKicking.has(tenantKey)) return; // đang có chuỗi kickoff cho MST này
-  backfillKicking.add(tenantKey);
-  void (async () => {
-    try {
-      const full = backfillRange();
-      const listRange = backfillFullListDone.has(tenantKey) ? recentListRange() : full;
-      console.log(
-        `[gdt.backfill] tenant=${tenantKey} BẮT ĐẦU backfill nền (mới -> cũ) — list ${listRange.tuNgay}..${listRange.denNgay}${
-          backfillFullListDone.has(tenantKey) ? " (tháng gần đây)" : " (đủ 2 năm)"
-        }.`,
-      );
-
-      for (const direction of ["purchase", "sold"] as const) {
-        const r = await backfillListRange(
-          dbName,
-          tenantKey,
-          token,
-          direction,
-          listRange.tuNgay,
-          listRange.denNgay,
-          ownMst,
-        );
-        if (r === "auth") {
-          console.log(`[gdt.backfill] tenant=${tenantKey} DỪNG: token GDT hết hạn (login lại để resume).`);
-          return; // token hết hạn -> dừng, login sau resume
-        }
-      }
-      backfillFullListDone.add(tenantKey);
-      console.log(`[gdt.backfill] tenant=${tenantKey} list xong -> khởi động tải chi tiết nền.`);
-
-      // Pha B: tải chi tiết nền cả 2 chiều (chỉ mở lượt nếu chưa có lượt background đang chạy).
-      for (const direction of ["purchase", "sold"] as const) {
-        if (!getDetailRunStatus(tenantKey, direction, "background")?.active) {
-          runDetailFetch(dbName, tenantKey, token, direction, full, "background");
-        }
-      }
-    } catch (err) {
-      console.warn(
-        `[gdt.backfill] tenant=${tenantKey} lỗi: ${err instanceof Error ? err.message : String(err)}`,
-      );
-    } finally {
-      backfillKicking.delete(tenantKey);
-    }
-  })();
 }

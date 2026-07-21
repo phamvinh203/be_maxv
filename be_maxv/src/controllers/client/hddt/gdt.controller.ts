@@ -81,7 +81,6 @@ async function handleGdtInvoices(
   // Ngoài try/catch riêng: lỗi quyền/tenant (403/404) cần trả đúng mã (qua error-handler
   // chung), không bị nuốt thành 500 của khối gọi GDT bên dưới. resolveTenantDb lỗi -> dừng
   // cả request (kể cả bước tra cứu GDT), vì luồng này định nghĩa là "tra cứu -> luôn lưu".
-  // Dùng dbName để còn kích hoạt backfill nền (chạy dài, tự getTenantDb lại giữ pool sống).
   // maSoThue: guard chống ghi nhầm data MST khác (token GDT có thể của công ty khác công ty đang chọn).
   const { dbName, maSoThue } = await resolveTenantInfo(request);
   const tenantDb = getTenantDb(dbName);
@@ -96,9 +95,6 @@ async function handleGdtInvoices(
       request.query,
       maSoThue,
     );
-
-    // Tìm tay 1 khoảng THÀNH CÔNG -> kích hoạt backfill nền 2 năm (fire-and-forget, không chặn response).
-    GDTService.ensureBackfill(dbName, tenantKeyOf(request), gdtToken, maSoThue);
 
     return reply.send(result);
   } catch (err) {
@@ -384,8 +380,8 @@ function tenantKeyOf(request: FastifyRequest): string {
 
 /**
  * POST /gdt/invoices/:direction/detail-run — bắt đầu lượt TẢI CHI TIẾT chạy NỀN ở BE cho khoảng đang
- * lọc (THAY THẾ lượt manual cũ nếu đang chạy), qua pacer dùng chung (ưu tiên "manual" — chen trước
- * job nền). Trả tiến độ để FE poll. Cần token GDT (X-Gdt-Token) lẫn JWT app.
+ * lọc (THAY THẾ lượt cũ nếu đang chạy), qua pacer dùng chung. Trả tiến độ để FE poll. Cần token GDT
+ * (X-Gdt-Token) lẫn JWT app.
  */
 async function handleStartDetailRun(
   request: FastifyRequest<{ Querystring: PurchaseInvoiceQuery | SoldInvoiceQuery }>,
@@ -414,7 +410,6 @@ async function handleStartDetailRun(
     gdtToken,
     direction,
     request.query,
-    "manual",
   );
   return reply.send(status);
 }
@@ -443,7 +438,7 @@ async function handleDetailRunStatus(
   direction: "purchase" | "sold",
 ) {
   await resolveTenantDb(request);
-  const status = GDTService.getDetailRunStatus(tenantKeyOf(request), direction, "manual");
+  const status = GDTService.getDetailRunStatus(tenantKeyOf(request), direction);
   return reply.send(status ?? { active: false, total: 0, done: 0, ok: 0, err: 0 });
 }
 
