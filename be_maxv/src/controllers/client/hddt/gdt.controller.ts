@@ -5,7 +5,6 @@ import {
   resolveTenantDbName,
   resolveTenantInfo,
 } from "../../../helpers/resolveTenantDb";
-import { getTenantDb } from "../../../helpers/tenantClient";
 import { renderPdfFromHtml } from "../../../helpers/pdfRenderer";
 import {
   InvoiceDetailOneBody,
@@ -83,17 +82,19 @@ async function handleGdtInvoices(
   // cả request (kể cả bước tra cứu GDT), vì luồng này định nghĩa là "tra cứu -> luôn lưu".
   // maSoThue: guard chống ghi nhầm data MST khác (token GDT có thể của công ty khác công ty đang chọn).
   const { dbName, maSoThue } = await resolveTenantInfo(request);
-  const tenantDb = getTenantDb(dbName);
 
   try {
     // Lấy HẾT hóa đơn trong khoảng (lặp phân trang + chia tháng), không chỉ 1 trang 50 dòng.
+    // Ngân sách retry NGẮN vì luồng này giữ HTTP request mở (proxy cắt ~120s -> 502). Luồng nền
+    // `update-run` mới là chỗ dùng ngân sách rộng.
     const result = await GDTService.fetchAndSaveInvoicesInRange(
-      tenantDb,
+      dbName,
       tenantKeyOf(request),
       gdtToken,
       direction,
       request.query,
       maSoThue,
+      { budgetMs: GDTService.LIST_RETRY_BUDGET_BLOCKING_MS },
     );
 
     // [DEBUG-CAPNHAT] BE đã trả response — FE vẫn lỗi => lỗi ở tầng kết nối, không phải luồng GDT.
@@ -412,7 +413,8 @@ async function handleStartDetailRun(
   const dbName = await resolveTenantDbName(request);
 
   // runDetailFetch KHÔNG async chặn: khởi tạo lượt nền rồi trả tiến độ ngay -> FE poll tiếp.
-  const status = GDTService.runDetailFetch(
+  // (`done` chỉ dành cho lượt "Cập nhật" hợp nhất 2 pha cần await; ở đây bỏ qua.)
+  const { status } = GDTService.runDetailFetch(
     dbName,
     tenantKeyOf(request),
     gdtToken,
@@ -456,6 +458,100 @@ export async function purchaseDetailRunStatus(request: FastifyRequest, reply: Fa
 
 export async function soldDetailRunStatus(request: FastifyRequest, reply: FastifyReply) {
   return handleDetailRunStatus(request, reply, "sold");
+}
+
+// ============================================================
+//  "CẬP NHẬT TỪ THUẾ ĐIỆN TỬ" CHẠY NỀN (nút trên tab hóa đơn) — danh sách + chi tiết 1 lượt
+// ============================================================
+
+/** Tiến độ rỗng khi chiều này chưa từng chạy lượt cập nhật nào (FE khỏi phải xử lý null). */
+const EMPTY_UPDATE_RUN = {
+  active: false,
+  phase: "",
+  page: 0,
+  rows: 0,
+  saved: 0,
+  total: 0,
+  source: "",
+  partial: false,
+  message: "",
+  detail: { total: 0, done: 0, ok: 0, err: 0 },
+  startedAt: 0,
+};
+
+/**
+ * POST /gdt/invoices/:direction/update-run — bắt đầu lượt "Cập nhật từ Thuế điện tử" CHẠY NỀN cho
+ * ĐÚNG chiều này + ĐÚNG bộ lọc trên query-string, trả tiến độ ngay (FE poll status).
+ * Thay cho GET /gdt/invoices/:direction chạy chặn: giữ 1 request mở suốt lượt sẽ bị proxy cắt
+ * thành 502, và vì vậy phải rút ngắn ngân sách retry (lấy thiếu). Cần X-Gdt-Token + JWT app.
+ */
+async function handleStartUpdateRun(
+  request: FastifyRequest<{ Querystring: PurchaseInvoiceQuery | SoldInvoiceQuery }>,
+  reply: FastifyReply,
+  direction: "purchase" | "sold",
+) {
+  const gdtToken = extractGdtToken(request);
+  if (!gdtToken) {
+    return reply.status(401).send({
+      message: "Thiếu token đăng nhập GDT (header X-Gdt-Token)",
+    });
+  }
+
+  const { tuNgay, denNgay } = request.query;
+  if (!tuNgay || !denNgay) {
+    return reply.status(400).send({ message: "Thiếu khoảng ngày (tuNgay/denNgay)" });
+  }
+
+  // dbName (không phải client): lượt nền chạy lâu -> service tự getTenantDb lại để giữ pool sống.
+  // maSoThue: guard chống ghi nhầm data MST khác vào DB tenant đang chọn.
+  const { dbName, maSoThue } = await resolveTenantInfo(request);
+
+  // KHÔNG await: khởi tạo lượt nền rồi trả tiến độ ngay -> FE poll tiếp.
+  const status = GDTService.startUpdateRun(
+    dbName,
+    tenantKeyOf(request),
+    direction,
+    gdtToken,
+    request.query,
+    maSoThue,
+  );
+  return reply.send(status);
+}
+
+export async function startPurchaseUpdateRun(
+  request: FastifyRequest<{ Querystring: PurchaseInvoiceQuery }>,
+  reply: FastifyReply,
+) {
+  return handleStartUpdateRun(request, reply, "purchase");
+}
+
+export async function startSoldUpdateRun(
+  request: FastifyRequest<{ Querystring: SoldInvoiceQuery }>,
+  reply: FastifyReply,
+) {
+  return handleStartUpdateRun(request, reply, "sold");
+}
+
+/**
+ * GET /gdt/invoices/:direction/update-run/status — tiến độ lượt cập nhật (FE poll). Chỉ cần JWT
+ * app (đọc state in-memory theo công ty đang chọn), KHÔNG cần token GDT.
+ */
+async function handleUpdateRunStatus(
+  request: FastifyRequest,
+  reply: FastifyReply,
+  direction: "purchase" | "sold",
+) {
+  await resolveTenantDb(request); // kiểm quyền công ty đang chọn
+  const status = GDTService.getUpdateRunStatus(tenantKeyOf(request), direction);
+  return reply.send(status ?? EMPTY_UPDATE_RUN);
+}
+
+export async function purchaseUpdateRunStatus(request: FastifyRequest, reply: FastifyReply) {
+  return handleUpdateRunStatus(request, reply, "purchase");
+}
+
+export async function soldUpdateRunStatus(request: FastifyRequest, reply: FastifyReply) {
+  return handleUpdateRunStatus(request, reply, "sold");
 }
 
 // ============================================================

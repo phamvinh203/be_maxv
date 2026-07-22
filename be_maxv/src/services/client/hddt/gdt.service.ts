@@ -1034,6 +1034,37 @@ export async function runSync(
 }
 
 /**
+ * Tiến độ 1 lượt "Cập nhật từ Thuế điện tử" chạy NỀN (FE poll `GET .../update-run/status`).
+ * Gộp CẢ HAI pha vào một object để FE chỉ cần một vòng poll và một toast: `phase` cho biết đang ở
+ * pha nào. Cùng triết lý với `SyncRunStatus`/`DetailRunStatus`: in-memory theo tiến trình BE,
+ * restart là mất (dữ liệu đã upsert vẫn nằm trong DB nên chạy lại chỉ bổ sung phần thiếu).
+ */
+export interface UpdateRunStatus {
+  active: boolean;
+  /** Pha đang chạy; "" khi đã xong. */
+  phase: "list" | "detail" | "";
+  /** Trang hiện tại trong cửa sổ tháng đang quét (GDT không cho biết tổng số trang). */
+  page: number;
+  /** Số dòng GDT đã đi qua, cộng dồn cả lượt. */
+  rows: number;
+  /** Số dòng đã upsert vào DB. */
+  saved: number;
+  /** GDT báo có bao nhiêu hóa đơn khớp bộ lọc trong khoảng. */
+  total: number;
+  /** Nguồn đang quét: "thường" | "máy tính tiền" — chỉ để hiển thị, không rẽ nhánh logic. */
+  source: string;
+  /** Lấy chưa hết (lỗi GDT giữa chừng / chạm lưới an toàn) + lý do. */
+  partial: boolean;
+  message: string;
+  /** Tiến độ pha chi tiết — gán THAM CHIẾU tới `DetailRunStatus` của engine (xem `startUpdateRun`). */
+  detail: { total: number; done: number; ok: number; err: number; authExpired?: boolean };
+  startedAt: number;
+  finishedAt?: number;
+  /** Lỗi tổng thể của lượt (vd guard MST lệch, lỗi đọc DB). */
+  error?: string;
+}
+
+/**
  * Lấy & lưu TẤT CẢ hóa đơn 1 chiều trong khoảng của `query` — GIỮ NGUYÊN bộ lọc người dùng chọn,
  * LẶP HẾT trang theo cursor `state`, chia theo tháng để thỏa giới hạn GDT (≤1 tháng/lần).
  * Trả về `{ total, saved, datas }` (datas = toàn bộ dòng thô để FE hiển thị + tải chi tiết).
@@ -1046,14 +1077,23 @@ export async function runSync(
  * đúng nguồn tương ứng. Khác `runSync` ở chỗ: runSync ghi sync_log, KHÔNG áp bộ lọc UI, KHÔNG trả datas.
  * Mỗi trang lấy qua `fetchListPagePaced` (pacer dùng chung + retry) để chịu được timeout/429 khi chạy
  * đồng thời với luồng tải chi tiết trên cùng token — cần `tenantKey` (khóa pacer theo MST).
+ *
+ * Nhận `dbName` (không phải client) vì lượt nền có thể chạy hàng chục phút: mỗi lần đụng DB gọi lại
+ * `getTenantDb` để refresh `lastUsed`, tránh bị sweeper (idle > 10') đóng pool giữa chừng — cùng lý
+ * do với `runSync`/`runDetailFetch`.
  */
 export async function fetchAndSaveInvoicesInRange(
-  tenantDb: PrismaClient,
+  dbName: string,
   tenantKey: string,
   token: string,
   direction: "purchase" | "sold",
   query: PurchaseInvoiceQuery | SoldInvoiceQuery,
   ownMst: string,
+  /**
+   * Chỉ có khi chạy NỀN qua `startUpdateRun`: `status` để ghi tiến độ cho FE poll, `budgetMs` để
+   * dùng ngân sách retry rộng (10'). Luồng chặn cũ truyền ngân sách 60s vì giữ HTTP request mở.
+   */
+  ctl?: { status?: UpdateRunStatus; budgetMs?: number },
 ): Promise<{
   total: number;
   saved: number;
@@ -1061,7 +1101,14 @@ export async function fetchAndSaveInvoicesInRange(
   /** true nếu chưa lấy hết (lỗi GDT giữa chừng, hoặc chạm trần trang) — FE nên cảnh báo. */
   partial: boolean;
   message: string;
+  /** true nếu dừng vì token GDT hết hạn (401/403) — caller KHÔNG nên chạy tiếp pha chi tiết. */
+  authExpired: boolean;
 }> {
+  // Client tenant MỚI mỗi lần đụng DB (refresh lastUsed + tự lành nếu pool bị recreate).
+  const db = () => getTenantDb(dbName);
+  const st = ctl?.status;
+  const budgetMs = ctl?.budgetMs ?? LIST_RETRY_BUDGET_MS;
+  let authExpired = false;
   const chunks = monthlyChunks(query.tuNgay, query.denNgay);
   // "Kết quả kiểm tra = Tất cả" (ketQuaHd rỗng) phải rà soát MỌI nguồn, không chỉ endpoint thường:
   // GDT để hóa đơn máy tính tiền (`ttxly=8`) ở `/sco-query/invoices/...` riêng, nên gọi một mình
@@ -1102,21 +1149,30 @@ export async function fetchAndSaveInvoicesInRange(
             state,
           };
           // Qua pacer dùng chung (điều tiết cùng token với luồng chi tiết) + retry lỗi tạm thời —
-          // không để 1 cú timeout/429 làm hỏng cả lần "Cập nhật". Ngân sách retry NGẮN vì luồng này
-          // giữ HTTP request mở (xem LIST_RETRY_BUDGET_BLOCKING_MS).
+          // không để 1 cú timeout/429 làm hỏng cả lần "Cập nhật". Ngân sách do caller quyết định:
+          // chạy nền -> 10' (lấy đủ), chạy chặn -> 60s (proxy cắt request trước khi kịp lâu hơn).
           const page = await fetchListPagePaced(
             tenantKey,
             token,
             direction,
             pageQuery,
             undefined,
-            LIST_RETRY_BUDGET_BLOCKING_MS,
+            budgetMs,
           );
 
           if (pages === 0) total += page.total ?? 0; // total giống nhau mỗi trang -> cộng 1 lần/cửa sổ
           const rows = page.datas ?? [];
-          saved += await saveInvoices(tenantDb, direction, rows, ownMst);
+          saved += await saveInvoices(db(), direction, rows, ownMst);
           datas.push(...rows);
+
+          // Tiến độ cho FE poll (chỉ khi chạy nền) — cộng dồn toàn lượt, không reset theo nguồn.
+          if (st) {
+            st.rows = datas.length;
+            st.saved = saved;
+            st.total = total;
+            st.source = src;
+            st.page = pages + 1;
+          }
 
           // [DEBUG-CAPNHAT] Mỗi trang 1 dòng: biết dừng ở hóa đơn thứ mấy khi lỗi.
           console.log(
@@ -1152,6 +1208,8 @@ export async function fetchAndSaveInvoicesInRange(
     }
   } catch (err) {
     partial = true;
+    // Token hết hạn -> caller phải DỪNG, không chạy tiếp pha chi tiết (cùng token sẽ lỗi y hệt).
+    authExpired = classifyGdtError(err) === "auth";
     message = err instanceof Error ? err.message : "Lỗi khi gọi GDT.";
     // [DEBUG-CAPNHAT] Điểm dừng + loại lỗi (auth = token GDT hết hạn, transient = GDT chặn/quá tải).
     console.error(
@@ -1168,7 +1226,130 @@ export async function fetchAndSaveInvoicesInRange(
 
   // Bỏ qua HĐ đã tải chi tiết được quyết định phía BE trong `runDetailFetch` (WHERE tt_tai null|error),
   // nên KHÔNG cần gắn tt_tai vào `datas` ở đây (FE không đọc `res.datas` nữa).
-  return { total, saved, datas, partial, message };
+  return { total, saved, datas, partial, message, authExpired };
+}
+
+// ============================================================
+//  LƯỢT "CẬP NHẬT TỪ THUẾ ĐIỆN TỬ" CHẠY NỀN — danh sách + chi tiết trong 1 lượt, FE poll tiến độ
+// ============================================================
+
+/** Tiến độ theo (MST + chiều): mỗi tab hóa đơn 1 lượt riêng, 2 tab chạy song song được. */
+const updateRuns = new Map<string, UpdateRunStatus>();
+/** "Thế hệ" hiện tại của mỗi khóa — lượt mới bump lên để lượt cũ tự thoát khi kết thúc. */
+const updateRunGen = new Map<string, number>();
+const updateRunKey = (tenantKey: string, direction: "purchase" | "sold") =>
+  `${tenantKey}:${direction}`;
+
+/** Đọc tiến độ lượt cập nhật (FE poll). null nếu công ty/chiều này chưa từng chạy lượt nào. */
+export function getUpdateRunStatus(
+  tenantKey: string,
+  direction: "purchase" | "sold",
+): UpdateRunStatus | null {
+  return updateRuns.get(updateRunKey(tenantKey, direction)) ?? null;
+}
+
+/**
+ * Quản lý VÒNG ĐỜI một lượt cập nhật: tạo tiến độ, chạy `work` ở nền, đóng lượt khi xong.
+ *
+ * Tách khỏi phần gọi GDT (nhận `work` như tham số) vì đây là chỗ dễ sai nhất — thay lượt, đè
+ * trạng thái của lượt mới, treo `active` vĩnh viễn — và tách ra thì test được mà không cần
+ * token GDT lẫn DB (xem `src/__tests__/gdtUpdateRun.test.ts`).
+ *
+ * Bấm lại khi đang chạy -> lượt mới THAY lượt cũ (khác `startSyncRun` vốn trả lại lượt đang chạy):
+ * người dùng thường đổi bộ lọc rồi bấm lại, phải chạy theo bộ lọc mới.
+ */
+export function startUpdateRunWith(
+  tenantKey: string,
+  direction: "purchase" | "sold",
+  work: (st: UpdateRunStatus, isStale: () => boolean) => Promise<void>,
+): UpdateRunStatus {
+  const key = updateRunKey(tenantKey, direction);
+  const gen = (updateRunGen.get(key) ?? 0) + 1;
+  updateRunGen.set(key, gen);
+
+  const status: UpdateRunStatus = {
+    active: true,
+    phase: "list",
+    page: 0,
+    rows: 0,
+    saved: 0,
+    total: 0,
+    source: "",
+    partial: false,
+    message: "",
+    detail: { total: 0, done: 0, ok: 0, err: 0 },
+    startedAt: Date.now(),
+  };
+  updateRuns.set(key, status);
+
+  /** Lượt này đã bị một lượt MỚI thay thế -> không được đụng vào trạng thái chung nữa. */
+  const isStale = () => updateRunGen.get(key) !== gen;
+
+  void (async () => {
+    try {
+      await work(status, isStale);
+    } catch (err) {
+      status.error = err instanceof Error ? err.message : "Lỗi khi cập nhật từ Thuế điện tử.";
+      console.error(`[DEBUG-CAPNHAT] Lượt ${key} lỗi tổng thể: ${status.error}`);
+    } finally {
+      // Chỉ đóng lượt nếu vẫn là lượt hiện tại (không đè trạng thái của lượt mới đã thay thế).
+      if (!isStale()) {
+        status.active = false;
+        status.phase = "";
+        status.finishedAt = Date.now();
+      }
+    }
+  })();
+
+  return status;
+}
+
+/**
+ * Bắt đầu lượt "Cập nhật từ Thuế điện tử" CHẠY NỀN cho ĐÚNG 1 chiều + ĐÚNG bộ lọc của tab, rồi
+ * trả tiến độ NGAY (FE poll `getUpdateRunStatus`). Lượt tự đi 2 pha: lấy/lưu DANH SÁCH, rồi tải
+ * CHI TIẾT cho chính khoảng + bộ lọc đó — nên FE chỉ cần một vòng poll và một toast.
+ *
+ * Nhờ chạy nền, không còn HTTP request kéo dài (nguyên nhân 502 sau IIS/ARR) nên pha danh sách
+ * dùng được ngân sách retry rộng `LIST_RETRY_BUDGET_MS` (10 phút/trang) như luồng Đồng bộ.
+ */
+export function startUpdateRun(
+  dbName: string,
+  tenantKey: string,
+  direction: "purchase" | "sold",
+  gdtToken: string,
+  query: PurchaseInvoiceQuery | SoldInvoiceQuery,
+  ownMst: string,
+): UpdateRunStatus {
+  return startUpdateRunWith(tenantKey, direction, async (st) => {
+    // --- PHA 1: DANH SÁCH ---
+    const res = await fetchAndSaveInvoicesInRange(
+      dbName,
+      tenantKey,
+      gdtToken,
+      direction,
+      query,
+      ownMst,
+      { status: st },
+    );
+    st.total = res.total;
+    st.saved = res.saved;
+    st.partial = res.partial;
+    st.message = res.message;
+
+    // Token hết hạn -> DỪNG: pha chi tiết dùng cùng token sẽ lỗi y hệt.
+    if (res.authExpired) {
+      st.detail.authExpired = true;
+      return;
+    }
+
+    // --- PHA 2: CHI TIẾT (cùng chiều, cùng bộ lọc) ---
+    st.phase = "detail";
+    const { status: detail, done } = runDetailFetch(dbName, tenantKey, gdtToken, direction, query);
+    // Gán THAM CHIẾU: engine cập nhật tại chỗ trên chính object này nên tiến độ tự "sống", khỏi
+    // cần vòng sao chép. JSON trả về dư vài field (active/startedAt) — FE bỏ qua.
+    st.detail = detail;
+    await done;
+  });
 }
 
 /** Danh sách lịch sử đồng bộ (mới nhất trước), giới hạn 100 dòng gần nhất. */
@@ -1444,7 +1625,7 @@ const LIST_RETRY_BUDGET_MS = 10 * 60_000;
  * request thành 502 trước. 60s/trang là mức chịu được, và người dùng bấm lại thì lấy tiếp phần
  * thiếu. Đồng bộ (chạy nền, có tiến độ + nút Dừng) mới dùng ngân sách rộng.
  */
-const LIST_RETRY_BUDGET_BLOCKING_MS = 60_000;
+export const LIST_RETRY_BUDGET_BLOCKING_MS = 60_000;
 
 /**
  * Nghỉ `ms` nhưng cắt sớm khi người dùng bấm Dừng — chia nhỏ thành từng nhịp 1s để không phải chờ
@@ -1540,7 +1721,7 @@ export function runDetailFetch(
   token: string,
   direction: "purchase" | "sold",
   query: PurchaseInvoiceQuery | SoldInvoiceQuery,
-): DetailRunStatus {
+): { status: DetailRunStatus; done: Promise<void> } {
   const key = detailRunKey(tenantKey, direction);
   // Lượt mới THAY THẾ lượt cũ cùng khóa (đổi khoảng/bộ lọc rồi bấm lại -> tải đúng phần mới).
   const gen = (detailRunGen.get(key) ?? 0) + 1;
@@ -1565,7 +1746,9 @@ export function runDetailFetch(
   };
 
   // Chạy nền: caller trả về ngay, FE poll `status`. Lỗi tổng thể (vd đọc DB) -> đóng lượt.
-  void (async () => {
+  // Giữ promise của lượt để caller nào cần ĐỢI thì await `done` (lượt "Cập nhật" hợp nhất 2 pha
+  // dùng cái này để biết pha chi tiết đã xong) — vẫn không chặn nơi gọi thông thường.
+  const done = (async () => {
     try {
       // orderBy tdlap desc: tải chi tiết hóa đơn MỚI trước, giảm dần về cũ.
       const candidates = await freshModel().findMany({
@@ -1657,5 +1840,5 @@ export function runDetailFetch(
     }
   })();
 
-  return status;
+  return { status, done };
 }

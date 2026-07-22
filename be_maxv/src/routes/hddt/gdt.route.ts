@@ -17,6 +17,10 @@ import {
   startSoldDetailRun,
   purchaseDetailRunStatus,
   soldDetailRunStatus,
+  startPurchaseUpdateRun,
+  startSoldUpdateRun,
+  purchaseUpdateRunStatus,
+  soldUpdateRunStatus,
   syncInvoices,
   startSyncRun,
   syncRunStatus,
@@ -113,6 +117,26 @@ export default async function (
   fastify.get("/invoices/sold/detail-run/status", {
     preHandler: [fastify.authenticate],
     handler: soldDetailRunStatus,
+  });
+
+  // "Cập nhật từ Thuế điện tử" CHẠY NỀN (thay GET /invoices/:direction chạy chặn): POST bắt đầu +
+  // trả tiến độ ngay, GET status để poll. Lượt gồm CẢ 2 pha (danh sách -> chi tiết) của ĐÚNG chiều
+  // này + đúng bộ lọc trên query-string. POST cần X-Gdt-Token; GET chỉ cần JWT app.
+  fastify.post("/invoices/purchase/update-run", {
+    preHandler: [fastify.authenticate],
+    handler: startPurchaseUpdateRun,
+  });
+  fastify.post("/invoices/sold/update-run", {
+    preHandler: [fastify.authenticate],
+    handler: startSoldUpdateRun,
+  });
+  fastify.get("/invoices/purchase/update-run/status", {
+    preHandler: [fastify.authenticate],
+    handler: purchaseUpdateRunStatus,
+  });
+  fastify.get("/invoices/sold/update-run/status", {
+    preHandler: [fastify.authenticate],
+    handler: soldUpdateRunStatus,
   });
 
   // Đồng bộ hóa đơn (dialog "Đồng bộ hóa đơn"): POST /sync chạy đồng bộ (cần X-Gdt-Token),
