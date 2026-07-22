@@ -28,14 +28,18 @@ import FileDownloadRounded from "@mui/icons-material/FileDownloadRounded";
 import CloudDownloadRounded from "@mui/icons-material/CloudDownloadRounded";
 import VisibilityRounded from "@mui/icons-material/VisibilityRounded";
 import { useActiveGdtToken } from "../gdtSession/useActiveGdtToken";
+import { useGdtSession } from "../gdtSession/useGdtSession";
+import DialogLoginHddt from "../../../components/dialogLoginHddt";
 import { trangThaiHdLabel, ketQuaKiemTraLabel } from "../api/gdt";
-import {
-  invoiceKeys,
-  useFetchGdtInvoicesMutation,
-  useSavedInvoicesQuery,
-} from "../api/invoiceQueries";
+import { invoiceKeys, useSavedInvoicesQuery } from "../api/invoiceQueries";
 import { detailKeys, useSavedDetailsQuery } from "../api/invoiceDetailQueries";
 import { startDetailRun, getDetailRunStatus } from "../api/invoiceDetail";
+import {
+  getUpdateRunStatus,
+  pollUpdateRunToast,
+  startUpdateRun,
+  type UpdateRunStatus,
+} from "../api/updateRun";
 import { useAuth } from "../../auth/useAuth";
 import { toast } from "react-toastify";
 import type {
@@ -165,6 +169,7 @@ function InvoiceTablePanel({ direction, active }: InvoiceTablePanelProps) {
   const { currentCompanyId } = useAuth();
   // Token GDT của ĐÚNG công ty đang chọn (điểm chọn token duy nhất — chống rò rỉ giữa tenant).
   const { activeMst, token: activeGdtToken } = useActiveGdtToken();
+  const { setGdtToken } = useGdtSession();
   // Cột đối tác đổi theo chiều (mua vào: người bán; bán ra: người mua) -> tính theo direction.
   const columns = useMemo(() => columnsFor(direction), [direction]);
   const qc = useQueryClient();
@@ -174,9 +179,21 @@ function InvoiceTablePanel({ direction, active }: InvoiceTablePanelProps) {
   // Hóa đơn đang chọn (checkbox cột "Chọn") để bật nút "Xem hóa đơn"; null = chưa chọn.
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [viewOpen, setViewOpen] = useState(false);
+  /** Mở form đăng nhập Thuế điện tử khi thao tác cần token mà công ty đang chọn chưa đăng nhập. */
+  const [loginOpen, setLoginOpen] = useState(false);
+  /**
+   * Việc đang chờ token: chạy lại NGAY sau khi đăng nhập xong để người dùng khỏi phải bấm nút lần
+   * hai. Nhận token qua tham số (không đọc `activeGdtToken`) vì state chưa kịp cập nhật lúc đó.
+   */
+  const pendingActionRef = useRef<((gdtToken: string) => void) | null>(null);
 
   // BE tải chi tiết chạy nền; FE poll tiến độ. `detailRunning` để khóa nút trong lúc đang poll.
   const [detailRunning, setDetailRunning] = useState(false);
+  // Lượt "Cập nhật từ Thuế điện tử" cũng chạy NỀN ở BE (danh sách + chi tiết trong 1 lượt); FE chỉ
+  // poll tiến độ nên đóng tab/F5 không mất lượt. Cờ này để khóa nút trong lúc lượt còn chạy.
+  const [updateRunning, setUpdateRunning] = useState(false);
+  /** Đang có vòng poll lượt cập nhật — chặn poll trùng khi nối lại lúc lượt còn chạy. */
+  const updatePollingRef = useRef(false);
   // Mỗi lần đổi bộ lọc/công ty tăng 1; vòng poll so khớp để tự dừng (chống chồng chéo lượt cũ).
   const runIdRef = useRef(0);
 
@@ -192,7 +209,6 @@ function InvoiceTablePanel({ direction, active }: InvoiceTablePanelProps) {
 
   // useQuery tự fetch DB khi tab active + khi bộ lọc đã áp dụng đổi.
   const savedQuery = useSavedInvoicesQuery(direction, buildQuery(appliedFilters), active);
-  const gdtMutation = useFetchGdtInvoicesMutation(direction);
   // Chi tiết chỉ nạp khi tab "Chi tiết" đang mở (dữ liệu nặng, khỏi tốn request khi chưa xem).
   const savedDetailsQuery = useSavedDetailsQuery(
     direction,
@@ -215,7 +231,6 @@ function InvoiceTablePanel({ direction, active }: InvoiceTablePanelProps) {
   const pagedRows = rows.slice(safePage * rowsPerPage, safePage * rowsPerPage + rowsPerPage);
 
   const dbLoading = savedQuery.isFetching;
-  const gdtLoading = gdtMutation.isPending;
   const searched = savedQuery.isFetched;
 
   /** Áp bộ lọc mới -> dừng vòng poll cũ (nếu có) rồi đổi query key để useQuery đọc lại DB. */
@@ -314,18 +329,34 @@ function InvoiceTablePanel({ direction, active }: InvoiceTablePanelProps) {
 
   /**
    * Token GDT của ĐÚNG công ty đang chọn (theo MST), KHÔNG mượn phiên MST khác — tránh fetch data
-   * MST này rồi ghi vào DB tenant kia. Chưa đăng nhập GDT cho MST đó -> toast cảnh báo + undefined.
+   * MST này rồi ghi vào DB tenant kia. Chưa đăng nhập GDT cho MST đó -> MỞ LUÔN form đăng nhập
+   * (đỡ bắt người dùng tự đi tìm nút "Đăng nhập Thuế điện tử") và hẹn chạy lại `retry` sau khi
+   * đăng nhập xong. Chưa chọn công ty có MST thì không có gì để đăng nhập -> chỉ cảnh báo.
    */
-  const requireGdtToken = (): string | undefined => {
-    if (!activeGdtToken) {
-      toast.warning(
-        activeMst
-          ? `Chưa đăng nhập Thuế điện tử cho MST ${activeMst} — bấm "Đăng nhập Thuế điện tử" ở trên trước.`
-          : "Chưa chọn công ty có MST để đăng nhập Thuế điện tử.",
-      );
+  const requireGdtToken = (retry?: (gdtToken: string) => void): string | undefined => {
+    if (activeGdtToken) return activeGdtToken;
+    if (!activeMst) {
+      toast.warning("Chưa chọn công ty có MST để đăng nhập Thuế điện tử.");
       return undefined;
     }
-    return activeGdtToken;
+    pendingActionRef.current = retry ?? null;
+    setLoginOpen(true);
+    return undefined;
+  };
+
+  /** Đăng nhập xong: lưu token theo MST rồi chạy tiếp việc đang chờ. */
+  const handleLoginSuccess = (gdtToken: string, mst: string) => {
+    setGdtToken(mst, gdtToken);
+    const pending = pendingActionRef.current;
+    pendingActionRef.current = null;
+    // Đăng nhập bằng MST KHÁC công ty đang chọn -> không chạy tiếp (sẽ ghi data sang nhầm tenant).
+    if (mst !== activeMst) {
+      toast.warning(
+        `Đã đăng nhập MST ${mst}, khác công ty đang chọn (${activeMst}) — không chạy tiếp thao tác.`,
+      );
+      return;
+    }
+    pending?.(gdtToken);
   };
 
   /**
@@ -337,38 +368,89 @@ function InvoiceTablePanel({ direction, active }: InvoiceTablePanelProps) {
       toast.warning("Vui lòng chọn đủ Từ ngày / Đến ngày.");
       return;
     }
-    const gdtToken = requireGdtToken();
+    // Chưa đăng nhập -> mở form đăng nhập, xong sẽ tự chạy lại đúng thao tác này.
+    const gdtToken = requireGdtToken((token) => runFetchGdt(filters, token));
     if (!gdtToken) return;
+    runFetchGdt(filters, gdtToken);
+  };
 
+  /**
+   * Bám theo một lượt cập nhật (vừa bấm HOẶC đang chạy sẵn khi quay lại trang): mở toast tiến độ,
+   * poll tới khi xong, điền dần bảng. `updatePollingRef` đảm bảo mỗi chiều chỉ có MỘT vòng poll.
+   */
+  const watchUpdateRun = async (started: UpdateRunStatus, startRun: number) => {
+    if (updatePollingRef.current) return;
+    updatePollingRef.current = true;
+    setUpdateRunning(true);
+    try {
+      await pollUpdateRunToast(direction, started, {
+        // Đổi công ty giữa chừng -> ngừng poll (id hóa đơn thuộc tenant cũ, sai ở tenant mới).
+        isStale: () => runIdRef.current !== startRun,
+        onProgress: invalidateSavedList,
+        onFinish: () => {
+          if (runIdRef.current === startRun) invalidateSavedAll();
+        },
+      });
+    } finally {
+      updatePollingRef.current = false;
+      setUpdateRunning(false);
+    }
+  };
+
+  /** Phần chạy thật của "Cập nhật từ Thuế điện tử" — tách ra để dùng lại sau khi đăng nhập xong. */
+  const runFetchGdt = (filters: InvoiceFilterValues, gdtToken: string) => {
     setPage(0);
     setAppliedFilters(filters);
-    // Chốt mốc lượt hiện tại: nếu đổi công ty giữa lúc lấy list (effect bump runIdRef), bỏ qua onSuccess.
+    // Chốt mốc lượt hiện tại: đổi công ty giữa chừng (effect bump runIdRef) -> ngừng bám lượt này.
     const startRun = runIdRef.current;
-    gdtMutation.mutate(
-      { gdtToken, query: buildQuery(filters) },
-      {
-        onSuccess: (res) => {
-          if (runIdRef.current !== startRun) return; // đổi công ty giữa chừng -> không chạy tiếp
-          if (res.partial) {
-            // Lấy chưa hết (lỗi GDT giữa chừng / chạm trần) — vẫn giữ + xử lý phần đã lấy được.
-            toast.warning(
-              `Đã lưu ${res.saved ?? 0} hóa đơn nhưng CHƯA lấy hết: ${res.message ?? "lỗi khi gọi Thuế điện tử"}.`,
-            );
-          } else {
-            toast.success(`Đã lưu ${res.saved ?? 0} hóa đơn vào cơ sở dữ liệu.`);
-          }
-          // Khởi động BE tải chi tiết (bỏ qua HĐ đã có) rồi poll tiến độ.
-          void pollDetailRun(gdtToken, buildQuery(filters), startRun);
-        },
-        onError: (e) =>
-          toast.error(getErrorMessage(e, "Không cập nhật được hóa đơn từ Thuế điện tử.")),
-      },
+    console.log(
+      `[DEBUG-CAPNHAT][FE] Bấm CẬP NHẬT TỪ THUẾ ĐIỆN TỬ ${direction} ${filters.tuNgay}..${filters.denNgay}`,
     );
+    // Lượt chạy NỀN ở BE: request này chỉ khởi động (~50ms) rồi FE poll tiến độ. Nhờ vậy khoảng
+    // ngày dài không còn bị proxy cắt thành 502, và BE dám kiên nhẫn 10 phút/trang khi GDT chặn.
+    void (async () => {
+      let started: UpdateRunStatus;
+      try {
+        started = await startUpdateRun(direction, gdtToken, buildQuery(filters));
+      } catch (e) {
+        console.error("[DEBUG-CAPNHAT][FE] LỖI khởi động lượt cập nhật:", e);
+        toast.error(getErrorMessage(e, "Không bắt đầu được lượt cập nhật."));
+        return;
+      }
+      await watchUpdateRun(started, startRun);
+    })();
   };
+
+  /**
+   * Lượt chạy ở BE nên rời trang / F5 / chuyển tab vẫn còn: hỏi BE xem chiều này có lượt nào đang
+   * chạy không rồi NỐI LẠI toast + vòng poll, thay vì tưởng là không có gì đang chạy. Khai báo SAU
+   * `watchUpdateRun` (đọc biến trước khi khai báo là lỗi react-hooks/immutability).
+   */
+  useEffect(() => {
+    if (!active || !currentCompanyId) return;
+    let dropped = false;
+    const startRun = runIdRef.current;
+    void (async () => {
+      try {
+        const status = await getUpdateRunStatus(direction);
+        if (dropped || !status.active) return;
+        await watchUpdateRun(status, startRun);
+      } catch {
+        // Không đọc được tiến độ (mạng/chưa chọn công ty) -> bỏ qua, nút vẫn dùng được.
+      }
+    })();
+    return () => {
+      dropped = true;
+    };
+    // Chỉ chạy khi mở tab / đổi công ty; `watchUpdateRun` tự chặn trùng bằng ref.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [active, currentCompanyId, direction]);
 
   /** Nút "Tải chi tiết" — chạy tải chi tiết ngầm ở BE cho khoảng đang lọc (không lấy list mới). */
   const handleDownloadDetails = () => {
-    const gdtToken = requireGdtToken();
+    const gdtToken = requireGdtToken((token) =>
+      void pollDetailRun(token, buildQuery(appliedFilters), runIdRef.current),
+    );
     if (!gdtToken) return;
     void pollDetailRun(gdtToken, buildQuery(appliedFilters), runIdRef.current);
   };
@@ -378,7 +460,7 @@ function InvoiceTablePanel({ direction, active }: InvoiceTablePanelProps) {
       <InvoiceFilterPanel
         direction={direction}
         dbLoading={dbLoading}
-        gdtLoading={gdtLoading || detailRunning}
+        gdtLoading={updateRunning || detailRunning}
         initialValues={defaultFilters}
         onSearch={applyFilters}
         onFetchGdt={handleFetchGdt}
@@ -425,7 +507,7 @@ function InvoiceTablePanel({ direction, active }: InvoiceTablePanelProps) {
             size="small"
             startIcon={<CloudDownloadRounded fontSize="small" />}
             sx={{ textTransform: "none", whiteSpace: "nowrap" }}
-            disabled={rows.length === 0 || detailRunning || gdtLoading}
+            disabled={rows.length === 0 || detailRunning || updateRunning}
             onClick={handleDownloadDetails}
           >
             {detailRunning ? "Đang tải chi tiết…" : "Tải chi tiết"}
@@ -517,6 +599,18 @@ function InvoiceTablePanel({ direction, active }: InvoiceTablePanelProps) {
         onClose={() => setViewOpen(false)}
         direction={direction}
         id={selectedId}
+      />
+
+      {/* Bấm "Cập nhật từ Thuế điện tử" / "Tải chi tiết" khi chưa đăng nhập GDT -> mở form này;
+          đăng nhập xong dialog tự đóng sau 1s và thao tác đang chờ chạy tiếp. */}
+      <DialogLoginHddt
+        open={loginOpen}
+        onClose={() => {
+          setLoginOpen(false);
+          pendingActionRef.current = null; // đóng giữa chừng -> bỏ việc đang chờ
+        }}
+        initialUsername={activeMst}
+        onLoginSuccess={handleLoginSuccess}
       />
     </Box>
   );

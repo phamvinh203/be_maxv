@@ -7,8 +7,8 @@ import { schedule, reportOk, reportRateLimited } from "../services/client/hddt/g
  *   npx tsx --test src/__tests__/gdtPacer.test.ts
  */
 
-test("pacer: tuần tự (concurrency=1) + ưu tiên manual > background", async () => {
-  const key = "test-serialize-priority";
+test("pacer: tuần tự (concurrency=1) + chạy đúng thứ tự FIFO", async () => {
+  const key = "test-serialize-fifo";
   const order: string[] = [];
   let concurrent = 0;
   let maxConcurrent = 0;
@@ -22,22 +22,21 @@ test("pacer: tuần tự (concurrency=1) + ưu tiên manual > background", async
     return name;
   };
 
-  // schedule(B1) chạy pump đồng bộ tới await đầu -> B1 bị "chốt" chạy trước khi B2/M1 được đẩy vào.
-  // Sau đó M1 (manual) phải chen trước B2 (background).
+  // Hàng đợi FIFO duy nhất: task chạy đúng thứ tự được xếp vào.
   const results = await Promise.all([
-    schedule(key, "background", task("B1")),
-    schedule(key, "background", task("B2")),
-    schedule(key, "manual", task("M1")),
+    schedule(key, task("T1")),
+    schedule(key, task("T2")),
+    schedule(key, task("T3")),
   ]);
 
   assert.equal(maxConcurrent, 1, "phải tuần tự — không chạy chồng");
-  assert.deepEqual(order, ["B1", "M1", "B2"], "manual chen trước background");
-  assert.deepEqual(results, ["B1", "B2", "M1"], "schedule trả đúng kết quả từng fn");
+  assert.deepEqual(order, ["T1", "T2", "T3"], "chạy theo thứ tự xếp hàng");
+  assert.deepEqual(results, ["T1", "T2", "T3"], "schedule trả đúng kết quả từng fn");
 });
 
 test("pacer: lỗi của fn được ném lại cho nơi gọi", async () => {
   await assert.rejects(
-    schedule("test-reject", "manual", async () => {
+    schedule("test-reject", async () => {
       throw new Error("boom");
     }),
     /boom/,

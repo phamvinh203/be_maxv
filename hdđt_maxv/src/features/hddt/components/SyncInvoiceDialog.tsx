@@ -13,6 +13,7 @@ import Divider from "@mui/material/Divider";
 import Alert from "@mui/material/Alert";
 import Tooltip from "@mui/material/Tooltip";
 import CircularProgress from "@mui/material/CircularProgress";
+import LinearProgress from "@mui/material/LinearProgress";
 import FormControl from "@mui/material/FormControl";
 import FormLabel from "@mui/material/FormLabel";
 import RadioGroup from "@mui/material/RadioGroup";
@@ -35,16 +36,21 @@ import { toast } from "react-toastify";
 import { useQueryClient } from "@tanstack/react-query";
 import { currentMonthRange, formatDateVN, formatDateTimeVN } from "../dateUtils";
 import { getErrorMessage } from "../../../lib/errors";
-import { type SyncDirection, type SyncKind } from "../types";
+import { type SyncDirection, type SyncKind, type SyncRunStatus } from "../types";
 import {
+  useCancelSyncRunMutation,
   useClearSyncMutation,
-  useStartSyncMutation,
+  useInvalidateTenantInvoiceData,
+  useStartSyncRunMutation,
   useSyncHistoryQuery,
 } from "../api/syncQueries";
+import { getSyncRunStatus } from "../api/sync";
 import { invoiceKeys } from "../api/invoiceQueries";
 import { pollDetailRunToast } from "../api/invoiceDetail";
 import { useAuth } from "../../auth/useAuth";
 import { useActiveGdtToken } from "../gdtSession/useActiveGdtToken";
+import { useGdtSession } from "../gdtSession/useGdtSession";
+import DialogLoginHddt from "../../../components/dialogLoginHddt";
 
 interface Props {
   open: boolean;
@@ -61,6 +67,19 @@ const HISTORY_COLUMNS = [
   "Ngày đồng bộ",
 ];
 
+/**
+ * [DEBUG-SYNC] Đồng hồ đo từ lúc bấm nút. Đặt ở module scope vì `Date.now()` gọi trong thân
+ * component bị rule `react-hooks/purity` chặn (nó không phân biệt được render với event handler).
+ */
+function startTimer(): () => string {
+  const t0 = Date.now();
+  return () => `${((Date.now() - t0) / 1000).toFixed(1)}s`;
+}
+
+/** Nhịp poll tiến độ lượt đồng bộ nền — 2s đủ mượt mà không dội BE (lượt kéo hàng chục phút). */
+const SYNC_POLL_INTERVAL_MS = 2000;
+const sleepMs = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
 const DIRECTION_LABEL: Record<SyncDirection, string> = {
   all: "tất cả",
   purchase: "mua vào",
@@ -75,6 +94,7 @@ export default function SyncInvoiceDialog({ open, onClose }: Props) {
   const { currentCompanyId } = useAuth();
   // Token GDT của ĐÚNG công ty đang chọn (điểm chọn token duy nhất — chống rò rỉ giữa tenant).
   const { activeMst, token: activeGdtToken } = useActiveGdtToken();
+  const { setGdtToken } = useGdtSession();
   const qc = useQueryClient();
   // Ref theo dõi công ty hiện tại LIVE (cập nhật cả khi dialog đóng vì component vẫn mounted) — để
   // vòng poll tải chi tiết chạy nền biết người dùng đã đổi công ty giữa chừng thì dừng, tránh lẫn tenant.
@@ -90,13 +110,24 @@ export default function SyncInvoiceDialog({ open, onClose }: Props) {
   const [confirmClear, setConfirmClear] = useState(false);
   const [error, setError] = useState("");
 
+  /** Tiến độ lượt đồng bộ nền ở BE (null = chưa có lượt nào trong phiên xem này). */
+  const [runStatus, setRunStatus] = useState<SyncRunStatus | null>(null);
+  /** Đang có vòng poll chạy — chặn poll trùng khi mở lại dialog lúc lượt còn chạy. */
+  const pollingRef = useRef(false);
+  /** Form đăng nhập Thuế điện tử, mở khi bấm Đồng bộ mà công ty đang chọn chưa có token GDT. */
+  const [loginOpen, setLoginOpen] = useState(false);
+
   const historyQuery = useSyncHistoryQuery(open);
   const history = historyQuery.data ?? [];
   const loadingHistory = historyQuery.isFetching;
-  const startMutation = useStartSyncMutation();
+  const startMutation = useStartSyncRunMutation();
+  const cancelMutation = useCancelSyncRunMutation();
+  const invalidateInvoiceData = useInvalidateTenantInvoiceData();
   const clearMutation = useClearSyncMutation();
 
-  const syncing = startMutation.isPending;
+  // "Đang đồng bộ" = đang gọi POST /sync/run HOẶC BE báo còn lượt chạy (poll). Không dùng
+  // `startMutation.isPending` một mình: request đó trả về sau ~50ms, lượt mới chỉ vừa bắt đầu.
+  const syncing = startMutation.isPending || runStatus?.active === true;
   const clearing = clearMutation.isPending;
   const busy = syncing || clearing;
   const displayError =
@@ -118,72 +149,187 @@ export default function SyncInvoiceDialog({ open, onClose }: Props) {
       setError("Vui lòng chọn đủ Từ ngày / Đến ngày.");
       return;
     }
+    // Chưa đăng nhập GDT -> mở luôn form đăng nhập rồi tự đồng bộ tiếp, thay vì bắt người dùng
+    // đóng dialog đi tìm nút "Đăng nhập Thuế điện tử" rồi quay lại.
     if (!activeGdtToken) {
-      setError(
-        activeMst
-          ? `Chưa đăng nhập Thuế điện tử cho MST ${activeMst} — đăng nhập đúng MST trước khi đồng bộ.`
-          : "Chưa chọn công ty có MST để đăng nhập Thuế điện tử.",
-      );
+      if (!activeMst) {
+        setError("Chưa chọn công ty có MST để đăng nhập Thuế điện tử.");
+        return;
+      }
+      setLoginOpen(true);
       return;
     }
-    const gdtToken = activeGdtToken;
+    runSyncWithToken(activeGdtToken);
+  };
+
+  /** Phần chạy thật của nút Đồng bộ — tách ra để chạy lại được ngay sau khi đăng nhập xong. */
+  const runSyncWithToken = (gdtToken: string) => {
+    // [DEBUG-SYNC] Mốc bấm nút — đối chiếu với log BE.
+    const since = startTimer();
+    console.log(
+      `[DEBUG-SYNC][FE] Bấm ĐỒNG BỘ ${range.tuNgay}..${range.denNgay} direction=${direction} loai=${invoiceKind}`,
+    );
     startMutation.mutate(
       {
         gdtToken,
         body: { tuNgay: range.tuNgay, denNgay: range.denNgay, direction, loai: invoiceKind },
       },
       {
-        onSuccess: (results) => {
-          // Toast tóm tắt DANH SÁCH theo từng chiều (all -> 2 toast: mua vào + bán ra).
-          results.forEach((res) => {
-            const dirLabel =
-              res.direction === "purchase"
-                ? "Mua vào"
-                : res.direction === "sold"
-                  ? "Bán ra"
-                  : "Tất cả";
-            if (res.trang_thai !== "done") {
-              toast.warning(
-                `${dirLabel} — chưa hoàn thành: ${res.dien_giai ?? "lỗi khi đồng bộ"}. Đã bổ sung ${res.boSung}, đã có sẵn ${res.daCo}.`,
-              );
-            } else if (res.boSung === 0) {
-              toast.success(
-                `${dirLabel} — đầy đủ, không thiếu hóa đơn (đã có sẵn ${res.daCo}).`,
-              );
-            } else {
-              toast.success(
-                `${dirLabel} — đã bổ sung ${res.boSung} hóa đơn thiếu (đã có sẵn ${res.daCo}).`,
-              );
-            }
-          });
-
-          // Sau khi soát/bổ sung DANH SÁCH: tải CHI TIẾT giống nút "Cập nhật từ Thuế điện tử" — FE lái
-          // startDetailRun + poll getDetailRunStatus theo TỪNG CHIỀU đã đồng bộ xong, toast tiến độ
-          // cập nhật dần. Tuần tự mua vào -> bán ra (nhẹ với GDT). Chỉ tải cho chiều danh sách đã
-          // "done" (chiều lỗi giữa chừng thì danh sách chưa đủ). Chạy nền, không chặn UI; toast tự
-          // chạy tiếp kể cả khi đóng dialog.
-          const startedCompanyId = currentCompanyId;
-          const isStale = () => companyIdRef.current !== startedCompanyId;
-          void (async () => {
-            for (const res of results) {
-              if (res.trang_thai !== "done") continue;
-              if (res.direction !== "purchase" && res.direction !== "sold") continue;
-              if (isStale()) break; // đổi công ty giữa chừng -> ngừng, khỏi tải nhầm tenant
-              const authExpired = await pollDetailRunToast(res.direction, gdtToken, range, {
-                isStale,
-                // Chỉ invalidate khi vẫn đúng công ty đã đồng bộ (đổi công ty thì id đã cũ).
-                onFinish: () => {
-                  if (!isStale())
-                    qc.invalidateQueries({ queryKey: invoiceKeys.byCompany(startedCompanyId) });
-                },
-              });
-              if (authExpired) break; // token hết hạn -> chiều còn lại cũng lỗi y hệt, dừng
-            }
-          })();
+        onSuccess: (started) => {
+          // [DEBUG-SYNC] BE trả tiến độ NGAY (~50ms) rồi chạy nền; từ đây FE poll status.
+          console.log(`[DEBUG-SYNC][FE] Lượt nền đã khởi động sau ${since()}:`, started);
+          setRunStatus(started);
+          void pollRun(gdtToken);
         },
-        onError: (e) => setError(getErrorMessage(e, "Không đồng bộ được hóa đơn.")),
+        onError: (e) => {
+          // [DEBUG-SYNC] Lỗi khi KHỞI ĐỘNG lượt (không còn là lỗi của cả lượt đồng bộ dài).
+          console.error(
+            `[DEBUG-SYNC][FE] LỖI khởi động sau ${since()} — status=${(e as { status?: number }).status ?? "(không có – fetch đứt)"}`,
+            e,
+          );
+          setError(getErrorMessage(e, "Không bắt đầu được lượt đồng bộ."));
+        },
       },
     );
+  };
+
+  /**
+   * Poll tiến độ lượt đồng bộ nền tới khi BE báo xong, rồi xử lý kết quả y như luồng cũ (toast tóm
+   * tắt theo chiều + tải chi tiết). Chạy nền: đóng dialog vẫn tiếp tục, và mở lại dialog thì
+   * `resume effect` bên dưới nối lại vòng poll vì trạng thái thật nằm ở BE.
+   */
+  const pollRun = async (gdtToken: string) => {
+    if (pollingRef.current) return; // đã có vòng poll (vd mở lại dialog) -> không chạy 2 vòng
+    pollingRef.current = true;
+    const startedCompanyId = currentCompanyId;
+    const isStale = () => companyIdRef.current !== startedCompanyId;
+
+    let status: SyncRunStatus;
+    try {
+      for (;;) {
+        await sleepMs(SYNC_POLL_INTERVAL_MS);
+        // Đổi công ty giữa chừng: endpoint status trả tiến độ của công ty MỚI -> ngừng poll.
+        if (isStale()) return;
+        try {
+          status = await getSyncRunStatus();
+        } catch (e) {
+          // Lỗi mạng chập 1 nhịp poll -> thử lại nhịp sau, KHÔNG bỏ lượt (lượt vẫn chạy ở BE).
+          console.warn("[DEBUG-SYNC][FE] Poll lỗi 1 nhịp, thử lại:", e);
+          continue;
+        }
+        setRunStatus(status);
+        if (!status.active) break;
+      }
+    } finally {
+      pollingRef.current = false;
+    }
+
+    console.log(`[DEBUG-SYNC][FE] Lượt nền KẾT THÚC:`, status);
+    if (status.error) setError(status.error);
+    // Lượt xong -> nạp lại lịch sử + bảng hóa đơn + thống kê.
+    if (!isStale()) invalidateInvoiceData();
+    await handleRunFinished(status.results, gdtToken, isStale);
+  };
+
+  /** Toast tóm tắt theo từng chiều + tải chi tiết — tách ra để cả poll lẫn resume dùng chung. */
+  const handleRunFinished = async (
+    results: SyncRunStatus["results"],
+    gdtToken: string,
+    isStale: () => boolean,
+  ) => {
+    // Toast tóm tắt DANH SÁCH theo từng chiều (all -> 2 toast: mua vào + bán ra).
+    results.forEach((res) => {
+      const dirLabel =
+        res.direction === "purchase" ? "Mua vào" : res.direction === "sold" ? "Bán ra" : "Tất cả";
+      if (res.trang_thai !== "done") {
+        toast.warning(
+          `${dirLabel} — chưa hoàn thành: ${res.dien_giai ?? "lỗi khi đồng bộ"}. Đã bổ sung ${res.boSung}, đã có sẵn ${res.daCo}.`,
+        );
+      } else if (res.boSung === 0) {
+        toast.success(`${dirLabel} — đầy đủ, không thiếu hóa đơn (đã có sẵn ${res.daCo}).`);
+      } else {
+        toast.success(
+          `${dirLabel} — đã bổ sung ${res.boSung} hóa đơn thiếu (đã có sẵn ${res.daCo}).`,
+        );
+      }
+    });
+
+    // Sau khi soát/bổ sung DANH SÁCH: tải CHI TIẾT giống nút "Cập nhật từ Thuế điện tử" — FE lái
+    // startDetailRun + poll getDetailRunStatus theo TỪNG CHIỀU đã đồng bộ xong, toast tiến độ
+    // cập nhật dần. Tuần tự mua vào -> bán ra (nhẹ với GDT). Chỉ tải cho chiều danh sách đã
+    // "done" (chiều lỗi giữa chừng thì danh sách chưa đủ). Chạy nền, không chặn UI; toast tự
+    // chạy tiếp kể cả khi đóng dialog.
+    // Nối lại tiến độ sau khi F5 thì không còn token GDT trong tay -> bỏ qua phần chi tiết, người
+    // dùng bấm "Tải chi tiết" ở bảng hóa đơn sau (danh sách đã lưu xong nên không mất gì).
+    if (!gdtToken) {
+      toast.info("Đã đồng bộ xong danh sách. Bấm \"Tải chi tiết\" ở bảng hóa đơn để tải chi tiết.");
+      return;
+    }
+
+    for (const res of results) {
+      if (res.trang_thai !== "done") continue;
+      if (res.direction !== "purchase" && res.direction !== "sold") continue;
+      if (isStale()) break; // đổi công ty giữa chừng -> ngừng, khỏi tải nhầm tenant
+      const authExpired = await pollDetailRunToast(res.direction, gdtToken, range, {
+        isStale,
+        // Chỉ invalidate khi vẫn đúng công ty đã đồng bộ (đổi công ty thì id đã cũ).
+        onFinish: () => {
+          if (!isStale()) qc.invalidateQueries({ queryKey: invoiceKeys.byCompany(currentCompanyId) });
+        },
+      });
+      if (authExpired) break; // token hết hạn -> chiều còn lại cũng lỗi y hệt, dừng
+    }
+  };
+
+  /**
+   * Mở dialog -> hỏi BE xem có lượt đồng bộ nào đang chạy không rồi NỐI LẠI vòng poll. Nhờ trạng
+   * thái nằm ở BE (không phải trong component), đóng dialog / F5 / mở ở tab khác vẫn thấy đúng
+   * tiến độ thay vì tưởng là không có gì đang chạy. Khai báo SAU `pollRun` (đọc biến trước khi
+   * khai báo là lỗi react-hooks/immutability).
+   */
+  useEffect(() => {
+    if (!open) return;
+    let dropped = false;
+    void (async () => {
+      try {
+        const status = await getSyncRunStatus();
+        if (dropped || !status.active) return;
+        setRunStatus(status);
+        void pollRun(activeGdtToken ?? "");
+      } catch {
+        // Không đọc được tiến độ (mạng/chưa chọn công ty) -> bỏ qua, nút Đồng bộ vẫn dùng được.
+      }
+    })();
+    return () => {
+      dropped = true;
+    };
+    // Chỉ chạy khi mở dialog; `pollRun` tự chặn trùng bằng `pollingRef`.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open]);
+
+  /** Đăng nhập GDT xong (từ form mở bởi nút Đồng bộ): lưu token theo MST rồi đồng bộ luôn. */
+  const handleLoginSuccess = (gdtToken: string, mst: string) => {
+    setGdtToken(mst, gdtToken);
+    // Đăng nhập MST khác công ty đang chọn -> KHÔNG đồng bộ (sẽ ghi data sang nhầm tenant).
+    if (mst !== activeMst) {
+      setError(
+        `Đã đăng nhập MST ${mst}, khác công ty đang chọn (${activeMst}) — chưa đồng bộ. ` +
+          "Hãy đăng nhập đúng MST của công ty đang chọn.",
+      );
+      return;
+    }
+    runSyncWithToken(gdtToken);
+  };
+
+  /** Bấm Dừng: BE thoát ở ranh giới trang gần nhất; vòng poll sẽ tự thấy `active=false`. */
+  const handleCancelRun = () => {
+    cancelMutation.mutate(undefined, {
+      onSuccess: (status) => {
+        setRunStatus(status);
+        toast.info("Đã gửi yêu cầu dừng — đang kết thúc trang hiện tại…");
+      },
+      onError: (e) => setError(getErrorMessage(e, "Không dừng được lượt đồng bộ.")),
+    });
   };
 
   const handleClear = () => {
@@ -197,7 +343,7 @@ export default function SyncInvoiceDialog({ open, onClose }: Props) {
   return (
     <Dialog
       open={open}
-      onClose={busy ? undefined : onClose}
+      onClose={clearing ? undefined : onClose}
       maxWidth="md"
       fullWidth
       slotProps={{ paper: { sx: { borderRadius: 2 } } }}
@@ -212,7 +358,13 @@ export default function SyncInvoiceDialog({ open, onClose }: Props) {
             Chọn khoảng thời gian cần đồng bộ từ hệ thống hóa đơn điện tử
           </Typography>
         </Box>
-        <IconButton aria-label="Đóng" onClick={onClose} size="small" disabled={busy} sx={{ mt: -0.5 }}>
+        <IconButton
+          aria-label="Đóng"
+          onClick={onClose}
+          size="small"
+          disabled={clearing}
+          sx={{ mt: -0.5 }}
+        >
           <CloseRounded fontSize="small" />
         </IconButton>
       </Box>
@@ -337,6 +489,36 @@ export default function SyncInvoiceDialog({ open, onClose }: Props) {
           </Alert>
         )}
 
+        {/* Tiến độ lượt đồng bộ nền: lượt chạy ở BE nên đóng/mở lại dialog vẫn hiện đúng. GDT không
+            cho biết tổng số trang -> thanh chạy vô định + số liệu cộng dồn, không phải %. */}
+        {runStatus?.active && (
+          <Alert
+            severity="info"
+            icon={<CircularProgress size={18} />}
+            sx={{ mb: 2 }}
+            action={
+              <Button
+                size="small"
+                color="inherit"
+                sx={{ textTransform: "none" }}
+                disabled={cancelMutation.isPending || runStatus.cancelled}
+                onClick={handleCancelRun}
+              >
+                {runStatus.cancelled ? "Đang dừng…" : "Dừng"}
+              </Button>
+            }
+          >
+            <Typography variant="body2" sx={{ fontWeight: 600 }}>
+              Đang đồng bộ: {runStatus.phase || "chuẩn bị…"}
+            </Typography>
+            <Typography variant="caption" color="text.secondary">
+              Trang {runStatus.page} — đã lấy {runStatus.rows} hóa đơn, bổ sung {runStatus.boSung},
+              đã có sẵn {runStatus.daCo}. Có thể đóng cửa sổ này, lượt vẫn chạy tiếp.
+            </Typography>
+            <LinearProgress sx={{ mt: 1 }} />
+          </Alert>
+        )}
+
         {/* Lịch sử đồng bộ hóa đơn */}
         <Stack direction="row" sx={{ alignItems: "center", justifyContent: "space-between", mb: 1 }}>
           <Typography sx={{ fontWeight: 700 }}>Lịch sử đồng bộ hóa đơn</Typography>
@@ -407,8 +589,14 @@ export default function SyncInvoiceDialog({ open, onClose }: Props) {
           Xóa dữ liệu đã đồng bộ
         </Button>
         <Stack direction="row" spacing={1.5}>
-          <Button color="inherit" onClick={onClose} disabled={busy} sx={{ textTransform: "none" }}>
-            Hủy
+          {/* Đóng được cả khi đang đồng bộ: lượt chạy ở BE, mở lại dialog sẽ nối lại tiến độ. */}
+          <Button
+            color="inherit"
+            onClick={onClose}
+            disabled={clearing}
+            sx={{ textTransform: "none" }}
+          >
+            {syncing ? "Đóng" : "Hủy"}
           </Button>
           <Button
             variant="contained"
@@ -441,6 +629,15 @@ export default function SyncInvoiceDialog({ open, onClose }: Props) {
           </Button>
         </DialogActions>
       </Dialog>
+
+      {/* Bấm Đồng bộ khi chưa đăng nhập Thuế điện tử -> mở form này; đăng nhập xong dialog tự đóng
+          sau 1s rồi lượt đồng bộ chạy luôn. */}
+      <DialogLoginHddt
+        open={loginOpen}
+        onClose={() => setLoginOpen(false)}
+        initialUsername={activeMst}
+        onLoginSuccess={handleLoginSuccess}
+      />
     </Dialog>
   );
 }

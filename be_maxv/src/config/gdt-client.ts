@@ -3,6 +3,16 @@ const GDT_BASE_URL = "https://hoadondientu.gdt.gov.vn/api";
 /** Timeout mặc định mỗi request GDT — 1 socket treo không được chặn vô hạn (pacer concurrency=1). */
 const GDT_TIMEOUT_MS = 30_000;
 
+/**
+ * Timeout riêng cho call DANH SÁCH hóa đơn (`/query|/sco-query .../purchase|sold`).
+ *
+ * Nhánh `sco-query` (hóa đơn máy tính tiền) của GDT hay "nuốt" request: không trả gì cho tới khi hết
+ * timeout. Đo thực tế: call THÀNH CÔNG luôn dưới ~1.1s, còn call bị nuốt thì treo tới hết timeout.
+ * Vậy chờ 30s là đốt thời gian vô ích — cắt sớm ở 12s rồi retry (pacer sẽ giãn nhịp) nhanh hơn hẳn
+ * mà không bỏ sót trang nào. Riêng tải CHI TIẾT vẫn dùng `GDT_TIMEOUT_MS` (payload nặng hơn).
+ */
+export const GDT_LIST_TIMEOUT_MS = 12_000;
+
 /** Phiên bỏ dở (lấy captcha nhưng không login) tự hết hạn sau ngần này. */
 const COOKIE_TTL_MS = 5 * 60 * 1000;
 
@@ -87,12 +97,36 @@ export async function gdtFetch<T>(
     headers["Content-Type"] = "application/json";
   }
 
-  const response = await fetch(`${GDT_BASE_URL}${path}`, {
-    ...rest,
-    headers,
-    // Tôn trọng signal caller truyền; nếu không có -> timeout mặc định để tránh treo vô hạn.
-    signal: rest.signal ?? AbortSignal.timeout(GDT_TIMEOUT_MS),
-  });
+  // [DEBUG-GDT] Log MỌI call GDT: thời gian phản hồi + status. Đây là chỗ duy nhất biết được
+  // 502/429 là do GDT trả về (upstream) hay do lỗi mạng phía mình. Bỏ khi đã tìm ra nguyên nhân.
+  const startedAt = Date.now();
+  const shortPath = path.split("?")[0];
+
+  let response: Response;
+  try {
+    response = await fetch(`${GDT_BASE_URL}${path}`, {
+      ...rest,
+      headers,
+      // Tôn trọng signal caller truyền; nếu không có -> timeout mặc định để tránh treo vô hạn.
+      signal: rest.signal ?? AbortSignal.timeout(GDT_TIMEOUT_MS),
+    });
+  } catch (err) {
+    console.error(
+      `[DEBUG-GDT] ${shortPath} NÉM LỖI TẦNG FETCH sau ${Date.now() - startedAt}ms (mạng/timeout/abort):`,
+      err instanceof Error ? `${err.name}: ${err.message}` : err,
+    );
+    throw err;
+  }
+
+  const elapsed = Date.now() - startedAt;
+  if (response.ok) {
+    console.log(`[DEBUG-GDT] ${shortPath} -> ${response.status} (${elapsed}ms)`);
+  } else {
+    console.warn(
+      `[DEBUG-GDT] ${shortPath} -> ${response.status} ${response.statusText} (${elapsed}ms) ` +
+        `<- LỖI NÀY DO GDT TRẢ VỀ, không phải BE/proxy của mình`,
+    );
+  }
 
   if (captureCookies && cookieKey) {
     const setCookie =

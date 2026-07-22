@@ -17,7 +17,14 @@ import {
   startSoldDetailRun,
   purchaseDetailRunStatus,
   soldDetailRunStatus,
+  startPurchaseUpdateRun,
+  startSoldUpdateRun,
+  purchaseUpdateRunStatus,
+  soldUpdateRunStatus,
   syncInvoices,
+  startSyncRun,
+  syncRunStatus,
+  cancelSyncRun,
   syncHistory,
   clearSyncData,
   systemStats,
@@ -112,11 +119,47 @@ export default async function (
     handler: soldDetailRunStatus,
   });
 
+  // "Cập nhật từ Thuế điện tử" CHẠY NỀN (thay GET /invoices/:direction chạy chặn): POST bắt đầu +
+  // trả tiến độ ngay, GET status để poll. Lượt gồm CẢ 2 pha (danh sách -> chi tiết) của ĐÚNG chiều
+  // này + đúng bộ lọc trên query-string. POST cần X-Gdt-Token; GET chỉ cần JWT app.
+  fastify.post("/invoices/purchase/update-run", {
+    preHandler: [fastify.authenticate],
+    handler: startPurchaseUpdateRun,
+  });
+  fastify.post("/invoices/sold/update-run", {
+    preHandler: [fastify.authenticate],
+    handler: startSoldUpdateRun,
+  });
+  fastify.get("/invoices/purchase/update-run/status", {
+    preHandler: [fastify.authenticate],
+    handler: purchaseUpdateRunStatus,
+  });
+  fastify.get("/invoices/sold/update-run/status", {
+    preHandler: [fastify.authenticate],
+    handler: soldUpdateRunStatus,
+  });
+
   // Đồng bộ hóa đơn (dialog "Đồng bộ hóa đơn"): POST /sync chạy đồng bộ (cần X-Gdt-Token),
   // GET /sync/history đọc lịch sử, DELETE /sync/data xóa hóa đơn đã lưu + lịch sử.
   fastify.post("/sync", {
     preHandler: [fastify.authenticate],
     handler: syncInvoices,
+  });
+
+  // Đồng bộ CHẠY NỀN (thay POST /sync): POST /sync/run bắt đầu + trả tiến độ ngay, GET status để
+  // poll, POST cancel để dừng. Lượt đồng bộ dài hàng chục phút nên không thể giữ 1 request mở chờ
+  // (proxy cắt -> 502). POST /sync cũ giữ tạm cho tới khi FE chuyển hẳn sang luồng này.
+  fastify.post("/sync/run", {
+    preHandler: [fastify.authenticate],
+    handler: startSyncRun,
+  });
+  fastify.get("/sync/run/status", {
+    preHandler: [fastify.authenticate],
+    handler: syncRunStatus,
+  });
+  fastify.post("/sync/run/cancel", {
+    preHandler: [fastify.authenticate],
+    handler: cancelSyncRun,
   });
   fastify.get("/sync/history", {
     preHandler: [fastify.authenticate],

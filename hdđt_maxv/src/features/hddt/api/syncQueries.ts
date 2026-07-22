@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient, type QueryClient } from "@tanstack/react-query";
 import { useAuth } from "../../auth/useAuth";
-import { clearSyncData, getSyncHistory, startSync } from "./sync";
+import { cancelSyncRun, clearSyncData, getSyncHistory, startSync, startSyncRun } from "./sync";
 import { invoiceKeys } from "./invoiceQueries";
 import { statsKeys } from "./statsQueries";
 import type { SyncRequest } from "../types";
@@ -45,6 +45,31 @@ export function useStartSyncMutation() {
       startSync(vars.gdtToken, vars.body),
     onSuccess: () => invalidateTenantInvoiceData(qc, currentCompanyId),
   });
+}
+
+/**
+ * Bắt đầu lượt đồng bộ CHẠY NỀN ở BE — trả tiến độ ngay, KHÔNG chờ hết lượt (xem `startSyncRun`).
+ * Không invalidate ở `onSuccess` vì lúc này lượt mới bắt đầu, chưa có dữ liệu gì mới; nơi gọi tự
+ * invalidate khi poll thấy lượt kết thúc.
+ * Dùng: `SyncInvoiceDialog.handleSync` — nút "Đồng bộ".
+ */
+export function useStartSyncRunMutation() {
+  return useMutation({
+    mutationFn: (vars: { gdtToken: string; body: SyncRequest }) =>
+      startSyncRun(vars.gdtToken, vars.body),
+  });
+}
+
+/** Bấm Dừng lượt đồng bộ đang chạy. Dùng: `SyncInvoiceDialog` — nút "Dừng". */
+export function useCancelSyncRunMutation() {
+  return useMutation({ mutationFn: () => cancelSyncRun() });
+}
+
+/** Nơi gọi dùng sau khi lượt đồng bộ nền kết thúc: nạp lại lịch sử + bảng hóa đơn + thống kê. */
+export function useInvalidateTenantInvoiceData() {
+  const { currentCompanyId } = useAuth();
+  const qc = useQueryClient();
+  return () => invalidateTenantInvoiceData(qc, currentCompanyId);
 }
 
 /**
