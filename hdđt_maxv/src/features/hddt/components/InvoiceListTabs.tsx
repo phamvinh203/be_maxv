@@ -28,6 +28,8 @@ import FileDownloadRounded from "@mui/icons-material/FileDownloadRounded";
 import CloudDownloadRounded from "@mui/icons-material/CloudDownloadRounded";
 import VisibilityRounded from "@mui/icons-material/VisibilityRounded";
 import { useActiveGdtToken } from "../gdtSession/useActiveGdtToken";
+import { useGdtSession } from "../gdtSession/useGdtSession";
+import DialogLoginHddt from "../../../components/dialogLoginHddt";
 import { trangThaiHdLabel, ketQuaKiemTraLabel } from "../api/gdt";
 import {
   invoiceKeys,
@@ -165,6 +167,7 @@ function InvoiceTablePanel({ direction, active }: InvoiceTablePanelProps) {
   const { currentCompanyId } = useAuth();
   // Token GDT của ĐÚNG công ty đang chọn (điểm chọn token duy nhất — chống rò rỉ giữa tenant).
   const { activeMst, token: activeGdtToken } = useActiveGdtToken();
+  const { setGdtToken } = useGdtSession();
   // Cột đối tác đổi theo chiều (mua vào: người bán; bán ra: người mua) -> tính theo direction.
   const columns = useMemo(() => columnsFor(direction), [direction]);
   const qc = useQueryClient();
@@ -174,6 +177,13 @@ function InvoiceTablePanel({ direction, active }: InvoiceTablePanelProps) {
   // Hóa đơn đang chọn (checkbox cột "Chọn") để bật nút "Xem hóa đơn"; null = chưa chọn.
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [viewOpen, setViewOpen] = useState(false);
+  /** Mở form đăng nhập Thuế điện tử khi thao tác cần token mà công ty đang chọn chưa đăng nhập. */
+  const [loginOpen, setLoginOpen] = useState(false);
+  /**
+   * Việc đang chờ token: chạy lại NGAY sau khi đăng nhập xong để người dùng khỏi phải bấm nút lần
+   * hai. Nhận token qua tham số (không đọc `activeGdtToken`) vì state chưa kịp cập nhật lúc đó.
+   */
+  const pendingActionRef = useRef<((gdtToken: string) => void) | null>(null);
 
   // BE tải chi tiết chạy nền; FE poll tiến độ. `detailRunning` để khóa nút trong lúc đang poll.
   const [detailRunning, setDetailRunning] = useState(false);
@@ -314,18 +324,34 @@ function InvoiceTablePanel({ direction, active }: InvoiceTablePanelProps) {
 
   /**
    * Token GDT của ĐÚNG công ty đang chọn (theo MST), KHÔNG mượn phiên MST khác — tránh fetch data
-   * MST này rồi ghi vào DB tenant kia. Chưa đăng nhập GDT cho MST đó -> toast cảnh báo + undefined.
+   * MST này rồi ghi vào DB tenant kia. Chưa đăng nhập GDT cho MST đó -> MỞ LUÔN form đăng nhập
+   * (đỡ bắt người dùng tự đi tìm nút "Đăng nhập Thuế điện tử") và hẹn chạy lại `retry` sau khi
+   * đăng nhập xong. Chưa chọn công ty có MST thì không có gì để đăng nhập -> chỉ cảnh báo.
    */
-  const requireGdtToken = (): string | undefined => {
-    if (!activeGdtToken) {
-      toast.warning(
-        activeMst
-          ? `Chưa đăng nhập Thuế điện tử cho MST ${activeMst} — bấm "Đăng nhập Thuế điện tử" ở trên trước.`
-          : "Chưa chọn công ty có MST để đăng nhập Thuế điện tử.",
-      );
+  const requireGdtToken = (retry?: (gdtToken: string) => void): string | undefined => {
+    if (activeGdtToken) return activeGdtToken;
+    if (!activeMst) {
+      toast.warning("Chưa chọn công ty có MST để đăng nhập Thuế điện tử.");
       return undefined;
     }
-    return activeGdtToken;
+    pendingActionRef.current = retry ?? null;
+    setLoginOpen(true);
+    return undefined;
+  };
+
+  /** Đăng nhập xong: lưu token theo MST rồi chạy tiếp việc đang chờ. */
+  const handleLoginSuccess = (gdtToken: string, mst: string) => {
+    setGdtToken(mst, gdtToken);
+    const pending = pendingActionRef.current;
+    pendingActionRef.current = null;
+    // Đăng nhập bằng MST KHÁC công ty đang chọn -> không chạy tiếp (sẽ ghi data sang nhầm tenant).
+    if (mst !== activeMst) {
+      toast.warning(
+        `Đã đăng nhập MST ${mst}, khác công ty đang chọn (${activeMst}) — không chạy tiếp thao tác.`,
+      );
+      return;
+    }
+    pending?.(gdtToken);
   };
 
   /**
@@ -337,9 +363,14 @@ function InvoiceTablePanel({ direction, active }: InvoiceTablePanelProps) {
       toast.warning("Vui lòng chọn đủ Từ ngày / Đến ngày.");
       return;
     }
-    const gdtToken = requireGdtToken();
+    // Chưa đăng nhập -> mở form đăng nhập, xong sẽ tự chạy lại đúng thao tác này.
+    const gdtToken = requireGdtToken((token) => runFetchGdt(filters, token));
     if (!gdtToken) return;
+    runFetchGdt(filters, gdtToken);
+  };
 
+  /** Phần chạy thật của "Cập nhật từ Thuế điện tử" — tách ra để dùng lại sau khi đăng nhập xong. */
+  const runFetchGdt = (filters: InvoiceFilterValues, gdtToken: string) => {
     setPage(0);
     setAppliedFilters(filters);
     // Chốt mốc lượt hiện tại: nếu đổi công ty giữa lúc lấy list (effect bump runIdRef), bỏ qua onSuccess.
@@ -366,7 +397,11 @@ function InvoiceTablePanel({ direction, active }: InvoiceTablePanelProps) {
               `Đã lưu ${res.saved ?? 0} hóa đơn nhưng CHƯA lấy hết: ${res.message ?? "lỗi khi gọi Thuế điện tử"}.`,
             );
           } else {
-            toast.success(`Đã lưu ${res.saved ?? 0} hóa đơn vào cơ sở dữ liệu.`);
+            // Hiện cả `total` (số GDT báo CÓ trong khoảng) bên cạnh số đã lưu: "GDT có 0" và
+            // "GDT có N nhưng lưu 0" là hai sự cố khác hẳn nhau, mà toast cũ chỉ nói số đã lưu.
+            toast.success(
+              `Thuế điện tử báo có ${res.total ?? 0} hóa đơn — đã lưu ${res.saved ?? 0} vào cơ sở dữ liệu.`,
+            );
           }
           // Khởi động BE tải chi tiết (bỏ qua HĐ đã có) rồi poll tiến độ.
           void pollDetailRun(gdtToken, buildQuery(filters), startRun);
@@ -385,7 +420,9 @@ function InvoiceTablePanel({ direction, active }: InvoiceTablePanelProps) {
 
   /** Nút "Tải chi tiết" — chạy tải chi tiết ngầm ở BE cho khoảng đang lọc (không lấy list mới). */
   const handleDownloadDetails = () => {
-    const gdtToken = requireGdtToken();
+    const gdtToken = requireGdtToken((token) =>
+      void pollDetailRun(token, buildQuery(appliedFilters), runIdRef.current),
+    );
     if (!gdtToken) return;
     void pollDetailRun(gdtToken, buildQuery(appliedFilters), runIdRef.current);
   };
@@ -534,6 +571,18 @@ function InvoiceTablePanel({ direction, active }: InvoiceTablePanelProps) {
         onClose={() => setViewOpen(false)}
         direction={direction}
         id={selectedId}
+      />
+
+      {/* Bấm "Cập nhật từ Thuế điện tử" / "Tải chi tiết" khi chưa đăng nhập GDT -> mở form này;
+          đăng nhập xong dialog tự đóng sau 1s và thao tác đang chờ chạy tiếp. */}
+      <DialogLoginHddt
+        open={loginOpen}
+        onClose={() => {
+          setLoginOpen(false);
+          pendingActionRef.current = null; // đóng giữa chừng -> bỏ việc đang chờ
+        }}
+        initialUsername={activeMst}
+        onLoginSuccess={handleLoginSuccess}
       />
     </Box>
   );

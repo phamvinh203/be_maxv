@@ -18,6 +18,9 @@ import {
   purchaseDetailRunStatus,
   soldDetailRunStatus,
   syncInvoices,
+  startSyncRun,
+  syncRunStatus,
+  cancelSyncRun,
   syncHistory,
   clearSyncData,
   systemStats,
@@ -117,6 +120,22 @@ export default async function (
   fastify.post("/sync", {
     preHandler: [fastify.authenticate],
     handler: syncInvoices,
+  });
+
+  // Đồng bộ CHẠY NỀN (thay POST /sync): POST /sync/run bắt đầu + trả tiến độ ngay, GET status để
+  // poll, POST cancel để dừng. Lượt đồng bộ dài hàng chục phút nên không thể giữ 1 request mở chờ
+  // (proxy cắt -> 502). POST /sync cũ giữ tạm cho tới khi FE chuyển hẳn sang luồng này.
+  fastify.post("/sync/run", {
+    preHandler: [fastify.authenticate],
+    handler: startSyncRun,
+  });
+  fastify.get("/sync/run/status", {
+    preHandler: [fastify.authenticate],
+    handler: syncRunStatus,
+  });
+  fastify.post("/sync/run/cancel", {
+    preHandler: [fastify.authenticate],
+    handler: cancelSyncRun,
   });
   fastify.get("/sync/history", {
     preHandler: [fastify.authenticate],

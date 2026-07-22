@@ -1,4 +1,4 @@
-import { useEffect, useId, useMemo, useState, type FormEvent } from "react";
+import { useEffect, useId, useMemo, useRef, useState, type FormEvent } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import Dialog from "@mui/material/Dialog";
 import DialogContent from "@mui/material/DialogContent";
@@ -19,6 +19,9 @@ import VisibilityOff from "@mui/icons-material/VisibilityOff";
 import { getCaptcha, loginGdt } from "../features/hddt/api/gdt";
 import { getErrorMessage } from "../lib/errors";
 import logoThueNhaNuoc from "../assets/logo_thue_nha_nuoc.jpg";
+
+/** Giữ dialog thêm 1s sau khi đăng nhập thành công để người dùng kịp thấy báo thành công. */
+const SUCCESS_CLOSE_DELAY_MS = 1000;
 
 interface Props {
   open: boolean;
@@ -92,6 +95,24 @@ export default function DialogLoginHddt({
     setError("");
     setDone(false);
   }, [open, initialUsername]);
+
+  /**
+   * Đăng nhập xong -> để người dùng kịp đọc "Đăng nhập thành công." rồi tự đóng sau 1s.
+   * Đóng ngay lập tức thì dialog biến mất trước khi mắt kịp thấy báo thành công.
+   *
+   * Gọi `onClose` qua ref, KHÔNG để nó vào deps: nơi gọi thường truyền arrow inline (đổi định danh
+   * mỗi lần cha re-render, vd dialog Đồng bộ poll tiến độ 2s/lần) -> effect chạy lại và reset timer
+   * liên tục, dialog có thể không bao giờ tự đóng.
+   */
+  const onCloseRef = useRef(onClose);
+  useEffect(() => {
+    onCloseRef.current = onClose;
+  });
+  useEffect(() => {
+    if (!done) return;
+    const timer = setTimeout(() => onCloseRef.current(), SUCCESS_CLOSE_DELAY_MS);
+    return () => clearTimeout(timer);
+  }, [done]);
 
   /** Validate + gọi loginGdt; thành công báo lên qua onLoginSuccess, thất bại thì lấy captcha mới. Dùng: submit form (nút "Đăng nhập" hoặc phím Enter). */
   const handleSubmit = (e: FormEvent<HTMLFormElement>) => {

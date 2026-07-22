@@ -31,6 +31,31 @@ function toGdtDate(isoDate: string): string {
 }
 
 /**
+ * [DEBUG-LIST] In nguyên URL đã gọi + tóm tắt phản hồi của 1 trang DANH SÁCH.
+ *
+ * Lý do tồn tại: chiều `sold` không lấy được hóa đơn trong khi `purchase` chạy tốt, mà code hai
+ * chiều đối xứng hoàn toàn -> phải nhìn tận request/response thật mới biết GDT trả 0 dòng (bộ lọc/
+ * endpoint sai) hay có dòng nhưng dòng thiếu `id` (nên `saveInvoices` bỏ qua sạch). In cả danh sách
+ * key của dòng đầu vì đó là thứ phân biệt hai trường hợp đó.
+ */
+function logListPage(
+  direction: "purchase" | "sold",
+  url: string,
+  res: { total?: number; state?: string; datas?: unknown[] },
+): void {
+  const rows = res.datas ?? [];
+  const first = rows[0];
+  const keys =
+    first && typeof first === "object" ? Object.keys(first as Record<string, unknown>) : [];
+  console.log(
+    `[DEBUG-LIST] ${direction} GỌI: ${url}\n` +
+      `[DEBUG-LIST] ${direction} NHẬN: total=${res.total ?? "(không có)"} ` +
+      `datas=${rows.length} dòng, còn trang sau: ${res.state ? "có" : "hết"}` +
+      (keys.length > 0 ? `\n[DEBUG-LIST] ${direction} field dòng đầu: ${keys.join(",")}` : ""),
+  );
+}
+
+/**
  * Lấy captcha + giữ lại cookie session mà GDT set.
  * Vì `key` chỉ biết sau khi nhận response, nên tạm thu thập cookie
  * dưới một tmp-key rồi re-key sang captcha.key thật (frontend sẽ gửi
@@ -108,11 +133,14 @@ export async function getPurchaseInvoices(
   const params = new URLSearchParams({ sort: "tdlap:desc", size: "50", search });
   if (query.state) params.set("state", query.state);
 
-  return gdtFetch<PurchaseInvoiceResponse>(`${path}?${params.toString()}`, {
+  const url = `${path}?${params.toString()}`;
+  const res = await gdtFetch<PurchaseInvoiceResponse>(url, {
     bearerToken: token,
     // Cắt sớm call danh sách bị GDT "nuốt" (xem GDT_LIST_TIMEOUT_MS) — caller sẽ retry.
     signal: AbortSignal.timeout(GDT_LIST_TIMEOUT_MS),
   });
+  logListPage("purchase", url, res);
+  return res;
 }
 
 /**
@@ -141,11 +169,14 @@ export async function getSoldInvoices(token: string, query: SoldInvoiceQuery) {
   const params = new URLSearchParams({ sort: "tdlap:desc", size: "50", search });
   if (query.state) params.set("state", query.state);
 
-  return gdtFetch<SoldInvoiceResponse>(`${path}?${params.toString()}`, {
+  const url = `${path}?${params.toString()}`;
+  const res = await gdtFetch<SoldInvoiceResponse>(url, {
     bearerToken: token,
     // Cắt sớm call danh sách bị GDT "nuốt" (xem GDT_LIST_TIMEOUT_MS) — caller sẽ retry.
     signal: AbortSignal.timeout(GDT_LIST_TIMEOUT_MS),
   });
+  logListPage("sold", url, res);
+  return res;
 }
 
 /** User-Agent kiểu trình duyệt — một số endpoint GDT (detail) khó tính hơn, gửi kèm cho chắc (giống bản C#). */
@@ -307,11 +338,17 @@ export async function saveInvoices(
   // Gom các upsert rồi ghi trong 1 transaction: 1 round-trip thay vì N await tuần tự,
   // đồng thời đảm bảo hoặc lưu trọn cả trang hoặc không lưu gì (idempotent, tra lại vẫn đúng).
   const ops: Prisma.PrismaPromise<unknown>[] = [];
+  // Dòng bị bỏ vì thiếu `id` (khóa upsert): trước đây bỏ im lặng nên "lấy được N dòng mà lưu 0"
+  // không để lại dấu vết nào. Đếm lại để cảnh báo ở cuối hàm.
+  let skippedNoId = 0;
   for (const raw of rows) {
     if (!raw || typeof raw !== "object") continue;
     const row = raw as Record<string, unknown>;
     const id = toStr(row.id);
-    if (!id) continue;
+    if (!id) {
+      skippedNoId += 1;
+      continue;
+    }
 
     const missingFields = REQUIRED_GDT_FIELDS.filter((field) => !row[field]);
     if (missingFields.length > 0) {
@@ -325,6 +362,13 @@ export async function saveInvoices(
       direction === "purchase"
         ? tenantDb.vct60view.upsert({ where: { id }, create: { id, ...data }, update: data })
         : tenantDb.vct50view.upsert({ where: { id }, create: { id, ...data }, update: data }),
+    );
+  }
+
+  if (skippedNoId > 0) {
+    console.warn(
+      `[DEBUG-LIST] saveInvoices(${direction}): BỎ QUA ${skippedNoId}/${rows.length} dòng vì thiếu ` +
+        `field "id" của GDT -> không lưu được dòng nào trong số đó.`,
     );
   }
 
@@ -568,8 +612,26 @@ export async function getSavedInvoiceDetails(
 //  ĐỒNG BỘ HÓA ĐƠN (sync) — lặp phân trang GDT + lưu DB + ghi lịch sử
 // ============================================================
 
-/** Trần số trang/nguồn (an toàn, tránh lặp vô hạn nếu GDT trả cursor lỗi). */
-const MAX_SYNC_PAGES = 200;
+/**
+ * Trần số trang/cửa sổ — CHỈ là chốt an toàn chống lặp vô hạn, KHÔNG phải giới hạn nghiệp vụ.
+ *
+ * Trần 200 trang cũ (=10.000 hóa đơn/tháng) quá thấp: công ty bán lẻ dùng máy tính tiền vượt mức
+ * đó trong một tháng là bình thường, và khi chạm trần thì lượt bị ghi `partial` với phần dữ liệu
+ * còn lại KHÔNG BAO GIỜ lấy được (chạy lại cũng chạm trần y hệt). 20.000 trang = 1 triệu hóa đơn
+ * cho 1 cửa sổ tháng — thực tế không ai chạm tới, nhưng vẫn chặn được vòng lặp vô hạn.
+ *
+ * Việc dừng đúng lúc do `isCursorStuck` lo (xem dưới), không phải do con số này.
+ */
+const MAX_SYNC_PAGES = 20_000;
+
+/**
+ * Cursor KHÔNG tiến triển: GDT trả về đúng `state` của lần gọi trước -> lật trang nữa cũng ra y
+ * hệt, cứ lặp là ghi trùng vô hạn. Đây mới là điều kiện dừng thật khi phân trang hỏng; trần
+ * `MAX_SYNC_PAGES` chỉ còn là lưới an toàn cuối.
+ */
+function isCursorStuck(prev: string | undefined, next: string | undefined): boolean {
+  return !!next && next === prev;
+}
 
 /** 1 nguồn dữ liệu cần quét: chiều hóa đơn × có phải hóa đơn máy tính tiền (sco-query) hay không. */
 interface SyncSource {
@@ -633,6 +695,137 @@ function monthlyChunks(
 export type SyncRunResult = sync_log & { daCo: number; boSung: number };
 
 /**
+ * Tiến độ 1 lượt đồng bộ CHẠY NỀN (FE poll `GET /gdt/sync/run/status`). Cùng triết lý với
+ * `DetailRunStatus`: state in-memory theo tiến trình BE, restart là mất (dữ liệu đã upsert vẫn
+ * nằm trong DB nên chạy lại chỉ bổ sung phần thiếu).
+ */
+export interface SyncRunStatus {
+  active: boolean;
+  /** Bước đang chạy, vd "Bán ra (máy tính tiền) 2026-07-01..2026-07-31". Rỗng khi đã xong. */
+  phase: string;
+  /** Số dòng GDT đã đi qua (không trừ trùng) — dùng cho dòng tiến độ "đang lấy N hóa đơn…". */
+  rows: number;
+  saved: number;
+  daCo: number;
+  boSung: number;
+  /** Trang hiện tại trong cửa sổ đang quét (GDT không cho biết tổng số trang). */
+  page: number;
+  startedAt: number;
+  finishedAt?: number;
+  /** Người dùng bấm Dừng (hoặc lượt mới thay thế lượt này). */
+  cancelled?: boolean;
+  /** Lỗi TỔNG THỂ của lượt (vd đọc DB) — khác `results[].dien_giai` (lý do dừng theo chiều). */
+  error?: string;
+  /** sync_log đã ghi (1 dòng/chiều) — FE hiện toast tóm tắt như luồng cũ khi lượt kết thúc. */
+  results: SyncRunResult[];
+}
+
+/** Tiến độ theo MST: mỗi công ty tối đa 1 lượt đồng bộ (2 lượt cùng token sẽ dội GDT). */
+const syncRuns = new Map<string, SyncRunStatus>();
+/** "Thế hệ" hiện tại của mỗi khóa — bump lên để lượt đang chạy tự thoát (Dừng / lượt mới). */
+const syncRunGen = new Map<string, number>();
+
+/** Đọc tiến độ lượt đồng bộ (FE poll). null nếu công ty này chưa từng chạy lượt nào. */
+export function getSyncRunStatus(tenantKey: string): SyncRunStatus | null {
+  return syncRuns.get(tenantKey) ?? null;
+}
+
+/**
+ * Yêu cầu DỪNG lượt đang chạy: bật cờ `cancelled` để vòng lặp trong `runSync` thoát ở điểm kiểm tra
+ * gần nhất (giữa 2 trang). Không giết ngang giữa 1 call GDT đang bay — trang đó vẫn được lưu xong.
+ *
+ * CỐ Ý không bump `gen` ở đây: `gen` chỉ dùng để nhận biết "lượt này đã bị lượt MỚI thay thế". Bump
+ * ở đây sẽ làm khối `finally` của chính lượt đang chạy không nhận ra mình -> `active` treo mãi.
+ */
+export function cancelSyncRun(tenantKey: string): SyncRunStatus | null {
+  const status = syncRuns.get(tenantKey);
+  if (!status?.active) return status ?? null;
+  status.cancelled = true;
+  status.phase = "Đang dừng…";
+  console.log(`[DEBUG-SYNC] Nhận yêu cầu DỪNG lượt đồng bộ tenant=${tenantKey}`);
+  return status;
+}
+
+/**
+ * Bắt đầu lượt đồng bộ CHẠY NỀN rồi trả tiến độ NGAY (không chặn request) — FE poll
+ * `getSyncRunStatus` tới khi `active=false`. Nhờ vậy không còn HTTP request kéo hàng chục phút
+ * (nguyên nhân 502 khi chạy sau IIS/proxy).
+ *
+ * Đang có lượt chạy -> TRẢ LẠI lượt đó, KHÔNG chạy chồng: 2 lượt cùng 1 token GDT sẽ tranh nhau
+ * và làm GDT chặn nặng hơn (xem gdtPacer). Muốn chạy khoảng khác thì bấm Dừng trước.
+ */
+export function startSyncRun(
+  dbName: string,
+  tenantKey: string,
+  gdtToken: string,
+  params: SyncParams,
+  ownMst: string,
+): SyncRunStatus {
+  const running = syncRuns.get(tenantKey);
+  if (running?.active) return running;
+
+  const gen = (syncRunGen.get(tenantKey) ?? 0) + 1;
+  syncRunGen.set(tenantKey, gen);
+
+  const status: SyncRunStatus = {
+    active: true,
+    phase: "Đang chuẩn bị…",
+    rows: 0,
+    saved: 0,
+    daCo: 0,
+    boSung: 0,
+    page: 0,
+    startedAt: Date.now(),
+    results: [],
+  };
+  syncRuns.set(tenantKey, status);
+
+  // Chạy nền: caller trả về ngay. Mọi lỗi đã được runSync nuốt thành `partial`; `catch` ở đây chỉ
+  // để bắt sự cố ngoài dự tính (vd ghi sync_log lỗi) — không được để promise văng ra unhandled.
+  void (async () => {
+    try {
+      status.results = await runSync(dbName, tenantKey, gdtToken, params, ownMst, {
+        status,
+        // Dừng khi: người dùng bấm Dừng, HOẶC lượt này đã bị một lượt mới thay thế.
+        isCancelled: () => status.cancelled === true || syncRunGen.get(tenantKey) !== gen,
+      });
+    } catch (err) {
+      status.error = err instanceof Error ? err.message : "Lỗi khi đồng bộ hóa đơn.";
+      console.error(`[DEBUG-SYNC] Lượt đồng bộ tenant=${tenantKey} lỗi tổng thể: ${status.error}`);
+    } finally {
+      // Chỉ đóng lượt nếu vẫn là lượt hiện tại (không đè trạng thái của lượt mới đã thay thế).
+      if (syncRunGen.get(tenantKey) === gen) {
+        status.active = false;
+        status.phase = "";
+        status.finishedAt = Date.now();
+      }
+    }
+  })();
+
+  return status;
+}
+
+/** Nhãn nguồn đang quét để FE hiện "đang làm gì" (không dùng để rẽ nhánh logic). */
+function sourceLabel(
+  direction: "purchase" | "sold",
+  cashRegister: boolean,
+  chunk: { tuNgay: string; denNgay: string },
+): string {
+  return (
+    `${direction === "purchase" ? "Mua vào" : "Bán ra"}${cashRegister ? " (máy tính tiền)" : ""} ` +
+    `${chunk.tuNgay}..${chunk.denNgay}`
+  );
+}
+
+/** Điều khiển lượt đồng bộ khi chạy NỀN: cập nhật tiến độ + cho phép hủy giữa chừng. */
+interface SyncRunControl {
+  /** Object tiến độ (chia sẻ với `getSyncRunStatus`) — runSync ghi trực tiếp vào đây. */
+  status?: SyncRunStatus;
+  /** true -> người dùng bấm Dừng (hoặc lượt mới thay thế) -> thoát sạch, giữ phần đã lưu. */
+  isCancelled?: () => boolean;
+}
+
+/**
  * Đồng bộ hóa đơn 1 khoảng ngày từ GDT vào DB tenant. GDT chỉ cho tìm ≤ 1 tháng/lần nên chia
  * khoảng thành các cửa sổ theo tháng; với mỗi nguồn (chiều × loại) × mỗi cửa sổ, lặp hết các
  * trang theo cursor `state`, upsert từng trang, cộng dồn tổng/đã lưu + đối chiếu đã có/thiếu.
@@ -641,14 +834,23 @@ export type SyncRunResult = sync_log & { daCo: number; boSung: number };
  * "Đồng bộ hóa đơn mua vào/bán ra", KHÔNG gộp 1 dòng "tất cả". Trả MẢNG kết quả (1 phần tử/chiều),
  * mỗi phần tử kèm đối chiếu `{ daCo, boSung }`. Lỗi giữa chừng (token GDT hết hạn) -> đánh dấu
  * `partial` cho chiều đang chạy và DỪNG (không chạy chiều còn lại vì sẽ lỗi y hệt).
+ *
+ * Nhận `dbName` (không phải client) vì lượt chạy rất dài: mỗi lần đụng DB gọi lại `getTenantDb` để
+ * refresh `lastUsed`, tránh bị sweeper (idle > 10') đóng pool giữa chừng — cùng lý do với
+ * `runDetailFetch`. `ctl` chỉ có khi chạy nền qua `startSyncRun`.
  */
 export async function runSync(
-  tenantDb: PrismaClient,
+  dbName: string,
   tenantKey: string,
   gdtToken: string,
   params: SyncParams,
   ownMst: string,
+  ctl?: SyncRunControl,
 ): Promise<SyncRunResult[]> {
+  // Client tenant MỚI mỗi lần đụng DB (refresh lastUsed + tự lành nếu pool bị recreate).
+  const db = () => getTenantDb(dbName);
+  const st = ctl?.status;
+  const cancelled = () => ctl?.isCancelled?.() === true;
   const sources = resolveSyncSources(params.direction, params.loai);
   const chunks = monthlyChunks(params.tuNgay, params.denNgay);
   // [DEBUG-SYNC] Mốc bắt đầu + đếm dòng tích lũy toàn lượt: đối chiếu "dừng ở khoảng hóa đơn thứ mấy"
@@ -680,6 +882,8 @@ export async function runSync(
 
     for (const source of dirSources) {
       for (const chunk of chunks) {
+        if (cancelled()) break;
+        if (st) st.phase = sourceLabel(source.direction, source.cashRegister, chunk);
         try {
           let state: string | undefined = undefined;
           let pages = 0;
@@ -698,6 +902,8 @@ export async function runSync(
               gdtToken,
               source.direction,
               query,
+              // Bấm Dừng -> thoát cả vòng retry (có thể đang nghỉ backoff), không đợi hết ngân sách.
+              ctl?.isCancelled,
             );
 
             // GDT trả `total` cho cả cửa sổ (giống nhau mỗi trang) -> cộng 1 lần/cửa sổ (trang đầu).
@@ -713,12 +919,20 @@ export async function runSync(
               )
               .filter((v): v is string => !!v && !seenIds.has(v));
             ids.forEach((id) => seenIds.add(id));
-            const existed = await countExistingIds(tenantDb, source.direction, ids);
+            const existed = await countExistingIds(db(), source.direction, ids);
             daCo += existed;
             boSung += ids.length - existed;
-            saved += await saveInvoices(tenantDb, source.direction, rows, ownMst);
+            saved += await saveInvoices(db(), source.direction, rows, ownMst);
 
             rowsSoFar += rows.length;
+            // Tiến độ cho FE poll (chỉ khi chạy nền): cộng dồn TOÀN lượt, không reset theo chiều.
+            if (st) {
+              st.rows = rowsSoFar;
+              st.saved = results.reduce((sum, r) => sum + r.da_luu, 0) + saved;
+              st.daCo = results.reduce((sum, r) => sum + r.daCo, 0) + daCo;
+              st.boSung = results.reduce((sum, r) => sum + r.boSung, 0) + boSung;
+              st.page = pages + 1;
+            }
             // [DEBUG-SYNC] Mỗi trang 1 dòng log: biết chính xác dừng ở hóa đơn thứ mấy / trang mấy.
             console.log(
               `[DEBUG-SYNC] ${elapsed()} ${source.direction}${source.cashRegister ? "(máy tính tiền)" : ""} ` +
@@ -726,23 +940,46 @@ export async function runSync(
                 `(tích lũy ${rowsSoFar}, đã lưu ${saved}, còn trang sau: ${page.state ? "có" : "hết"})`,
             );
 
+            // Cursor đứng yên -> lật nữa chỉ ra đúng trang này, dừng để khỏi ghi trùng vô hạn.
+            if (isCursorStuck(state, page.state || undefined)) {
+              console.warn(
+                `[DEBUG-SYNC] ${source.direction} ${chunk.tuNgay}..${chunk.denNgay}: cursor không đổi ` +
+                  `sau trang ${pages + 1} -> dừng cửa sổ này (phân trang GDT không tiến triển).`,
+              );
+              state = undefined;
+              pages += 1;
+              break;
+            }
+
             state = page.state || undefined;
             pages += 1;
             // Dừng ngay khi trang rỗng: một số API vẫn trả cursor khác rỗng ở trang cuối,
             // nếu chỉ dựa vào `state` sẽ lặp tới trần MAX_SYNC_PAGES rồi báo "partial" nhầm.
             if (rows.length === 0) break;
+            // Người dùng bấm Dừng giữa chừng -> thoát ngay, phần đã upsert vẫn nằm trong DB.
+            if (cancelled()) break;
             // Không cần delay thủ công giữa trang: `fetchListPagePaced` đã đi qua pacer (giãn nhịp
             // thích ứng + backoff khi 429) nên nhịp cách trang đã do pacer đảm nhiệm.
           } while (state && pages < MAX_SYNC_PAGES);
 
           if (state && pages >= MAX_SYNC_PAGES) {
+            // Chạm lưới an toàn = phân trang GDT bất thường (1 cửa sổ tháng không thể có 1 triệu
+            // hóa đơn), KHÔNG phải "dữ liệu quá nhiều" như hiểu nhầm với trần 200 trang cũ.
             partial = true;
-            message = `Đạt giới hạn ${MAX_SYNC_PAGES} trang cho 1 cửa sổ — có thể còn dữ liệu chưa đồng bộ hết.`;
+            message =
+              `Dừng ở lưới an toàn ${MAX_SYNC_PAGES} trang cho 1 cửa sổ (phân trang GDT bất ` +
+              `thường) — có thể còn dữ liệu chưa đồng bộ hết.`;
           }
         } catch (err) {
           // Lỗi (thường do token GDT hết hạn / bị chặn) -> dừng, giữ những gì đã lưu.
+          // Bấm Dừng cũng rơi vào đây (fetchListPagePaced ném lại lỗi đang chờ retry) -> ghi lý do
+          // "đã dừng" thay vì phơi lỗi GDT ra lịch sử, vì đó không phải sự cố.
           partial = true;
-          message = err instanceof Error ? err.message : "Lỗi khi gọi GDT.";
+          message = cancelled()
+            ? "Đã dừng theo yêu cầu — phần đã lấy vẫn được giữ lại."
+            : err instanceof Error
+              ? err.message
+              : "Lỗi khi gọi GDT.";
           aborted = true;
           // [DEBUG-SYNC] Điểm DỪNG của lượt: kèm số dòng đã đi qua để đối chiếu mốc "~1000 hóa đơn".
           console.error(
@@ -753,10 +990,16 @@ export async function runSync(
           break;
         }
       }
-      if (aborted) break;
+      if (aborted || cancelled()) break;
     }
 
-    const log = await tenantDb.sync_log.create({
+    // Bấm Dừng -> ghi lịch sử là "partial" với lý do rõ ràng (không phải lỗi GDT).
+    if (cancelled() && !aborted) {
+      partial = true;
+      message = "Đã dừng theo yêu cầu — phần đã lấy vẫn được giữ lại.";
+    }
+
+    const log = await db().sync_log.create({
       data: {
         id: randomUUID(),
         // Nhãn hiển thị (không dùng để lọc) -> lưu ở 12:00 trưa để chênh lệch múi giờ
@@ -773,9 +1016,11 @@ export async function runSync(
     });
     // Trả kèm số liệu đối chiếu (KHÔNG lưu vào sync_log — chỉ để FE hiện toast tóm tắt).
     results.push({ ...log, daCo, boSung });
+    // Đẩy ngay sang status để FE thấy chiều vừa xong mà không phải đợi cả lượt kết thúc.
+    if (st) st.results = [...results];
 
-    // Token GDT hết hạn / bị chặn -> không chạy tiếp chiều còn lại (sẽ lỗi y hệt).
-    if (aborted) break;
+    // Token GDT hết hạn / bị chặn / người dùng dừng -> không chạy tiếp chiều còn lại.
+    if (aborted || cancelled()) break;
   }
 
   // [DEBUG-SYNC] Nếu dòng này in ra mà FE đã báo lỗi từ trước -> BE vẫn chạy xong, lỗi nằm ở
@@ -793,8 +1038,12 @@ export async function runSync(
  * LẶP HẾT trang theo cursor `state`, chia theo tháng để thỏa giới hạn GDT (≤1 tháng/lần).
  * Trả về `{ total, saved, datas }` (datas = toàn bộ dòng thô để FE hiển thị + tải chi tiết).
  *
- * Dùng cho nút "Cập nhật từ Thuế điện tử" — thay hàm cũ chỉ lấy 1 trang (≤50 dòng). Khác `runSync`:
- * runSync quét nhiều nguồn (chiều × máy tính tiền) + ghi sync_log, KHÔNG áp bộ lọc UI và KHÔNG trả datas.
+ * Dùng cho nút "Cập nhật từ Thuế điện tử" — thay hàm cũ chỉ lấy 1 trang (≤50 dòng).
+ *
+ * Khi ô "Kết quả kiểm tra" để TẤT CẢ: quét CẢ HAI nguồn của GDT (hóa đơn thường ở `/query/...` và
+ * hóa đơn máy tính tiền `ttxly=8` ở `/sco-query/...`) — giống `runSync`. Trước đây chỉ gọi endpoint
+ * thường nên bỏ sót sạch hóa đơn máy tính tiền. Người dùng chọn đích danh 1 kết quả -> chỉ quét
+ * đúng nguồn tương ứng. Khác `runSync` ở chỗ: runSync ghi sync_log, KHÔNG áp bộ lọc UI, KHÔNG trả datas.
  * Mỗi trang lấy qua `fetchListPagePaced` (pacer dùng chung + retry) để chịu được timeout/429 khi chạy
  * đồng thời với luồng tải chi tiết trên cùng token — cần `tenantKey` (khóa pacer theo MST).
  */
@@ -814,6 +1063,11 @@ export async function fetchAndSaveInvoicesInRange(
   message: string;
 }> {
   const chunks = monthlyChunks(query.tuNgay, query.denNgay);
+  // "Kết quả kiểm tra = Tất cả" (ketQuaHd rỗng) phải rà soát MỌI nguồn, không chỉ endpoint thường:
+  // GDT để hóa đơn máy tính tiền (`ttxly=8`) ở `/sco-query/invoices/...` riêng, nên gọi một mình
+  // `/query/invoices/...` là bỏ sót sạch loại này (công ty bán lẻ hầu như chỉ có loại này -> tab
+  // đầu ra ra rỗng). Người dùng chọn cụ thể một kết quả -> tôn trọng, chỉ quét đúng nguồn đó.
+  const ketQuaVariants: (string | undefined)[] = query.ketQuaHd ? [query.ketQuaHd] : [undefined, "8"];
   let total = 0;
   let saved = 0;
   const datas: unknown[] = [];
@@ -824,48 +1078,76 @@ export async function fetchAndSaveInvoicesInRange(
   const elapsed = () => `${((Date.now() - runStartedAt) / 1000).toFixed(1)}s`;
   console.log(
     `[DEBUG-CAPNHAT] === BẮT ĐẦU CẬP NHẬT === tenant=${tenantKey} ${direction} ` +
-      `${query.tuNgay}..${query.denNgay} | ${chunks.length} tháng`,
+      `${query.tuNgay}..${query.denNgay} | ${chunks.length} tháng | ` +
+      `${ketQuaVariants.length} nguồn (${ketQuaVariants.map((v) => v ?? "thường").join(" + ")})`,
   );
 
   // Lỗi giữa chừng (vd token GDT hết hạn) -> DỪNG nhưng GIỮ phần đã lưu, báo partial thay vì 500.
   try {
-    for (const chunk of chunks) {
-      let state: string | undefined = undefined;
-      let pages = 0;
+    for (const ketQuaHd of ketQuaVariants) {
+      /** Nhãn nguồn đang quét, để log phân biệt được 2 lượt trên cùng khoảng ngày. */
+      const src = ketQuaHd === "8" ? "máy tính tiền" : ketQuaHd ? `ttxly=${ketQuaHd}` : "thường";
+      for (const chunk of chunks) {
+        let state: string | undefined = undefined;
+        let pages = 0;
 
-      do {
-        // Giữ nguyên mọi filter của query, chỉ thay khoảng ngày theo cửa sổ tháng + cursor trang.
-        const pageQuery: PurchaseInvoiceQuery & SoldInvoiceQuery = {
-          ...query,
-          tuNgay: chunk.tuNgay,
-          denNgay: chunk.denNgay,
-          state,
-        };
-        // Qua pacer dùng chung (điều tiết cùng token với luồng chi tiết) + retry lỗi tạm thời —
-        // không để 1 cú timeout/429 làm hỏng cả lần "Cập nhật".
-        const page = await fetchListPagePaced(tenantKey, token, direction, pageQuery);
+        do {
+          // Giữ nguyên mọi filter của query, chỉ thay khoảng ngày theo cửa sổ tháng + cursor trang
+          // + nguồn đang quét (thường / máy tính tiền).
+          const pageQuery: PurchaseInvoiceQuery & SoldInvoiceQuery = {
+            ...query,
+            ketQuaHd,
+            tuNgay: chunk.tuNgay,
+            denNgay: chunk.denNgay,
+            state,
+          };
+          // Qua pacer dùng chung (điều tiết cùng token với luồng chi tiết) + retry lỗi tạm thời —
+          // không để 1 cú timeout/429 làm hỏng cả lần "Cập nhật". Ngân sách retry NGẮN vì luồng này
+          // giữ HTTP request mở (xem LIST_RETRY_BUDGET_BLOCKING_MS).
+          const page = await fetchListPagePaced(
+            tenantKey,
+            token,
+            direction,
+            pageQuery,
+            undefined,
+            LIST_RETRY_BUDGET_BLOCKING_MS,
+          );
 
-        if (pages === 0) total += page.total ?? 0; // total giống nhau mỗi trang -> cộng 1 lần/cửa sổ
-        const rows = page.datas ?? [];
-        saved += await saveInvoices(tenantDb, direction, rows, ownMst);
-        datas.push(...rows);
+          if (pages === 0) total += page.total ?? 0; // total giống nhau mỗi trang -> cộng 1 lần/cửa sổ
+          const rows = page.datas ?? [];
+          saved += await saveInvoices(tenantDb, direction, rows, ownMst);
+          datas.push(...rows);
 
-        // [DEBUG-CAPNHAT] Mỗi trang 1 dòng: biết dừng ở hóa đơn thứ mấy khi lỗi.
-        console.log(
-          `[DEBUG-CAPNHAT] ${elapsed()} ${direction} ${chunk.tuNgay}..${chunk.denNgay} ` +
-            `trang ${pages + 1}: +${rows.length} dòng (tích lũy ${datas.length}, đã lưu ${saved}, ` +
-            `còn trang sau: ${page.state ? "có" : "hết"})`,
-        );
+          // [DEBUG-CAPNHAT] Mỗi trang 1 dòng: biết dừng ở hóa đơn thứ mấy khi lỗi.
+          console.log(
+            `[DEBUG-CAPNHAT] ${elapsed()} ${direction}(${src}) ${chunk.tuNgay}..${chunk.denNgay} ` +
+              `trang ${pages + 1}: +${rows.length} dòng (tích lũy ${datas.length}, đã lưu ${saved}, ` +
+              `còn trang sau: ${page.state ? "có" : "hết"})`,
+          );
 
-        state = page.state || undefined;
-        pages += 1;
-        if (rows.length === 0) break; // trang cuối có thể vẫn trả cursor -> dừng khi hết dòng
-        // Nhịp cách trang do pacer trong `fetchListPagePaced` đảm nhiệm (không delay thủ công nữa).
-      } while (state && pages < MAX_SYNC_PAGES);
+          // Cursor đứng yên -> dừng cửa sổ này (xem isCursorStuck), khỏi lặp ghi trùng vô hạn.
+          if (isCursorStuck(state, page.state || undefined)) {
+            console.warn(
+              `[DEBUG-CAPNHAT] ${direction}(${src}) ${chunk.tuNgay}..${chunk.denNgay}: cursor không ` +
+                `đổi sau trang ${pages + 1} -> dừng cửa sổ này.`,
+            );
+            state = undefined;
+            pages += 1;
+            break;
+          }
 
-      if (state && pages >= MAX_SYNC_PAGES) {
-        partial = true;
-        message = `Đạt giới hạn ${MAX_SYNC_PAGES} trang/tháng — có thể còn hóa đơn chưa lấy hết.`;
+          state = page.state || undefined;
+          pages += 1;
+          if (rows.length === 0) break; // trang cuối có thể vẫn trả cursor -> dừng khi hết dòng
+          // Nhịp cách trang do pacer trong `fetchListPagePaced` đảm nhiệm (không delay thủ công nữa).
+        } while (state && pages < MAX_SYNC_PAGES);
+
+        if (state && pages >= MAX_SYNC_PAGES) {
+          partial = true;
+          message =
+            `Dừng ở lưới an toàn ${MAX_SYNC_PAGES} trang/tháng (phân trang GDT bất thường) — ` +
+            `có thể còn hóa đơn chưa lấy hết.`;
+        }
       }
     }
   } catch (err) {
@@ -1144,22 +1426,54 @@ function classifyGdtError(err: unknown): "auth" | "transient" | "permanent" {
 }
 
 /**
- * Số lần thử tối đa 1 TRANG danh sách khi gặp lỗi tạm thời (timeout/429/5xx).
+ * NGÂN SÁCH THỜI GIAN để lấy bằng được 1 TRANG danh sách khi gặp lỗi tạm thời (timeout/429/5xx).
+ *
+ * KHÔNG giới hạn số lần thử. Phân trang GDT đi theo cursor `state`: bỏ 1 trang giữa chừng là mất
+ * luôn MỌI trang phía sau, không nhảy cóc được. Đo thực tế có trang bị GDT "nuốt" 4 lần liên tiếp
+ * rồi lần 5 trả về trong 300ms — nên cứ thử tới khi được.
+ *
+ * Vẫn phải có trần: GDT chặn hẳn MST hoặc rớt mạng thì retry vô hạn sẽ treo lượt vĩnh viễn. Hết
+ * ngân sách -> ném lỗi, `runSync` ghi `partial` để người dùng chạy lại phần còn thiếu. Với timeout
+ * danh sách 12s + backoff ≤15s thì 10 phút đủ cho ~25 lần thử 1 trang.
  */
-const MAX_LIST_RETRY = 7;
+const LIST_RETRY_BUDGET_MS = 10 * 60_000;
+
+/**
+ * Ngân sách cho luồng CHẶN request (nút "Cập nhật từ Thuế điện tử" — `fetchAndSaveInvoicesInRange`
+ * vẫn giữ HTTP request mở tới khi xong). Ở đó KHÔNG được kiên nhẫn 10 phút/trang: proxy sẽ cắt
+ * request thành 502 trước. 60s/trang là mức chịu được, và người dùng bấm lại thì lấy tiếp phần
+ * thiếu. Đồng bộ (chạy nền, có tiến độ + nút Dừng) mới dùng ngân sách rộng.
+ */
+const LIST_RETRY_BUDGET_BLOCKING_MS = 60_000;
+
+/**
+ * Nghỉ `ms` nhưng cắt sớm khi người dùng bấm Dừng — chia nhỏ thành từng nhịp 1s để không phải chờ
+ * hết 15s backoff mới phản hồi nút Dừng. Trả về true nếu bị cắt giữa chừng.
+ */
+async function sleepUnlessCancelled(ms: number, isCancelled?: () => boolean): Promise<boolean> {
+  const until = Date.now() + ms;
+  while (Date.now() < until) {
+    if (isCancelled?.()) return true;
+    await engineSleep(Math.min(1000, until - Date.now()));
+  }
+  return isCancelled?.() === true;
+}
 
 /**
  * Lấy 1 TRANG danh sách hóa đơn qua PACER dùng chung của MST — điều tiết nhịp CÙNG token với luồng
- * tải chi tiết (concurrency=1, tránh 2 luồng GDT tranh nhau trên 1 token gây timeout) — kèm RETRY lỗi
- * tạm thời (timeout/429/5xx) như engine chi tiết. Lỗi auth (401/403) hoặc hết retry -> ném lại cho
- * caller để đánh dấu `partial` đúng lý do (không nuốt).
+ * tải chi tiết (concurrency=1, tránh 2 luồng GDT tranh nhau trên 1 token gây timeout) — kèm RETRY
+ * lỗi tạm thời (timeout/429/5xx) tới khi được hoặc hết `LIST_RETRY_BUDGET_MS`. Lỗi auth (401/403),
+ * lỗi thật, hết ngân sách, hoặc người dùng bấm Dừng -> ném lại cho caller đánh dấu `partial`.
  */
 async function fetchListPagePaced(
   tenantKey: string,
   gdtToken: string,
   direction: "purchase" | "sold",
   query: PurchaseInvoiceQuery,
+  isCancelled?: () => boolean,
+  budgetMs: number = LIST_RETRY_BUDGET_MS,
 ): Promise<PurchaseInvoiceResponse | SoldInvoiceResponse> {
+  const deadline = Date.now() + budgetMs;
   let attempt = 0;
   for (;;) {
     attempt += 1;
@@ -1172,27 +1486,40 @@ async function fetchListPagePaced(
       pacerReportOk(tenantKey);
       return page;
     } catch (err) {
-      // [DEBUG-GDT] Phân loại lỗi + số lần thử: thấy ngay là "auth" (token hết hạn) hay "transient"
-      // (429/5xx của GDT) và còn retry được không.
+      // [DEBUG-GDT] Phân loại lỗi: "auth" (token hết hạn) / "transient" (GDT nuốt hoặc 429/5xx) /
+      // "permanent". Chỉ "transient" mới đáng thử lại.
       const kind = classifyGdtError(err);
       const msg = err instanceof Error ? err.message : String(err);
-      // Lỗi tạm thời & còn lượt -> giãn nhịp pacer + backoff (1s→2s→4s…, trần 15s) rồi thử lại.
-      // Trần 5s cũ quá ngắn so với cửa sổ chặn của GDT: thử lại quá sớm thì lại bị nuốt tiếp.
-      if (kind === "transient" && attempt < MAX_LIST_RETRY) {
-        const backoff = Math.min(15_000, 1000 * 2 ** (attempt - 1));
+      const leftMs = deadline - Date.now();
+      // Backoff 1s→2s→4s…, trần 15s. Trần 5s cũ quá ngắn so với cửa sổ chặn của GDT: thử lại quá
+      // sớm thì lại bị nuốt tiếp.
+      const backoff = Math.min(15_000, 1000 * 2 ** (attempt - 1));
+
+      if (kind === "transient" && leftMs > backoff && !isCancelled?.()) {
         pacerReportRateLimited(tenantKey);
         console.warn(
-          `[DEBUG-SYNC] TRANG ${direction} lỗi TẠM THỜI lần ${attempt}/${MAX_LIST_RETRY}, ` +
-            `nghỉ ${backoff}ms rồi thử lại. Lỗi: ${msg}`,
+          `[DEBUG-SYNC] TRANG ${direction} lỗi TẠM THỜI lần ${attempt} ` +
+            `(còn ${Math.round(leftMs / 1000)}s ngân sách), nghỉ ${backoff}ms rồi thử lại. Lỗi: ${msg}`,
         );
-        await engineSleep(backoff);
+        // Bấm Dừng trong lúc đang nghỉ -> thoát ngay, không nằm chờ hết backoff.
+        if (await sleepUnlessCancelled(backoff, isCancelled)) {
+          console.warn(`[DEBUG-SYNC] TRANG ${direction} bỏ retry vì người dùng bấm Dừng.`);
+          throw err;
+        }
         continue;
       }
+
+      const why = isCancelled?.()
+        ? "người dùng bấm DỪNG"
+        : kind === "auth"
+          ? "TOKEN GDT HẾT HẠN"
+          : kind === "transient"
+            ? `HẾT NGÂN SÁCH ${Math.round(budgetMs / 1000)}s cho 1 trang`
+            : "lỗi thật (permanent)";
       console.error(
-        `[DEBUG-SYNC] TRANG ${direction} DỪNG sau ${attempt} lần thử — loại lỗi="${kind}"` +
-          `${kind === "auth" ? " (TOKEN GDT HẾT HẠN)" : ""}. Lỗi: ${msg}`,
+        `[DEBUG-SYNC] TRANG ${direction} DỪNG sau ${attempt} lần thử — ${why}. Lỗi: ${msg}`,
       );
-      throw err; // auth (token hết hạn) / permanent / hết retry -> caller đánh dấu partial
+      throw err; // caller đánh dấu partial đúng lý do
     }
   }
 }

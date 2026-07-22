@@ -491,11 +491,10 @@ export async function syncInvoices(
   // Ngoài try/catch: lỗi quyền/tenant (403/404) trả đúng mã qua error-handler chung.
   // maSoThue: guard chống ghi nhầm data MST khác vào DB tenant đang chọn.
   const { dbName, maSoThue } = await resolveTenantInfo(request);
-  const tenantDb = getTenantDb(dbName);
 
   try {
     const result = await GDTService.runSync(
-      tenantDb,
+      dbName,
       tenantKeyOf(request),
       gdtToken,
       { tuNgay, denNgay, direction, loai },
@@ -518,6 +517,75 @@ export async function syncInvoices(
       message: err instanceof Error ? err.message : "Không đồng bộ được hóa đơn",
     });
   }
+}
+
+/**
+ * POST /gdt/sync/run — bắt đầu lượt đồng bộ CHẠY NỀN, trả tiến độ NGAY (FE poll status).
+ * Thay cho POST /gdt/sync chạy đồng bộ: lượt đồng bộ có thể kéo hàng chục phút, giữ 1 HTTP request
+ * mở lâu như vậy sẽ bị proxy (IIS/ARR mặc định 120s) cắt thành 502. Cần X-Gdt-Token + JWT app.
+ */
+export async function startSyncRun(
+  request: FastifyRequest<{ Body: SyncRequestBody }>,
+  reply: FastifyReply,
+) {
+  const gdtToken = extractGdtToken(request);
+  if (!gdtToken) {
+    return reply.status(401).send({
+      message: "Thiếu token đăng nhập GDT (header X-Gdt-Token)",
+    });
+  }
+
+  const { tuNgay, denNgay, direction, loai } = request.body ?? {};
+  if (!tuNgay || !denNgay) {
+    return reply.status(400).send({ message: "Thiếu khoảng ngày (tuNgay/denNgay)" });
+  }
+  if (!VALID_DIRECTIONS.includes(direction) || !VALID_KINDS.includes(loai)) {
+    return reply.status(400).send({ message: "Tham số direction/loai không hợp lệ" });
+  }
+
+  // dbName (không phải client): lượt chạy nền rất dài -> engine tự getTenantDb lại để giữ pool sống.
+  // maSoThue: guard chống ghi nhầm data MST khác vào DB tenant đang chọn.
+  const { dbName, maSoThue } = await resolveTenantInfo(request);
+
+  // KHÔNG await: khởi tạo lượt nền rồi trả tiến độ ngay -> FE poll tiếp.
+  const status = GDTService.startSyncRun(
+    dbName,
+    tenantKeyOf(request),
+    gdtToken,
+    { tuNgay, denNgay, direction, loai },
+    maSoThue,
+  );
+  return reply.send(status);
+}
+
+/** Tiến độ rỗng khi công ty chưa từng chạy lượt nào (FE khỏi phải xử lý null). */
+const EMPTY_SYNC_RUN = {
+  active: false,
+  phase: "",
+  rows: 0,
+  saved: 0,
+  daCo: 0,
+  boSung: 0,
+  page: 0,
+  startedAt: 0,
+  results: [],
+};
+
+/**
+ * GET /gdt/sync/run/status — tiến độ lượt đồng bộ nền (FE poll). Chỉ cần JWT app (đọc state
+ * in-memory theo công ty đang chọn), KHÔNG cần token GDT.
+ */
+export async function syncRunStatus(request: FastifyRequest, reply: FastifyReply) {
+  await resolveTenantDb(request); // kiểm quyền công ty đang chọn
+  const status = GDTService.getSyncRunStatus(tenantKeyOf(request));
+  return reply.send(status ?? EMPTY_SYNC_RUN);
+}
+
+/** POST /gdt/sync/run/cancel — người dùng bấm Dừng; lượt thoát ở ranh giới trang gần nhất. */
+export async function cancelSyncRun(request: FastifyRequest, reply: FastifyReply) {
+  await resolveTenantDb(request);
+  const status = GDTService.cancelSyncRun(tenantKeyOf(request));
+  return reply.send(status ?? EMPTY_SYNC_RUN);
 }
 
 /** GET /gdt/sync/history — lịch sử đồng bộ (không cần token GDT). */

@@ -227,6 +227,31 @@ export interface SyncResult extends SyncLog {
   boSung: number;
 }
 
+/**
+ * Tiến độ lượt đồng bộ CHẠY NỀN ở BE (GET /gdt/sync/run/status). Lượt đồng bộ dài hàng chục phút
+ * nên BE chạy nền + FE poll, thay vì giữ 1 request mở chờ (proxy cắt -> 502).
+ * Trạng thái nằm ở BE nên đóng/mở lại dialog vẫn thấy đúng tiến độ.
+ */
+export interface SyncRunStatus {
+  active: boolean;
+  /** Bước đang chạy, vd "Bán ra (máy tính tiền) 2026-07-01..2026-07-31". Rỗng khi đã xong. */
+  phase: string;
+  /** Số dòng GDT đã đi qua (chưa trừ trùng). */
+  rows: number;
+  saved: number;
+  daCo: number;
+  boSung: number;
+  /** Trang hiện tại trong cửa sổ đang quét (GDT không cho biết tổng số trang). */
+  page: number;
+  startedAt: number;
+  finishedAt?: number;
+  cancelled?: boolean;
+  /** Lỗi tổng thể của lượt (khác lý do dừng theo từng chiều nằm trong `results[].dien_giai`). */
+  error?: string;
+  /** sync_log đã ghi (1 dòng/chiều) — dùng hiện toast tóm tắt khi lượt kết thúc. */
+  results: SyncResult[];
+}
+
 export interface ClearSyncResult {
   purchase: number;
   sold: number;
