@@ -25,9 +25,15 @@ interface Pacer {
   lastStartAt: number;
 }
 
-const START_MS = 500;
-const MIN_MS = 250;
-const MAX_MS = 5000;
+/**
+ * Nhịp gọi GDT. Số liệu đo thực tế (đồng bộ 2 ngày, nhánh `sco-query`): với sàn 250ms thì cứ vài
+ * trang liên tiếp là GDT "nuốt" 1 call (treo tới hết timeout) — 84% thời gian của lượt đồng bộ là
+ * ngồi chờ timeout. Nên đi CHẬM mà CHẮC: sàn ~800ms, và khi bị nuốt thì giãn MẠNH (×2, trần 15s)
+ * rồi co lại từ từ, thay vì lao về sàn sau vài lần thành công.
+ */
+const START_MS = 800;
+const MIN_MS = 800;
+const MAX_MS = 15_000;
 
 const pacers = new Map<string, Pacer>();
 
@@ -82,13 +88,16 @@ export function schedule<T>(key: string, fn: () => Promise<T>): Promise<T> {
   });
 }
 
-/** GDT vừa báo quá tải (429/500/timeout) -> giãn khoảng cách các call (backoff, có trần). */
+/** GDT vừa báo quá tải (429/500/timeout/bị nuốt) -> giãn MẠNH khoảng cách các call (×2, có trần). */
 export function reportRateLimited(key: string): void {
   const p = getPacer(key);
-  p.intervalMs = Math.min(MAX_MS, Math.max(START_MS, Math.round(p.intervalMs * 1.5)));
+  p.intervalMs = Math.min(MAX_MS, Math.max(START_MS, p.intervalMs * 2));
 }
 
-/** 1 call thành công -> co dần khoảng cách về sàn (dò tốc độ tối đa an toàn). */
+/**
+ * 1 call thành công -> co dần khoảng cách về sàn (dò tốc độ tối đa an toàn). Co CHẬM (-50ms/call):
+ * đã bị giãn lên 6-10s thì cần vài chục trang trót lọt mới về sàn, tránh vừa hết bị chặn đã lao lại.
+ */
 export function reportOk(key: string): void {
   const p = getPacer(key);
   p.intervalMs = Math.max(MIN_MS, p.intervalMs - 50);

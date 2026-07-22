@@ -127,6 +127,12 @@ export default function SyncInvoiceDialog({ open, onClose }: Props) {
       return;
     }
     const gdtToken = activeGdtToken;
+    // [DEBUG-SYNC] Mốc bấm nút — đối chiếu với log BE để biết request chạy bao lâu thì đứt.
+    const clickedAt = Date.now();
+    const since = () => `${((Date.now() - clickedAt) / 1000).toFixed(1)}s`;
+    console.log(
+      `[DEBUG-SYNC][FE] Bấm ĐỒNG BỘ ${range.tuNgay}..${range.denNgay} direction=${direction} loai=${invoiceKind}`,
+    );
     startMutation.mutate(
       {
         gdtToken,
@@ -134,6 +140,18 @@ export default function SyncInvoiceDialog({ open, onClose }: Props) {
       },
       {
         onSuccess: (results) => {
+          // [DEBUG-SYNC] 200 về tới FE: trang_thai="partial" nghĩa là BE dừng giữa chừng (xem
+          // dien_giai để biết GDT trả mã gì) — KHÔNG phải lỗi HTTP.
+          console.log(
+            `[DEBUG-SYNC][FE] Nhận kết quả sau ${since()}:`,
+            results.map((r) => ({
+              direction: r.direction,
+              trang_thai: r.trang_thai,
+              tong: r.tong,
+              da_luu: r.da_luu,
+              dien_giai: r.dien_giai,
+            })),
+          );
           // Toast tóm tắt DANH SÁCH theo từng chiều (all -> 2 toast: mua vào + bán ra).
           results.forEach((res) => {
             const dirLabel =
@@ -181,7 +199,15 @@ export default function SyncInvoiceDialog({ open, onClose }: Props) {
             }
           })();
         },
-        onError: (e) => setError(getErrorMessage(e, "Không đồng bộ được hóa đơn.")),
+        onError: (e) => {
+          // [DEBUG-SYNC] Lỗi HTTP thật sự. `status` có giá trị => server (BE hoặc proxy) trả mã đó;
+          // status undefined => fetch đứt giữa chừng (kết nối bị cắt), xem tab Network để rõ.
+          console.error(
+            `[DEBUG-SYNC][FE] LỖI sau ${since()} — status=${(e as { status?: number }).status ?? "(không có – fetch đứt)"}`,
+            e,
+          );
+          setError(getErrorMessage(e, "Không đồng bộ được hóa đơn."));
+        },
       },
     );
   };

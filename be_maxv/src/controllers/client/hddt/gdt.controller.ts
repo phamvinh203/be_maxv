@@ -96,9 +96,17 @@ async function handleGdtInvoices(
       maSoThue,
     );
 
+    // [DEBUG-CAPNHAT] BE đã trả response — FE vẫn lỗi => lỗi ở tầng kết nối, không phải luồng GDT.
+    console.log(
+      `[DEBUG-CAPNHAT] GET /gdt/${direction} TRẢ VỀ 200 (${result.saved} đã lưu, partial=${result.partial})`,
+    );
     return reply.send(result);
   } catch (err) {
     request.log.error(err);
+    console.error(
+      `[DEBUG-CAPNHAT] GET /gdt/${direction} TRẢ VỀ 500:`,
+      err instanceof Error ? `${err.name}: ${err.message}` : err,
+    );
 
     return reply.status(500).send({
       message:
@@ -497,9 +505,15 @@ export async function syncInvoices(
     // Việc TẢI CHI TIẾT do FE tự lái sau khi có kết quả: FE gọi startDetailRun + poll
     // getDetailRunStatus theo từng chiều (giống nút "Cập nhật từ Thuế điện tử"). Endpoint /gdt/sync
     // chỉ soát/bổ sung DANH SÁCH + đối chiếu (daCo/boSung) + ghi sync_log theo từng chiều.
+    // [DEBUG-SYNC] BE đã trả response — nếu FE vẫn báo lỗi thì lỗi nằm ở tầng kết nối.
+    console.log(`[DEBUG-SYNC] POST /gdt/sync TRẢ VỀ 200 cho tenant=${tenantKeyOf(request)}`);
     return reply.send(result);
   } catch (err) {
     request.log.error(err);
+    console.error(
+      `[DEBUG-SYNC] POST /gdt/sync TRẢ VỀ 500:`,
+      err instanceof Error ? `${err.name}: ${err.message}` : err,
+    );
     return reply.status(500).send({
       message: err instanceof Error ? err.message : "Không đồng bộ được hóa đơn",
     });

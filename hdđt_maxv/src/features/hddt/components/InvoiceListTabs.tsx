@@ -344,10 +344,21 @@ function InvoiceTablePanel({ direction, active }: InvoiceTablePanelProps) {
     setAppliedFilters(filters);
     // Chốt mốc lượt hiện tại: nếu đổi công ty giữa lúc lấy list (effect bump runIdRef), bỏ qua onSuccess.
     const startRun = runIdRef.current;
+    // [DEBUG-CAPNHAT] Mốc bấm nút — đối chiếu với log BE để biết chạy bao lâu thì đứt.
+    const clickedAt = Date.now();
+    const since = () => `${((Date.now() - clickedAt) / 1000).toFixed(1)}s`;
+    console.log(
+      `[DEBUG-CAPNHAT][FE] Bấm CẬP NHẬT TỪ THUẾ ĐIỆN TỬ ${direction} ${filters.tuNgay}..${filters.denNgay}`,
+    );
     gdtMutation.mutate(
       { gdtToken, query: buildQuery(filters) },
       {
         onSuccess: (res) => {
+          // [DEBUG-CAPNHAT] 200 về FE: partial=true là BE dừng giữa chừng (xem message), không phải lỗi HTTP.
+          console.log(
+            `[DEBUG-CAPNHAT][FE] Nhận kết quả sau ${since()}: total=${res.total} saved=${res.saved} ` +
+              `partial=${res.partial} message=${res.message || "(không có)"}`,
+          );
           if (runIdRef.current !== startRun) return; // đổi công ty giữa chừng -> không chạy tiếp
           if (res.partial) {
             // Lấy chưa hết (lỗi GDT giữa chừng / chạm trần) — vẫn giữ + xử lý phần đã lấy được.
@@ -360,8 +371,14 @@ function InvoiceTablePanel({ direction, active }: InvoiceTablePanelProps) {
           // Khởi động BE tải chi tiết (bỏ qua HĐ đã có) rồi poll tiến độ.
           void pollDetailRun(gdtToken, buildQuery(filters), startRun);
         },
-        onError: (e) =>
-          toast.error(getErrorMessage(e, "Không cập nhật được hóa đơn từ Thuế điện tử.")),
+        onError: (e) => {
+          // [DEBUG-CAPNHAT] status có giá trị => server/proxy trả mã đó; undefined => fetch bị đứt.
+          console.error(
+            `[DEBUG-CAPNHAT][FE] LỖI sau ${since()} — status=${(e as { status?: number }).status ?? "(không có – fetch đứt)"}`,
+            e,
+          );
+          toast.error(getErrorMessage(e, "Không cập nhật được hóa đơn từ Thuế điện tử."));
+        },
       },
     );
   };

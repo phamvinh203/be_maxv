@@ -3,6 +3,7 @@ import {
   clearCookies,
   gdtFetch,
   renameCookies,
+  GDT_LIST_TIMEOUT_MS,
 } from "../../../config/gdt-client";
 import {
   CaptchaResponse,
@@ -109,6 +110,8 @@ export async function getPurchaseInvoices(
 
   return gdtFetch<PurchaseInvoiceResponse>(`${path}?${params.toString()}`, {
     bearerToken: token,
+    // Cắt sớm call danh sách bị GDT "nuốt" (xem GDT_LIST_TIMEOUT_MS) — caller sẽ retry.
+    signal: AbortSignal.timeout(GDT_LIST_TIMEOUT_MS),
   });
 }
 
@@ -140,6 +143,8 @@ export async function getSoldInvoices(token: string, query: SoldInvoiceQuery) {
 
   return gdtFetch<SoldInvoiceResponse>(`${path}?${params.toString()}`, {
     bearerToken: token,
+    // Cắt sớm call danh sách bị GDT "nuốt" (xem GDT_LIST_TIMEOUT_MS) — caller sẽ retry.
+    signal: AbortSignal.timeout(GDT_LIST_TIMEOUT_MS),
   });
 }
 
@@ -646,6 +651,15 @@ export async function runSync(
 ): Promise<SyncRunResult[]> {
   const sources = resolveSyncSources(params.direction, params.loai);
   const chunks = monthlyChunks(params.tuNgay, params.denNgay);
+  // [DEBUG-SYNC] Mốc bắt đầu + đếm dòng tích lũy toàn lượt: đối chiếu "dừng ở khoảng hóa đơn thứ mấy"
+  // và "chạy được bao nhiêu giây" (nếu request bị cắt ở proxy thì log BE vẫn chạy tiếp sau đó).
+  const runStartedAt = Date.now();
+  let rowsSoFar = 0;
+  const elapsed = () => `${((Date.now() - runStartedAt) / 1000).toFixed(1)}s`;
+  console.log(
+    `[DEBUG-SYNC] === BẮT ĐẦU ĐỒNG BỘ === tenant=${tenantKey} ${params.tuNgay}..${params.denNgay} ` +
+      `direction=${params.direction} loai=${params.loai} | ${sources.length} nguồn × ${chunks.length} tháng`,
+  );
   // Các chiều cần ghi log riêng (giữ thứ tự xuất hiện trong sources: purchase trước, sold sau).
   const directions = [...new Set(sources.map((s) => s.direction))];
 
@@ -704,6 +718,14 @@ export async function runSync(
             boSung += ids.length - existed;
             saved += await saveInvoices(tenantDb, source.direction, rows, ownMst);
 
+            rowsSoFar += rows.length;
+            // [DEBUG-SYNC] Mỗi trang 1 dòng log: biết chính xác dừng ở hóa đơn thứ mấy / trang mấy.
+            console.log(
+              `[DEBUG-SYNC] ${elapsed()} ${source.direction}${source.cashRegister ? "(máy tính tiền)" : ""} ` +
+                `${chunk.tuNgay}..${chunk.denNgay} trang ${pages + 1}: +${rows.length} dòng ` +
+                `(tích lũy ${rowsSoFar}, đã lưu ${saved}, còn trang sau: ${page.state ? "có" : "hết"})`,
+            );
+
             state = page.state || undefined;
             pages += 1;
             // Dừng ngay khi trang rỗng: một số API vẫn trả cursor khác rỗng ở trang cuối,
@@ -722,6 +744,12 @@ export async function runSync(
           partial = true;
           message = err instanceof Error ? err.message : "Lỗi khi gọi GDT.";
           aborted = true;
+          // [DEBUG-SYNC] Điểm DỪNG của lượt: kèm số dòng đã đi qua để đối chiếu mốc "~1000 hóa đơn".
+          console.error(
+            `[DEBUG-SYNC] ${elapsed()} !!! DỪNG GIỮA CHỪNG ở ${source.direction} ` +
+              `${chunk.tuNgay}..${chunk.denNgay} sau ${rowsSoFar} dòng — loại lỗi="${classifyGdtError(err)}". ` +
+              `Message trả về FE: ${message}`,
+          );
           break;
         }
       }
@@ -749,6 +777,13 @@ export async function runSync(
     // Token GDT hết hạn / bị chặn -> không chạy tiếp chiều còn lại (sẽ lỗi y hệt).
     if (aborted) break;
   }
+
+  // [DEBUG-SYNC] Nếu dòng này in ra mà FE đã báo lỗi từ trước -> BE vẫn chạy xong, lỗi nằm ở
+  // tầng kết nối (proxy/dev-server cắt request), KHÔNG phải lỗi đồng bộ.
+  console.log(
+    `[DEBUG-SYNC] === KẾT THÚC ĐỒNG BỘ === ${elapsed()}, tổng ${rowsSoFar} dòng, ` +
+      `${results.length} bản ghi lịch sử: ${results.map((r) => `${r.direction}=${r.trang_thai}`).join(", ")}`,
+  );
 
   return results;
 }
@@ -784,6 +819,13 @@ export async function fetchAndSaveInvoicesInRange(
   const datas: unknown[] = [];
   let partial = false;
   let message = "";
+  // [DEBUG-GDT] Log cho nút "Cập nhật từ Thuế điện tử" (song song với [DEBUG-SYNC] của nút Đồng bộ).
+  const runStartedAt = Date.now();
+  const elapsed = () => `${((Date.now() - runStartedAt) / 1000).toFixed(1)}s`;
+  console.log(
+    `[DEBUG-CAPNHAT] === BẮT ĐẦU CẬP NHẬT === tenant=${tenantKey} ${direction} ` +
+      `${query.tuNgay}..${query.denNgay} | ${chunks.length} tháng`,
+  );
 
   // Lỗi giữa chừng (vd token GDT hết hạn) -> DỪNG nhưng GIỮ phần đã lưu, báo partial thay vì 500.
   try {
@@ -808,6 +850,13 @@ export async function fetchAndSaveInvoicesInRange(
         saved += await saveInvoices(tenantDb, direction, rows, ownMst);
         datas.push(...rows);
 
+        // [DEBUG-CAPNHAT] Mỗi trang 1 dòng: biết dừng ở hóa đơn thứ mấy khi lỗi.
+        console.log(
+          `[DEBUG-CAPNHAT] ${elapsed()} ${direction} ${chunk.tuNgay}..${chunk.denNgay} ` +
+            `trang ${pages + 1}: +${rows.length} dòng (tích lũy ${datas.length}, đã lưu ${saved}, ` +
+            `còn trang sau: ${page.state ? "có" : "hết"})`,
+        );
+
         state = page.state || undefined;
         pages += 1;
         if (rows.length === 0) break; // trang cuối có thể vẫn trả cursor -> dừng khi hết dòng
@@ -822,7 +871,18 @@ export async function fetchAndSaveInvoicesInRange(
   } catch (err) {
     partial = true;
     message = err instanceof Error ? err.message : "Lỗi khi gọi GDT.";
+    // [DEBUG-CAPNHAT] Điểm dừng + loại lỗi (auth = token GDT hết hạn, transient = GDT chặn/quá tải).
+    console.error(
+      `[DEBUG-CAPNHAT] ${elapsed()} !!! DỪNG GIỮA CHỪNG ${direction} sau ${datas.length} dòng — ` +
+        `loại lỗi="${classifyGdtError(err)}". Message trả về FE: ${message}`,
+    );
   }
+
+  // [DEBUG-CAPNHAT] In ra sau khi FE đã báo lỗi -> lỗi ở tầng kết nối chứ không phải luồng lấy dữ liệu.
+  console.log(
+    `[DEBUG-CAPNHAT] === KẾT THÚC CẬP NHẬT === ${elapsed()}, ${datas.length} dòng, đã lưu ${saved}, ` +
+      `partial=${partial}${message ? ` (${message})` : ""}`,
+  );
 
   // Bỏ qua HĐ đã tải chi tiết được quyết định phía BE trong `runDetailFetch` (WHERE tt_tai null|error),
   // nên KHÔNG cần gắn tt_tai vào `datas` ở đây (FE không đọc `res.datas` nữa).
@@ -1083,8 +1143,10 @@ function classifyGdtError(err: unknown): "auth" | "transient" | "permanent" {
   return "permanent";
 }
 
-/** Số lần thử tối đa 1 TRANG danh sách khi gặp lỗi tạm thời (timeout/429/5xx). */
-const MAX_LIST_RETRY = 4;
+/**
+ * Số lần thử tối đa 1 TRANG danh sách khi gặp lỗi tạm thời (timeout/429/5xx).
+ */
+const MAX_LIST_RETRY = 7;
 
 /**
  * Lấy 1 TRANG danh sách hóa đơn qua PACER dùng chung của MST — điều tiết nhịp CÙNG token với luồng
@@ -1110,12 +1172,26 @@ async function fetchListPagePaced(
       pacerReportOk(tenantKey);
       return page;
     } catch (err) {
-      // Lỗi tạm thời & còn lượt -> giãn nhịp pacer + backoff (500ms→1s→2s…, trần 5s) rồi thử lại.
-      if (classifyGdtError(err) === "transient" && attempt < MAX_LIST_RETRY) {
+      // [DEBUG-GDT] Phân loại lỗi + số lần thử: thấy ngay là "auth" (token hết hạn) hay "transient"
+      // (429/5xx của GDT) và còn retry được không.
+      const kind = classifyGdtError(err);
+      const msg = err instanceof Error ? err.message : String(err);
+      // Lỗi tạm thời & còn lượt -> giãn nhịp pacer + backoff (1s→2s→4s…, trần 15s) rồi thử lại.
+      // Trần 5s cũ quá ngắn so với cửa sổ chặn của GDT: thử lại quá sớm thì lại bị nuốt tiếp.
+      if (kind === "transient" && attempt < MAX_LIST_RETRY) {
+        const backoff = Math.min(15_000, 1000 * 2 ** (attempt - 1));
         pacerReportRateLimited(tenantKey);
-        await engineSleep(Math.min(5000, 500 * 2 ** (attempt - 1)));
+        console.warn(
+          `[DEBUG-SYNC] TRANG ${direction} lỗi TẠM THỜI lần ${attempt}/${MAX_LIST_RETRY}, ` +
+            `nghỉ ${backoff}ms rồi thử lại. Lỗi: ${msg}`,
+        );
+        await engineSleep(backoff);
         continue;
       }
+      console.error(
+        `[DEBUG-SYNC] TRANG ${direction} DỪNG sau ${attempt} lần thử — loại lỗi="${kind}"` +
+          `${kind === "auth" ? " (TOKEN GDT HẾT HẠN)" : ""}. Lỗi: ${msg}`,
+      );
       throw err; // auth (token hết hạn) / permanent / hết retry -> caller đánh dấu partial
     }
   }
