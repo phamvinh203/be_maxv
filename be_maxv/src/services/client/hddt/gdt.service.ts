@@ -31,31 +31,6 @@ function toGdtDate(isoDate: string): string {
 }
 
 /**
- * [DEBUG-LIST] In nguyên URL đã gọi + tóm tắt phản hồi của 1 trang DANH SÁCH.
- *
- * Lý do tồn tại: chiều `sold` không lấy được hóa đơn trong khi `purchase` chạy tốt, mà code hai
- * chiều đối xứng hoàn toàn -> phải nhìn tận request/response thật mới biết GDT trả 0 dòng (bộ lọc/
- * endpoint sai) hay có dòng nhưng dòng thiếu `id` (nên `saveInvoices` bỏ qua sạch). In cả danh sách
- * key của dòng đầu vì đó là thứ phân biệt hai trường hợp đó.
- */
-function logListPage(
-  direction: "purchase" | "sold",
-  url: string,
-  res: { total?: number; state?: string; datas?: unknown[] },
-): void {
-  const rows = res.datas ?? [];
-  const first = rows[0];
-  const keys =
-    first && typeof first === "object" ? Object.keys(first as Record<string, unknown>) : [];
-  console.log(
-    `[DEBUG-LIST] ${direction} GỌI: ${url}\n` +
-      `[DEBUG-LIST] ${direction} NHẬN: total=${res.total ?? "(không có)"} ` +
-      `datas=${rows.length} dòng, còn trang sau: ${res.state ? "có" : "hết"}` +
-      (keys.length > 0 ? `\n[DEBUG-LIST] ${direction} field dòng đầu: ${keys.join(",")}` : ""),
-  );
-}
-
-/**
  * Lấy captcha + giữ lại cookie session mà GDT set.
  * Vì `key` chỉ biết sau khi nhận response, nên tạm thu thập cookie
  * dưới một tmp-key rồi re-key sang captcha.key thật (frontend sẽ gửi
@@ -133,14 +108,11 @@ export async function getPurchaseInvoices(
   const params = new URLSearchParams({ sort: "tdlap:desc", size: "50", search });
   if (query.state) params.set("state", query.state);
 
-  const url = `${path}?${params.toString()}`;
-  const res = await gdtFetch<PurchaseInvoiceResponse>(url, {
+  return gdtFetch<PurchaseInvoiceResponse>(`${path}?${params.toString()}`, {
     bearerToken: token,
     // Cắt sớm call danh sách bị GDT "nuốt" (xem GDT_LIST_TIMEOUT_MS) — caller sẽ retry.
     signal: AbortSignal.timeout(GDT_LIST_TIMEOUT_MS),
   });
-  logListPage("purchase", url, res);
-  return res;
 }
 
 /**
@@ -169,14 +141,11 @@ export async function getSoldInvoices(token: string, query: SoldInvoiceQuery) {
   const params = new URLSearchParams({ sort: "tdlap:desc", size: "50", search });
   if (query.state) params.set("state", query.state);
 
-  const url = `${path}?${params.toString()}`;
-  const res = await gdtFetch<SoldInvoiceResponse>(url, {
+  return gdtFetch<SoldInvoiceResponse>(`${path}?${params.toString()}`, {
     bearerToken: token,
     // Cắt sớm call danh sách bị GDT "nuốt" (xem GDT_LIST_TIMEOUT_MS) — caller sẽ retry.
     signal: AbortSignal.timeout(GDT_LIST_TIMEOUT_MS),
   });
-  logListPage("sold", url, res);
-  return res;
 }
 
 /** User-Agent kiểu trình duyệt — một số endpoint GDT (detail) khó tính hơn, gửi kèm cho chắc (giống bản C#). */
@@ -1091,9 +1060,10 @@ export async function fetchAndSaveInvoicesInRange(
   ownMst: string,
   /**
    * Chỉ có khi chạy NỀN qua `startUpdateRun`: `status` để ghi tiến độ cho FE poll, `budgetMs` để
-   * dùng ngân sách retry rộng (10'). Luồng chặn cũ truyền ngân sách 60s vì giữ HTTP request mở.
+   * dùng ngân sách retry rộng (10'), `isCancelled` để lượt ĐÃ BỊ THAY THẾ tự thoát. Luồng chặn cũ
+   * truyền ngân sách 60s vì giữ HTTP request mở.
    */
-  ctl?: { status?: UpdateRunStatus; budgetMs?: number },
+  ctl?: { status?: UpdateRunStatus; budgetMs?: number; isCancelled?: () => boolean },
 ): Promise<{
   total: number;
   saved: number;
@@ -1108,6 +1078,10 @@ export async function fetchAndSaveInvoicesInRange(
   const db = () => getTenantDb(dbName);
   const st = ctl?.status;
   const budgetMs = ctl?.budgetMs ?? LIST_RETRY_BUDGET_MS;
+  // Lượt này đã bị lượt MỚI thay thế -> thoát sạch. Bắt buộc phải có: nếu không, bấm lại (hoặc mở
+  // app ở 2 tab) sẽ để 2 vòng quét cùng chiều + cùng token cùng chạy tới hết, dội GDT gấp đôi —
+  // đúng thứ pacer sinh ra để tránh. Phần đã upsert vẫn nằm trong DB nên thoát giữa chừng an toàn.
+  const cancelled = () => ctl?.isCancelled?.() === true;
   let authExpired = false;
   const chunks = monthlyChunks(query.tuNgay, query.denNgay);
   // "Kết quả kiểm tra = Tất cả" (ketQuaHd rỗng) phải rà soát MỌI nguồn, không chỉ endpoint thường:
@@ -1117,6 +1091,8 @@ export async function fetchAndSaveInvoicesInRange(
   const ketQuaVariants: (string | undefined)[] = query.ketQuaHd ? [query.ketQuaHd] : [undefined, "8"];
   let total = 0;
   let saved = 0;
+  /** Số dòng GDT đã đi qua — đếm riêng vì `datas` chỉ được giữ ở luồng chặn (xem chỗ push). */
+  let rowsSeen = 0;
   const datas: unknown[] = [];
   let partial = false;
   let message = "";
@@ -1132,9 +1108,11 @@ export async function fetchAndSaveInvoicesInRange(
   // Lỗi giữa chừng (vd token GDT hết hạn) -> DỪNG nhưng GIỮ phần đã lưu, báo partial thay vì 500.
   try {
     for (const ketQuaHd of ketQuaVariants) {
+      if (cancelled()) break;
       /** Nhãn nguồn đang quét, để log phân biệt được 2 lượt trên cùng khoảng ngày. */
       const src = ketQuaHd === "8" ? "máy tính tiền" : ketQuaHd ? `ttxly=${ketQuaHd}` : "thường";
       for (const chunk of chunks) {
+        if (cancelled()) break;
         let state: string | undefined = undefined;
         let pages = 0;
 
@@ -1156,18 +1134,23 @@ export async function fetchAndSaveInvoicesInRange(
             token,
             direction,
             pageQuery,
-            undefined,
+            // Bị lượt mới thay thế -> thoát cả vòng retry (có thể đang nghỉ backoff 15s).
+            ctl?.isCancelled,
             budgetMs,
           );
 
           if (pages === 0) total += page.total ?? 0; // total giống nhau mỗi trang -> cộng 1 lần/cửa sổ
           const rows = page.datas ?? [];
           saved += await saveInvoices(db(), direction, rows, ownMst);
-          datas.push(...rows);
+          rowsSeen += rows.length;
+          // Chỉ GIỮ LẠI dòng thô khi có người đọc (endpoint chặn cũ trả `datas` về FE). Lượt chạy
+          // nền không ai đọc `datas` mà lượt lại dài: giữ hết sẽ ôm hàng chục MB payload GDT thô
+          // trong RAM suốt lượt, chỉ để lấy `.length`.
+          if (!st) datas.push(...rows);
 
           // Tiến độ cho FE poll (chỉ khi chạy nền) — cộng dồn toàn lượt, không reset theo nguồn.
           if (st) {
-            st.rows = datas.length;
+            st.rows = rowsSeen;
             st.saved = saved;
             st.total = total;
             st.source = src;
@@ -1177,7 +1160,7 @@ export async function fetchAndSaveInvoicesInRange(
           // [DEBUG-CAPNHAT] Mỗi trang 1 dòng: biết dừng ở hóa đơn thứ mấy khi lỗi.
           console.log(
             `[DEBUG-CAPNHAT] ${elapsed()} ${direction}(${src}) ${chunk.tuNgay}..${chunk.denNgay} ` +
-              `trang ${pages + 1}: +${rows.length} dòng (tích lũy ${datas.length}, đã lưu ${saved}, ` +
+              `trang ${pages + 1}: +${rows.length} dòng (tích lũy ${rowsSeen}, đã lưu ${saved}, ` +
               `còn trang sau: ${page.state ? "có" : "hết"})`,
           );
 
@@ -1195,6 +1178,7 @@ export async function fetchAndSaveInvoicesInRange(
           state = page.state || undefined;
           pages += 1;
           if (rows.length === 0) break; // trang cuối có thể vẫn trả cursor -> dừng khi hết dòng
+          if (cancelled()) break; // lượt mới đã thay thế -> ngừng, phần đã upsert vẫn giữ
           // Nhịp cách trang do pacer trong `fetchListPagePaced` đảm nhiệm (không delay thủ công nữa).
         } while (state && pages < MAX_SYNC_PAGES);
 
@@ -1213,14 +1197,14 @@ export async function fetchAndSaveInvoicesInRange(
     message = err instanceof Error ? err.message : "Lỗi khi gọi GDT.";
     // [DEBUG-CAPNHAT] Điểm dừng + loại lỗi (auth = token GDT hết hạn, transient = GDT chặn/quá tải).
     console.error(
-      `[DEBUG-CAPNHAT] ${elapsed()} !!! DỪNG GIỮA CHỪNG ${direction} sau ${datas.length} dòng — ` +
+      `[DEBUG-CAPNHAT] ${elapsed()} !!! DỪNG GIỮA CHỪNG ${direction} sau ${rowsSeen} dòng — ` +
         `loại lỗi="${classifyGdtError(err)}". Message trả về FE: ${message}`,
     );
   }
 
   // [DEBUG-CAPNHAT] In ra sau khi FE đã báo lỗi -> lỗi ở tầng kết nối chứ không phải luồng lấy dữ liệu.
   console.log(
-    `[DEBUG-CAPNHAT] === KẾT THÚC CẬP NHẬT === ${elapsed()}, ${datas.length} dòng, đã lưu ${saved}, ` +
+    `[DEBUG-CAPNHAT] === KẾT THÚC CẬP NHẬT === ${elapsed()}, ${rowsSeen} dòng, đã lưu ${saved}, ` +
       `partial=${partial}${message ? ` (${message})` : ""}`,
   );
 
@@ -1320,8 +1304,10 @@ export function startUpdateRun(
   query: PurchaseInvoiceQuery | SoldInvoiceQuery,
   ownMst: string,
 ): UpdateRunStatus {
-  return startUpdateRunWith(tenantKey, direction, async (st) => {
+  return startUpdateRunWith(tenantKey, direction, async (st, isStale) => {
     // --- PHA 1: DANH SÁCH ---
+    // `isCancelled` = lượt này đã bị lượt mới thay thế: phải dừng, nếu không 2 vòng quét cùng chiều
+    // + cùng token sẽ chạy song song và dội GDT.
     const res = await fetchAndSaveInvoicesInRange(
       dbName,
       tenantKey,
@@ -1329,7 +1315,7 @@ export function startUpdateRun(
       direction,
       query,
       ownMst,
-      { status: st },
+      { status: st, isCancelled: isStale },
     );
     st.total = res.total;
     st.saved = res.saved;
@@ -1341,6 +1327,10 @@ export function startUpdateRun(
       st.detail.authExpired = true;
       return;
     }
+
+    // Bị thay thế trong lúc lấy danh sách -> KHÔNG mở pha chi tiết: lượt mới sẽ tự mở lượt chi tiết
+    // của nó, mở thêm ở đây chỉ tổ tranh token rồi bị chính lượt kia thay thế.
+    if (isStale()) return;
 
     // --- PHA 2: CHI TIẾT (cùng chiều, cùng bộ lọc) ---
     st.phase = "detail";
@@ -1679,12 +1669,12 @@ async function fetchListPagePaced(
       if (kind === "transient" && leftMs > backoff && !isCancelled?.()) {
         pacerReportRateLimited(tenantKey);
         console.warn(
-          `[DEBUG-SYNC] TRANG ${direction} lỗi TẠM THỜI lần ${attempt} ` +
+          `[DEBUG-LIST] TRANG ${direction} lỗi TẠM THỜI lần ${attempt} ` +
             `(còn ${Math.round(leftMs / 1000)}s ngân sách), nghỉ ${backoff}ms rồi thử lại. Lỗi: ${msg}`,
         );
         // Bấm Dừng trong lúc đang nghỉ -> thoát ngay, không nằm chờ hết backoff.
         if (await sleepUnlessCancelled(backoff, isCancelled)) {
-          console.warn(`[DEBUG-SYNC] TRANG ${direction} bỏ retry vì người dùng bấm Dừng.`);
+          console.warn(`[DEBUG-LIST] TRANG ${direction} bỏ retry vì người dùng bấm Dừng.`);
           throw err;
         }
         continue;
@@ -1698,7 +1688,7 @@ async function fetchListPagePaced(
             ? `HẾT NGÂN SÁCH ${Math.round(budgetMs / 1000)}s cho 1 trang`
             : "lỗi thật (permanent)";
       console.error(
-        `[DEBUG-SYNC] TRANG ${direction} DỪNG sau ${attempt} lần thử — ${why}. Lỗi: ${msg}`,
+        `[DEBUG-LIST] TRANG ${direction} DỪNG sau ${attempt} lần thử — ${why}. Lỗi: ${msg}`,
       );
       throw err; // caller đánh dấu partial đúng lý do
     }

@@ -53,6 +53,13 @@ export function getUpdateRunStatus(direction: InvoiceDirection): Promise<UpdateR
 
 /** Nhịp poll tiến độ — 2s đủ mượt mà không dội BE (lượt có thể kéo hàng chục phút). */
 const POLL_MS = 2000;
+/**
+ * Số nhịp poll LỖI LIÊN TIẾP tối đa trước khi bỏ cuộc (~10s). Chập mạng 1-2 nhịp là chuyện thường
+ * nên phải bỏ qua, nhưng BE chết/mất mạng hẳn mà cứ `continue` thì vòng lặp không bao giờ thoát:
+ * toast "Đang tải…" treo vĩnh viễn và FE poll mãi. Bỏ cuộc rồi báo lỗi, lượt vẫn chạy ở BE và
+ * người dùng mở lại tab là nối lại được.
+ */
+const MAX_POLL_FAILS = 5;
 const sleepMs = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
 const DIR_LABEL: Record<InvoiceDirection, string> = {
@@ -112,6 +119,7 @@ export async function pollUpdateRunToast(
   const toastId = toast.loading(renderProgress(direction, initial));
   let st = initial;
   let lastSeen = "";
+  let fails = 0;
   try {
     for (;;) {
       if (opts.isStale()) {
@@ -129,16 +137,23 @@ export async function pollUpdateRunToast(
       await sleepMs(POLL_MS);
       try {
         st = await getUpdateRunStatus(direction);
+        fails = 0;
       } catch (e) {
         // Lỗi mạng chập 1 nhịp poll -> thử lại nhịp sau, KHÔNG bỏ lượt (lượt vẫn chạy ở BE).
-        console.warn("[DEBUG-CAPNHAT][FE] Poll lỗi 1 nhịp, thử lại:", e);
+        // Nhưng lỗi LIÊN TIẾP quá ngưỡng = mất kết nối thật -> thoát, khỏi treo toast vĩnh viễn.
+        fails += 1;
+        console.warn(`[DEBUG-CAPNHAT][FE] Poll lỗi nhịp ${fails}/${MAX_POLL_FAILS}:`, e);
+        if (fails >= MAX_POLL_FAILS) throw e;
       }
     }
     const { render, type } = renderFinal(direction, st);
     toast.update(toastId, { render, type, isLoading: false, autoClose: 5000 });
   } catch (e) {
     toast.update(toastId, {
-      render: getErrorMessage(e, "Không theo dõi được tiến độ cập nhật."),
+      render: getErrorMessage(
+        e,
+        "Mất kết nối khi theo dõi tiến độ — lượt vẫn chạy ở máy chủ, mở lại tab để xem tiếp.",
+      ),
       type: "error",
       isLoading: false,
       autoClose: 4000,

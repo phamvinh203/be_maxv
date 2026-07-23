@@ -128,43 +128,12 @@ function mapInvoiceDatas(
 }
 
 /**
- * GET /api/v1/gdt/invoices/purchase|sold → tra cứu trực tiếp GDT rồi BE luôn lưu vào DB.
- * Auth app qua cookie httpOnly (apiFetch tự gửi); chỉ cần truyền `gdtToken` (header X-Gdt-Token).
- * Dùng: `useFetchGdtInvoicesMutation` (invoiceQueries) — nút "Cập nhật từ Thuế điện tử".
- */
-export async function getInvoices(
-  direction: InvoiceDirection,
-  gdtToken: string,
-  query: InvoiceQuery,
-): Promise<InvoiceResult> {
-  const params = buildInvoiceParams(direction, query);
-
-  const raw = await apiFetch<{
-    total?: number;
-    state?: string;
-    datas?: Array<Record<string, unknown>>;
-    saved?: number;
-    partial?: boolean;
-    message?: string;
-  }>(`/gdt/invoices/${direction}?${params.toString()}`, {
-    headers: { "X-Gdt-Token": gdtToken },
-  });
-
-  return {
-    total: raw.total,
-    state: raw.state,
-    saved: raw.saved,
-    partial: raw.partial,
-    message: raw.message,
-    datas: mapInvoiceDatas(direction, raw.datas),
-  };
-}
-
-/**
  * GET /api/v1/gdt/invoices/purchase|sold/saved → hóa đơn ĐÃ LƯU trong DB (không gọi GDT).
  * Auth app qua cookie httpOnly — không cần token GDT — nên xem lại dữ liệu cũ bất cứ lúc nào.
- * Trả về cùng shape với `getInvoices` để tái dùng mapping hiển thị.
  * Dùng: `useSavedInvoicesQuery` (invoiceQueries) — nạp bảng khi mở/lọc tab Hóa đơn.
+ *
+ * Việc LẤY MỚI từ GDT nay đi qua lượt chạy nền `api/updateRun.ts` (nút "Cập nhật từ Thuế điện tử"),
+ * không còn hàm gọi thẳng endpoint chặn nữa.
  */
 export async function getSavedInvoices(
   direction: InvoiceDirection,

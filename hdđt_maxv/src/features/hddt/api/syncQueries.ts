@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient, type QueryClient } from "@tanstack/react-query";
 import { useAuth } from "../../auth/useAuth";
-import { cancelSyncRun, clearSyncData, getSyncHistory, startSync, startSyncRun } from "./sync";
+import { cancelSyncRun, clearSyncData, getSyncHistory, startSyncRun } from "./sync";
 import { invoiceKeys } from "./invoiceQueries";
 import { statsKeys } from "./statsQueries";
 import type { SyncRequest } from "../types";
@@ -30,20 +30,6 @@ export function useSyncHistoryQuery(enabled: boolean) {
     queryKey: syncKeys.history(currentCompanyId),
     queryFn: () => getSyncHistory(),
     enabled: enabled && isAuthenticated && !!currentCompanyId,
-  });
-}
-
-/**
- * Chạy đồng bộ; onSuccess invalidate lịch sử để bảng tự cập nhật.
- * Dùng: `SyncInvoiceDialog.handleSync` — nút "Đồng bộ".
- */
-export function useStartSyncMutation() {
-  const { currentCompanyId } = useAuth();
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: (vars: { gdtToken: string; body: SyncRequest }) =>
-      startSync(vars.gdtToken, vars.body),
-    onSuccess: () => invalidateTenantInvoiceData(qc, currentCompanyId),
   });
 }
 

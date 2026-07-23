@@ -464,8 +464,12 @@ export async function soldDetailRunStatus(request: FastifyRequest, reply: Fastif
 //  "CẬP NHẬT TỪ THUẾ ĐIỆN TỬ" CHẠY NỀN (nút trên tab hóa đơn) — danh sách + chi tiết 1 lượt
 // ============================================================
 
-/** Tiến độ rỗng khi chiều này chưa từng chạy lượt cập nhật nào (FE khỏi phải xử lý null). */
-const EMPTY_UPDATE_RUN = {
+/**
+ * Tiến độ rỗng khi chiều này chưa từng chạy lượt cập nhật nào (FE khỏi phải xử lý null).
+ * Gắn kiểu tường minh để `tsc` bắt được ngay khi `UpdateRunStatus` thêm field — không có nó thì
+ * FE sẽ nhận object thiếu field, khác hẳn shape lúc lượt đang chạy.
+ */
+const EMPTY_UPDATE_RUN: GDTService.UpdateRunStatus = {
   active: false,
   phase: "",
   page: 0,
@@ -654,8 +658,9 @@ export async function startSyncRun(
   return reply.send(status);
 }
 
-/** Tiến độ rỗng khi công ty chưa từng chạy lượt nào (FE khỏi phải xử lý null). */
-const EMPTY_SYNC_RUN = {
+/** Tiến độ rỗng khi công ty chưa từng chạy lượt nào (FE khỏi phải xử lý null). Gắn kiểu để `tsc`
+ * bắt lệch shape khi `SyncRunStatus` đổi. */
+const EMPTY_SYNC_RUN: GDTService.SyncRunStatus = {
   active: false,
   phase: "",
   rows: 0,

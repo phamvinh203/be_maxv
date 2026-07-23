@@ -13,6 +13,12 @@ const GDT_TIMEOUT_MS = 30_000;
  */
 export const GDT_LIST_TIMEOUT_MS = 12_000;
 
+/**
+ * Bật log từng call GDT thành công (`DEBUG_GDT=1`). Mặc định TẮT: một lượt vài chục nghìn hóa đơn
+ * sinh ngần ấy dòng log cho thứ đã có tiến độ theo trang ở tầng service. Lỗi thì luôn log.
+ */
+const DEBUG_GDT = process.env.DEBUG_GDT === "1";
+
 /** Phiên bỏ dở (lấy captcha nhưng không login) tự hết hạn sau ngần này. */
 const COOKIE_TTL_MS = 5 * 60 * 1000;
 
@@ -97,8 +103,6 @@ export async function gdtFetch<T>(
     headers["Content-Type"] = "application/json";
   }
 
-  // [DEBUG-GDT] Log MỌI call GDT: thời gian phản hồi + status. Đây là chỗ duy nhất biết được
-  // 502/429 là do GDT trả về (upstream) hay do lỗi mạng phía mình. Bỏ khi đã tìm ra nguyên nhân.
   const startedAt = Date.now();
   const shortPath = path.split("?")[0];
 
@@ -111,6 +115,8 @@ export async function gdtFetch<T>(
       signal: rest.signal ?? AbortSignal.timeout(GDT_TIMEOUT_MS),
     });
   } catch (err) {
+    // Lỗi tầng fetch (mạng/timeout/abort) LUÔN log: hiếm, và là thứ phân biệt "GDT nuốt call" với
+    // "GDT trả lỗi" — engine ở trên chỉ thấy exception đã bị phân loại lại.
     console.error(
       `[DEBUG-GDT] ${shortPath} NÉM LỖI TẦNG FETCH sau ${Date.now() - startedAt}ms (mạng/timeout/abort):`,
       err instanceof Error ? `${err.name}: ${err.message}` : err,
@@ -119,13 +125,17 @@ export async function gdtFetch<T>(
   }
 
   const elapsed = Date.now() - startedAt;
-  if (response.ok) {
-    console.log(`[DEBUG-GDT] ${shortPath} -> ${response.status} (${elapsed}ms)`);
-  } else {
+  if (!response.ok) {
+    // Lỗi do GDT trả về: luôn log, số lượng ít và đây là bằng chứng "không phải BE/proxy mình lỗi".
     console.warn(
       `[DEBUG-GDT] ${shortPath} -> ${response.status} ${response.statusText} (${elapsed}ms) ` +
         `<- LỖI NÀY DO GDT TRẢ VỀ, không phải BE/proxy của mình`,
     );
+  } else if (DEBUG_GDT) {
+    // Call THÀNH CÔNG chỉ log khi bật cờ: lượt 60k hóa đơn sinh 60k dòng, mà `console.log` trên
+    // Windows ghi ĐỒNG BỘ (chặn event loop từng lần). Tiến độ từng trang đã có [DEBUG-CAPNHAT]/
+    // [DEBUG-SYNC] ở tầng service; dòng này chỉ cần khi soi từng call một.
+    console.log(`[DEBUG-GDT] ${shortPath} -> ${response.status} (${elapsed}ms)`);
   }
 
   if (captureCookies && cookieKey) {

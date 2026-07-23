@@ -78,6 +78,8 @@ function startTimer(): () => string {
 
 /** Nhịp poll tiến độ lượt đồng bộ nền — 2s đủ mượt mà không dội BE (lượt kéo hàng chục phút). */
 const SYNC_POLL_INTERVAL_MS = 2000;
+/** Số nhịp poll LỖI LIÊN TIẾP tối đa trước khi bỏ theo dõi (~10s) — xem lý do ở chỗ bắt lỗi. */
+const MAX_POLL_FAILS = 5;
 const sleepMs = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
 const DIRECTION_LABEL: Record<SyncDirection, string> = {
@@ -205,6 +207,7 @@ export default function SyncInvoiceDialog({ open, onClose }: Props) {
     const isStale = () => companyIdRef.current !== startedCompanyId;
 
     let status: SyncRunStatus;
+    let fails = 0;
     try {
       for (;;) {
         await sleepMs(SYNC_POLL_INTERVAL_MS);
@@ -212,9 +215,17 @@ export default function SyncInvoiceDialog({ open, onClose }: Props) {
         if (isStale()) return;
         try {
           status = await getSyncRunStatus();
+          fails = 0;
         } catch (e) {
           // Lỗi mạng chập 1 nhịp poll -> thử lại nhịp sau, KHÔNG bỏ lượt (lượt vẫn chạy ở BE).
-          console.warn("[DEBUG-SYNC][FE] Poll lỗi 1 nhịp, thử lại:", e);
+          // Nhưng lỗi LIÊN TIẾP quá ngưỡng = mất kết nối thật: phải thoát, nếu không vòng lặp quay
+          // mãi, `syncing` kẹt true và nút Đồng bộ khóa vĩnh viễn cho tới khi F5.
+          fails += 1;
+          console.warn(`[DEBUG-SYNC][FE] Poll lỗi nhịp ${fails}/${MAX_POLL_FAILS}:`, e);
+          if (fails >= MAX_POLL_FAILS) {
+            setError("Mất kết nối khi theo dõi tiến độ — lượt vẫn chạy ở máy chủ, mở lại cửa sổ này để xem tiếp.");
+            return;
+          }
           continue;
         }
         setRunStatus(status);
