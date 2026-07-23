@@ -382,11 +382,20 @@ function InvoiceTablePanel({ direction, active }: InvoiceTablePanelProps) {
     if (updatePollingRef.current) return;
     updatePollingRef.current = true;
     setUpdateRunning(true);
+    // Bảng đọc TOÀN BỘ danh sách (không giới hạn dòng) nên mỗi lần invalidate là một lượt refetch
+    // + map lại vài nghìn dòng. Tiến độ đổi liên tục -> invalidate mỗi nhịp 2s sẽ nạp lại bảng hàng
+    // nghìn lần cho một lượt dài. Giãn ra 10s: cột "T.thái tải" vẫn điền dần, và `onFinish` luôn
+    // nạp lại lần cuối nên không bỏ sót kết quả.
+    let lastInvalidateAt = 0;
     try {
       await pollUpdateRunToast(direction, started, {
         // Đổi công ty giữa chừng -> ngừng poll (id hóa đơn thuộc tenant cũ, sai ở tenant mới).
         isStale: () => runIdRef.current !== startRun,
-        onProgress: invalidateSavedList,
+        onProgress: () => {
+          if (Date.now() - lastInvalidateAt < 10_000) return;
+          lastInvalidateAt = Date.now();
+          invalidateSavedList();
+        },
         onFinish: () => {
           if (runIdRef.current === startRun) invalidateSavedAll();
         },

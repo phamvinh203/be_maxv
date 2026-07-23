@@ -1,6 +1,6 @@
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
 import { useAuth } from "../../auth/useAuth";
-import { getInvoices, getSavedInvoices } from "./gdt";
+import { getSavedInvoices } from "./gdt";
 import type { InvoiceDirection, InvoiceQuery } from "../types";
 
 // Khóa gắn `companyId` (công ty đang chọn) vì hóa đơn nằm ở DB riêng của từng tenant —
@@ -35,20 +35,3 @@ export function useSavedInvoicesQuery(
   });
 }
 
-/**
- * Tra cứu GDT (BE luôn lưu vào DB) rồi invalidate query "đã lưu" của cùng chiều để
- * bảng tự nạp lại từ DB. Trả về kết quả GDT (có `saved`) cho nơi gọi hiển thị.
- * Dùng: `InvoiceTablePanel.handleFetchGdt` — nút "Cập nhật từ Thuế điện tử".
- */
-export function useFetchGdtInvoicesMutation(direction: InvoiceDirection) {
-  const { currentCompanyId } = useAuth();
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: (vars: { gdtToken: string; query: InvoiceQuery }) =>
-      getInvoices(direction, vars.gdtToken, vars.query),
-    onSuccess: () =>
-      qc.invalidateQueries({
-        queryKey: invoiceKeys.savedByDirection(currentCompanyId, direction),
-      }),
-  });
-}

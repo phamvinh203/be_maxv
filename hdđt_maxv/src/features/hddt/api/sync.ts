@@ -1,34 +1,10 @@
 import { apiFetch } from "../../../lib/http";
-import type {
-  ClearSyncResult,
-  SyncLog,
-  SyncRequest,
-  SyncResult,
-  SyncRunStatus,
-} from "../types";
-
-/**
- * POST /gdt/sync — chạy đồng bộ DANH SÁCH 1 khoảng ngày (BE lặp hết trang GDT + soát/bổ sung DB +
- * ghi lịch sử). KHÔNG tự tải chi tiết: FE tự lái sau khi có kết quả (startDetailRun + poll) theo từng
- * chiều, giống nút "Cập nhật từ Thuế điện tử". Auth app qua cookie httpOnly; chỉ truyền `gdtToken`.
- * Trả MẢNG kết quả — 1 phần tử/chiều (direction="all" -> 2: mua vào + bán ra), kèm số liệu đối chiếu
- * (`daCo`/`boSung`) để hiện toast. Dùng: `useStartSyncMutation`.
- */
-export async function startSync(
-  gdtToken: string,
-  body: SyncRequest,
-): Promise<SyncResult[]> {
-  return apiFetch<SyncResult[]>("/gdt/sync", {
-    method: "POST",
-    headers: { "X-Gdt-Token": gdtToken },
-    body: JSON.stringify(body),
-  });
-}
+import type { ClearSyncResult, SyncLog, SyncRequest, SyncRunStatus } from "../types";
 
 /**
  * POST /gdt/sync/run — bắt đầu lượt đồng bộ CHẠY NỀN ở BE, trả tiến độ NGAY (~50ms) thay vì chờ
- * hết lượt. FE poll `getSyncRunStatus` tới khi `active=false`. Đây là luồng thay thế `startSync`:
- * lượt đồng bộ dài hàng chục phút, giữ request mở lâu như vậy sẽ bị proxy cắt thành 502.
+ * hết lượt. FE poll `getSyncRunStatus` tới khi `active=false`: lượt đồng bộ dài hàng chục phút,
+ * giữ một request mở lâu như vậy sẽ bị proxy cắt thành 502.
  * BE từ chối chạy chồng: đang có lượt thì trả lại chính lượt đó. Dùng: `useStartSyncRunMutation`.
  */
 export async function startSyncRun(

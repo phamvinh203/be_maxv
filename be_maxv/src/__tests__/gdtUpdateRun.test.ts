@@ -72,6 +72,26 @@ test("lượt mới THAY lượt cũ; lượt cũ kết thúc sau không đè tr
   assert.equal(newRun.active, false);
 });
 
+test("work của lượt cũ thấy isStale=true ngay khi có lượt mới (để tự thoát, khỏi dội GDT)", async () => {
+  const key = "test-tenant-stale";
+  const hold = deferred();
+  let staleWhileRunning: boolean | undefined;
+
+  startUpdateRunWith(key, "sold", async (_st, isStale) => {
+    staleWhileRunning = isStale(); // trước khi có lượt mới -> false
+    await hold.promise;
+    staleWhileRunning = isStale(); // sau khi lượt mới thay thế -> true
+  });
+  await tick();
+  assert.equal(staleWhileRunning, false);
+
+  startUpdateRunWith(key, "sold", async () => {});
+  hold.resolve();
+  await tick();
+
+  assert.equal(staleWhileRunning, true, "lượt cũ phải nhận biết đã bị thay thế để dừng quét GDT");
+});
+
 test("khóa tách theo chiều: lượt bán ra không ảnh hưởng mua vào", async () => {
   const key = "test-tenant-direction";
   const hold = deferred();
