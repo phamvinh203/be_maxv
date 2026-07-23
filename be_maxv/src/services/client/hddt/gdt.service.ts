@@ -22,6 +22,7 @@ import {
   schedule as pacerSchedule,
   reportOk as pacerReportOk,
   reportRateLimited as pacerReportRateLimited,
+  getIntervalMs as pacerIntervalMs,
 } from "./gdtPacer";
 
 /** "yyyy-MM-dd" (input FE) -> "dd/MM/yyyy" (định dạng GDT yêu cầu trong tham số `search`). */
@@ -1649,12 +1650,12 @@ async function fetchListPagePaced(
   for (;;) {
     attempt += 1;
     try {
-      const page = await pacerSchedule(tenantKey, () =>
+      const page = await pacerSchedule(tenantKey, "list", () =>
         direction === "purchase"
           ? getPurchaseInvoices(gdtToken, query)
           : getSoldInvoices(gdtToken, query),
       );
-      pacerReportOk(tenantKey);
+      pacerReportOk(tenantKey, "list");
       return page;
     } catch (err) {
       // [DEBUG-GDT] Phân loại lỗi: "auth" (token hết hạn) / "transient" (GDT nuốt hoặc 429/5xx) /
@@ -1667,7 +1668,7 @@ async function fetchListPagePaced(
       const backoff = Math.min(15_000, 1000 * 2 ** (attempt - 1));
 
       if (kind === "transient" && leftMs > backoff && !isCancelled?.()) {
-        pacerReportRateLimited(tenantKey);
+        pacerReportRateLimited(tenantKey, "list");
         console.warn(
           `[DEBUG-LIST] TRANG ${direction} lỗi TẠM THỜI lần ${attempt} ` +
             `(còn ${Math.round(leftMs / 1000)}s ngân sách), nghỉ ${backoff}ms rồi thử lại. Lỗi: ${msg}`,
@@ -1735,6 +1736,13 @@ export function runDetailFetch(
     OR: [{ tt_tai: null }, { tt_tai: "error" }],
   };
 
+  // [ĐO TỐC ĐỘ] Số lần retry lỗi tạm thời + mốc của checkpoint gần nhất — để log ms THỰC TẾ trên mỗi
+  // hóa đơn, tách bạch với nhịp lý thuyết của pacer. Đây là số liệu để quyết định có nên nâng
+  // concurrency làn detail hay không (xem `Lane` trong gdtPacer).
+  let retries = 0;
+  let lastMarkAt = Date.now();
+  let lastMarkDone = 0;
+
   // Chạy nền: caller trả về ngay, FE poll `status`. Lỗi tổng thể (vd đọc DB) -> đóng lượt.
   // Giữ promise của lượt để caller nào cần ĐỢI thì await `done` (lượt "Cập nhật" hợp nhất 2 pha
   // dùng cái này để biết pha chi tiết đã xong) — vẫn không chặn nơi gọi thông thường.
@@ -1748,7 +1756,8 @@ export function runDetailFetch(
       });
       status.total = candidates.length;
       console.log(
-        `[gdt.detailRun] ${direction} BẮT ĐẦU: ${status.total} hóa đơn cần tải chi tiết.`,
+        `[gdt.detailRun] ${direction} BẮT ĐẦU: ${status.total} hóa đơn cần tải chi tiết ` +
+          `(nhịp làn detail hiện tại ${Math.round(pacerIntervalMs(tenantKey, "detail"))}ms/HĐ).`,
       );
 
       for (const row of candidates) {
@@ -1757,7 +1766,7 @@ export function runDetailFetch(
         for (;;) {
           attempt += 1;
           try {
-            const detail = await pacerSchedule(tenantKey, () =>
+            const detail = await pacerSchedule(tenantKey, "detail", () =>
               getInvoiceDetail(token, {
                 nbmst: row.nbmst,
                 khhdon: row.khhdon,
@@ -1770,7 +1779,7 @@ export function runDetailFetch(
               where: { id: row.id },
               data: { detail: detail as Prisma.InputJsonValue, tt_tai: "OK" },
             });
-            pacerReportOk(tenantKey);
+            pacerReportOk(tenantKey, "detail");
             status.ok += 1;
             break;
           } catch (err) {
@@ -1785,7 +1794,8 @@ export function runDetailFetch(
               return;
             }
             if (kind === "transient" && attempt < MAX_DETAIL_RETRY) {
-              pacerReportRateLimited(tenantKey);
+              pacerReportRateLimited(tenantKey, "detail");
+              retries += 1;
               await engineSleep(Math.min(5000, 500 * 2 ** (attempt - 1)));
               continue;
             }
@@ -1803,10 +1813,17 @@ export function runDetailFetch(
           }
         }
         status.done += 1;
-        // Log tiến độ mỗi 20 hóa đơn để theo dõi lượt chạy ở terminal BE.
+        // Log tiến độ mỗi 20 hóa đơn để theo dõi lượt chạy ở terminal BE — kèm tốc độ THỰC TẾ của
+        // đoạn vừa rồi và nhịp pacer hiện hành, để thấy ngay lượt đang bị giãn nhịp hay đang chạy sàn.
         if (status.done % 20 === 0) {
+          const now = Date.now();
+          const perInvoice = Math.round((now - lastMarkAt) / (status.done - lastMarkDone));
+          lastMarkAt = now;
+          lastMarkDone = status.done;
           console.log(
-            `[gdt.detailRun] ${direction} tiến độ ${status.done}/${status.total} (ok ${status.ok}, lỗi ${status.err}).`,
+            `[gdt.detailRun] ${direction} tiến độ ${status.done}/${status.total} ` +
+              `(ok ${status.ok}, lỗi ${status.err}) — ${perInvoice}ms/HĐ, ` +
+              `nhịp pacer ${Math.round(pacerIntervalMs(tenantKey, "detail"))}ms, retry ${retries}.`,
           );
         }
       }
@@ -1821,10 +1838,14 @@ export function runDetailFetch(
       if (detailRunGen.get(key) === gen) {
         status.active = false;
         status.finishedAt = Date.now();
+        const elapsed = status.finishedAt - status.startedAt;
+        // Trung bình ms/HĐ của CẢ lượt: con số một dòng để so sánh giữa các lượt và giữa các MST.
+        const avg = status.done > 0 ? Math.round(elapsed / status.done) : 0;
         console.log(
           `[gdt.detailRun] ${direction} XONG: ok ${status.ok}/${status.total}, lỗi ${status.err}${
             status.authExpired ? " (dừng vì token GDT hết hạn)" : ""
-          }.`,
+          } — ${Math.round(elapsed / 1000)}s cho ${status.done} HĐ (${avg}ms/HĐ), ` +
+            `retry ${retries}, nhịp pacer cuối ${Math.round(pacerIntervalMs(tenantKey, "detail"))}ms.`,
         );
       }
     }
