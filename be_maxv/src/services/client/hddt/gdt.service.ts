@@ -4,6 +4,7 @@ import {
   gdtFetch,
   renameCookies,
   GDT_LIST_TIMEOUT_MS,
+  GdtHttpError,
 } from "../../../config/gdt-client";
 import {
   CaptchaResponse,
@@ -81,6 +82,23 @@ export async function login(body: LoginRequest) {
 }
 
 /**
+ * Số hóa đơn xin GDT trả về mỗi trang danh sách.
+ *
+ * ĐỪNG NÂNG LÊN — đã thử và GDT từ chối. Số 50 ban đầu chỉ là chép lại từ request của chính cổng
+ * hoadondientu (bảng của cổng hiển thị 50 dòng/trang) chứ không kèm số đo nào, nên đã thử `size=200`
+ * để rút ngắn pha danh sách (ít trang hơn -> ít call hơn -> ít cơ hội bị GDT "nuốt" hơn).
+ *
+ * Kết quả đo 23/07/2026: GDT trả `500 Internal Server Error` chỉ sau ~63ms, lặp lại nhất quán qua
+ * nhiều lần thử. Trả lỗi nhanh như vậy nghĩa là bị TỪ CHỐI THAM SỐ ngay khi parse, không phải quá
+ * tải — GDT cũng không âm thầm cắt về 50 mà chặn hẳn. Nếu sau này muốn dò lại (vd size=100), dấu
+ * hiệu nhận biết bị từ chối chính là 500 + thời gian phản hồi vài chục ms.
+ *
+ * LƯU Ý khi dò: `classifyGdtError` xếp 5xx vào "transient" nên một size không hợp lệ sẽ bị RETRY
+ * tới hết ngân sách 10 phút/trang thay vì dừng ngay — nhớ theo dõi log và dừng lượt bằng tay.
+ */
+const GDT_LIST_PAGE_SIZE = "50";
+
+/**
  * Lấy danh sách hóa đơn đầu vào (mua vào) — tương đương bước đầu của
  * `ConvertInput` bên bản C# (chỉ gọi API lấy danh sách, chưa lưu DB/tải chi tiết).
  */
@@ -106,7 +124,11 @@ export async function getPurchaseInvoices(
     .filter(Boolean)
     .join(";");
 
-  const params = new URLSearchParams({ sort: "tdlap:desc", size: "50", search });
+  const params = new URLSearchParams({
+    sort: "tdlap:desc",
+    size: GDT_LIST_PAGE_SIZE,
+    search,
+  });
   if (query.state) params.set("state", query.state);
 
   return gdtFetch<PurchaseInvoiceResponse>(`${path}?${params.toString()}`, {
@@ -139,7 +161,11 @@ export async function getSoldInvoices(token: string, query: SoldInvoiceQuery) {
     .filter(Boolean)
     .join(";");
 
-  const params = new URLSearchParams({ sort: "tdlap:desc", size: "50", search });
+  const params = new URLSearchParams({
+    sort: "tdlap:desc",
+    size: GDT_LIST_PAGE_SIZE,
+    search,
+  });
   if (query.state) params.set("state", query.state);
 
   return gdtFetch<SoldInvoiceResponse>(`${path}?${params.toString()}`, {
@@ -1576,14 +1602,41 @@ export function getDetailRunStatus(
 const engineSleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
 
 /**
- * Phân loại lỗi GDT theo MÃ STATUS (không match chuỗi trong body — tránh nhận nhầm khi body chứa
- * "timeout"/"network"). `gdtFetch` ném "GDT API Error: <status> …"; lỗi mạng/timeout của fetch
- * không có tiền tố đó.
- *  - "auth"      : 401/403 -> token GDT hết hạn/không hợp lệ -> DỪNG lượt (đừng đánh lỗi giả).
- *  - "transient" : 429/5xx hoặc lỗi mạng/timeout -> đáng retry.
- *  - "permanent" : còn lại (vd 400/404) -> lỗi thật của hóa đơn.
+ * Ngưỡng coi một 5xx là "GDT từ chối tham số" thay vì "GDT quá tải".
+ *
+ * GDT dùng 500 cho CẢ HAI, nhưng thời gian phản hồi tách bạch chúng rất rõ: từ chối tham số thì lỗi
+ * ngay khi vừa parse request (đo được 63ms khi thử `size=200` ngày 23/07/2026), còn quá tải thật thì
+ * server phải làm việc một lúc mới gục. 500ms là mức ở giữa, cách xa cả hai phía.
  */
-function classifyGdtError(err: unknown): "auth" | "transient" | "permanent" {
+const FAST_5XX_PERMANENT_MS = 500;
+
+/**
+ * Phân loại lỗi GDT theo MÃ STATUS (không match chuỗi trong body — tránh nhận nhầm khi body chứa
+ * "timeout"/"network"). `gdtFetch` ném `GdtHttpError` (có `status` + `elapsedMs`) khi GDT trả lỗi;
+ * lỗi mạng/timeout của fetch là Error thường.
+ *  - "auth"      : 401/403 -> token GDT hết hạn/không hợp lệ -> DỪNG lượt (đừng đánh lỗi giả).
+ *  - "transient" : 429, 5xx CHẬM, hoặc lỗi mạng/timeout -> đáng retry.
+ *  - "permanent" : còn lại (400/404) và 5xx NHANH -> retry bao nhiêu lần cũng ra y hệt.
+ *
+ * Vì sao tách 5xx theo thời gian: trước đây MỌI 5xx đều là "transient", nên một request sai vĩnh
+ * viễn (tham số GDT không chấp nhận) bị retry tới hết ngân sách 10 phút/trang với backoff 15s —
+ * người dùng chỉ thấy app treo, không biết vì sao. Nay 500 trả về trong vài chục ms được coi là lỗi
+ * thật: lượt dừng ngay, `fetchAndSaveInvoicesInRange` đánh `partial` kèm message của GDT để người
+ * dùng đọc được lý do. Đổi lại, nếu GDT có lúc 500 nhanh do trục trặc thoáng qua thì mình dừng sớm
+ * thay vì thử lại — chấp nhận được, vì bấm lại là chạy tiếp phần thiếu (upsert idempotent).
+ */
+export function classifyGdtError(err: unknown): "auth" | "transient" | "permanent" {
+  if (err instanceof GdtHttpError) {
+    if (err.status === 401 || err.status === 403) return "auth";
+    if (err.status === 429) return "transient";
+    if (err.status >= 500 && err.status <= 599) {
+      return err.elapsedMs < FAST_5XX_PERMANENT_MS ? "permanent" : "transient";
+    }
+    return "permanent";
+  }
+
+  // Không phải GdtHttpError -> lỗi tầng fetch (mạng/timeout/abort), hoặc lỗi đã mất kiểu khi đi qua
+  // ranh giới nào đó. Giữ nhánh dò chuỗi làm lưới an toàn cho trường hợp thứ hai.
   const msg = err instanceof Error ? err.message : String(err);
   const m = msg.match(/GDT API Error:\s*(\d+)/);
   if (m) {
@@ -1592,7 +1645,6 @@ function classifyGdtError(err: unknown): "auth" | "transient" | "permanent" {
     if (status === 429 || (status >= 500 && status <= 599)) return "transient";
     return "permanent";
   }
-  // Không có tiền tố -> lỗi tầng fetch (mạng/timeout/abort).
   if (/timeout|fetch failed|ECONN|socket|network|abort/i.test(msg)) return "transient";
   return "permanent";
 }
