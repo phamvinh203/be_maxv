@@ -1,5 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
-import { getTaxPayer, LOOKUP_MST_REGEX } from "./taxPayerApi";
+import { MST_LOOKUP_REGEX } from "../mst";
+import { getTaxPayer } from "./taxPayerApi";
 
 /**
  * Tra thông tin công ty theo MST để điền sẵn form thêm công ty.
@@ -15,7 +16,7 @@ export function useTaxPayerQuery(mst: string, enabled: boolean) {
   return useQuery({
     queryKey: ["tax-payer", mst],
     queryFn: () => getTaxPayer(mst),
-    enabled: enabled && LOOKUP_MST_REGEX.test(mst),
+    enabled: enabled && MST_LOOKUP_REGEX.test(mst),
     retry: false,
     staleTime: Infinity,
   });

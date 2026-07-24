@@ -1,6 +1,7 @@
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery } from "@tanstack/react-query";
 import { useAuth } from "../../auth/useAuth";
 import {
+  companyKeys,
   createCompany,
   deleteCompany,
   listCompanies,
@@ -12,34 +13,29 @@ import type {
   UpdateCompanyPayload,
 } from "../types";
 
-export const companyKeys = {
-  /** Prefix cho invalidate; query thực tế gắn thêm userId (danh sách theo từng user). */
-  all: ["companies"] as const,
-};
-
-/** Danh sách công ty chi tiết (tab "Quản lý công ty") — gắn userId để không rò giữa các user. */
+/**
+ * Danh sách công ty chi tiết (tab "Quản lý công ty") — gắn userId để không rò giữa các user.
+ * `AuthContext.refreshCompanies` ghi vào ĐÚNG key này, nên bảng ở đây và menu chuyển công ty
+ * trên header là hai người quan sát cùng một entry cache.
+ */
 export function useCompaniesQuery() {
   const { isAuthenticated, user } = useAuth();
   return useQuery({
-    queryKey: [...companyKeys.all, user?.id],
+    queryKey: companyKeys.list(user?.id),
     queryFn: () => listCompanies(),
     enabled: isAuthenticated,
   });
 }
 
 /**
- * Sau khi tạo/sửa/xóa công ty: vừa invalidate danh sách của tab này, vừa gọi
- * `refreshCompanies` để đồng bộ danh sách gọn ở AuthContext (header/menu chuyển công ty).
- * `refreshCompanies` được nuốt lỗi để không làm hỏng `onSuccess` sau khi ghi đã thành công.
+ * Sau khi tạo/sửa/xóa công ty: gọi `refreshCompanies` để nạp lại danh sách. Vì nó fetch qua cache
+ * dùng chung nên MỘT lượt `GET /companies` cập nhật cả AuthContext lẫn `useCompaniesQuery` —
+ * trước đây invalidate + refresh chạy song song làm gọi endpoint này hai lần mỗi lần ghi.
+ * Nuốt lỗi để không làm hỏng `onSuccess` sau khi ghi đã thành công.
  */
 function useInvalidateCompanies() {
-  const qc = useQueryClient();
   const { refreshCompanies } = useAuth();
-  return () =>
-    Promise.all([
-      qc.invalidateQueries({ queryKey: companyKeys.all }),
-      refreshCompanies().catch(() => {}),
-    ]);
+  return () => refreshCompanies().catch(() => {});
 }
 
 /**
@@ -49,27 +45,18 @@ function useInvalidateCompanies() {
  * `activate: false` để không đá owner khỏi MST đang làm việc.
  */
 export function useCreateCompanyMutation() {
-  const qc = useQueryClient();
-  const { companies, refreshCompanies, setActiveCompany } = useAuth();
+  const { companies, setActiveCompany } = useAuth();
   const invalidate = useInvalidateCompanies();
   const isFirstCompany = companies.length === 0;
 
   return useMutation({
     mutationFn: (payload: CreateCompanyPayload) => createCompany(payload, isFirstCompany),
     onSuccess: async (data) => {
-      if (!data.activeDonViId) {
-        await invalidate();
-        return;
-      }
-      setActiveCompany(data.activeDonViId);
-      // Nuốt lỗi như `useInvalidateCompanies`: ghi đã thành công rồi, đừng để bước đồng bộ
-      // danh sách làm `onSuccess` reject và biến mutation thành lỗi.
-      await refreshCompanies().catch(() => {});
-      // Cache cũ sinh ra lúc chưa có công ty (query theo tenant đều 403) — làm mới TẤT CẢ để
-      // mọi màn nạp lại dưới tenant mới, thay cho việc phải tải lại cả trang.
-      // Không dùng `qc.clear()`: nó xóa luôn mutation cache nên `onSuccess` mà nơi gọi truyền
-      // vào `mutate()` (đóng dialog) có thể không chạy. Không await để dialog đóng ngay.
-      qc.invalidateQueries().catch(() => {});
+      // Đặt TRƯỚC `invalidate()`: mọi query theo tenant đều gắn `currentCompanyId` vào queryKey và
+      // `enabled: !!currentCompanyId` (xem invoiceQueries/statsQueries/syncQueries), nên đổi id là
+      // chúng tự đổi key và nạp lần đầu — không cần dọn cache thủ công.
+      if (data.activeDonViId) setActiveCompany(data.activeDonViId);
+      await invalidate();
     },
   });
 }

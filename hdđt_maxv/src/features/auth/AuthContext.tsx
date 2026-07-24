@@ -4,7 +4,11 @@ import {
   logout as logoutApi,
   getMe,
 } from "./api/authApi";
-import { listCompanies, switchCompany as switchCompanyApi } from "../company/api/companyApi";
+import {
+  companyKeys,
+  listCompanies,
+  switchCompany as switchCompanyApi,
+} from "../company/api/companyApi";
 import { queryClient } from "../../lib/queryClient";
 import { setSessionExpiredHandler } from "../../lib/http";
 import { AuthContext } from "./context";
@@ -69,19 +73,30 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return () => setSessionExpiredHandler(null);
   }, [resetSession]);
 
+  /**
+   * Nạp lại danh sách công ty QUA cache của TanStack Query thay vì gọi thẳng `listCompanies`:
+   * `useCompaniesQuery` (tab Quản lý công ty) quan sát đúng key này, nên một lượt fetch phục vụ
+   * cả header lẫn bảng — trước đây mỗi lần thêm/sửa/xóa gọi `GET /companies` hai lần.
+   * `staleTime: 0` để ép lấy mới: mặc định toàn app là 30s, mà đây luôn chạy ngay sau một lượt ghi.
+   */
   const refreshCompanies = useCallback(async () => {
-    setCompanies(await listCompanies());
-  }, []);
+    setCompanies(
+      await queryClient.fetchQuery({
+        queryKey: companyKeys.list(user?.id),
+        queryFn: listCompanies,
+        staleTime: 0,
+      }),
+    );
+  }, [user?.id]);
 
   const switchCompany = useCallback(async (id: string) => {
     const data = await switchCompanyApi(id); // server đặt cookie access mới nhúng donViId mới
     setCurrentCompanyId(data.activeDonViId);
   }, []);
 
-  // POST /companies với activate=true đã kèm cookie mới trong response — chỉ cần đồng bộ state.
-  const setActiveCompany = useCallback((id: string) => {
-    setCurrentCompanyId(id);
-  }, []);
+  // POST /companies với activate=true đã kèm cookie mới trong response — chỉ cần đồng bộ state,
+  // không gọi API như `switchCompany`, nên dùng thẳng setter (identity đã ổn định sẵn).
+  const setActiveCompany = setCurrentCompanyId;
 
   const value = useMemo(
     () => ({

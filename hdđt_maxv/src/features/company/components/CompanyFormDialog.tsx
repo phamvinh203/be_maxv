@@ -10,11 +10,9 @@ import InputAdornment from "@mui/material/InputAdornment";
 import Typography from "@mui/material/Typography";
 import Alert from "@mui/material/Alert";
 import CircularProgress from "@mui/material/CircularProgress";
-// import ReceiptLongRounded from "@mui/icons-material/ReceiptLongRounded";
-import { useGdtSession } from "../../hddt/gdtSession/useGdtSession";
 import { getErrorMessage } from "../../../lib/errors";
-import DialogLoginHddt from "../../../components/dialogLoginHddt";
 import { type CompanyDetail } from "../types";
+import { MST_REGEX } from "../mst";
 import { useCreateCompanyMutation, useUpdateCompanyMutation } from "../api/companyQueries";
 import { useTaxPayerQuery } from "../api/taxPayerQueries";
 
@@ -34,15 +32,12 @@ interface Props {
   onboarding?: boolean;
 }
 
-const MST_REGEX = /^[0-9]{10}(-[0-9]{3})?$/;
-
 export default function CompanyFormDialog({
   open,
   onClose,
   company,
   onboarding = false,
 }: Props) {
-  const { setGdtToken } = useGdtSession();
   const isEdit = Boolean(company);
 
   const createMutation = useCreateCompanyMutation();
@@ -55,7 +50,6 @@ export default function CompanyFormDialog({
   const [sdt, setSdt] = useState("");
   const [loaiHinhKinhDoanh, setLoaiHinhKinhDoanh] = useState("");
   const [error, setError] = useState("");
-  const [gdtLoginOpen, setGdtLoginOpen] = useState(false);
   /** Giá trị ô MST sau debounce — tách khỏi `maSoThue` để mỗi phím gõ không đổi queryKey. */
   const [debouncedMst, setDebouncedMst] = useState("");
 
@@ -191,15 +185,6 @@ export default function CompanyFormDialog({
             fullWidth
           />
 
-          {/* <Button
-            variant="outlined"
-            startIcon={<ReceiptLongRounded />}
-            sx={{ textTransform: "none" }}
-            onClick={() => setGdtLoginOpen(true)}
-          >
-            Đăng nhập vào hóa đơn điện tử
-          </Button> */}
-
           {error && <Alert severity="error">{error}</Alert>}
         </Stack>
       </DialogContent>
@@ -211,13 +196,6 @@ export default function CompanyFormDialog({
           {submitting ? <CircularProgress size={20} color="inherit" /> : "Lưu"}
         </Button>
       </DialogActions>
-
-      <DialogLoginHddt
-        open={gdtLoginOpen}
-        onClose={() => setGdtLoginOpen(false)}
-        initialUsername={maSoThue.trim() || undefined}
-        onLoginSuccess={(token, mst) => setGdtToken(mst, token)}
-      />
     </Dialog>
   );
 }

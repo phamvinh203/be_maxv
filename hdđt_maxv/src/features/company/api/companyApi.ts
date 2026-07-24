@@ -7,6 +7,16 @@ import type {
 
 // Auth qua cookie httpOnly (apiFetch tự gửi kèm) — không truyền token qua tham số nữa.
 
+/**
+ * Key cache danh sách công ty. Đặt cạnh API (không nằm trong `companyQueries`) vì `AuthContext`
+ * cũng phải dựng đúng key này — cả header lẫn tab Quản lý công ty dùng CHUNG một entry cache,
+ * nên mỗi lần ghi chỉ tốn một `GET /companies`.
+ */
+export const companyKeys = {
+  /** Gắn userId để danh sách không rò giữa các phiên đăng nhập khác nhau. */
+  list: (userId: string | undefined) => ["companies", userId] as const,
+};
+
 /** GET /companies — danh sách công ty/MST user được phép (owner thấy hết của mình). */
 export function listCompanies(): Promise<CompanyDetail[]> {
   return apiFetchData<CompanyDetail[]>("/companies");
