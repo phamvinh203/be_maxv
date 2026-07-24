@@ -78,6 +78,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setCurrentCompanyId(data.activeDonViId);
   }, []);
 
+  // POST /companies với activate=true đã kèm cookie mới trong response — chỉ cần đồng bộ state.
+  const setActiveCompany = useCallback((id: string) => {
+    setCurrentCompanyId(id);
+  }, []);
+
   const value = useMemo(
     () => ({
       user,
@@ -89,6 +94,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       logout,
       refreshCompanies,
       switchCompany,
+      setActiveCompany,
     }),
     [
       user,
@@ -99,6 +105,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       logout,
       refreshCompanies,
       switchCompany,
+      setActiveCompany,
     ],
   );
 

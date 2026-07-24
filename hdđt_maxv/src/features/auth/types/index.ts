@@ -95,4 +95,9 @@ export interface AuthContextValue {
   refreshCompanies: () => Promise<void>;
   /** Đổi công ty đang làm việc — server cấp lại cookie access nhúng donViId mới. */
   switchCompany: (id: string) => Promise<void>;
+  /**
+   * Ghi nhận công ty đang chọn khi SERVER ĐÃ cấp cookie mới trong cùng response
+   * (tạo công ty đầu tiên với `activate: true`) — không gọi thêm API như `switchCompany`.
+   */
+  setActiveCompany: (id: string) => void;
 }

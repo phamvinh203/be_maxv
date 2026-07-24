@@ -6,15 +6,20 @@ import DialogActions from "@mui/material/DialogActions";
 import TextField from "@mui/material/TextField";
 import Button from "@mui/material/Button";
 import Stack from "@mui/material/Stack";
+import InputAdornment from "@mui/material/InputAdornment";
 import Typography from "@mui/material/Typography";
 import Alert from "@mui/material/Alert";
 import CircularProgress from "@mui/material/CircularProgress";
-import ReceiptLongRounded from "@mui/icons-material/ReceiptLongRounded";
+// import ReceiptLongRounded from "@mui/icons-material/ReceiptLongRounded";
 import { useGdtSession } from "../../hddt/gdtSession/useGdtSession";
 import { getErrorMessage } from "../../../lib/errors";
 import DialogLoginHddt from "../../../components/dialogLoginHddt";
 import { type CompanyDetail } from "../types";
 import { useCreateCompanyMutation, useUpdateCompanyMutation } from "../api/companyQueries";
+import { useTaxPayerQuery } from "../api/taxPayerQueries";
+
+/** Chờ người dùng gõ xong MST rồi mới tra cứu, tránh bắn request mỗi lần gõ một số. */
+const MST_LOOKUP_DEBOUNCE_MS = 500;
 
 interface Props {
   open: boolean;
@@ -51,6 +56,8 @@ export default function CompanyFormDialog({
   const [loaiHinhKinhDoanh, setLoaiHinhKinhDoanh] = useState("");
   const [error, setError] = useState("");
   const [gdtLoginOpen, setGdtLoginOpen] = useState(false);
+  /** Giá trị ô MST sau debounce — tách khỏi `maSoThue` để mỗi phím gõ không đổi queryKey. */
+  const [debouncedMst, setDebouncedMst] = useState("");
 
   useEffect(() => {
     if (!open) return;
@@ -62,7 +69,29 @@ export default function CompanyFormDialog({
     setSdt(company?.sdt ?? "");
     setLoaiHinhKinhDoanh(company?.loaiHinhKinhDoanh ?? "");
     setError("");
+    // Xóa luôn MST của lần mở trước, nếu không query cũ còn cache sẽ điền đè lên form vừa reset.
+    setDebouncedMst("");
   }, [open, company]);
+
+  useEffect(() => {
+    const timer = setTimeout(() => setDebouncedMst(maSoThue.trim()), MST_LOOKUP_DEBOUNCE_MS);
+    return () => clearTimeout(timer);
+  }, [maSoThue]);
+
+  // Chỉ tra khi đang tạo mới: lúc sửa thì ô MST khóa, không có gì để tra.
+  const lookup = useTaxPayerQuery(debouncedMst, open && !isEdit);
+  const taxPayer = lookup.data;
+  const lookupError = lookup.isError
+    ? getErrorMessage(lookup.error, "Không tra cứu được mã số thuế.")
+    : "";
+
+  useEffect(() => {
+    if (!taxPayer) return;
+    // Ghi đè cả khi người dùng đã gõ tay — dữ liệu cơ quan thuế là nguồn chuẩn.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setTenCongTy(taxPayer.name);
+    setDiaChi(taxPayer.address);
+  }, [taxPayer]);
 
   const handleSubmit = () => {
     setError("");
@@ -114,8 +143,23 @@ export default function CompanyFormDialog({
             onChange={(e) => setMaSoThue(e.target.value)}
             fullWidth
             required
+            autoFocus
             disabled={isEdit}
-            helperText={isEdit ? "Mã số thuế không thể thay đổi sau khi tạo." : undefined}
+            error={Boolean(lookupError)}
+            helperText={
+              isEdit
+                ? "Mã số thuế không thể thay đổi sau khi tạo."
+                : lookupError || "Nhập mã số thuế 10 số để tự động điền tên và địa chỉ."
+            }
+            slotProps={{
+              input: {
+                endAdornment: lookup.isFetching ? (
+                  <InputAdornment position="end">
+                    <CircularProgress size={18} />
+                  </InputAdornment>
+                ) : undefined,
+              },
+            }}
           />
           
           <TextField
@@ -123,7 +167,6 @@ export default function CompanyFormDialog({
             value={tenCongTy}
             onChange={(e) => setTenCongTy(e.target.value)}
             fullWidth
-            autoFocus
             required
           />
           
@@ -148,14 +191,14 @@ export default function CompanyFormDialog({
             fullWidth
           />
 
-          <Button
+          {/* <Button
             variant="outlined"
             startIcon={<ReceiptLongRounded />}
             sx={{ textTransform: "none" }}
             onClick={() => setGdtLoginOpen(true)}
           >
             Đăng nhập vào hóa đơn điện tử
-          </Button>
+          </Button> */}
 
           {error && <Alert severity="error">{error}</Alert>}
         </Stack>

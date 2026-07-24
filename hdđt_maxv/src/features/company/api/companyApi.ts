@@ -13,15 +13,22 @@ export function listCompanies(): Promise<CompanyDetail[]> {
 }
 
 /**
- * POST /companies — tạo công ty/MST mới. `activate: false` vì đang thêm từ màn Cài đặt
- * (owner có thể đang làm việc ở MST khác) — không đổi công ty đang chọn.
+ * POST /companies — tạo công ty/MST mới.
+ *
+ * `activate: true` (công ty ĐẦU TIÊN): server đặt cookie access mới nhúng `donViId` và trả
+ * `activeDonViId`. Bắt buộc phải có, vì `resolveTenantDb` bên BE đọc `donViId` từ token —
+ * thiếu nó thì mọi endpoint theo tenant (hóa đơn, đồng bộ...) trả 403.
+ *
+ * `activate: false` (thêm MST từ màn Cài đặt, owner đang làm việc ở MST khác): KHÔNG đụng
+ * token/refresh cookie hiện tại — tránh cửa sổ đua khi FE phải switch-back thủ công.
  */
 export function createCompany(
   payload: CreateCompanyPayload,
-): Promise<{ company: CompanyDetail }> {
-  return apiFetchData<{ company: CompanyDetail }>("/companies", {
+  activate: boolean,
+): Promise<{ company: CompanyDetail; activeDonViId?: string }> {
+  return apiFetchData<{ company: CompanyDetail; activeDonViId?: string }>("/companies", {
     method: "POST",
-    body: JSON.stringify({ ...payload, activate: false }),
+    body: JSON.stringify({ ...payload, activate }),
   });
 }
 
