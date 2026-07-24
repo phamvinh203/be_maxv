@@ -822,6 +822,80 @@ interface SyncRunControl {
 }
 
 /**
+ * Nhãn chiều hóa đơn dùng trong `sync_log.dien_giai` — khớp cách gọi trên UI (tab đầu vào/đầu ra).
+ * KHÔNG có `all`: mỗi dòng lịch sử luôn thuộc đúng 1 chiều (xem docblock `runSync`), nên kiểu hẹp
+ * ở đây để compiler chặn nếu sau này có ai ghi log với `direction="all"`.
+ */
+const DIRECTION_TEXT: Record<"purchase" | "sold", string> = {
+  purchase: "đầu vào",
+  sold: "đầu ra",
+};
+
+/**
+ * Diễn giải chuẩn cho 1 dòng lịch sử: `"<Hành động> hóa đơn <chiều>"`, nối lý do sau dấu gạch khi
+ * lượt chưa hoàn thành. Đây là thứ DUY NHẤT phân biệt dòng của nút "Đồng bộ từ Thuế" với nút
+ * "Cập nhật từ Thuế điện tử" — `sync_log` không có cột hành động riêng và cố ý không thêm.
+ *
+ * Nhận nguyên trạng thái lượt chạy (không nhận chuỗi lý do đã nấu sẵn) để quy ước "dở dang mà
+ * không có message thì ghi 'Chưa hoàn thành'" chỉ tồn tại một bản.
+ */
+function buildDienGiai(
+  action: "Đồng bộ" | "Cập nhật",
+  direction: "purchase" | "sold",
+  run: { partial: boolean; message?: string },
+): string {
+  const base = `${action} hóa đơn ${DIRECTION_TEXT[direction]}`;
+  const reason = run.message || (run.partial ? "Chưa hoàn thành" : "");
+  return reason ? `${base} — ${reason}` : base;
+}
+
+/**
+ * Bộ lọc `ketQuaHd` của tab -> cột `loai` của `sync_log`. Đây là ánh xạ NGƯỢC của `ketQuaVariants`
+ * trong `fetchAndSaveInvoicesInRange`: sửa chỗ đó mà quên chỗ này thì cột `loai` trong lịch sử sẽ
+ * sai lặng lẽ. Dùng: `writeUpdateSyncLog` — lượt "Cập nhật" không có sẵn khái niệm `loai`.
+ */
+function kindFromKetQuaHd(ketQuaHd?: string): SyncInvoiceKind {
+  if (!ketQuaHd) return "all"; // rỗng -> quét cả 2 nguồn
+  return ketQuaHd === "8" ? "only_ctt" : "except_ctt";
+}
+
+/**
+ * Dựng + ghi 1 dòng `sync_log`. CẢ nút "Đồng bộ từ Thuế" lẫn nút "Cập nhật từ Thuế điện tử" đều đi
+ * qua đây, để các quy ước của bảng chỉ tồn tại MỘT bản: `id` uuid, mốc 12:00 trưa cho nhãn ngày,
+ * ánh xạ `partial -> trang_thai`, và cách dựng `dien_giai`.
+ */
+function createSyncLogRow(
+  db: PrismaClient,
+  p: {
+    action: "Đồng bộ" | "Cập nhật";
+    direction: "purchase" | "sold";
+    loai: SyncInvoiceKind;
+    tuNgay: string;
+    denNgay: string;
+    total: number;
+    saved: number;
+    partial: boolean;
+    message?: string;
+  },
+) {
+  return db.sync_log.create({
+    data: {
+      id: randomUUID(),
+      // Nhãn hiển thị (không dùng để lọc) -> lưu ở 12:00 trưa để chênh lệch múi giờ
+      // server/người xem không làm nhảy sang ngày khác.
+      tu_ngay: new Date(`${p.tuNgay}T12:00:00`),
+      den_ngay: new Date(`${p.denNgay}T12:00:00`),
+      direction: p.direction,
+      loai: p.loai,
+      tong: p.total,
+      da_luu: p.saved,
+      trang_thai: p.partial ? "partial" : "done",
+      dien_giai: buildDienGiai(p.action, p.direction, p),
+    },
+  });
+}
+
+/**
  * Đồng bộ hóa đơn 1 khoảng ngày từ GDT vào DB tenant. GDT chỉ cho tìm ≤ 1 tháng/lần nên chia
  * khoảng thành các cửa sổ theo tháng; với mỗi nguồn (chiều × loại) × mỗi cửa sổ, lặp hết các
  * trang theo cursor `state`, upsert từng trang, cộng dồn tổng/đã lưu + đối chiếu đã có/thiếu.
@@ -995,20 +1069,16 @@ export async function runSync(
       message = "Đã dừng theo yêu cầu — phần đã lấy vẫn được giữ lại.";
     }
 
-    const log = await db().sync_log.create({
-      data: {
-        id: randomUUID(),
-        // Nhãn hiển thị (không dùng để lọc) -> lưu ở 12:00 trưa để chênh lệch múi giờ
-        // server/người xem không làm nhảy sang ngày khác.
-        tu_ngay: new Date(`${params.tuNgay}T12:00:00`),
-        den_ngay: new Date(`${params.denNgay}T12:00:00`),
-        direction: dir,
-        loai: params.loai,
-        tong: total,
-        da_luu: saved,
-        trang_thai: partial ? "partial" : "done",
-        dien_giai: message || (partial ? "Chưa hoàn thành" : "Đồng bộ thành công"),
-      },
+    const log = await createSyncLogRow(db(), {
+      action: "Đồng bộ",
+      direction: dir,
+      loai: params.loai,
+      tuNgay: params.tuNgay,
+      denNgay: params.denNgay,
+      total,
+      saved,
+      partial,
+      message,
     });
     // Trả kèm số liệu đối chiếu (KHÔNG lưu vào sync_log — chỉ để FE hiện toast tóm tắt).
     results.push({ ...log, daCo, boSung });
@@ -1115,6 +1185,7 @@ export async function fetchAndSaveInvoicesInRange(
   // GDT để hóa đơn máy tính tiền (`ttxly=8`) ở `/sco-query/invoices/...` riêng, nên gọi một mình
   // `/query/invoices/...` là bỏ sót sạch loại này (công ty bán lẻ hầu như chỉ có loại này -> tab
   // đầu ra ra rỗng). Người dùng chọn cụ thể một kết quả -> tôn trọng, chỉ quét đúng nguồn đó.
+  // Sửa dòng dưới thì phải sửa `kindFromKetQuaHd` (ánh xạ ngược, dùng cho cột `loai` của lịch sử).
   const ketQuaVariants: (string | undefined)[] = query.ketQuaHd ? [query.ketQuaHd] : [undefined, "8"];
   let total = 0;
   let saved = 0;
@@ -1316,6 +1387,36 @@ export function startUpdateRunWith(
 }
 
 /**
+ * Ghi 1 dòng `sync_log` cho lượt "Cập nhật từ Thuế điện tử" — dùng CHUNG bảng lịch sử với nút
+ * "Đồng bộ từ Thuế", phân biệt nhau bằng `dien_giai` ("Cập nhật hóa đơn đầu ra" vs "Đồng bộ ...").
+ *
+ * Nuốt lỗi: đây là lượt chạy NỀN và ghi lịch sử chỉ là phụ — để lỗi văng ra sẽ bị
+ * `startUpdateRunWith` bắt và gắn `status.error`, báo lượt thất bại dù hóa đơn đã lưu xong.
+ */
+async function writeUpdateSyncLog(
+  dbName: string,
+  direction: "purchase" | "sold",
+  query: PurchaseInvoiceQuery | SoldInvoiceQuery,
+  res: { total: number; saved: number; partial: boolean; message: string },
+): Promise<void> {
+  try {
+    await createSyncLogRow(getTenantDb(dbName), {
+      action: "Cập nhật",
+      direction,
+      loai: kindFromKetQuaHd(query.ketQuaHd),
+      tuNgay: query.tuNgay,
+      denNgay: query.denNgay,
+      ...res,
+    });
+  } catch (err) {
+    console.error(
+      `[DEBUG-CAPNHAT] Không ghi được sync_log cho lượt cập nhật ${direction}: ` +
+        `${err instanceof Error ? err.message : String(err)}`,
+    );
+  }
+}
+
+/**
  * Bắt đầu lượt "Cập nhật từ Thuế điện tử" CHẠY NỀN cho ĐÚNG 1 chiều + ĐÚNG bộ lọc của tab, rồi
  * trả tiến độ NGAY (FE poll `getUpdateRunStatus`). Lượt tự đi 2 pha: lấy/lưu DANH SÁCH, rồi tải
  * CHI TIẾT cho chính khoảng + bộ lọc đó — nên FE chỉ cần một vòng poll và một toast.
@@ -1348,6 +1449,13 @@ export function startUpdateRun(
     st.saved = res.saved;
     st.partial = res.partial;
     st.message = res.message;
+
+    // Ghi lịch sử NGAY sau pha danh sách: `tong`/`da_luu` là số của chính pha này, pha chi tiết
+    // không làm chúng đổi. Lượt đã bị lượt mới thay thế -> bỏ qua, tránh đẻ dòng rác mỗi lần
+    // người dùng bấm Cập nhật lại giữa chừng.
+    if (!isStale()) {
+      await writeUpdateSyncLog(dbName, direction, query, res);
+    }
 
     // Token hết hạn -> DỪNG: pha chi tiết dùng cùng token sẽ lỗi y hệt.
     if (res.authExpired) {

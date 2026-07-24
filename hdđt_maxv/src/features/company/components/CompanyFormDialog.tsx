@@ -6,26 +6,38 @@ import DialogActions from "@mui/material/DialogActions";
 import TextField from "@mui/material/TextField";
 import Button from "@mui/material/Button";
 import Stack from "@mui/material/Stack";
+import InputAdornment from "@mui/material/InputAdornment";
+import Typography from "@mui/material/Typography";
 import Alert from "@mui/material/Alert";
 import CircularProgress from "@mui/material/CircularProgress";
-import ReceiptLongRounded from "@mui/icons-material/ReceiptLongRounded";
-import { useGdtSession } from "../../hddt/gdtSession/useGdtSession";
 import { getErrorMessage } from "../../../lib/errors";
-import DialogLoginHddt from "../../../components/dialogLoginHddt";
 import { type CompanyDetail } from "../types";
+import { MST_REGEX } from "../mst";
 import { useCreateCompanyMutation, useUpdateCompanyMutation } from "../api/companyQueries";
+import { useTaxPayerQuery } from "../api/taxPayerQueries";
+
+/** Chờ người dùng gõ xong MST rồi mới tra cứu, tránh bắn request mỗi lần gõ một số. */
+const MST_LOOKUP_DEBOUNCE_MS = 500;
 
 interface Props {
   open: boolean;
   onClose: () => void;
   /** Có giá trị = sửa công ty này; không có = tạo mới. */
   company?: CompanyDetail;
+  /**
+   * Chế độ mời tạo công ty đầu tiên (user vừa đăng ký, chưa có công ty nào):
+   * thêm câu chào và đổi nhãn nút "Hủy" thành "Để sau". Chỉ khác về wording,
+   * logic tạo/sửa giữ nguyên.
+   */
+  onboarding?: boolean;
 }
 
-const MST_REGEX = /^[0-9]{10}(-[0-9]{3})?$/;
-
-export default function CompanyFormDialog({ open, onClose, company }: Props) {
-  const { setGdtToken } = useGdtSession();
+export default function CompanyFormDialog({
+  open,
+  onClose,
+  company,
+  onboarding = false,
+}: Props) {
   const isEdit = Boolean(company);
 
   const createMutation = useCreateCompanyMutation();
@@ -38,7 +50,8 @@ export default function CompanyFormDialog({ open, onClose, company }: Props) {
   const [sdt, setSdt] = useState("");
   const [loaiHinhKinhDoanh, setLoaiHinhKinhDoanh] = useState("");
   const [error, setError] = useState("");
-  const [gdtLoginOpen, setGdtLoginOpen] = useState(false);
+  /** Giá trị ô MST sau debounce — tách khỏi `maSoThue` để mỗi phím gõ không đổi queryKey. */
+  const [debouncedMst, setDebouncedMst] = useState("");
 
   useEffect(() => {
     if (!open) return;
@@ -50,7 +63,29 @@ export default function CompanyFormDialog({ open, onClose, company }: Props) {
     setSdt(company?.sdt ?? "");
     setLoaiHinhKinhDoanh(company?.loaiHinhKinhDoanh ?? "");
     setError("");
+    // Xóa luôn MST của lần mở trước, nếu không query cũ còn cache sẽ điền đè lên form vừa reset.
+    setDebouncedMst("");
   }, [open, company]);
+
+  useEffect(() => {
+    const timer = setTimeout(() => setDebouncedMst(maSoThue.trim()), MST_LOOKUP_DEBOUNCE_MS);
+    return () => clearTimeout(timer);
+  }, [maSoThue]);
+
+  // Chỉ tra khi đang tạo mới: lúc sửa thì ô MST khóa, không có gì để tra.
+  const lookup = useTaxPayerQuery(debouncedMst, open && !isEdit);
+  const taxPayer = lookup.data;
+  const lookupError = lookup.isError
+    ? getErrorMessage(lookup.error, "Không tra cứu được mã số thuế.")
+    : "";
+
+  useEffect(() => {
+    if (!taxPayer) return;
+    // Ghi đè cả khi người dùng đã gõ tay — dữ liệu cơ quan thuế là nguồn chuẩn.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setTenCongTy(taxPayer.name);
+    setDiaChi(taxPayer.address);
+  }, [taxPayer]);
 
   const handleSubmit = () => {
     setError("");
@@ -90,23 +125,45 @@ export default function CompanyFormDialog({ open, onClose, company }: Props) {
       </DialogTitle>
       <DialogContent>
         <Stack spacing={2} sx={{ pt: 1 }}>
-          <TextField
-            label="Tên công ty"
-            value={tenCongTy}
-            onChange={(e) => setTenCongTy(e.target.value)}
-            fullWidth
-            autoFocus
-            required
-          />
+          {onboarding && (
+            <Typography variant="body2" color="text.secondary">
+              Chào mừng! Hãy thêm công ty/hộ kinh doanh để bắt đầu sử dụng.
+            </Typography>
+          )}
+          
           <TextField
             label="Mã số thuế"
             value={maSoThue}
             onChange={(e) => setMaSoThue(e.target.value)}
             fullWidth
             required
+            autoFocus
             disabled={isEdit}
-            helperText={isEdit ? "Mã số thuế không thể thay đổi sau khi tạo." : undefined}
+            error={Boolean(lookupError)}
+            helperText={
+              isEdit
+                ? "Mã số thuế không thể thay đổi sau khi tạo."
+                : lookupError || "Nhập mã số thuế 10 số để tự động điền tên và địa chỉ."
+            }
+            slotProps={{
+              input: {
+                endAdornment: lookup.isFetching ? (
+                  <InputAdornment position="end">
+                    <CircularProgress size={18} />
+                  </InputAdornment>
+                ) : undefined,
+              },
+            }}
           />
+          
+          <TextField
+            label="Tên công ty"
+            value={tenCongTy}
+            onChange={(e) => setTenCongTy(e.target.value)}
+            fullWidth
+            required
+          />
+          
           <TextField
             label="Địa chỉ"
             value={diaChi}
@@ -128,33 +185,17 @@ export default function CompanyFormDialog({ open, onClose, company }: Props) {
             fullWidth
           />
 
-          <Button
-            variant="outlined"
-            startIcon={<ReceiptLongRounded />}
-            sx={{ textTransform: "none" }}
-            onClick={() => setGdtLoginOpen(true)}
-          >
-            Đăng nhập vào hóa đơn điện tử
-          </Button>
-
           {error && <Alert severity="error">{error}</Alert>}
         </Stack>
       </DialogContent>
       <DialogActions sx={{ px: 3, pb: 2 }}>
         <Button onClick={onClose} disabled={submitting}>
-          Hủy
+          {onboarding ? "Để sau" : "Hủy"}
         </Button>
         <Button variant="contained" onClick={handleSubmit} disabled={submitting}>
           {submitting ? <CircularProgress size={20} color="inherit" /> : "Lưu"}
         </Button>
       </DialogActions>
-
-      <DialogLoginHddt
-        open={gdtLoginOpen}
-        onClose={() => setGdtLoginOpen(false)}
-        initialUsername={maSoThue.trim() || undefined}
-        onLoginSuccess={(token, mst) => setGdtToken(mst, token)}
-      />
     </Dialog>
   );
 }

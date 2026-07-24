@@ -24,6 +24,7 @@ import InboxRounded from "@mui/icons-material/InboxRounded";
 import { useSyncHistoryQuery } from "../../features/hddt/api/syncQueries";
 import type { SyncDirection } from "../../features/hddt/types";
 import { formatDateVN, formatDateTimeVN } from "../../features/hddt/dateUtils";
+import { syncLogReason } from "../../features/hddt/syncLogText";
 
 type Frequency = "hourly" | "every6h" | "daily" | "weekly";
 
@@ -152,7 +153,7 @@ export default function SyncScheduleTab() {
                     {row.trang_thai === "done" ? (
                       <Chip size="small" color="success" variant="outlined" label="Hoàn thành" />
                     ) : (
-                      <Tooltip title={row.dien_giai ?? ""}>
+                      <Tooltip title={syncLogReason(row.dien_giai)}>
                         <Chip
                           size="small"
                           color="warning"

@@ -35,6 +35,7 @@ import DeleteOutlineRounded from "@mui/icons-material/DeleteOutlineRounded";
 import { toast } from "react-toastify";
 import { useQueryClient } from "@tanstack/react-query";
 import { currentMonthRange, formatDateVN, formatDateTimeVN } from "../dateUtils";
+import { syncLogDescription, syncLogReason } from "../syncLogText";
 import { getErrorMessage } from "../../../lib/errors";
 import { type SyncDirection, type SyncKind, type SyncRunStatus } from "../types";
 import {
@@ -81,12 +82,6 @@ const SYNC_POLL_INTERVAL_MS = 2000;
 /** Số nhịp poll LỖI LIÊN TIẾP tối đa trước khi bỏ theo dõi (~10s) — xem lý do ở chỗ bắt lỗi. */
 const MAX_POLL_FAILS = 5;
 const sleepMs = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
-
-const DIRECTION_LABEL: Record<SyncDirection, string> = {
-  all: "tất cả",
-  purchase: "mua vào",
-  sold: "bán ra",
-};
 
 /**
  * Dialog "Đồng bộ hóa đơn" — chọn chiều/loại hóa đơn + khoảng ngày, gọi BE đồng bộ từ GDT,
@@ -254,7 +249,7 @@ export default function SyncInvoiceDialog({ open, onClose }: Props) {
         res.direction === "purchase" ? "Mua vào" : res.direction === "sold" ? "Bán ra" : "Tất cả";
       if (res.trang_thai !== "done") {
         toast.warning(
-          `${dirLabel} — chưa hoàn thành: ${res.dien_giai ?? "lỗi khi đồng bộ"}. Đã bổ sung ${res.boSung}, đã có sẵn ${res.daCo}.`,
+          `${dirLabel} — chưa hoàn thành: ${syncLogReason(res.dien_giai) || "lỗi khi đồng bộ"}. Đã bổ sung ${res.boSung}, đã có sẵn ${res.daCo}.`,
         );
       } else if (res.boSung === 0) {
         toast.success(`${dirLabel} — đầy đủ, không thiếu hóa đơn (đã có sẵn ${res.daCo}).`);
@@ -558,7 +553,7 @@ export default function SyncInvoiceDialog({ open, onClose }: Props) {
                       {row.trang_thai === "done" ? (
                         <Chip size="small" color="success" variant="outlined" label="Hoàn thành" />
                       ) : (
-                        <Tooltip title={row.dien_giai ?? ""}>
+                        <Tooltip title={syncLogReason(row.dien_giai)}>
                           <Chip
                             size="small"
                             color="warning"
@@ -568,7 +563,7 @@ export default function SyncInvoiceDialog({ open, onClose }: Props) {
                         </Tooltip>
                       )}
                     </TableCell>
-                    <TableCell>Đồng bộ hóa đơn {DIRECTION_LABEL[row.direction]}</TableCell>
+                    <TableCell>{syncLogDescription(row)}</TableCell>
                     <TableCell>{formatDateTimeVN(row.created_at)}</TableCell>
                   </TableRow>
                 ))
