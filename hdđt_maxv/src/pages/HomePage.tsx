@@ -6,11 +6,19 @@ import Typography from "@mui/material/Typography";
 import AppHeader from "../components/AppHeader";
 import InvoiceListTabs from "../features/hddt/components/InvoiceListTabs";
 import SyncInvoiceDialog from "../features/hddt/components/SyncInvoiceDialog";
+import CompanyFormDialog from "../features/company/components/CompanyFormDialog";
+import { useAuth } from "../features/auth/useAuth";
 import Button from "@mui/material/Button";
 import SyncRounded from "@mui/icons-material/SyncRounded";
 
 export default function HomePage() {
   const [syncOpen, setSyncOpen] = useState(false);
+
+  // User mới đăng ký chưa có công ty nào -> mời tạo ngay thay vì bắt vào Cài đặt.
+  // `companies` đã được nạp xong khi HomePage render (ProtectedRoute chờ `hydrating`).
+  const { companies } = useAuth();
+  const [onboardDismissed, setOnboardDismissed] = useState(false);
+  const needsCompany = companies.length === 0;
 
   return (
     <>
@@ -39,6 +47,13 @@ export default function HomePage() {
       </Box>
 
       <SyncInvoiceDialog open={syncOpen} onClose={() => setSyncOpen(false)} />
+
+      {/* Tạo xong, `refreshCompanies()` làm `needsCompany` thành false -> dialog tự đóng. */}
+      <CompanyFormDialog
+        open={needsCompany && !onboardDismissed}
+        onboarding
+        onClose={() => setOnboardDismissed(true)}
+      />
     </>
   );
 }

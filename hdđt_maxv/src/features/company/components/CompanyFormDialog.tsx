@@ -6,6 +6,7 @@ import DialogActions from "@mui/material/DialogActions";
 import TextField from "@mui/material/TextField";
 import Button from "@mui/material/Button";
 import Stack from "@mui/material/Stack";
+import Typography from "@mui/material/Typography";
 import Alert from "@mui/material/Alert";
 import CircularProgress from "@mui/material/CircularProgress";
 import ReceiptLongRounded from "@mui/icons-material/ReceiptLongRounded";
@@ -20,11 +21,22 @@ interface Props {
   onClose: () => void;
   /** Có giá trị = sửa công ty này; không có = tạo mới. */
   company?: CompanyDetail;
+  /**
+   * Chế độ mời tạo công ty đầu tiên (user vừa đăng ký, chưa có công ty nào):
+   * thêm câu chào và đổi nhãn nút "Hủy" thành "Để sau". Chỉ khác về wording,
+   * logic tạo/sửa giữ nguyên.
+   */
+  onboarding?: boolean;
 }
 
 const MST_REGEX = /^[0-9]{10}(-[0-9]{3})?$/;
 
-export default function CompanyFormDialog({ open, onClose, company }: Props) {
+export default function CompanyFormDialog({
+  open,
+  onClose,
+  company,
+  onboarding = false,
+}: Props) {
   const { setGdtToken } = useGdtSession();
   const isEdit = Boolean(company);
 
@@ -90,14 +102,12 @@ export default function CompanyFormDialog({ open, onClose, company }: Props) {
       </DialogTitle>
       <DialogContent>
         <Stack spacing={2} sx={{ pt: 1 }}>
-          <TextField
-            label="Tên công ty"
-            value={tenCongTy}
-            onChange={(e) => setTenCongTy(e.target.value)}
-            fullWidth
-            autoFocus
-            required
-          />
+          {onboarding && (
+            <Typography variant="body2" color="text.secondary">
+              Chào mừng! Hãy thêm công ty/hộ kinh doanh để bắt đầu sử dụng.
+            </Typography>
+          )}
+          
           <TextField
             label="Mã số thuế"
             value={maSoThue}
@@ -107,6 +117,16 @@ export default function CompanyFormDialog({ open, onClose, company }: Props) {
             disabled={isEdit}
             helperText={isEdit ? "Mã số thuế không thể thay đổi sau khi tạo." : undefined}
           />
+          
+          <TextField
+            label="Tên công ty"
+            value={tenCongTy}
+            onChange={(e) => setTenCongTy(e.target.value)}
+            fullWidth
+            autoFocus
+            required
+          />
+          
           <TextField
             label="Địa chỉ"
             value={diaChi}
@@ -142,7 +162,7 @@ export default function CompanyFormDialog({ open, onClose, company }: Props) {
       </DialogContent>
       <DialogActions sx={{ px: 3, pb: 2 }}>
         <Button onClick={onClose} disabled={submitting}>
-          Hủy
+          {onboarding ? "Để sau" : "Hủy"}
         </Button>
         <Button variant="contained" onClick={handleSubmit} disabled={submitting}>
           {submitting ? <CircularProgress size={20} color="inherit" /> : "Lưu"}
