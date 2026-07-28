@@ -35,11 +35,6 @@ const accessCookieOptions = {
 };
 
 /**
- * Ký access + refresh cho 1 user và đặt CẢ HAI vào cookie httpOnly (access: SameSite=Strict,
- * refresh: SameSite=Lax). Dùng chung cho login, đổi công ty (switch), và tạo công ty (auto-switch).
- * Vẫn trả về access token (phòng khi cần dùng nội bộ), nhưng client dùng cookie là chính.
- */
-/**
  * Cấp lại bộ token cho user ĐANG đăng nhập, chỉ đổi công ty đang chọn. Dùng ở mọi chỗ đổi
  * `donViId` giữa phiên: tạo công ty (activate), đổi công ty (switch), xóa công ty đang dùng.
  *
@@ -60,6 +55,12 @@ export async function reissueSession(
   });
 }
 
+/**
+ * Ký access + refresh cho 1 user và đặt CẢ HAI vào cookie httpOnly (access: SameSite=Strict,
+ * refresh: SameSite=Lax). Dùng trực tiếp ở login (tokenVersion đã có sẵn từ bản ghi user vừa đọc);
+ * mọi chỗ đổi công ty GIỮA PHIÊN đi qua `reissueSession` để không tự đoán `tokenVersion`.
+ * Vẫn trả về access token (phòng khi cần dùng nội bộ), nhưng client dùng cookie là chính.
+ */
 export async function issueTokens(
   reply: FastifyReply,
   payload: TokenPayload,

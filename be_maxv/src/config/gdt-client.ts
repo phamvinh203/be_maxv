@@ -43,16 +43,23 @@ export class GdtHttpError extends Error {
   }
 }
 
+/** Số tầng `cause` tối đa chịu lần — đủ sâu cho undici (2 tầng), có trần phòng cause vòng lặp. */
+const MAX_CAUSE_DEPTH = 5;
+
 /**
- * Mô tả lỗi kèm TOÀN BỘ chuỗi `cause`. Lỗi fetch của Node (undici) thường có `message` trơ như
- * `"terminated"`, lý do thật nằm ở `cause` (vd `SocketError: other side closed`, `UND_ERR_SOCKET`) —
- * log mỗi tầng ngoài thì đọc log xong vẫn không biết chuyện gì xảy ra.
+ * Mô tả lỗi kèm TOÀN BỘ chuỗi `cause` (`name: message (CODE)` nối bằng ` <- `). Lỗi fetch của Node
+ * (undici) thường có `message` trơ như `"terminated"`, lý do thật nằm ở `cause` (vd
+ * `SocketError: other side closed`, `UND_ERR_SOCKET`) — chỉ đọc tầng ngoài thì vừa không hiểu log,
+ * vừa phân loại nhầm một lỗi mạng hiển nhiên thành "permanent".
+ *
+ * Dùng cho CẢ HAI việc: in log (ở đây) và dò chuỗi để phân loại lỗi (`classifyGdtError`,
+ * `isBodyTerminated` ở gdt.service.ts) — cùng một cách đọc lỗi thì hai bên không thể lệch nhau.
  */
-function describeErrorChain(err: unknown): string {
+export function describeErrorChain(err: unknown): string {
   const parts: string[] = [];
   let cur: unknown = err;
 
-  for (let depth = 0; cur instanceof Error && depth < 5; depth += 1) {
+  for (let depth = 0; cur instanceof Error && depth < MAX_CAUSE_DEPTH; depth += 1) {
     const code = (cur as { code?: unknown }).code;
     parts.push(`${cur.name}: ${cur.message}${typeof code === "string" ? ` (${code})` : ""}`);
     cur = (cur as { cause?: unknown }).cause;

@@ -46,13 +46,15 @@ export default function DeleteCompanyDialog({ company, onClose }: Props) {
 
   const isCurrent = company?.id === currentCompanyId;
   const isLastCompany = companies.length <= 1;
-  const matched = confirmMst.trim() === company?.maSoThue;
+  // Cắt khoảng trắng MỘT lần: chuỗi so để bật nút và chuỗi gửi lên server phải là cùng một chuỗi.
+  const typedMst = confirmMst.trim();
+  const matched = typedMst === company?.maSoThue;
 
   const handleDelete = () => {
     if (!company || !matched) return;
     setError("");
     deleteMutation.mutate(
-      { id: company.id, maSoThue: confirmMst.trim() },
+      { id: company.id, maSoThue: typedMst },
       {
         onSuccess: onClose,
         onError: (e) => setError(getErrorMessage(e, "Không xóa được công ty.")),
