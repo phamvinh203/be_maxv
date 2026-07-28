@@ -1,5 +1,6 @@
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { useAuth } from "../../auth/useAuth";
+import { useGdtSession } from "../../hddt/gdtSession/useGdtSession";
 import {
   companyKeys,
   createCompany,
@@ -7,11 +8,7 @@ import {
   listCompanies,
   updateCompany,
 } from "./companyApi";
-import type {
-  CompanyDetail,
-  CreateCompanyPayload,
-  UpdateCompanyPayload,
-} from "../types";
+import type { CreateCompanyPayload, UpdateCompanyPayload } from "../types";
 
 /**
  * Danh sách công ty chi tiết (tab "Quản lý công ty") — gắn userId để không rò giữa các user.
@@ -70,10 +67,29 @@ export function useUpdateCompanyMutation() {
   });
 }
 
+/**
+ * Xóa VĨNH VIỄN công ty (server DROP luôn database tenant — xem `deleteCompany` ở companyApi).
+ * `maSoThue` vừa là chuỗi xác nhận gửi lên, vừa là khóa để dọn token GDT của MST đó.
+ *
+ * `activeDonViId` trong response là công ty đang làm việc SAU khi xóa: nếu vừa xóa đúng công ty
+ * đang dùng thì server đã đặt cookie access mới, ở đây chỉ đồng bộ state cho khớp. Thiếu bước này
+ * thì `currentCompanyId` còn trỏ công ty đã biến mất và mọi endpoint theo tenant trả 403 — mà 403
+ * thì `apiFetch` không refresh cũng không đăng xuất, user kẹt tới khi access token hết hạn.
+ */
 export function useDeleteCompanyMutation() {
+  const { setActiveCompany } = useAuth();
+  const { removeGdtToken } = useGdtSession();
   const invalidate = useInvalidateCompanies();
+
   return useMutation({
-    mutationFn: (company: CompanyDetail) => deleteCompany(company.id),
-    onSuccess: invalidate,
+    mutationFn: (vars: { id: string; maSoThue: string }) =>
+      deleteCompany(vars.id, vars.maSoThue),
+    onSuccess: async (data, vars) => {
+      // Đặt TRƯỚC `invalidate()`, cùng lý do như `useCreateCompanyMutation`: query theo tenant gắn
+      // `currentCompanyId` vào queryKey nên đổi id là chúng tự đổi key, không cần dọn cache tay.
+      setActiveCompany(data.activeDonViId);
+      removeGdtToken(vars.maSoThue);
+      await invalidate();
+    },
   });
 }

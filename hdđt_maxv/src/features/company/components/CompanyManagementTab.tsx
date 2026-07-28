@@ -7,11 +7,6 @@ import Chip from "@mui/material/Chip";
 import Alert from "@mui/material/Alert";
 import Tooltip from "@mui/material/Tooltip";
 import CircularProgress from "@mui/material/CircularProgress";
-import Dialog from "@mui/material/Dialog";
-import DialogTitle from "@mui/material/DialogTitle";
-import DialogContent from "@mui/material/DialogContent";
-import DialogContentText from "@mui/material/DialogContentText";
-import DialogActions from "@mui/material/DialogActions";
 import { alpha } from "@mui/material/styles";
 import AddRounded from "@mui/icons-material/AddRounded";
 import EditRounded from "@mui/icons-material/EditRounded";
@@ -24,8 +19,9 @@ import { useAuth } from "../../auth/useAuth";
 import { getErrorMessage } from "../../../lib/errors";
 import { useCompanySwitch } from "../hooks/useCompanySwitch";
 import { type CompanyDetail } from "../types";
-import { useCompaniesQuery, useDeleteCompanyMutation } from "../api/companyQueries";
+import { useCompaniesQuery } from "../api/companyQueries";
 import CompanyFormDialog from "./CompanyFormDialog";
+import DeleteCompanyDialog from "./DeleteCompanyDialog";
 
 export default function CompanyManagementTab() {
   const { currentCompanyId, user } = useAuth();
@@ -40,13 +36,9 @@ export default function CompanyManagementTab() {
     ? getErrorMessage(companiesQuery.error, "Không lấy được danh sách công ty.")
     : "";
 
-  const deleteMutation = useDeleteCompanyMutation();
-  const deleteBusy = deleteMutation.isPending;
-
   const [formOpen, setFormOpen] = useState(false);
   const [editing, setEditing] = useState<CompanyDetail | undefined>(undefined);
   const [deleting, setDeleting] = useState<CompanyDetail | undefined>(undefined);
-  const [deleteError, setDeleteError] = useState("");
 
   const openCreate = () => {
     setEditing(undefined);
@@ -56,15 +48,6 @@ export default function CompanyManagementTab() {
   const openEdit = (company: CompanyDetail) => {
     setEditing(company);
     setFormOpen(true);
-  };
-
-  const confirmDelete = () => {
-    if (!deleting) return;
-    setDeleteError("");
-    deleteMutation.mutate(deleting, {
-      onSuccess: () => setDeleting(undefined),
-      onError: (e) => setDeleteError(getErrorMessage(e, "Không xóa được công ty.")),
-    });
   };
 
   return (
@@ -213,10 +196,7 @@ export default function CompanyManagementTab() {
                       size="small"
                       startIcon={<DeleteRounded fontSize="small" />}
                       sx={{ textTransform: "none" }}
-                      onClick={() => {
-                        setDeleteError("");
-                        setDeleting(company);
-                      }}
+                      onClick={() => setDeleting(company)}
                     >
                       Xóa
                     </Button>
@@ -250,28 +230,7 @@ export default function CompanyManagementTab() {
         onClose={() => setFormOpen(false)}
       />
 
-      <Dialog open={Boolean(deleting)} onClose={() => setDeleting(undefined)} maxWidth="xs" fullWidth>
-        <DialogTitle sx={{ fontWeight: 700 }}>Xóa công ty/Hộ kinh doanh</DialogTitle>
-        <DialogContent>
-          <DialogContentText>
-            Bạn có chắc muốn xóa "{deleting?.tenDonVi}"? Dữ liệu công ty sẽ được lưu trữ, không
-            còn hiển thị trong danh sách nữa.
-          </DialogContentText>
-          {deleteError && (
-            <Alert severity="error" sx={{ mt: 2 }}>
-              {deleteError}
-            </Alert>
-          )}
-        </DialogContent>
-        <DialogActions sx={{ px: 3, pb: 2 }}>
-          <Button onClick={() => setDeleting(undefined)} disabled={deleteBusy}>
-            Hủy
-          </Button>
-          <Button variant="contained" color="error" onClick={confirmDelete} disabled={deleteBusy}>
-            {deleteBusy ? <CircularProgress size={20} color="inherit" /> : "Xóa"}
-          </Button>
-        </DialogActions>
-      </Dialog>
+      <DeleteCompanyDialog company={deleting} onClose={() => setDeleting(undefined)} />
     </Box>
   );
 }
