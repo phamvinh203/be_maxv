@@ -1,6 +1,7 @@
 import { randomUUID } from "crypto";
 import {
   clearCookies,
+  describeErrorChain,
   gdtFetch,
   renameCookies,
   GDT_LIST_TIMEOUT_MS,
@@ -1760,37 +1761,15 @@ const FAST_5XX_PERMANENT_MS = 500;
 const TRANSIENT_ERROR_RE =
   /timeout|fetch failed|terminated|ECONN|EPIPE|ETIMEDOUT|socket|network|abort|UND_ERR/i;
 
-/** Số tầng `cause` tối đa chịu lần — đủ sâu cho undici (2 tầng), có trần phòng cause vòng lặp. */
-const MAX_CAUSE_DEPTH = 5;
-
-/**
- * Gom `name` + `message` + `code` của lỗi VÀ toàn bộ chuỗi `cause` thành một chuỗi để dò.
- *
- * Bắt buộc phải lần theo `cause`: undici đặt lý do thật ở đó, còn `message` tầng ngoài chỉ là
- * `"terminated"` — trơ, không mang thông tin nào. Ví dụ đo được: `TypeError: terminated` bọc ngoài
- * `SocketError: other side closed` (code `UND_ERR_SOCKET`). Chỉ soi tầng ngoài thì một lỗi mạng
- * hiển nhiên bị xếp nhầm thành "permanent" và lượt dừng ngay sau 1 lần thử.
- */
-function errorSignature(err: unknown): string {
-  const parts: string[] = [];
-  let cur: unknown = err;
-
-  for (let depth = 0; cur instanceof Error && depth < MAX_CAUSE_DEPTH; depth += 1) {
-    parts.push(cur.name, cur.message);
-    const code = (cur as { code?: unknown }).code;
-    if (typeof code === "string") parts.push(code);
-    cur = (cur as { cause?: unknown }).cause;
-  }
-
-  return parts.length > 0 ? parts.join(" ") : String(err);
-}
-
 /**
  * Lỗi kiểu "GDT trả header 200 rồi cắt socket giữa lúc gửi body". KHÁC hẳn timeout/429: retry y hệt
  * thì hỏng y hệt, phải XIN ÍT DÒNG HƠN mới qua (xem `GDT_LIST_PAGE_SIZE`).
+ *
+ * Dò trên `describeErrorChain` chứ không chỉ `message`: undici đặt lý do thật ở `cause`, còn tầng
+ * ngoài chỉ là `"terminated"` — trơ, không mang thông tin nào.
  */
 export function isBodyTerminated(err: unknown): boolean {
-  return /terminated|UND_ERR_SOCKET|ECONNRESET|other side closed/i.test(errorSignature(err));
+  return /terminated|UND_ERR_SOCKET|ECONNRESET|other side closed/i.test(describeErrorChain(err));
 }
 
 export function classifyGdtError(err: unknown): "auth" | "transient" | "permanent" {
@@ -1805,7 +1784,7 @@ export function classifyGdtError(err: unknown): "auth" | "transient" | "permanen
 
   // Không phải GdtHttpError -> lỗi tầng fetch/đọc body (mạng/timeout/abort/socket bị cắt), hoặc lỗi
   // đã mất kiểu khi đi qua ranh giới nào đó. Giữ nhánh dò chuỗi làm lưới an toàn cho cả hai.
-  const signature = errorSignature(err);
+  const signature = describeErrorChain(err);
   const m = signature.match(/GDT API Error:\s*(\d+)/);
   if (m) {
     const status = Number(m[1]);
