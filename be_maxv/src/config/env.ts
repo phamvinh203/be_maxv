@@ -31,6 +31,26 @@ if (configuredOrigins.length === 0 && process.env.NODE_ENV === 'production') {
   );
 }
 
+/**
+ * `size` xin GDT trả về mỗi trang danh sách hóa đơn — xem `GDT_LIST_PAGE_SIZE` ở gdt.service.ts để
+ * biết vì sao mặc định là 15 (GDT cắt body khi trang quá lớn). GDT chặn hẳn size > 50.
+ * Sai định dạng thì cảnh báo rồi dùng mặc định: size lệch chỉ làm chậm pha danh sách, không đáng chặn BE.
+ */
+const GDT_PAGE_SIZE_DEFAULT = 15;
+function parseGdtListPageSize(raw: string | undefined): number {
+  const trimmed = raw?.trim();
+  if (!trimmed) return GDT_PAGE_SIZE_DEFAULT;
+
+  const n = Number(trimmed);
+  if (!Number.isInteger(n) || n < 1 || n > 50) {
+    console.warn(
+      `[env] GDT_LIST_PAGE_SIZE="${trimmed}" không hợp lệ (cần số nguyên 1..50) — dùng ${GDT_PAGE_SIZE_DEFAULT}.`,
+    );
+    return GDT_PAGE_SIZE_DEFAULT;
+  }
+  return n;
+}
+
 const APP_HOST = required('APP_DB_HOST');
 const APP_PORT = required('APP_DB_PORT');
 const APP_USER = required('APP_DB_USER');
@@ -67,6 +87,9 @@ export const env = {
   refreshTtlSec: Number(process.env.REFRESH_TOKEN_TTL_SEC ?? 60 * 60 * 24 * 7),
 
   trialDays: Number(process.env.TRIAL_DAYS ?? 7),
+
+  /** Số hóa đơn/trang khi gọi danh sách GDT — chỉnh để A/B đo tốc độ pha danh sách. */
+  gdtListPageSize: parseGdtListPageSize(process.env.GDT_LIST_PAGE_SIZE),
 
   // SMTP (thông báo qua email - vd báo admin khi có lời mời nhân viên mới)
   smtpHost: required('SMTP_HOST'),

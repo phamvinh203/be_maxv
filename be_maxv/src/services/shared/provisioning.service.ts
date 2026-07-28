@@ -4,6 +4,7 @@ import { promisify } from 'node:util';
 import path from 'node:path';
 import { env } from '../../config/env';
 import { sysPrisma } from '../../config/db.sys';
+import { evictTenantDb } from '../../helpers/tenantClient';
 import { tenantDbName, tenantUrl } from '../../utils/dbName';
 
 const execAsync = promisify(exec);
@@ -88,8 +89,15 @@ export async function tenantDbExists(dbName: string): Promise<boolean> {
   });
 }
 
-/** Dùng cho GC: xóa hẳn DB của 1 công ty đã hết hạn. */
+/**
+ * Xóa hẳn DB của 1 công ty (owner xóa vĩnh viễn công ty, hoặc GC dọn công ty hết hạn).
+ *
+ * Tự gỡ pool trước khi DROP: "database đã xóa thì không được còn client pooled trỏ vào nó" là
+ * tính chất của việc XÓA, không phải nghĩa vụ mà từng caller phải nhớ. Để caller tự lo thì caller
+ * thứ hai sẽ quên, và lỗi nổ ra ở chỗ khác hẳn (một request sau đó bốc trúng client hỏng).
+ */
 export async function dropTenant(dbName: string): Promise<void> {
+  await evictTenantDb(dbName);
   await withAdminClient((admin) =>
     admin.query(`DROP DATABASE IF EXISTS "${dbName}" WITH (FORCE)`),
   );

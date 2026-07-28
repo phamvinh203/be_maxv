@@ -18,7 +18,6 @@ function loadGdtTokens(): Record<string, string> {
 
 /**
  * Provider giữ phiên đăng nhập GDT (token theo từng MST) trong sessionStorage.
- * Cấp `getGdtToken`/`setGdtToken`/`clearGdtSession` cho cây con.
  * Dùng: bọc quanh `AppRouter` ở `main.tsx`; đọc qua hook `useGdtSession`.
  *
  * Token dùng khi fetch/đồng bộ luôn chọn theo MST CÔNG TY ĐANG CHỌN (xem `useActiveGdtToken`),
@@ -41,14 +40,28 @@ export function GdtSessionProvider({ children }: { children: ReactNode }) {
     setGdtTokens((prev) => ({ ...prev, [mst]: token }));
   }, []);
 
+  /**
+   * Bỏ token của ĐÚNG 1 MST. Dùng: xóa vĩnh viễn công ty — token của MST đã biến mất mà nằm lại
+   * sessionStorage thì vô dụng, và sẽ khớp nhầm nếu sau này MST đó được đăng ký lại (xóa cứng cho
+   * phép điều đó) trong khi tab chưa đóng.
+   */
+  const removeGdtToken = useCallback((mst: string) => {
+    setGdtTokens((prev) => {
+      if (!(mst in prev)) return prev; // giữ nguyên identity -> khỏi ghi lại sessionStorage vô ích
+      const rest = { ...prev };
+      delete rest[mst];
+      return rest;
+    });
+  }, []);
+
   /** Xóa toàn bộ phiên GDT (khi đăng xuất app). Dùng: AppHeader (nút Đăng xuất). */
   const clearGdtSession = useCallback(() => {
     setGdtTokens({});
   }, []);
 
   const value = useMemo(
-    () => ({ getGdtToken, setGdtToken, clearGdtSession }),
-    [getGdtToken, setGdtToken, clearGdtSession],
+    () => ({ getGdtToken, setGdtToken, removeGdtToken, clearGdtSession }),
+    [getGdtToken, setGdtToken, removeGdtToken, clearGdtSession],
   );
 
   return <GdtSessionContext.Provider value={value}>{children}</GdtSessionContext.Provider>;

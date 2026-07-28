@@ -1,9 +1,10 @@
 import { sysPrisma } from '../../config/db.sys';
 import { tenantSlug } from '../../utils/dbName';
-import { provisionTenant } from '../shared/provisioning.service';
+import { dropTenant, provisionTenant } from '../shared/provisioning.service';
 import { createTrialSubscription } from '../shared/subscription.service';
 import { assertMstLimit, assertUserLimit } from '../shared/limits.service';
 import { writeLog } from '../shared/syslog.service';
+import { findOrThrow } from '../../helpers/crudGuards';
 import { sendMail } from '../shared/mailer.service';
 import { newInviteNoticeEmail } from '../../helpers/mailTemplates';
 import {
@@ -130,22 +131,58 @@ export async function updateCompanyInfo(
 }
 
 /**
- * DELETE /companies/:id — owner "xóa" (lưu trữ) công ty. KHÔNG xóa DB tenant, chỉ ẩn khỏi danh sách.
- * Update kèm scope sở hữu + "chưa archived" trong 1 query; chỉ khi thất bại mới truy vấn thêm
- * để phân biệt "không tồn tại/không có quyền" với "đã archived trước đó" cho message rõ ràng.
+ * Người dùng phải gõ lại MST để xác nhận xóa. Verify LẠI ở server chứ không chỉ chặn ở dialog:
+ * thao tác này DROP DATABASE, không thể để một request gõ tay bỏ qua lớp bảo vệ của UI.
+ * (Chuẩn hóa khoảng trắng là việc của `deleteCompanySchema`, ở đây chỉ so bằng.)
  */
-export async function archiveCompany(id: string, ownerId: string) {
-  const updated = await sysPrisma.donVi
-    .update({ where: { id, ownerId, status: { not: 'ARCHIVED' } }, data: { status: 'ARCHIVED' } })
-    .catch(async () => {
-      const exists = await sysPrisma.donVi.findFirst({ where: { id, ownerId } });
-      if (!exists) throw new NotFoundError(MESSAGES.COMPANY.NOT_FOUND);
-      throw new ConflictError(MESSAGES.COMPANY.ALREADY_ARCHIVED);
-    });
+export function assertMstConfirmed(input: string, actual: string): void {
+  if (input !== actual) throw new ConflictError(MESSAGES.COMPANY.MST_MISMATCH);
+}
 
-  await writeLog({ hanhDong: 'ARCHIVE_COMPANY', userId: ownerId, donViId: id });
+/**
+ * DELETE /companies/:id — owner XÓA VĨNH VIỄN công ty của chính mình: DROP DATABASE tenant + xóa
+ * hẳn bản ghi don_vi (cascade don_vi_access). Không hoàn tác được; đổi lại MST đăng ký lại được
+ * (maSoThue là @unique nên bản ghi còn sót sẽ khóa MST vĩnh viễn).
+ *
+ * Thứ tự DROP-trước-xóa-row là có chủ đích. DROP DATABASE không chạy trong transaction Postgres
+ * nên phải chọn hướng thất bại ít tệ hơn:
+ *   - DROP xong mà xóa row lỗi -> row trỏ DB đã mất, adminGetCompanyOverview reconcile thành
+ *     FAILED và owner xóa lại được.
+ *   - Xóa row trước mà DROP lỗi -> database thành rác vĩnh viễn, không còn gì truy vết.
+ *
+ * CỐ Ý không lọc `status` (khác `updateCompanyInfo`): công ty ARCHIVED của luồng soft-delete cũ đã
+ * bị accessibleDonViWhere ẩn khỏi mọi danh sách, nên chúng vừa không dùng được vừa khóa MST vĩnh
+ * viễn. Không lọc ở đây thì ít nhất còn một đường dọn chúng nếu biết id.
+ */
+export async function destroyCompany(
+  id: string,
+  ownerId: string,
+  confirmMst: string,
+): Promise<void> {
+  const company = await findOrThrow(
+    () =>
+      sysPrisma.donVi.findFirst({
+        where: { id, ownerId },
+        select: { maSoThue: true, tenDonVi: true, dbName: true },
+      }),
+    new NotFoundError(MESSAGES.COMPANY.NOT_FOUND),
+  );
 
-  return { id: updated.id, status: updated.status };
+  assertMstConfirmed(confirmMst, company.maSoThue);
+
+  // dbName rỗng khi provisioning chưa xong (PROVISIONING/FAILED) — không có DB nào để xóa.
+  // dropTenant tự gỡ pool tenant trước khi DROP (xem provisioning.service.ts).
+  if (company.dbName) await dropTenant(company.dbName);
+
+  await sysPrisma.donVi.delete({ where: { id } });
+
+  // Không truyền donViId: bản ghi đã bị xóa. SysLog.donViId không có FK nên vẫn ghi được, nhưng
+  // để null + nhét đủ thông tin vào chiTiet thì dấu vết audit sạch và tự đọc được.
+  await writeLog({
+    hanhDong: 'DELETE_COMPANY',
+    userId: ownerId,
+    chiTiet: { donViId: id, ...company },
+  });
 }
 
 interface InviteEmployeeInput extends InviteUserInput {

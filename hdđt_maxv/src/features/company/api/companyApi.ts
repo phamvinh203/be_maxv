@@ -60,9 +60,17 @@ export function switchCompany(id: string): Promise<{ activeDonViId: string }> {
   });
 }
 
-/** DELETE /companies/:id — "xóa" (lưu trữ) công ty, không xóa dữ liệu thật. */
-export function deleteCompany(id: string): Promise<{ id: string; status: string }> {
-  return apiFetchData<{ id: string; status: string }>(`/companies/${id}`, {
+/**
+ * DELETE /companies/:id — XÓA VĨNH VIỄN công ty: server DROP luôn database tenant `maxv_<mst>_app`
+ * rồi xóa hẳn bản ghi. Không hoàn tác được. `maSoThue` là chuỗi người dùng gõ để xác nhận (server
+ * so lại, nên dialog chỉ là lớp UX). Hệ quả của `activeDonViId`: xem `useDeleteCompanyMutation`.
+ */
+export function deleteCompany(
+  id: string,
+  maSoThue: string,
+): Promise<{ id: string; activeDonViId: string | null }> {
+  return apiFetchData<{ id: string; activeDonViId: string | null }>(`/companies/${id}`, {
     method: "DELETE",
+    body: JSON.stringify({ maSoThue }),
   });
 }
