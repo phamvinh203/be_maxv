@@ -49,6 +49,26 @@ export function listAccessibleCompaniesDetailed(userId: string, role: string) {
 }
 
 /**
+ * Công ty đầu tiên user còn truy cập được (null nếu không còn công ty nào) — dùng khi cần CHỌN LẠI
+ * công ty đang làm việc, vd sau khi xóa vĩnh viễn công ty đang dùng. Cùng thứ tự `createdAt asc`
+ * với danh sách hiển thị, nên "công ty đầu tiên" ở đây đúng là công ty đầu bảng mà user nhìn thấy.
+ */
+export async function firstAccessibleCompanyId(
+  userId: string,
+  role: string,
+): Promise<string | null> {
+  const where = accessibleDonViWhere(userId, role);
+  if (!where) return null;
+
+  const company = await sysPrisma.donVi.findFirst({
+    where,
+    select: { id: true },
+    orderBy: { createdAt: 'asc' },
+  });
+  return company?.id ?? null;
+}
+
+/**
  * Xác định "chủ tài khoản" của user hiện tại — dùng để gom nhân viên/lời mời theo account.
  *   - OWNER          -> chính user đó.
  *   - OWNER_EMPLOYEE -> owner của họ (User.ownerId).

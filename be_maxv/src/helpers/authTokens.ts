@@ -1,6 +1,7 @@
 import type { FastifyReply } from 'fastify';
 import { ACCESS_COOKIE, ACCESS_PATH, REFRESH_COOKIE, REFRESH_PATH } from '../constants/auth';
 import { env } from '../config/env';
+import { currentTokenVersion } from '../services/client/auth.service';
 
 /** Payload access/refresh token — donViId = công ty đang chọn (null nếu chưa chọn). */
 export interface TokenPayload {
@@ -38,6 +39,27 @@ const accessCookieOptions = {
  * refresh: SameSite=Lax). Dùng chung cho login, đổi công ty (switch), và tạo công ty (auto-switch).
  * Vẫn trả về access token (phòng khi cần dùng nội bộ), nhưng client dùng cookie là chính.
  */
+/**
+ * Cấp lại bộ token cho user ĐANG đăng nhập, chỉ đổi công ty đang chọn. Dùng ở mọi chỗ đổi
+ * `donViId` giữa phiên: tạo công ty (activate), đổi công ty (switch), xóa công ty đang dùng.
+ *
+ * Tồn tại để `tokenVersion` chỉ có MỘT đường lấy: đọc từ DB. `req.user.tokenVersion` là giá trị CŨ
+ * theo thiết kế (access token không đối chiếu DB — xem jwt.plugin.ts), nên ký token mới bằng nó sẽ
+ * hồi sinh phiên đáng lẽ đã bị thu hồi. Trước đây quy tắc đó được giữ bằng cách chép đúng ở 3 chỗ.
+ */
+export async function reissueSession(
+  reply: FastifyReply,
+  user: { userId: string; role: string },
+  donViId: string | null,
+): Promise<string> {
+  return issueTokens(reply, {
+    userId: user.userId,
+    donViId,
+    role: user.role,
+    tokenVersion: await currentTokenVersion(user.userId),
+  });
+}
+
 export async function issueTokens(
   reply: FastifyReply,
   payload: TokenPayload,

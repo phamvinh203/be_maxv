@@ -10,7 +10,8 @@ import type { Prisma } from '../generated/sys';
  * Dùng chung cho: canAccessDonVi (1 MST), listAccessibleCompanies (tất cả),
  * và resolveTenantDb (chọn DB tenant) — thêm role mới chỉ sửa 1 chỗ.
  */
-// Công ty đã bị owner "xóa" (ARCHIVED) không còn thao tác được nữa (list/switch/resolveTenantDb).
+// Owner xóa công ty giờ là XÓA CỨNG (destroyCompany: DROP DB + xóa bản ghi) nên không còn code nào
+// gán ARCHIVED. Giữ bộ lọc cho dữ liệu cũ đã ARCHIVED trước khi đổi: vẫn ẩn khỏi list/switch/resolveTenantDb.
 const NOT_ARCHIVED = { status: { not: 'ARCHIVED' } } as const;
 
 export function accessibleDonViWhere(

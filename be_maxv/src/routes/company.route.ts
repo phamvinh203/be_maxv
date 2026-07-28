@@ -36,7 +36,7 @@ export async function companyRoutes(app: FastifyInstance) {
     handler: updateCompany,
   });
 
-  // Owner "xóa" (lưu trữ) công ty của chính mình — không xóa DB tenant.
+  // Owner xóa VĨNH VIỄN công ty của chính mình — DROP luôn DB tenant (xem destroyCompany).
   app.delete('/:id', {
     preHandler: [app.authenticate, app.requireRole('OWNER')],
     handler: deleteCompany,

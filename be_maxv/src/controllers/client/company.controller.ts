@@ -1,12 +1,13 @@
 import type { FastifyRequest, FastifyReply } from 'fastify';
 import {
+  deleteCompanySchema,
   registerCompanySchema,
   inviteUserSchema,
   setEmployeeAccessSchema,
   updateCompanySchema,
 } from '../../validators/company.validator';
 import {
-  archiveCompany,
+  destroyCompany,
   inviteUserToCompany,
   listCompanyEmployees,
   listCompanyInvites,
@@ -14,20 +15,20 @@ import {
   setEmployeeAccess,
   updateCompanyInfo,
 } from '../../services/client/company.service';
-import { currentTokenVersion } from '../../services/client/auth.service';
 import {
+  firstAccessibleCompanyId,
   listAccessibleCompaniesDetailed,
   resolveAccountOwnerId,
 } from '../../services/shared/companyAccess.service';
 import { canAccessDonVi } from '../../helpers/access';
-import { issueTokens } from '../../helpers/authTokens';
+import { reissueSession } from '../../helpers/authTokens';
 import { validateBody } from '../../utils/validate';
 import { sendCreated, sendOk } from '../../helpers/response';
 import { ForbiddenError } from '../../helpers/errors';
 import { MESSAGES } from '../../constants/messages';
 
 /**
- * POST /api/v1/companies — Owner tạo 1 công ty/MST + cấp DB maxv2_<mst>_app.
+ * POST /api/v1/companies — Owner tạo 1 công ty/MST + cấp DB maxv_<mst>_app.
  *
  * Mặc định (activate=true, dùng ở luồng thiết lập lần đầu): tự động switch sang MST
  * vừa tạo (cấp token mới + refresh cookie) để owner vào làm ngay.
@@ -49,13 +50,8 @@ export async function createCompany(req: FastifyRequest, reply: FastifyReply) {
     return sendCreated(reply, { company });
   }
 
-  // issueTokens đặt access cookie mới (nhúng donViId công ty vừa tạo) — không trả token qua body.
-  await issueTokens(reply, {
-    userId: req.user.userId,
-    donViId: company.id,
-    role: req.user.role,
-    tokenVersion: await currentTokenVersion(req.user.userId),
-  });
+  // Đặt access cookie mới nhúng donViId công ty vừa tạo — không trả token qua body.
+  await reissueSession(reply, req.user, company.id);
   return sendCreated(reply, {
     company,
     activeDonViId: company.id,
@@ -82,12 +78,7 @@ export async function switchCompany(req: FastifyRequest, reply: FastifyReply) {
   if (!allowed) throw new ForbiddenError(MESSAGES.COMPANY.NO_ACCESS);
 
   // Đặt access cookie mới nhúng donViId công ty vừa đổi — không trả token qua body.
-  await issueTokens(reply, {
-    userId: req.user.userId,
-    donViId: id,
-    role: req.user.role,
-    tokenVersion: await currentTokenVersion(req.user.userId),
-  });
+  await reissueSession(reply, req.user, id);
   return sendOk(reply, { activeDonViId: id });
 }
 
@@ -102,11 +93,33 @@ export async function updateCompany(req: FastifyRequest, reply: FastifyReply) {
   return sendOk(reply, data);
 }
 
-/** DELETE /api/v1/companies/:id — owner "xóa" (lưu trữ) công ty của chính mình. */
+/**
+ * DELETE /api/v1/companies/:id — owner XÓA VĨNH VIỄN công ty của chính mình (xem destroyCompany).
+ * Body { maSoThue } là bước gõ xác nhận.
+ *
+ * Nếu vừa xóa đúng công ty đang làm việc thì phải cấp lại token: cookie access còn nhúng donViId
+ * của công ty đã biến mất sẽ khiến mọi endpoint theo tenant trả 403 — mà 403 thì apiFetch bên FE
+ * không refresh cũng không đăng xuất, user kẹt tới khi access token hết hạn.
+ */
 export async function deleteCompany(req: FastifyRequest, reply: FastifyReply) {
   const { id } = req.params as { id: string };
-  const data = await archiveCompany(id, req.user.userId);
-  return sendOk(reply, data);
+  const { maSoThue } = validateBody(deleteCompanySchema, req.body);
+
+  await destroyCompany(id, req.user.userId, maSoThue);
+
+  // Xóa công ty KHÁC công ty đang làm việc -> cookie hiện tại vẫn đúng, khỏi truy vấn gì thêm.
+  if (req.user.donViId !== id) {
+    return sendOk(reply, { id, activeDonViId: req.user.donViId });
+  }
+
+  // Đọc SAU khi xóa -> công ty vừa xóa chắc chắn không được chọn lại.
+  const activeDonViId = await firstAccessibleCompanyId(
+    req.user.userId,
+    req.user.role,
+  );
+  await reissueSession(reply, req.user, activeDonViId);
+
+  return sendOk(reply, { id, activeDonViId });
 }
 
 // POST /api/v1/companies/invite - owner mời nhân viên vào tài khoản + cấp quyền MST (donViIds)

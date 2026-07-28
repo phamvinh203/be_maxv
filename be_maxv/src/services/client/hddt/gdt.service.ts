@@ -18,6 +18,7 @@ import {
   SyncInvoiceKind,
 } from "../../../types/gdt";
 import { Prisma, type PrismaClient, type sync_log } from "../../../generated/tenant";
+import { env } from "../../../config/env";
 import { getTenantDb } from "../../../helpers/tenantClient";
 import {
   schedule as pacerSchedule,
@@ -82,21 +83,33 @@ export async function login(body: LoginRequest) {
 }
 
 /**
- * Số hóa đơn xin GDT trả về mỗi trang danh sách.
+ * Số hóa đơn xin GDT trả về mỗi trang danh sách — mặc định 15, đổi được bằng env `GDT_LIST_PAGE_SIZE`.
  *
- * ĐỪNG NÂNG LÊN — đã thử và GDT từ chối. Số 50 ban đầu chỉ là chép lại từ request của chính cổng
- * hoadondientu (bảng của cổng hiển thị 50 dòng/trang) chứ không kèm số đo nào, nên đã thử `size=200`
- * để rút ngắn pha danh sách (ít trang hơn -> ít call hơn -> ít cơ hội bị GDT "nuốt" hơn).
+ * VÌ SAO 15 CHỨ KHÔNG PHẢI 50 — đo 27/07/2026 trên MST có 1247 hóa đơn mua vào, khoảng 01–27/07:
+ *   - `size=50` -> GDT trả **header 200 rồi ĐÓNG SOCKET giữa lúc gửi body**. Lỗi nổi lên ở
+ *     `response.json()` dưới dạng `TypeError: terminated` (cause `UND_ERR_SOCKET: other side closed`),
+ *     sau 300–760ms, HỎNG 100% SỐ LẦN — 35 lần liên tiếp, retry bao nhiêu cũng vô ích.
+ *   - `size=15` -> chạy bình thường.
+ * Một bản ghi hóa đơn ~4KB, nên 50 dòng ≈ 200KB còn 15 dòng ≈ 60KB: ngưỡng bị cắt nằm đâu đó ở giữa.
+ * Số 50 cũ vốn chỉ chép từ request của cổng hoadondientu, chưa từng được đo.
  *
- * Kết quả đo 23/07/2026: GDT trả `500 Internal Server Error` chỉ sau ~63ms, lặp lại nhất quán qua
- * nhiều lần thử. Trả lỗi nhanh như vậy nghĩa là bị TỪ CHỐI THAM SỐ ngay khi parse, không phải quá
- * tải — GDT cũng không âm thầm cắt về 50 mà chặn hẳn. Nếu sau này muốn dò lại (vd size=100), dấu
- * hiệu nhận biết bị từ chối chính là 500 + thời gian phản hồi vài chục ms.
+ * ĐỪNG NÂNG QUÁ 50 — đo 23/07/2026: `size=200` bị GDT trả `500` chỉ sau ~63ms, nhất quán. Trả lỗi
+ * nhanh như vậy là TỪ CHỐI THAM SỐ lúc parse, không phải quá tải. `classifyGdtError` xếp 5xx NHANH
+ * vào "permanent" nên lượt dừng ngay và message hiện lên FE, không retry 10 phút như trước.
  *
- * LƯU Ý khi dò: `classifyGdtError` xếp 5xx vào "transient" nên một size không hợp lệ sẽ bị RETRY
- * tới hết ngân sách 10 phút/trang thay vì dừng ngay — nhớ theo dõi log và dừng lượt bằng tay.
+ * GIÁ PHẢI TRẢ khi để size nhỏ: pacer ép ≥800ms giữa 2 call làn `list` (gdtPacer.pump), nên pha danh
+ * sách ≈ (tổng HĐ / size) × 800ms. 1247 HĐ: ~21s ở size 50 so với ~67s ở size 15. Nghe thì gấp 3,
+ * nhưng KHÔNG đáng kể so với pha chi tiết ngay sau đó (1247 × 800ms ≈ 17 PHÚT) — nên cứ ưu tiên
+ * chạy ĐƯỢC thay vì chạy nhanh.
+ *
+ * Ngưỡng có thể khác nhau theo MST (hóa đơn nhiều dòng thuế suất thì bản ghi nặng hơn), nên đây chỉ
+ * là điểm KHỞI ĐẦU: `fetchListPagePaced` tự hạ tiếp khi vẫn bị cắt (xem `shrinkListPageSize`).
+ *
+ * Đọc qua `env` chứ KHÔNG qua `process.env` trực tiếp: `server.ts` nạp `./app` trước `./config/env`,
+ * nên module này có thể chạy trước khi dotenv kịp đọc `.env.local` — lúc đó `process.env` còn trống
+ * và giá trị trong file bị bỏ qua âm thầm. `env` đảm bảo dotenv đã chạy xong.
  */
-const GDT_LIST_PAGE_SIZE = "50";
+const GDT_LIST_PAGE_SIZE = env.gdtListPageSize;
 
 /**
  * Lấy danh sách hóa đơn đầu vào (mua vào) — tương đương bước đầu của
@@ -104,7 +117,8 @@ const GDT_LIST_PAGE_SIZE = "50";
  */
 export async function getPurchaseInvoices(
   token: string,
-  query: PurchaseInvoiceQuery
+  query: PurchaseInvoiceQuery,
+  pageSize: number = GDT_LIST_PAGE_SIZE,
 ) {
   const isMayTinhTien = query.ketQuaHd === "8";
   const path = isMayTinhTien
@@ -126,7 +140,7 @@ export async function getPurchaseInvoices(
 
   const params = new URLSearchParams({
     sort: "tdlap:desc",
-    size: GDT_LIST_PAGE_SIZE,
+    size: String(pageSize),
     search,
   });
   if (query.state) params.set("state", query.state);
@@ -142,7 +156,11 @@ export async function getPurchaseInvoices(
  * Lấy danh sách hóa đơn đầu ra (bán ra) — tương đương bước đầu của
  * `ConvertOutput` bên bản C# (chỉ gọi API lấy danh sách, chưa lưu DB/tải chi tiết).
  */
-export async function getSoldInvoices(token: string, query: SoldInvoiceQuery) {
+export async function getSoldInvoices(
+  token: string,
+  query: SoldInvoiceQuery,
+  pageSize: number = GDT_LIST_PAGE_SIZE,
+) {
   const isMayTinhTien = query.ketQuaHd === "8";
   const path = isMayTinhTien
     ? "/sco-query/invoices/sold"
@@ -163,7 +181,7 @@ export async function getSoldInvoices(token: string, query: SoldInvoiceQuery) {
 
   const params = new URLSearchParams({
     sort: "tdlap:desc",
-    size: GDT_LIST_PAGE_SIZE,
+    size: String(pageSize),
     search,
   });
   if (query.state) params.set("state", query.state);
@@ -1200,7 +1218,9 @@ export async function fetchAndSaveInvoicesInRange(
   console.log(
     `[DEBUG-CAPNHAT] === BẮT ĐẦU CẬP NHẬT === tenant=${tenantKey} ${direction} ` +
       `${query.tuNgay}..${query.denNgay} | ${chunks.length} tháng | ` +
-      `${ketQuaVariants.length} nguồn (${ketQuaVariants.map((v) => v ?? "thường").join(" + ")})`,
+      `${ketQuaVariants.length} nguồn (${ketQuaVariants.map((v) => v ?? "thường").join(" + ")})` +
+      // In size ĐANG dùng của MST này (có thể đã tự hạ vì GDT cắt body) — log tự nói nó chạy ở mức nào.
+      ` | size=${listPageSizeFor(tenantKey)}`,
   );
 
   // Lỗi giữa chừng (vd token GDT hết hạn) -> DỪNG nhưng GIỮ phần đã lưu, báo partial thay vì 500.
@@ -1721,9 +1741,9 @@ const FAST_5XX_PERMANENT_MS = 500;
 /**
  * Phân loại lỗi GDT theo MÃ STATUS (không match chuỗi trong body — tránh nhận nhầm khi body chứa
  * "timeout"/"network"). `gdtFetch` ném `GdtHttpError` (có `status` + `elapsedMs`) khi GDT trả lỗi;
- * lỗi mạng/timeout của fetch là Error thường.
+ * lỗi mạng/timeout/socket-bị-cắt là Error thường, phân loại qua `errorSignature` (có lần `cause`).
  *  - "auth"      : 401/403 -> token GDT hết hạn/không hợp lệ -> DỪNG lượt (đừng đánh lỗi giả).
- *  - "transient" : 429, 5xx CHẬM, hoặc lỗi mạng/timeout -> đáng retry.
+ *  - "transient" : 429, 5xx CHẬM, hoặc lỗi mạng/timeout/body bị cắt -> đáng retry.
  *  - "permanent" : còn lại (400/404) và 5xx NHANH -> retry bao nhiêu lần cũng ra y hệt.
  *
  * Vì sao tách 5xx theo thời gian: trước đây MỌI 5xx đều là "transient", nên một request sai vĩnh
@@ -1733,6 +1753,46 @@ const FAST_5XX_PERMANENT_MS = 500;
  * dùng đọc được lý do. Đổi lại, nếu GDT có lúc 500 nhanh do trục trặc thoáng qua thì mình dừng sớm
  * thay vì thử lại — chấp nhận được, vì bấm lại là chạy tiếp phần thiếu (upsert idempotent).
  */
+/**
+ * Dấu hiệu lỗi TRUYỀN TẢI (đáng retry). `terminated` + `UND_ERR` là của undici (fetch trong Node):
+ * khi GDT trả header rồi đóng socket giữa lúc gửi body, `response.json()` ném `TypeError: terminated`.
+ */
+const TRANSIENT_ERROR_RE =
+  /timeout|fetch failed|terminated|ECONN|EPIPE|ETIMEDOUT|socket|network|abort|UND_ERR/i;
+
+/** Số tầng `cause` tối đa chịu lần — đủ sâu cho undici (2 tầng), có trần phòng cause vòng lặp. */
+const MAX_CAUSE_DEPTH = 5;
+
+/**
+ * Gom `name` + `message` + `code` của lỗi VÀ toàn bộ chuỗi `cause` thành một chuỗi để dò.
+ *
+ * Bắt buộc phải lần theo `cause`: undici đặt lý do thật ở đó, còn `message` tầng ngoài chỉ là
+ * `"terminated"` — trơ, không mang thông tin nào. Ví dụ đo được: `TypeError: terminated` bọc ngoài
+ * `SocketError: other side closed` (code `UND_ERR_SOCKET`). Chỉ soi tầng ngoài thì một lỗi mạng
+ * hiển nhiên bị xếp nhầm thành "permanent" và lượt dừng ngay sau 1 lần thử.
+ */
+function errorSignature(err: unknown): string {
+  const parts: string[] = [];
+  let cur: unknown = err;
+
+  for (let depth = 0; cur instanceof Error && depth < MAX_CAUSE_DEPTH; depth += 1) {
+    parts.push(cur.name, cur.message);
+    const code = (cur as { code?: unknown }).code;
+    if (typeof code === "string") parts.push(code);
+    cur = (cur as { cause?: unknown }).cause;
+  }
+
+  return parts.length > 0 ? parts.join(" ") : String(err);
+}
+
+/**
+ * Lỗi kiểu "GDT trả header 200 rồi cắt socket giữa lúc gửi body". KHÁC hẳn timeout/429: retry y hệt
+ * thì hỏng y hệt, phải XIN ÍT DÒNG HƠN mới qua (xem `GDT_LIST_PAGE_SIZE`).
+ */
+export function isBodyTerminated(err: unknown): boolean {
+  return /terminated|UND_ERR_SOCKET|ECONNRESET|other side closed/i.test(errorSignature(err));
+}
+
 export function classifyGdtError(err: unknown): "auth" | "transient" | "permanent" {
   if (err instanceof GdtHttpError) {
     if (err.status === 401 || err.status === 403) return "auth";
@@ -1743,17 +1803,17 @@ export function classifyGdtError(err: unknown): "auth" | "transient" | "permanen
     return "permanent";
   }
 
-  // Không phải GdtHttpError -> lỗi tầng fetch (mạng/timeout/abort), hoặc lỗi đã mất kiểu khi đi qua
-  // ranh giới nào đó. Giữ nhánh dò chuỗi làm lưới an toàn cho trường hợp thứ hai.
-  const msg = err instanceof Error ? err.message : String(err);
-  const m = msg.match(/GDT API Error:\s*(\d+)/);
+  // Không phải GdtHttpError -> lỗi tầng fetch/đọc body (mạng/timeout/abort/socket bị cắt), hoặc lỗi
+  // đã mất kiểu khi đi qua ranh giới nào đó. Giữ nhánh dò chuỗi làm lưới an toàn cho cả hai.
+  const signature = errorSignature(err);
+  const m = signature.match(/GDT API Error:\s*(\d+)/);
   if (m) {
     const status = Number(m[1]);
     if (status === 401 || status === 403) return "auth";
     if (status === 429 || (status >= 500 && status <= 599)) return "transient";
     return "permanent";
   }
-  if (/timeout|fetch failed|ECONN|socket|network|abort/i.test(msg)) return "transient";
+  if (TRANSIENT_ERROR_RE.test(signature)) return "transient";
   return "permanent";
 }
 
@@ -1797,6 +1857,35 @@ async function sleepUnlessCancelled(ms: number, isCancelled?: () => boolean): Pr
  * lỗi tạm thời (timeout/429/5xx) tới khi được hoặc hết `LIST_RETRY_BUDGET_MS`. Lỗi auth (401/403),
  * lỗi thật, hết ngân sách, hoặc người dùng bấm Dừng -> ném lại cho caller đánh dấu `partial`.
  */
+/**
+ * Sàn khi tự hạ size. Dưới mức này thì vấn đề không còn là "trang quá to" nữa (5 bản ghi ≈ 20KB) —
+ * cứ hạ tiếp chỉ làm số trang phình ra vô ích, để lượt báo lỗi thật còn hơn.
+ */
+const MIN_LIST_PAGE_SIZE = 5;
+
+/**
+ * Size đang dùng cho từng MST, sau khi đã tự hạ vì bị GDT cắt body.
+ *
+ * Nhớ theo MST vì ngưỡng phụ thuộc độ "nặng" của hóa đơn bên đó: đã phải hạ ở trang 1 thì các trang
+ * sau gần như chắc chắn cũng vậy, không nên bắt mỗi trang tự dò lại (mỗi lần dò tốn 1 call hỏng).
+ * KHÔNG có đường tăng lại: in-memory theo tiến trình, restart BE là về mặc định — đủ để thử lại
+ * mức cao hơn sau khi phía GDT thay đổi, mà không cần thêm cơ chế phục hồi phức tạp.
+ */
+const listPageSize = new Map<string, number>();
+
+function listPageSizeFor(tenantKey: string): number {
+  return listPageSize.get(tenantKey) ?? GDT_LIST_PAGE_SIZE;
+}
+
+/** Hạ size một nấc (chia đôi, sàn `MIN_LIST_PAGE_SIZE`). Trả false khi đã chạm sàn -> hết đường lùi. */
+function shrinkListPageSize(tenantKey: string): boolean {
+  const current = listPageSizeFor(tenantKey);
+  if (current <= MIN_LIST_PAGE_SIZE) return false;
+
+  listPageSize.set(tenantKey, Math.max(MIN_LIST_PAGE_SIZE, Math.floor(current / 2)));
+  return true;
+}
+
 async function fetchListPagePaced(
   tenantKey: string,
   gdtToken: string,
@@ -1809,15 +1898,26 @@ async function fetchListPagePaced(
   let attempt = 0;
   for (;;) {
     attempt += 1;
+    const pageSize = listPageSizeFor(tenantKey);
     try {
       const page = await pacerSchedule(tenantKey, "list", () =>
         direction === "purchase"
-          ? getPurchaseInvoices(gdtToken, query)
-          : getSoldInvoices(gdtToken, query),
+          ? getPurchaseInvoices(gdtToken, query, pageSize)
+          : getSoldInvoices(gdtToken, query, pageSize),
       );
       pacerReportOk(tenantKey, "list");
       return page;
     } catch (err) {
+      // GDT cắt body giữa chừng -> trang đang xin QUÁ LỚN. Hạ size rồi thử lại NGAY: không backoff,
+      // không `reportRateLimited` — đây là lỗi tham số, không phải GDT quá tải, phạt nhịp là oan.
+      if (isBodyTerminated(err) && shrinkListPageSize(tenantKey)) {
+        console.warn(
+          `[DEBUG-LIST] TRANG ${direction} bị GDT cắt body ở size=${pageSize} ` +
+            `-> hạ xuống size=${listPageSizeFor(tenantKey)} và thử lại ngay.`,
+        );
+        if (!isCancelled?.() && Date.now() < deadline) continue;
+      }
+
       // [DEBUG-GDT] Phân loại lỗi: "auth" (token hết hạn) / "transient" (GDT nuốt hoặc 429/5xx) /
       // "permanent". Chỉ "transient" mới đáng thử lại.
       const kind = classifyGdtError(err);

@@ -37,6 +37,18 @@ export function getTenantDb(dbName: string): PrismaClient {
   return entry.client;
 }
 
+/**
+ * Đóng + gỡ pool của ĐÚNG 1 tenant. Pool chỉ có idle-eviction (10 phút), nên DB bị xóa mà không gỡ
+ * thì Map vẫn giữ PrismaClient trỏ vào chỗ trống và request sau lấy trúng client hỏng.
+ * Dùng: dropTenant (provisioning.service.ts) — gọi ngay trước khi DROP DATABASE.
+ */
+export async function evictTenantDb(dbName: string): Promise<void> {
+  const entry = pool.get(dbName);
+  if (!entry) return;
+  pool.delete(dbName);
+  await disconnectAll([entry]);
+}
+
 const sweeper = setInterval(() => {
   if (pool.size === 0) return; // không có gì để quét -> khỏi lặp Map rỗng mỗi phút.
 
