@@ -102,10 +102,13 @@ flowchart TD
     end
     subgraph L1["Lớp 1 — Logic thuần"]
         U["invoiceRow, detailRow, invoiceView,<br/>invoiceHtml, invoiceXml, exportXlsx,<br/>format, dateUtils, pagination, syncLogText"]
+        T["templates/<br/>khai báo cột dùng chung<br/>cho bảng web và file xuất"]
     end
 
     C --> Q
     C --> U
+    C --> T
+    U --> T
     Q --> A
     A --> HTTP["lib/http.ts"]
 ```

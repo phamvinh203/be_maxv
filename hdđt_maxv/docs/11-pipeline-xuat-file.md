@@ -199,45 +199,65 @@ export async function buildSummaryWorkbookBuffer(
   const { text } = DIR_LABEL[direction];
   const wb = new Workbook();
   addStyledSheet(wb, `Tổng quát ${text}`, overviewColumns(direction), overviewRows);
-  addStyledSheet(wb, `Chi tiết ${text}`, detailColumns(), detailRows);
+  addStyledSheet(wb, `Chi tiết ${text}`, detailColumns(direction), detailRows);
   return (await wb.xlsx.writeBuffer()) as ArrayBuffer;
 }
 ```
 
 Chú ý `await import("exceljs")` — **nhập động**. `exceljs` là thư viện nặng; nhập động khiến Vite tách nó thành gói riêng, chỉ tải khi người dùng thực sự xuất file. Người chỉ tra cứu hóa đơn không phải tải nó.
 
-### Định nghĩa cột
+### Định nghĩa cột — folder `templates/`
 
-Cột Excel khai báo theo cùng mẫu với cột bảng trên màn hình:
+Cột **không** khai trong `exportXlsx.ts`. Chúng nằm ở `features/hddt/templates/`, và **bảng trên màn hình dùng chung chính mảng đó**:
 
 ```ts
-/** 1 cột xuất Excel: tiêu đề + độ rộng + (tuỳ chọn) định dạng số + hàm lấy giá trị ô. */
-interface XlsxColumn<T> {
+/** 1 cột hóa đơn. Kênh nào cần thuộc tính gì thì đọc thuộc tính đó. */
+export interface InvoiceColumn<T> {
+  key: string;
   header: string;
+  /** Độ rộng cột Excel (đơn vị ký tự). Web bỏ qua. */
   width: number;
-  /** numFmt kiểu Excel cho cột số (vd "#,##0"); bỏ trống nếu là chữ. */
+  align?: "right" | "center";
   numFmt?: string;
-  value: (row: T, index: number) => string | number;
+  /** Giá trị THÔ — Excel/CSV dùng thẳng; web format lại theo numFmt. */
+  value: (row: T, stt: number) => string | number | undefined;
+  /** Ghi đè cách render trên web (ô có màu, dấu "—"…). */
+  cell?: (row: T, stt: number) => ReactNode;
+  /** Chỉ hiện trên web, không xuất ra file (cột checkbox "Chọn"). */
+  webOnly?: boolean;
 }
 ```
 
-```ts
-/** Cột bảng "Tổng quát" (khớp cột đang hiển thị, bỏ cột checkbox "Chọn"). */
-function overviewColumns(direction: InvoiceDirection): XlsxColumn<DisplayRow>[] {
-  const isPurchase = direction === "purchase";
-  return [
-    { header: "STT", width: 6, value: (_r, i) => i + 1 },
-    { header: "T. thái tải", width: 11, value: (r) => ttTaiLabel(r.ttTai) },
-    /* … */
-    { header: "Tổng tiền chưa thuế", width: 17, numFmt: MONEY_FMT, value: (r) => r.tienChuaThue ?? "" },
-    /* … */
-  ];
-}
-```
+**Mỗi chiều hóa đơn một file**, mỗi file giữ trọn bộ cột của chiều đó:
 
-> ⚠️ **Cột Excel và cột bảng trên màn hình là hai danh sách riêng biệt.** Thêm cột vào bảng mà quên thêm vào Excel là lỗi thường gặp nhất khi mở rộng tính năng này. Xem quy trình đầy đủ ở [chương 13](13-huong-dan-mo-rong.md).
+| File | Cột của |
+|---|---|
+| `templates/dauVao.ts` | Bảng Tổng quát + Bảng Chi tiết của chiều MUA VÀO (= 2 sheet của `Tong-hop-dau-vao-*.xlsx`) |
+| `templates/dauRa.ts` | Bảng Tổng quát + Bảng Chi tiết của chiều BÁN RA (= 2 sheet của `Tong-hop-dau-ra-*.xlsx`) |
+| `templates/backupColumns.ts` | CSV sao lưu (chung cả hai chiều) |
+| `templates/cells.tsx` | Ô render riêng cho web (`ttTaiCell`) |
+| `templates/index.ts` | `overviewColumns(direction)` / `detailColumns(direction)` — chỉ chọn bộ cột theo chiều |
 
-Các ô số truyền **số thật** kèm `numFmt`, không truyền chuỗi đã định dạng — để người dùng còn tính toán được trong Excel.
+Hai chiều **cố ý không dùng chung** danh sách cột: yêu cầu kế toán cho đầu vào và đầu ra tách nhau dần theo thời gian, và sửa một chiều thì không được rủi ro làm hỏng chiều kia. Đánh đổi: cột dùng chung (các cột tiền, trạng thái…) phải sửa ở **cả hai** file.
+
+`exportXlsx.ts` chỉ còn lo dựng file (style sheet, workbook, tên file) và gọi `fileColumns()` để bỏ cột `webOnly`.
+
+> Trước đây cột Excel và cột bảng là hai danh sách riêng biệt — thêm cột vào bảng mà quên thêm vào Excel là lỗi thường gặp nhất, và đã từng khiến sheet "Tổng quát đầu ra" lấy nhầm trường. Gom về `templates/` là để lỗi đó không lặp lại. Xem quy trình thêm cột ở [chương 13](13-huong-dan-mo-rong.md).
+
+Các ô số truyền **số thật** kèm `numFmt`, không truyền chuỗi đã định dạng — để người dùng còn tính toán được trong Excel. Ô không có dữ liệu trả `undefined` để Excel ghi ô **trống** thay vì `0`.
+
+### Khác biệt giữa hai chiều
+
+| | Mua vào (`dauVao.ts`) | Bán ra (`dauRa.ts`) |
+|---|---|---|
+| Tổng quát | 22 cột web / **21 cột trong file** — MST, Tên người bán (= nhà cung cấp) | 23 cột web / **22 cột trong file** — MST người mua, Tên công ty người mua, **Địa chỉ người mua** |
+| Chi tiết | 27 cột (web và file như nhau) | 28 cột (thêm Địa chỉ người mua) |
+
+Bảng Tổng quát lệch 1 cột giữa web và file vì cột checkbox "Chọn" mang cờ `webOnly`.
+
+Mỗi chiều hiện **bên đối tác**: mua vào hiện người bán (nhà cung cấp), bán ra hiện người mua (khách hàng) — bên còn lại vốn đã là công ty đang chọn nên lặp y hệt ở mọi dòng, không mang thông tin gì. Địa chỉ bên mua lấy từ `nmdchi`, trường đã có sẵn trong `SAVED_LIST_SELECT` của backend (không cần sửa BE).
+
+Hóa đơn bán lẻ/cá nhân không có tên đơn vị (`nmten` rỗng) — cột "Tên công ty người mua" fallback sang `nmtnmua` (họ tên người mua hàng). Fallback này chỉ ăn ở bảng **Chi tiết**, vì payload `/detail` có `nmtnmua` còn `vct50view` thì không có cột đó; ở bảng Tổng quát các hóa đơn này vẫn trống tên.
 
 ## 11.6. Render PDF
 

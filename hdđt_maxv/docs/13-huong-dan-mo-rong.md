@@ -110,8 +110,6 @@ Thêm dòng vào [chương 14 — Hợp đồng API](14-hop-dong-api.md).
 
 ## 13.2. Thêm một cột vào bảng hóa đơn
 
-> ⚠️ **Việc này chạm bốn nơi.** Sót một nơi là lỗi thường gặp nhất khi mở rộng dự án.
-
 **Ví dụ:** thêm cột "Ghi chú" vào bảng Tổng quát.
 
 ### (1) Kiểu dòng hiển thị — `types/index.ts`
@@ -130,44 +128,36 @@ export interface DisplayRow {
 export function toDisplayRow(r: InvoiceRaw, direction: InvoiceDirection): DisplayRow {
   return {
     /* … */
-    ghiChu: String(r.ghichu ?? ""),
+    ghiChu: rowStr(r.ghichu),
   };
 }
 ```
 
-### (3) Cột trên màn hình — `InvoiceListTabs.tsx`
+### (3) Cột — `templates/dauVao.ts` và/hoặc `templates/dauRa.ts`
+
+Mỗi chiều một file. Thêm vào hàm `overviewDauVao()` (đầu vào) hay `overviewDauRa()` (đầu ra):
 
 ```ts
-function columnsFor(direction: InvoiceDirection): InvoiceColumn[] {
-  return [
-    /* … */
-    { header: "Ghi chú", cell: (r) => r.ghiChu || NO_DATA_YET },
-  ];
-}
+{ key: "ghiChu", header: "Ghi chú", width: 30, value: (r) => r.ghiChu },
 ```
 
-Nhờ cấu trúc khai báo, thêm một dòng là đủ — header và thân bảng dùng chung mảng này:
+**Một dòng là xong cho chiều đó.** Bảng trên màn hình và sheet Excel đều render từ mảng này, nên cột xuất hiện ở cả hai nơi cùng lúc — không thể thêm vào bảng mà quên Excel như trước.
+
+> Cột cần có ở **cả hai** chiều thì phải thêm vào cả hai file. Đây là cái giá của việc tách chiều; đổi lại sửa một chiều không đụng chiều kia.
+
+Muốn cột hiển thị khác trên web (ô có màu, dấu "—" khi rỗng) thì thêm `cell`; muốn cột chỉ có trên web thì thêm `webOnly: true`:
 
 ```ts
-/**
- * Khai báo 22 cột 1 chỗ — header và body render chung từ đây nên luôn khớp nhau.
- */
+{
+  key: "ghiChu",
+  header: "Ghi chú",
+  width: 30,
+  value: (r) => r.ghiChu,          // Excel + CSV
+  cell: (r) => r.ghiChu || NO_DATA_YET,  // web
+},
 ```
 
-### (4) Cột Excel — `exportXlsx.ts`
-
-```ts
-function overviewColumns(direction: InvoiceDirection): XlsxColumn<DisplayRow>[] {
-  return [
-    /* … */
-    { header: "Ghi chú", width: 30, value: (r) => r.ghiChu },
-  ];
-}
-```
-
-**Đây là bước hay bị quên.** Cột hiện trên màn hình nhưng biến mất trong file Excel người dùng tải về.
-
-### (5) Tùy chọn — cột sao lưu CSV, `exportInvoices.ts`
+### (4) Tùy chọn — cột sao lưu CSV, `templates/backupColumns.ts`
 
 Chỉ thêm nếu cột thuộc nhóm thông tin cần sao lưu. Danh sách này cố ý hẹp hơn.
 
@@ -177,11 +167,11 @@ Chỉ thêm nếu cột thuộc nhóm thông tin cần sao lưu. Danh sách này
 |---|---|:--:|
 | Kiểu dòng | `types/index.ts` | ✔ |
 | Biến đổi dữ liệu | `invoiceRow.ts` | ✔ |
-| Cột màn hình | `InvoiceListTabs.tsx` → `columnsFor` | ✔ |
-| Cột Excel | `exportXlsx.ts` → `overviewColumns` | ✔ |
-| Cột CSV sao lưu | `exportInvoices.ts` → `backupColumns` | tùy |
+| Cột (web + Excel) — đầu vào | `templates/dauVao.ts` → `overviewDauVao` | ✔ nếu cột thuộc chiều này |
+| Cột (web + Excel) — đầu ra | `templates/dauRa.ts` → `overviewDauRa` | ✔ nếu cột thuộc chiều này |
+| Cột CSV sao lưu | `templates/backupColumns.ts` | tùy |
 
-Với bảng **Chi tiết hóa đơn**, thay `DisplayRow`/`invoiceRow.ts`/`columnsFor` bằng `DetailRow`/`detailRow.ts`/`DETAIL_COLUMNS`, và `overviewColumns` bằng `detailColumns`.
+Với bảng **Chi tiết hóa đơn**, thay `DisplayRow`/`invoiceRow.ts` bằng `DetailRow`/`detailRow.ts`, và `overviewDauVao`/`overviewDauRa` bằng `detailDauVao`/`detailDauRa` (cùng file).
 
 ---
 
@@ -548,7 +538,8 @@ export function validateRegisterForm(v: RegisterFormValues): RegisterFieldErrors
 | Đổi ô lọc | `InvoiceFilterPanel.tsx` + `InvoiceListTabs.tsx` (mặc định) |
 | Đổi bố cục tờ hóa đơn | `invoiceHtml.ts` (`INVOICE_CSS` + `renderInvoiceHtml`) |
 | Đổi ánh xạ trường GDT | `invoiceView.ts` (`toInvoiceView`) |
-| Đổi cột Excel | `exportXlsx.ts` |
+| Đổi cột bảng hóa đơn (web + Excel + CSV) | `templates/` |
+| Đổi style/tên file Excel | `exportXlsx.ts` |
 | Đổi cấu trúc thư mục xuất | `exportBundle.ts` |
 | Đổi nhãn mã trạng thái | `api/gdt.ts` (`TRANG_THAI_HD_OPTIONS`, `KET_QUA_KIEM_TRA_OPTIONS`) |
 | Đổi định dạng ngày / tiền | `dateUtils.ts` / `format.ts` |

@@ -87,10 +87,10 @@ const PARTNER_PARAM: Record<InvoiceDirection, string> = {
   sold: "mstNguoiMua",
 };
 
-/** Field GDT trả về cho MST/tên/địa chỉ đối tác, khác tên theo chiều hóa đơn. */
-const PARTNER_FIELD: Record<InvoiceDirection, { mst: string; ten: string; dchi: string }> = {
-  purchase: { mst: "nbmst", ten: "nbten", dchi: "nbdchi" },
-  sold: { mst: "nmmst", ten: "nmten", dchi: "nmdchi" },
+/** Field GDT trả về cho MST/tên đối tác, khác tên theo chiều hóa đơn. */
+const PARTNER_FIELD: Record<InvoiceDirection, { mst: string; ten: string }> = {
+  purchase: { mst: "nbmst", ten: "nbten" },
+  sold: { mst: "nmmst", ten: "nmten" },
 };
 
 /**
@@ -115,14 +115,13 @@ function mapInvoiceDatas(
   direction: InvoiceDirection,
   datas: Array<Record<string, unknown>> | undefined,
 ): InvoiceRaw[] {
-  const { mst: mstField, ten: tenField, dchi: dchiField } = PARTNER_FIELD[direction];
+  const { mst: mstField, ten: tenField } = PARTNER_FIELD[direction];
   return (datas ?? []).map(
     (d) =>
       ({
         ...d,
         mstDoiTac: d[mstField],
         tenDoiTac: d[tenField],
-        diaChiDoiTac: d[dchiField],
       }) as InvoiceRaw,
   );
 }

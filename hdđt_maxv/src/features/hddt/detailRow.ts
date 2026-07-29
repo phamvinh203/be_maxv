@@ -43,8 +43,9 @@ const EMPTY_LINE = {
  * Hóa đơn không có dòng hàng -> vẫn trả 1 dòng chỉ gồm header (đỡ trống trơn).
  *
  * GHI CHÚ ÁNH XẠ (chỉnh Ở ĐÂY nếu tên field GDT thực tế lệch):
- *  - Header: khmshdon, khhdon, shdon, tdlap, nbmst, nbten, dvtte, tgia, tgtcthue, tgtthue,
- *    ttcktmai, tgtphi, tgtttbso, thtttoan, tthai, ttxly (giống field danh sách — đã dùng ổn).
+ *  - Header: khmshdon, khhdon, shdon, tdlap, nbmst, nbten, nmmst, nmten/nmtnmua, nmdchi, dvtte,
+ *    tgia, tgtcthue, tgtthue, ttcktmai, tgtphi, tgtttbso, thtttoan, tthai, ttxly (giống field
+ *    danh sách — đã dùng ổn).
  *  - Mảng hàng hóa: `hdhhdvu`. Mỗi dòng: ten, dvtinh, sluong, dgia, stckhau(tiền CK), tlckhau(%CK),
  *    thtien(tiền chưa thuế), sthue(tiền thuế dòng — có thể thiếu), tsuat/ltsuat(thuế suất).
  */
@@ -61,6 +62,10 @@ export function toDetailRows(
     ngayHd: s(detail.tdlap),
     sellerMst: s(detail.nbmst),
     sellerTen: s(detail.nbten),
+    buyerMst: s(detail.nmmst),
+    // Bán lẻ/cá nhân: `nmten` (tên đơn vị) rỗng, họ tên người mua nằm ở `nmtnmua`.
+    buyerTen: s(pick(detail, "nmten", "nmtnmua", "nmnmua")),
+    buyerDiaChi: s(detail.nmdchi),
     maNt: s(detail.dvtte),
     tyGia: num(detail.tgia),
     tongTienHang: num(detail.tgtcthue),

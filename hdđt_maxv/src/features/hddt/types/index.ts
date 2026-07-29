@@ -55,8 +55,6 @@ export interface InvoiceRaw {
   id: string;
   mstDoiTac: string;
   tenDoiTac: string;
-  /** Địa chỉ đối tác — không phải hóa đơn nào GDT cũng trả về field này. */
-  diaChiDoiTac?: string;
   khmshdon: string;
   khhdon: string;
   shdon: string;
@@ -118,9 +116,11 @@ export interface DisplayRow {
   ngayKy: string;
   sellerMst: string;
   sellerTen: string;
-  sellerDiaChi: string;
   buyerMst: string;
+  /** Tên bên mua: tên đơn vị (nmten), rỗng thì họ tên người mua hàng (nmtnmua) — xem `toDisplayRow`. */
   buyerTen: string;
+  /** Địa chỉ bên mua (nmdchi) — cột "Địa chỉ người mua" của chiều BÁN RA. */
+  buyerDiaChi: string;
   tienChuaThue?: number;
   tienThue?: number;
   cktm?: number;
@@ -159,6 +159,11 @@ export interface DetailRow {
   ngayHd: string;
   sellerMst: string;
   sellerTen: string;
+  buyerMst: string;
+  /** Tên bên mua: tên đơn vị (nmten), rỗng thì họ tên người mua hàng (nmtnmua) — xem `toDetailRows`. */
+  buyerTen: string;
+  /** Địa chỉ bên mua (nmdchi) — cột "Địa chỉ người mua" của chiều BÁN RA. */
+  buyerDiaChi: string;
   maNt: string;
   tyGia?: number;
   tongTienHang?: number;

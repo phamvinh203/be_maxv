@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from "react";
+import { useMemo, useState, type ReactNode } from "react";
 import Box from "@mui/material/Box";
 import Paper from "@mui/material/Paper";
 import Alert from "@mui/material/Alert";
@@ -11,50 +11,10 @@ import TableContainer from "@mui/material/TableContainer";
 import Typography from "@mui/material/Typography";
 import CircularProgress from "@mui/material/CircularProgress";
 import InboxRounded from "@mui/icons-material/InboxRounded";
-import { trangThaiHdLabel, ketQuaKiemTraLabel } from "../api/gdt";
-import { formatDateVN } from "../dateUtils";
-import { formatMoney } from "../format";
 import InvoicePagination, { DEFAULT_ROWS_PER_PAGE } from "./InvoicePagination";
 import { clampPage } from "../pagination";
-import type { DetailRow } from "../types";
-
-/** 1 cột bảng "Chi tiết hóa đơn": tiêu đề + căn lề + hàm lấy nội dung ô (`stt` = số thứ tự). */
-interface DetailColumn {
-  header: string;
-  align?: "right" | "center";
-  cell: (r: DetailRow, stt: number) => ReactNode;
-}
-
-/** 26 cột — thứ tự theo yêu cầu. Thông tin hóa đơn lặp mỗi dòng hàng, phần còn lại là dòng hàng hóa. */
-const DETAIL_COLUMNS: DetailColumn[] = [
-  { header: "STT", cell: (_r, stt) => stt },
-  { header: "Mẫu số", cell: (r) => r.mauHd },
-  { header: "Ký hiệu", cell: (r) => r.kyHieu },
-  { header: "Số hóa đơn", cell: (r) => r.soHd },
-  { header: "Ngày hóa đơn", cell: (r) => formatDateVN(r.ngayHd) },
-  { header: "MST/người bán", cell: (r) => r.sellerMst },
-  { header: "Tên người bán", cell: (r) => r.sellerTen },
-  { header: "Tên hàng hóa", cell: (r) => r.tenHang },
-  { header: "Đvt", cell: (r) => r.dvt },
-  { header: "Số lượng", align: "right", cell: (r) => formatMoney(r.soLuong) },
-  { header: "Giá", align: "right", cell: (r) => formatMoney(r.gia) },
-  { header: "Tiền CK", align: "right", cell: (r) => formatMoney(r.tienCk) },
-  { header: "Tiền chưa thuế", align: "right", cell: (r) => formatMoney(r.tienChuaThue) },
-  { header: "Thuế", align: "right", cell: (r) => formatMoney(r.thue) },
-  { header: "Tiền sau thuế", align: "right", cell: (r) => formatMoney(r.tienSauThue) },
-  { header: "TL CKTM", align: "right", cell: (r) => formatMoney(r.tlCktm) },
-  { header: "Thuế suất", align: "center", cell: (r) => r.thueSuat },
-  { header: "Mã nt", cell: (r) => r.maNt },
-  { header: "Tỷ giá", align: "right", cell: (r) => formatMoney(r.tyGia) },
-  { header: "Tổng tiền hàng", align: "right", cell: (r) => formatMoney(r.tongTienHang) },
-  { header: "Tổng tiền thuế", align: "right", cell: (r) => formatMoney(r.tongThue) },
-  { header: "Tổng CK", align: "right", cell: (r) => formatMoney(r.tongCk) },
-  { header: "Tổng phí", align: "right", cell: (r) => formatMoney(r.tongPhi) },
-  { header: "Tổng thanh toán", align: "right", cell: (r) => formatMoney(r.tongTt) },
-  { header: "Hình thức thanh toán", cell: (r) => r.hinhThucTt },
-  { header: "Trạng thái hóa đơn", align: "center", cell: (r) => trangThaiHdLabel(r.trangThaiHd) },
-  { header: "Kết quả kiểm tra", align: "center", cell: (r) => ketQuaKiemTraLabel(r.ketQuaKt) },
-];
+import { detailColumns, renderCell } from "../templates";
+import type { DetailRow, InvoiceDirection } from "../types";
 
 /** Khung căn giữa dùng cho trạng thái loading / gợi ý (viền + bo góc như placeholder cũ). */
 function CenteredState({ children }: { children: ReactNode }) {
@@ -80,6 +40,8 @@ function CenteredState({ children }: { children: ReactNode }) {
 interface Props {
   /** Các dòng chi tiết (đã bung hàng hóa) của TẤT CẢ hóa đơn trong khoảng đang xem. */
   rows: DetailRow[];
+  /** Chiều hóa đơn — quyết định cột đối tác (mua vào: người bán; bán ra: người mua). */
+  direction: InvoiceDirection;
   loading: boolean;
   /** Lỗi đọc chi tiết đã lưu. */
   error: string;
@@ -88,11 +50,13 @@ interface Props {
 /**
  * Bảng "Chi tiết hóa đơn" — nội dung tab "Chi tiết hoá đơn" trong `InvoiceListTabs`.
  * Hiển thị tất cả dòng hàng hóa của mọi hóa đơn đã tải chi tiết trong khoảng đang xem.
+ * Cột khai ở `templates/detailColumns` — dùng chung với sheet Excel "Chi tiết".
  */
-export default function InvoiceDetailPanel({ rows, loading, error }: Props) {
+export default function InvoiceDetailPanel({ rows, direction, loading, error }: Props) {
   // Phân trang phía client (độc lập với tab "Tổng quát"): dùng chung InvoicePagination.
   const [page, setPage] = useState(0);
   const [rowsPerPage, setRowsPerPage] = useState(DEFAULT_ROWS_PER_PAGE);
+  const columns = useMemo(() => detailColumns(direction), [direction]);
 
   if (loading) {
     return (
@@ -130,8 +94,8 @@ export default function InvoiceDetailPanel({ rows, loading, error }: Props) {
         <Table size="small" sx={{ "& td, & th": { whiteSpace: "nowrap" } }}>
           <TableHead>
             <TableRow sx={{ "& th": { fontWeight: 700, bgcolor: "action.hover" } }}>
-              {DETAIL_COLUMNS.map((col) => (
-                <TableCell key={col.header} align={col.align}>
+              {columns.map((col) => (
+                <TableCell key={col.key} align={col.align}>
                   {col.header}
                 </TableCell>
               ))}
@@ -142,9 +106,9 @@ export default function InvoiceDetailPanel({ rows, loading, error }: Props) {
               const stt = safePage * rowsPerPage + i + 1;
               return (
                 <TableRow key={stt} hover>
-                  {DETAIL_COLUMNS.map((col) => (
-                    <TableCell key={col.header} align={col.align}>
-                      {col.cell(r, stt)}
+                  {columns.map((col) => (
+                    <TableCell key={col.key} align={col.align}>
+                      {renderCell(col, r, stt)}
                     </TableCell>
                   ))}
                 </TableRow>
