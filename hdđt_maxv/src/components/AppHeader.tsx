@@ -22,12 +22,16 @@ import ApartmentRounded from "@mui/icons-material/ApartmentRounded";
 import CheckRounded from "@mui/icons-material/CheckRounded";
 import LoginRounded from "@mui/icons-material/LoginRounded";
 import HowToRegRounded from "@mui/icons-material/HowToRegRounded";
+import MenuBookRounded from "@mui/icons-material/MenuBookRounded";
 import { useAuth } from "../features/auth/useAuth";
 import { useActiveCompanyMst } from "../features/auth/useActiveCompanyMst";
 import { useGdtSession } from "../features/hddt/gdtSession/useGdtSession";
 import { useCompanySwitch } from "../features/company/hooks/useCompanySwitch";
 import DialogLoginHddt from "./dialogLoginHddt";
 import logoMaxv from "../assets/Logo_Maxv.png";
+
+// TODO: điền link hướng dẫn sử dụng (mở tab mới). Để rỗng thì nút không điều hướng.
+const HUONG_DAN_SU_DUNG_URL = "https://docs.google.com/document/d/1OEBtaAepmMAEKHp8ArVPnGFBaQHQjA5I/edit";
 
 export default function AppHeader() {
   const { user, logout, companies, currentCompanyId } = useAuth();
@@ -71,6 +75,17 @@ export default function AppHeader() {
             sx={{ textTransform: "none", fontWeight: 600 }}
           >
             Hóa đơn và tờ khai
+          </Button>
+          <Button
+            color="inherit"
+            component="a"
+            href={HUONG_DAN_SU_DUNG_URL || undefined}
+            target="_blank"
+            rel="noopener noreferrer"
+            startIcon={<MenuBookRounded fontSize="small" />}
+            sx={{ textTransform: "none", fontWeight: 600 }}
+          >
+            Hướng dẫn sử dụng
           </Button>
         </Stack>
 

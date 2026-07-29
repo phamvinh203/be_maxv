@@ -1,11 +1,4 @@
-import {
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-  type ReactNode,
-  type SyntheticEvent,
-} from "react";
+import { useEffect, useMemo, useRef, useState, type SyntheticEvent } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import Box from "@mui/material/Box";
 import Tabs from "@mui/material/Tabs";
@@ -30,7 +23,6 @@ import VisibilityRounded from "@mui/icons-material/VisibilityRounded";
 import { useActiveGdtToken } from "../gdtSession/useActiveGdtToken";
 import { useGdtSession } from "../gdtSession/useGdtSession";
 import DialogLoginHddt from "../../../components/dialogLoginHddt";
-import { trangThaiHdLabel, ketQuaKiemTraLabel } from "../api/gdt";
 import { invoiceKeys, useSavedInvoicesQuery } from "../api/invoiceQueries";
 import { detailKeys, useSavedDetailsQuery } from "../api/invoiceDetailQueries";
 import { startDetailRun, getDetailRunStatus } from "../api/invoiceDetail";
@@ -42,85 +34,18 @@ import {
 } from "../api/updateRun";
 import { useAuth } from "../../auth/useAuth";
 import { toast } from "react-toastify";
-import type {
-  DisplayRow,
-  InvoiceDirection,
-  InvoiceFilterValues,
-  InvoiceQuery,
-} from "../types";
+import type { InvoiceDirection, InvoiceFilterValues, InvoiceQuery } from "../types";
 import { toDisplayRow } from "../invoiceRow";
 import { toDetailRows } from "../detailRow";
-import { formatMoney, ttTaiLabel } from "../format";
+import { overviewColumns, renderCell } from "../templates";
 import InvoiceFilterPanel from "./InvoiceFilterPanel";
 import InvoiceDetailPanel from "./InvoiceDetailPanel";
 import InvoiceViewDialog from "./InvoiceViewDialog";
 import ExportFileDialog from "./ExportFileDialog";
 import InvoicePagination, { DEFAULT_ROWS_PER_PAGE } from "./InvoicePagination";
 import { clampPage } from "../pagination";
-import { currentMonthRange, formatDateVN } from "../dateUtils";
+import { currentMonthRange } from "../dateUtils";
 import { getErrorMessage } from "../../../lib/errors";
-
-/** Cột chưa có nguồn dữ liệu (cần API/tính năng riêng, chưa xây) — hiển thị tạm "—". */
-const NO_DATA_YET = "—";
-
-/** 1 cột bảng "Tổng quát": tiêu đề + căn lề + hàm lấy nội dung ô từ 1 dòng (`stt` = số thứ tự). */
-interface InvoiceColumn {
-  header: string;
-  align?: "right" | "center";
-  cell: (row: DisplayRow, stt: number) => ReactNode;
-}
-
-/** Ô "T. thái tải": OK (xanh) / Lỗi (đỏ) theo `tt_tai`; chưa tải -> "—". */
-function ttTaiCell(v?: string): ReactNode {
-  const label = ttTaiLabel(v);
-  if (!label) return NO_DATA_YET;
-  return (
-    <Box component="span" sx={{ color: v === "OK" ? "success.main" : "error.main", fontWeight: 600 }}>
-      {label}
-    </Box>
-  );
-}
-
-/**
- * Khai báo 22 cột 1 chỗ — header và body render chung từ đây nên luôn khớp nhau.
- * Thứ tự cột theo mẫu lưới của phần mềm kế toán. Các cột chưa có nguồn dữ liệu
- * (T.thái tải, Mã ct hạch toán, Tên chứng từ hạch toán, Hóa đơn rủi ro) hiển thị tạm "—".
- *
- * Cột đối tác đổi theo chiều: mua vào (đầu vào) hiện NGƯỜI BÁN; bán ra (đầu ra) hiện NGƯỜI MUA
- * (nmmst/nmten) — vì bên "mình" (người bán) đã là công ty đang chọn, đối tác mới là thông tin cần xem.
- */
-function columnsFor(direction: InvoiceDirection): InvoiceColumn[] {
-  const isPurchase = direction === "purchase";
-  return [
-    { header: "STT", cell: (_r, stt) => stt },
-    // Cột "Chọn" render riêng trong thân bảng (cần state selectedId) — cell này không được gọi.
-    { header: "Chọn", align: "center", cell: () => null },
-    { header: "T. thái tải", align: "center", cell: (r) => ttTaiCell(r.ttTai) },
-    { header: "Ký hiệu mẫu số", cell: (r) => r.mauHd },
-    { header: "Ký hiệu hóa đơn", cell: (r) => r.soSeri },
-    { header: "Số hóa đơn", cell: (r) => r.soHd },
-    { header: "Ngày lập", cell: (r) => formatDateVN(r.ngayLap) },
-    { header: "Ngày ký", cell: (r) => formatDateVN(r.ngayKy) || NO_DATA_YET },
-    isPurchase
-      ? { header: "MST người bán/MST người xuất hàng", cell: (r) => r.sellerMst }
-      : { header: "MST người mua", cell: (r) => r.buyerMst },
-    isPurchase
-      ? { header: "Tên người bán/Tên người xuất hàng", cell: (r) => r.sellerTen }
-      : { header: "Tên người mua", cell: (r) => r.buyerTen },
-    { header: "Tổng tiền chưa thuế", align: "right", cell: (r) => formatMoney(r.tienChuaThue) },
-    { header: "Tổng tiền thuế", align: "right", cell: (r) => formatMoney(r.tienThue) },
-    { header: "Tổng CKTM", align: "right", cell: (r) => formatMoney(r.cktm) },
-    { header: "Tổng phí", align: "right", cell: (r) => formatMoney(r.phi) },
-    { header: "Tổng tiền thanh toán", align: "right", cell: (r) => formatMoney(r.tongTt) },
-    { header: "Mã nt", cell: (r) => r.maNt },
-    { header: "Tỷ giá", align: "right", cell: (r) => formatMoney(r.tyGia) },
-    { header: "Trạng thái hóa đơn", align: "center", cell: (r) => trangThaiHdLabel(r.trangThaiHd) },
-    { header: "Kết quả kiểm tra", align: "center", cell: (r) => ketQuaKiemTraLabel(r.ketQuaKt) },
-    { header: "Mã ct hạch toán", cell: () => NO_DATA_YET },
-    { header: "Tên chứng từ hạch toán", cell: () => NO_DATA_YET },
-    { header: "Hóa đơn rủi ro", align: "center", cell: () => NO_DATA_YET },
-  ];
-}
 
 interface InvoiceTablePanelProps {
   direction: InvoiceDirection;
@@ -171,7 +96,7 @@ function InvoiceTablePanel({ direction, active }: InvoiceTablePanelProps) {
   const { activeMst, token: activeGdtToken } = useActiveGdtToken();
   const { setGdtToken } = useGdtSession();
   // Cột đối tác đổi theo chiều (mua vào: người bán; bán ra: người mua) -> tính theo direction.
-  const columns = useMemo(() => columnsFor(direction), [direction]);
+  const columns = useMemo(() => overviewColumns(direction), [direction]);
   const qc = useQueryClient();
   const [resultTab, setResultTab] = useState<ResultTab>("tong-quat");
   const [page, setPage] = useState(0);
@@ -527,6 +452,7 @@ function InvoiceTablePanel({ direction, active }: InvoiceTablePanelProps) {
       {resultTab === "chi-tiet" ? (
         <InvoiceDetailPanel
           rows={detailRows}
+          direction={direction}
           loading={savedDetailsQuery.isLoading}
           error={
             savedDetailsQuery.isError
@@ -541,7 +467,7 @@ function InvoiceTablePanel({ direction, active }: InvoiceTablePanelProps) {
           <TableHead>
             <TableRow sx={{ "& th": { fontWeight: 700, bgcolor: "action.hover" } }}>
               {columns.map((col) => (
-                <TableCell key={col.header} align={col.align}>
+                <TableCell key={col.key} align={col.align}>
                   {col.header}
                 </TableCell>
               ))}
@@ -554,8 +480,10 @@ function InvoiceTablePanel({ direction, active }: InvoiceTablePanelProps) {
                 return (
                   <TableRow key={r.id} hover selected={selectedId === r.id}>
                     {columns.map((col) => (
-                      <TableCell key={col.header} align={col.align}>
-                        {col.header === "Chọn" ? (
+                      <TableCell key={col.key} align={col.align}>
+                        {/* Cột "Chọn" render tại đây vì checkbox cần state selectedId của component;
+                            template chỉ khai chỗ đứng của cột (webOnly). */}
+                        {col.key === "chon" ? (
                           <Checkbox
                             size="small"
                             sx={{ p: 0 }}
@@ -566,7 +494,7 @@ function InvoiceTablePanel({ direction, active }: InvoiceTablePanelProps) {
                             slotProps={{ input: { "aria-label": `Chọn hóa đơn ${r.soHd}` } }}
                           />
                         ) : (
-                          col.cell(r, stt)
+                          renderCell(col, r, stt)
                         )}
                       </TableCell>
                     ))}

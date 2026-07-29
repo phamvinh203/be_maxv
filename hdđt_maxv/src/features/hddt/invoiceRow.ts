@@ -24,9 +24,12 @@ export function toDisplayRow(r: InvoiceRaw, direction: InvoiceDirection): Displa
     ngayKy: rowStr(r.nky),
     sellerMst: isPurchase ? r.mstDoiTac : ownMst,
     sellerTen: isPurchase ? r.tenDoiTac : ownTen,
-    sellerDiaChi: isPurchase ? (r.diaChiDoiTac ?? "") : "",
     buyerMst: isPurchase ? ownMst : r.mstDoiTac,
-    buyerTen: isPurchase ? ownTen : r.tenDoiTac,
+    // Hóa đơn bán lẻ/cá nhân: GDT để trống tên đơn vị (`nmten`), họ tên người mua nằm ở `nmtnmua`.
+    // Không fallback thì cột "Tên công ty người mua" của chiều bán ra trống hàng loạt.
+    buyerTen: (isPurchase ? ownTen : rowStr(r.tenDoiTac)) || rowStr(r.nmtnmua),
+    // Địa chỉ bên mua lấy thẳng `nmdchi` (BE đã trả trong SAVED_LIST_SELECT) — đúng cho cả hai chiều.
+    buyerDiaChi: rowStr(r.nmdchi),
     tienChuaThue: r.tgtcthue,
     tienThue: r.tgtthue,
     cktm: r.ttcktmai,

@@ -250,19 +250,7 @@ const toDate = (v: unknown): Date | undefined => {
   return Number.isNaN(d.getTime()) ? undefined : d;
 };
 
-/**
- * Độ rộng (ký tự) của các cột VarChar MÔ TẢ trong vct50view/vct60view — PHẢI khớp
- * `prisma/tenant/schema.prisma`, sửa schema thì sửa luôn ở đây.
- *
- * Vì sao cần: dữ liệu GDT là dữ liệu NGOÀI do người bán tự nhập, không có gì bảo đảm nó vừa
- * cột của mình (`thtttoan` kiểu "Tiền mặt/Chuyển khoản/Bù trừ công nợ", `gchu` dài cả trang…).
- * Chép thẳng vào cột thì Postgres ném 22001 -> Prisma P2000 `"The provided value for the column
- * is too long for the column's type. Column: (not available)"`, cả trang trong `$transaction`
- * bị rollback và lượt đồng bộ chết giữa chừng (bug 29/07/2026: mua vào 01/06..30/06 dừng ở
- * 570/583 dòng). Postgres KHÔNG nói cột nào -> tự cắt theo bảng này + tự log tên field.
- *
- * Cắt là AN TOÀN với nhóm này: giá trị đầy đủ vẫn nằm nguyên trong cột `raw` (payload GDT gốc).
- */
+
 const VCT_TEXT_MAX_LEN = {
   mhdon: 128,
   nbten: 254,
