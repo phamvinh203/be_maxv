@@ -251,29 +251,98 @@ const toDate = (v: unknown): Date | undefined => {
 };
 
 /**
+ * Độ rộng (ký tự) của các cột VarChar MÔ TẢ trong vct50view/vct60view — PHẢI khớp
+ * `prisma/tenant/schema.prisma`, sửa schema thì sửa luôn ở đây.
+ *
+ * Vì sao cần: dữ liệu GDT là dữ liệu NGOÀI do người bán tự nhập, không có gì bảo đảm nó vừa
+ * cột của mình (`thtttoan` kiểu "Tiền mặt/Chuyển khoản/Bù trừ công nợ", `gchu` dài cả trang…).
+ * Chép thẳng vào cột thì Postgres ném 22001 -> Prisma P2000 `"The provided value for the column
+ * is too long for the column's type. Column: (not available)"`, cả trang trong `$transaction`
+ * bị rollback và lượt đồng bộ chết giữa chừng (bug 29/07/2026: mua vào 01/06..30/06 dừng ở
+ * 570/583 dòng). Postgres KHÔNG nói cột nào -> tự cắt theo bảng này + tự log tên field.
+ *
+ * Cắt là AN TOÀN với nhóm này: giá trị đầy đủ vẫn nằm nguyên trong cột `raw` (payload GDT gốc).
+ */
+const VCT_TEXT_MAX_LEN = {
+  mhdon: 128,
+  nbten: 254,
+  nbdchi: 512,
+  nmten: 254,
+  nmdchi: 512,
+  nmcmnd: 32,
+  dvtte: 16,
+  tthai: 8,
+  ttxly: 8,
+  thtttoan: 32,
+  gchu: 1024,
+} as const;
+
+/**
+ * Độ rộng cột của các field ĐỊNH DANH. Tách khỏi `VCT_TEXT_MAX_LEN` vì các field này KHÔNG được
+ * cắt: `id` là khóa upsert, còn (`nbmst`,`khmshdon`,`khhdon`,`shdon`) là khóa unique — cắt bớt
+ * sẽ gộp nhầm 2 hóa đơn khác nhau thành một. `nmmst` quyết định hóa đơn thuộc MST nào (guard
+ * chống rò rỉ giữa tenant). Dòng vi phạm bị BỎ QUA kèm log, xem `saveInvoices`.
+ */
+const VCT_KEY_MAX_LEN = {
+  id: 64,
+  khmshdon: 16,
+  khhdon: 32,
+  shdon: 32,
+  nbmst: 24,
+  nmmst: 24,
+} as const;
+
+/**
+ * Field định danh nào vượt độ rộng cột? Trả mảng mô tả dạng `nbmst(30>24)` (rỗng nếu vừa hết).
+ * Dùng để bỏ đúng 1 dòng bất thường thay vì để nó giết cả trang.
+ */
+export function findOversizedKeyFields(data: Record<string, unknown>): string[] {
+  const out: string[] = [];
+  for (const [field, max] of Object.entries(VCT_KEY_MAX_LEN)) {
+    const v = data[field];
+    if (typeof v === "string" && v.length > max) out.push(`${field}(${v.length}>${max})`);
+  }
+  return out;
+}
+
+/**
  * Chuẩn hóa 1 hóa đơn thô GDT trả về thành field khớp cột vct50view/vct60view.
  * `raw` giữ nguyên object gốc — không mất field nào kể cả khi GDT đổi/thêm field.
  *
  * `khmshdon`/`khhdon`/`shdon`/`nbmst`/`tdlap` fallback về ""/`new Date()` CHỈ để thỏa
  * ràng buộc NOT NULL của Prisma — GDT luôn trả đủ các field này trên thực tế, nên fallback
  * kích hoạt nghĩa là dữ liệu bất thường (xem cảnh báo log ở `saveInvoices` bên dưới).
+ *
+ * Field mô tả được cắt về đúng độ rộng cột (`VCT_TEXT_MAX_LEN`) — xem lý do ở bảng đó.
  */
 export function toVctData(row: Record<string, unknown>) {
+  /** Chuỗi vừa cột -> giữ nguyên; dài hơn -> cắt + cảnh báo kèm TÊN FIELD (thứ Postgres không nói). */
+  const fit = (field: keyof typeof VCT_TEXT_MAX_LEN, v: unknown): string | undefined => {
+    const s = toStr(v);
+    const max = VCT_TEXT_MAX_LEN[field];
+    if (s === undefined || s.length <= max) return s;
+    console.warn(
+      `[gdt.toVctData] Hóa đơn id=${toStr(row.id) ?? "?"}: field "${field}" dài ${s.length} ký tự ` +
+        `> cột ${max} — đã cắt để lưu được (giá trị đầy đủ vẫn nằm trong cột raw).`,
+    );
+    return s.slice(0, max);
+  };
+
   return {
     khmshdon: toStr(row.khmshdon) ?? "",
     khhdon: toStr(row.khhdon) ?? "",
     shdon: toStr(row.shdon) ?? "",
-    mhdon: toStr(row.mhdon),
+    mhdon: fit("mhdon", row.mhdon),
     tdlap: toDate(row.tdlap) ?? new Date(),
     nky: toDate(row.nky) ?? toDate(row.ntao) ?? toDate(row.ncnhat),
     nbmst: toStr(row.nbmst) ?? "",
-    nbten: toStr(row.nbten) ?? "",
-    nbdchi: toStr(row.nbdchi),
+    nbten: fit("nbten", row.nbten) ?? "",
+    nbdchi: fit("nbdchi", row.nbdchi),
     nmmst: toStr(row.nmmst),
-    nmten: toStr(row.nmten),
-    nmdchi: toStr(row.nmdchi),
-    nmcmnd: toStr(row.nmcmnd),
-    dvtte: toStr(row.dvtte),
+    nmten: fit("nmten", row.nmten),
+    nmdchi: fit("nmdchi", row.nmdchi),
+    nmcmnd: fit("nmcmnd", row.nmcmnd),
+    dvtte: fit("dvtte", row.dvtte),
     tgia: toNum(row.tgia),
     tgtcthue: toNum(row.tgtcthue),
     tgtthue: toNum(row.tgtthue),
@@ -282,10 +351,10 @@ export function toVctData(row: Record<string, unknown>) {
     // tổng tiền thanh toán — GDT luôn trả field này; fallback 0 chỉ để tránh NaN/undefined
     // lọt vào cột NOT NULL, không phải giá trị nghiệp vụ hợp lệ.
     tgtttbso: toNum(row.tgtttbso) ?? 0,
-    tthai: toStr(row.tthai),
-    ttxly: toStr(row.ttxly),
-    thtttoan: toStr(row.thtttoan),
-    gchu: toStr(row.gchu),
+    tthai: fit("tthai", row.tthai),
+    ttxly: fit("ttxly", row.ttxly),
+    thtttoan: fit("thtttoan", row.thtttoan),
+    gchu: fit("gchu", row.gchu),
     raw: row as Prisma.InputJsonValue,
   };
 }
@@ -356,6 +425,9 @@ export async function saveInvoices(
   // Dòng bị bỏ vì thiếu `id` (khóa upsert): trước đây bỏ im lặng nên "lấy được N dòng mà lưu 0"
   // không để lại dấu vết nào. Đếm lại để cảnh báo ở cuối hàm.
   let skippedNoId = 0;
+  // Dòng bị bỏ vì field ĐỊNH DANH vượt độ rộng cột — không cắt được (hỏng khóa), nhưng cũng
+  // không được để nó làm rollback cả trang như trước.
+  let skippedTooLong = 0;
   for (const raw of rows) {
     if (!raw || typeof raw !== "object") continue;
     const row = raw as Record<string, unknown>;
@@ -373,6 +445,17 @@ export async function saveInvoices(
     }
 
     const data = toVctData(row);
+
+    const oversized = findOversizedKeyFields({ ...data, id });
+    if (oversized.length > 0) {
+      skippedTooLong += 1;
+      console.error(
+        `[gdt.saveInvoices] Hóa đơn id=${id} (${direction}): BỎ QUA vì field định danh vượt độ ` +
+          `rộng cột: ${oversized.join(", ")}. Cắt bớt sẽ làm sai định danh hóa đơn.`,
+      );
+      continue;
+    }
+
     ops.push(
       direction === "purchase"
         ? tenantDb.vct60view.upsert({ where: { id }, create: { id, ...data }, update: data })
@@ -384,6 +467,13 @@ export async function saveInvoices(
     console.warn(
       `[DEBUG-LIST] saveInvoices(${direction}): BỎ QUA ${skippedNoId}/${rows.length} dòng vì thiếu ` +
         `field "id" của GDT -> không lưu được dòng nào trong số đó.`,
+    );
+  }
+
+  if (skippedTooLong > 0) {
+    console.warn(
+      `[DEBUG-LIST] saveInvoices(${direction}): BỎ QUA ${skippedTooLong}/${rows.length} dòng vì ` +
+        `field định danh vượt độ rộng cột (chi tiết ở log lỗi từng dòng ngay trên).`,
     );
   }
 
@@ -850,6 +940,9 @@ const DIRECTION_TEXT: Record<"purchase" | "sold", string> = {
   sold: "đầu ra",
 };
 
+/** Độ rộng cột `sync_log.dien_giai` — PHẢI khớp `prisma/tenant/schema.prisma`. */
+const SYNC_LOG_DIEN_GIAI_MAX = 512;
+
 /**
  * Diễn giải chuẩn cho 1 dòng lịch sử: `"<Hành động> hóa đơn <chiều>"`, nối lý do sau dấu gạch khi
  * lượt chưa hoàn thành. Đây là thứ DUY NHẤT phân biệt dòng của nút "Đồng bộ từ Thuế" với nút
@@ -857,15 +950,19 @@ const DIRECTION_TEXT: Record<"purchase" | "sold", string> = {
  *
  * Nhận nguyên trạng thái lượt chạy (không nhận chuỗi lý do đã nấu sẵn) để quy ước "dở dang mà
  * không có message thì ghi 'Chưa hoàn thành'" chỉ tồn tại một bản.
+ *
+ * CẮT về `SYNC_LOG_DIEN_GIAI_MAX`: `run.message` là message lỗi tùy ý (lỗi Prisma/GDT có thể dài
+ * hàng nghìn ký tự). Không cắt thì chính dòng lịch sử báo lỗi lại ghi hỏng nốt — người dùng mất
+ * luôn manh mối, còn endpoint đồng bộ 500 thay vì trả kết quả dở dang.
  */
-function buildDienGiai(
+export function buildDienGiai(
   action: "Đồng bộ" | "Cập nhật",
   direction: "purchase" | "sold",
   run: { partial: boolean; message?: string },
 ): string {
   const base = `${action} hóa đơn ${DIRECTION_TEXT[direction]}`;
   const reason = run.message || (run.partial ? "Chưa hoàn thành" : "");
-  return reason ? `${base} — ${reason}` : base;
+  return (reason ? `${base} — ${reason}` : base).slice(0, SYNC_LOG_DIEN_GIAI_MAX);
 }
 
 /**
