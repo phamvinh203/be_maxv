@@ -576,6 +576,7 @@ Trả `SyncRunStatus` với `cancelled: true`. Backend thoát ở **ranh giới 
 | Method | Path | Token GDT | Hàm FE |
 |---|---|:--:|---|
 | POST | `/gdt/render-pdf` | ✖ | `renderInvoicePdf()` |
+| GET | `/gdt/invoices/export-xml` | ✔ | `fetchOriginalInvoiceXml()` |
 | DELETE | `/gdt/sync/data` | ✖ | `clearSyncData()` |
 
 #### POST `/gdt/render-pdf`
@@ -587,6 +588,25 @@ Trả `SyncRunStatus` với `cancelled: true`. Backend thoát ở **ranh giới 
 ```
 
 Backend giới hạn body **5 MB** (mặc định Fastify là 1 MB — hóa đơn nhiều dòng bằng tiếng Việt UTF-8 dễ vượt). Client đặt hạn thời gian 60 giây.
+
+#### GET `/gdt/invoices/export-xml`
+
+```ts
+// Query
+{ nbmst: string; khhdon: string; shdon: string; khmshdon: string;
+  cttt?: "1"; direction?: "purchase" | "sold" }
+// Response: application/xml (text) — hóa đơn XML gốc đã ký số
+```
+
+Backend **đọc cache trước**: nếu cột `xml_goc` của hóa đơn đã có thì trả ngay, không chạm cổng thuế (hóa đơn đã ký là bất biến). `direction` quyết định tra ở `vct60view` hay `vct50view`; thiếu thì mặc định `purchase`.
+
+Chưa có cache thì gọi cổng thuế (`/query/invoices/export-xml`, hoặc `/sco-query/...` khi `cttt=1` — hóa đơn máy tính tiền), nhận **file ZIP**, rút `invoice.xml`, lưu vào cache rồi trả về. Lượt gọi đi qua pacer làn `xml` (hàng đợi riêng, 2 call song song).
+
+`nbmst` luôn là **MST người bán**, kể cả ở chiều mua vào — đây là bên phát hành hóa đơn.
+
+Cổng thuế thỉnh thoảng nuốt request (không phản hồi), nên backend **tự thử lại** lỗi tạm thời: timeout 10s mỗi lần thử, backoff 1s→2s→4s, trong ngân sách 45 giây. Client vì vậy đặt hạn **120 giây** — cắt sớm hơn là vứt bỏ công sức retry của backend.
+
+Mã lỗi: **401** khi token GDT hết hạn (client dừng phần XML của cả lượt xuất và nhắc đăng nhập lại), **502** cho mọi lỗi khác từ cổng thuế, kể cả khi đã hết ngân sách thử lại.
 
 #### DELETE `/gdt/sync/data`
 

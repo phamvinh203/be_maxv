@@ -1,5 +1,5 @@
 import { toast } from "react-toastify";
-import { apiFetch, apiFetchBlob } from "../../../lib/http";
+import { apiFetch, apiFetchBlob, apiFetchText } from "../../../lib/http";
 import { getErrorMessage } from "../../../lib/errors";
 import { buildInvoiceParams } from "./gdt";
 import type {
@@ -93,6 +93,44 @@ export function renderInvoicePdf(html: string): Promise<Blob> {
     body: JSON.stringify({ html }),
     // Chặn 1 request treo làm kẹt cả lượt xuất (hàng trăm HĐ tuần tự) — 60s/hóa đơn là dư.
     signal: AbortSignal.timeout(60_000),
+  });
+}
+
+/** Định danh 1 hóa đơn để xin bản XML gốc từ cổng thuế (khớp tham số endpoint `export-xml`). */
+export interface OriginalXmlKey {
+  /** MST NGƯỜI BÁN — kể cả chiều mua vào (bên phát hành hóa đơn). */
+  nbmst: string;
+  khhdon: string;
+  shdon: string;
+  khmshdon: string;
+  /** Hóa đơn máy tính tiền (`ttxly=8`) -> cổng thuế để ở nhánh sco-query riêng. */
+  cashRegister: boolean;
+  /** Chiều hóa đơn — BE dùng để biết đọc/ghi cache XML ở bảng nào. */
+  direction: InvoiceDirection;
+}
+
+/**
+ * GET /gdt/invoices/export-xml → HÓA ĐƠN XML GỐC ĐÃ KÝ SỐ (chuẩn TT78, có mã CQT + chữ ký người bán
+ * và Cục Thuế). BE gọi cổng thuế, rút `invoice.xml` khỏi gói ZIP rồi trả về dạng văn bản.
+ *
+ * Đây là bản DUY NHẤT có giá trị pháp lý — khác hẳn XML dựng lại từ payload chi tiết. Cần token GDT
+ * còn hạn. Dùng: orchestrator xuất file (`exportBundle`) — thư mục `xml/`.
+ */
+export function fetchOriginalInvoiceXml(key: OriginalXmlKey, gdtToken: string): Promise<string> {
+  const params = new URLSearchParams({
+    nbmst: key.nbmst,
+    khhdon: key.khhdon,
+    shdon: key.shdon,
+    khmshdon: key.khmshdon,
+  });
+  if (key.cashRegister) params.set("cttt", "1");
+
+  return apiFetchText(`/gdt/invoices/${key.direction}/export-xml?${params.toString()}`, {
+    headers: { "X-Gdt-Token": gdtToken },
+    // Rộng hơn HẲN ngân sách retry của BE (45s): cổng thuế hay nuốt request nên BE phải được thử
+    // lại vài lần: cắt sớm ở đây là vứt đi công sức đó rồi mất file XML. Cộng thêm thời gian nằm
+    // chờ hàng đợi pacer làn `xml` (2 slot mỗi MST) khi các hóa đơn trước cũng đang retry.
+    signal: AbortSignal.timeout(120_000),
   });
 }
 

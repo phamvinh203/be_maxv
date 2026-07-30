@@ -1,22 +1,37 @@
 /**
  * Orchestrator nút "Xuất file tổng hợp + hóa đơn": đọc HĐ đã lưu + chi tiết trong khoảng, sinh 1 file
  * Excel tổng hợp (2 sheet) + file từng hóa đơn (HTML/XML/PDF theo ô tick), rồi GHI thẳng vào thư mục
- * người dùng chọn qua File System Access API (Chrome/Edge). Thuần frontend — không gọi GDT ở đây.
+ * người dùng chọn qua File System Access API (Chrome/Edge).
+ *
+ * HTML/PDF dựng tại chỗ từ chi tiết đã lưu; riêng XML là BẢN GỐC ĐÃ KÝ SỐ tải từ cổng thuế qua BE
+ * (`fetchOriginalInvoiceXml`) — nên lượt xuất có tick XML cần token GDT còn hạn.
  */
 import { getSavedInvoices } from "./api/gdt";
-import { getSavedDetails, renderInvoicePdf } from "./api/invoiceDetail";
+import { getSavedDetails, renderInvoicePdf, fetchOriginalInvoiceXml } from "./api/invoiceDetail";
 import { toDisplayRow } from "./invoiceRow";
 import { toDetailRows } from "./detailRow";
 import { toInvoiceView, type InvoiceView } from "./invoiceView";
-import { standaloneInvoiceHtml } from "./invoiceHtml";
-import { buildInvoiceXml } from "./invoiceXml";
+import {
+  renderInvoiceHtml,
+  standaloneInvoiceHtml,
+  PRINT_PAGE_CSS,
+  type InvoiceAssets,
+} from "./invoiceHtml";
+import {
+  INVOICE_ASSET_FILES,
+  RELATIVE_INVOICE_ASSETS,
+  loadInvoiceAssetBlobs,
+  loadInlineInvoiceAssets,
+} from "./invoiceAssets";
+import { readOriginalXmlExtras } from "./invoiceOriginalXml";
 import {
   buildSummaryWorkbookBuffer,
   summaryWorkbookFilename,
   type ExportRange,
 } from "./exportXlsx";
 import type { InvoiceDirection, InvoiceQuery } from "./types";
-import { type FsDirHandle, writeFile } from "../../lib/fileSystemAccess";
+import { type FsDirHandle, writeFile, readFileText } from "../../lib/fileSystemAccess";
+import { ApiError } from "../../lib/http";
 
 /** Bỏ ký tự không hợp lệ trong tên file (Windows/khác), gộp khoảng trắng. */
 function safeName(raw: string): string {
@@ -27,15 +42,38 @@ function safeName(raw: string): string {
  * Render 1 tờ hóa đơn ra PDF VECTOR: gửi HTML tờ hóa đơn (tự chứa) lên BE, Chromium headless
  * (puppeteer) render -> PDF chuẩn (chữ nét, chọn/tìm được). Thay cách cũ dùng html2canvas (ảnh raster
  * mờ + dính lỗi màu oklch của app).
+ *
+ * `assets` phải là ảnh nhúng base64: Chromium nhận HTML qua `setContent`, không có thư mục gốc nào
+ * để phân giải đường dẫn ảnh tương đối -> nền và dấu chữ ký sẽ mất nếu trỏ đường dẫn thường.
+ * `body` là thân tờ hóa đơn đã dựng, dùng lại từ bước ghi .html (xem `processTask`).
  */
-async function invoiceToPdfBlob(view: InvoiceView): Promise<Blob> {
-  return renderInvoicePdf(standaloneInvoiceHtml(view, "body{margin:0;background:#fff;}"));
+async function invoiceToPdfBlob(
+  view: InvoiceView,
+  assets: InvoiceAssets,
+  body: string,
+): Promise<Blob> {
+  return renderInvoicePdf(
+    standaloneInvoiceHtml(view, {
+      extraCss: `${PRINT_PAGE_CSS}body{background:#fff;}`,
+      assets,
+      body,
+    }),
+  );
 }
 
 export interface ExportFormats {
   html: boolean;
   xml: boolean;
   pdf: boolean;
+}
+
+/** Tiến độ lượt xuất — phân biệt pha chính với các vòng vá lại hóa đơn còn thiếu file. */
+export interface ExportProgress {
+  done: number;
+  /** Số hóa đơn của LƯỢT NÀY: pha chính = tổng; vòng vá = số hóa đơn còn thiếu file. */
+  total: number;
+  /** 0 = pha chính; ≥1 = vòng vá lại thứ mấy. */
+  round: number;
 }
 
 export interface ExportBundleOptions {
@@ -46,19 +84,31 @@ export interface ExportBundleOptions {
   range: ExportRange;
   formats: ExportFormats;
   dir: FsDirHandle;
-  /** Báo tiến độ theo SỐ HÓA ĐƠN đã sinh file (0..total, gộp cả 2 chiều). */
-  onProgress?: (done: number, total: number) => void;
+  /** Token GDT — BẮT BUỘC khi tick XML (bản gốc ký số lấy từ cổng thuế). */
+  gdtToken?: string;
+  /** Báo tiến độ theo SỐ HÓA ĐƠN đã sinh file (gộp cả 2 chiều). */
+  onProgress?: (p: ExportProgress) => void;
 }
+
+/** Số FILE không xuất được, tách theo định dạng — biết lỗi nằm ở khâu nào. */
+export type ExportFailedCount = Record<keyof ExportFormats, number>;
 
 export interface ExportBundleResult {
   /** Số hóa đơn có chi tiết để xuất (gộp 2 chiều). */
   total: number;
-  /** Số hóa đơn xuất được (mọi định dạng đã tick). */
+  /** Số hóa đơn ra ĐỦ mọi định dạng đã tick. */
   ok: number;
-  /** Số hóa đơn lỗi khi sinh file (bỏ qua, không kẹt cả lượt). */
+  /** Số hóa đơn VẪN thiếu ít nhất 1 định dạng sau khi đã vá lại hết số vòng cho phép. */
   err: number;
-  /** Thông báo lỗi ĐẦU TIÊN gặp phải (để FE hiện thay vì nuốt im lặng). */
+  failed: ExportFailedCount;
+  /** Số hóa đơn lỗi ở pha chính nhưng VÁ LẠI THÀNH CÔNG — để người dùng biết đã tự khắc phục. */
+  recovered: number;
+  /** Số vòng vá đã chạy (0 = pha chính xong xuôi, không cần vá). */
+  retryRounds: number;
+  /** Lỗi của hóa đơn ĐẦU TIÊN còn thiếu file (để FE hiện thay vì nuốt im lặng). */
   firstError?: string;
+  /** Token GDT hết hạn giữa chừng -> dừng gọi cổng thuế, không vá lại được nữa. */
+  authExpired?: boolean;
 }
 
 /** Tên folder khoảng ngày: "tu-<từ>-den-<đến>". */
@@ -67,19 +117,53 @@ function rangeFolderName(range: ExportRange): string {
 }
 
 /**
- * Số hóa đơn xử lý ĐỒNG THỜI — khớp `MAX_CONCURRENT_RENDERS` ở BE (pdfRenderer): mỗi PDF là 1 round-trip
- * tới puppeteer. Đúng bằng cap BE để lấp đủ 2 slot mà KHÔNG xếp hàng thừa trên semaphore (tránh chạm
- * timeout 60s/HĐ khi bị nghẽn).
+ * Số hóa đơn xử lý ĐỒNG THỜI khi lượt có gọi BE. Mỗi worker chạy tuần tự XML -> HTML -> PDF, nên
+ * số worker phải đủ để lấp hết các slot của BE, không phải để dội cho nhiều.
+ *
+ * Backend cấp 2 slot cho PDF (`MAX_CONCURRENT_RENDERS` ở pdfRenderer) và 2 slot cho XML
+ * (`QUEUE_CONCURRENCY.xml` ở gdtPacer). Lượt có CẢ HAI cần 4 worker: 2 đang chờ cổng thuế trả XML
+ * (~3 giây) thì 2 worker kia vẫn render PDF, thay vì cả lượt đứng chờ mạng. Lượt chỉ có một trong
+ * hai thì 2 worker là vừa đủ — thêm nữa chỉ làm hàng đợi dài ra chứ không nhanh hơn.
  */
-const PDF_CONCURRENCY = 2;
+const REMOTE_CONCURRENCY = 2;
 
-/** 1 hóa đơn cần ghi ra file, kèm sẵn các thư mục con {html,xml,pdf} (null nếu định dạng không tick). */
-interface InvoiceFileTask {
+/**
+ * Khi chỉ xuất HTML (không PDF, không XML) thì mỗi hóa đơn chỉ là dựng chuỗi + ghi file — không có
+ * round-trip nào để phải điều tiết, nên nới rộng cho đỡ chờ vô ích.
+ */
+const LOCAL_CONCURRENCY = 8;
+
+/**
+ * Số vòng VÁ LẠI các hóa đơn còn thiếu file sau pha chính.
+ *
+ * Backend đã tự retry ~4 lần trong 45 giây cho mỗi hóa đơn rồi mới báo lỗi về đây, nên tới mức này
+ * thì cổng thuế đang chặn/nghẹn chứ không phải trượt một nhịp. 3 vòng, mỗi vòng nghỉ dài hơn, là đủ
+ * cho hầu hết trường hợp; vòng nào không vá thêm được cái nào thì dừng luôn.
+ */
+const MISSING_RETRY_ROUNDS = 3;
+
+/** Nghỉ trước vòng vá thứ n = n × mốc này (5s, 10s, 15s) — cho cổng thuế thời gian hồi. */
+const RETRY_ROUND_PAUSE_MS = 5_000;
+
+const sleepMs = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
+
+/**
+ * 1 hóa đơn cần ghi ra file + trạng thái xử lý, sống qua cả pha chính lẫn các vòng vá.
+ * Các thư mục con {html,xml,pdf} là `null` nếu định dạng đó không được tick.
+ */
+interface TaskState {
   direction: InvoiceDirection;
-  view: InvoiceView;
   htmlDir: FsDirHandle | null;
   xmlDir: FsDirHandle | null;
   pdfDir: FsDirHandle | null;
+  /** Tên file (không phần mở rộng) — tính 1 lần, dùng cho cả 3 định dạng. */
+  base: string;
+  /** Được bổ sung mã QR + tên ngân hàng sau khi lấy được XML gốc (xem `processTask`). */
+  view: InvoiceView;
+  /** Định dạng nào CHƯA ghi được. Hết rỗng là hóa đơn xong. */
+  pending: Record<keyof ExportFormats, boolean>;
+  /** Lỗi gần nhất — chỉ dùng để báo về FE khi hóa đơn vẫn thiếu file sau mọi vòng vá. */
+  lastError?: string;
 }
 
 /** Chạy `worker` trên `items` với tối đa `limit` việc đồng thời (bounded pool, không phụ thuộc lib ngoài). */
@@ -106,9 +190,15 @@ async function runPool<T>(
  * Bỏ qua + đếm lỗi từng hóa đơn (không kẹt cả lượt). Trả số liệu tổng kết để FE toast.
  */
 export async function exportInvoiceBundle(opts: ExportBundleOptions): Promise<ExportBundleResult> {
-  const { mst, query, range, formats, dir, onProgress } = opts;
+  const { mst, query, range, formats, dir, gdtToken, onProgress } = opts;
   const directions: InvoiceDirection[] = ["purchase", "sold"];
   const anyFormat = formats.html || formats.xml || formats.pdf;
+
+  // Chặn ngay từ đầu thay vì để mọi hóa đơn cùng hỏng ở bước gọi cổng thuế (dialog cũng đã gate,
+  // đây là lưới an toàn cho mọi caller khác).
+  if (formats.xml && !gdtToken) {
+    throw new Error("Cần đăng nhập Thuế điện tử để tải hóa đơn XML gốc đã ký số.");
+  }
 
   // Folder gốc: <MST>/<khoảng ngày>/
   const mstDir = await dir.getDirectoryHandle(safeName(mst || "khong-ro-mst"), { create: true });
@@ -131,13 +221,13 @@ export async function exportInvoiceBundle(opts: ExportBundleOptions): Promise<Ex
   );
 
   const total = perDir.reduce((s, d) => s + d.views.length, 0);
-  let ok = 0;
-  let err = 0;
-  let firstError = "";
   let done = 0;
+  let authExpired = false;
 
-  // Setup TỪNG CHIỀU (tuần tự): ghi Excel + tạo thư mục con {html,xml,pdf} 1 lần, rồi gom task từng HĐ.
-  const tasks: InvoiceFileTask[] = [];
+  // Setup TỪNG CHIỀU (tuần tự): ghi Excel + tạo thư mục con {html,xml,pdf} 1 lần, rồi gom trạng thái
+  // từng HĐ (sống qua CẢ pha chính và các vòng vá).
+  const states: TaskState[] = [];
+  const htmlDirs: FsDirHandle[] = [];
   for (const { direction, saved, details, views } of perDir) {
     const overviewRows = (saved.datas ?? []).map((r) => toDisplayRow(r, direction));
     const detailRows = details.flatMap(toDetailRows);
@@ -151,33 +241,239 @@ export async function exportInvoiceBundle(opts: ExportBundleOptions): Promise<Ex
     const htmlDir = formats.html ? await dirDir.getDirectoryHandle("html", { create: true }) : null;
     const xmlDir = formats.xml ? await dirDir.getDirectoryHandle("xml", { create: true }) : null;
     const pdfDir = formats.pdf ? await dirDir.getDirectoryHandle("pdf", { create: true }) : null;
-    for (const view of views) tasks.push({ direction, view, htmlDir, xmlDir, pdfDir });
+    if (htmlDir) htmlDirs.push(htmlDir);
+
+    for (const view of views) {
+      states.push({
+        direction,
+        htmlDir,
+        xmlDir,
+        pdfDir,
+        // Gắn MST người bán để KHÔNG trùng tên: chiều mua vào gộp HĐ của nhiều người bán,
+        // `kyHieu-soHd` chỉ unique theo từng người bán -> thiếu MST sẽ ghi đè lẫn nhau (mất file).
+        //
+        // Khóa unique của cổng thuế còn có `khmshdon` (mẫu số) nhưng KHÔNG cần đưa vào tên file: ký
+        // tự đầu của `khhdon` chính là mẫu số ("1C25TAA") nên bộ ba này đã đủ phân biệt. Giữ nguyên
+        // tên file cũng để thư mục đã xuất lần trước còn dùng lại được (xem nhánh đọc file có sẵn).
+        base: safeName(`${view.seller.mst}-${view.kyHieu}-${view.soHd}`),
+        view,
+        pending: { html: !!htmlDir, xml: !!xmlDir, pdf: !!pdfDir },
+      });
+    }
   }
 
-  // Sinh + ghi file từng HĐ với tối đa PDF_CONCURRENCY việc đồng thời (lấp đủ 2 slot render PDF của BE).
-  // Files độc lập (tên có MST bán) nên thứ tự không quan trọng; counters ++ an toàn (JS 1 luồng).
-  await runPool(tasks, PDF_CONCURRENCY, async (t) => {
-    // Gắn MST người bán để KHÔNG trùng tên: chiều mua vào gộp HĐ của nhiều người bán, `kyHieu-soHd`
-    // chỉ unique theo từng người bán -> thiếu MST sẽ ghi đè lẫn nhau (mất file).
-    const base = safeName(`${t.view.seller.mst}-${t.view.kyHieu}-${t.view.soHd}`);
+  // Ảnh nền + dấu chữ ký: nạp MỘT LẦN cho cả lượt. Hỏng thì bỏ ảnh chứ không bỏ cả lượt xuất — tờ
+  // hóa đơn thiếu nền vẫn đọc được, còn dừng lượt vì cái nền thì không đáng.
+  let pdfAssets = RELATIVE_INVOICE_ASSETS;
+  if (formats.pdf) {
     try {
-      if (t.htmlDir) await writeFile(t.htmlDir, `${base}.html`, standaloneInvoiceHtml(t.view));
-      if (t.xmlDir) await writeFile(t.xmlDir, `${base}.xml`, buildInvoiceXml(t.view));
-      if (t.pdfDir) await writeFile(t.pdfDir, `${base}.pdf`, await invoiceToPdfBlob(t.view));
-      ok += 1;
+      pdfAssets = await loadInlineInvoiceAssets();
     } catch (e) {
-      // 1 hóa đơn lỗi -> bỏ qua; KHÔNG nuốt im lặng: log + giữ lỗi đầu tiên để FE hiện.
-      err += 1;
-      const msg = e instanceof Error ? e.message : String(e);
-      if (!firstError) firstError = msg;
-      console.error(
-        `[exportBundle] Lỗi xuất hóa đơn ${t.direction}/${base} | message: ${msg}\n`,
-        e instanceof Error ? e.stack : e,
+      console.error("[exportBundle] Không nạp được ảnh nền hóa đơn cho PDF:", e);
+    }
+  }
+  // File .html trỏ ảnh CẠNH NÓ -> ghi 2 ảnh vào từng thư mục `html/` đúng một lần cho cả lượt
+  // (giống cách cổng thuế đóng gói), thay vì nhúng base64 lặp lại vào từng file.
+  if (htmlDirs.length > 0) {
+    try {
+      const blobs = await loadInvoiceAssetBlobs();
+      for (const d of htmlDirs) {
+        await Promise.all(
+          Object.entries(INVOICE_ASSET_FILES).map(([kind, name]) =>
+            writeFile(d, name, blobs[kind as keyof typeof INVOICE_ASSET_FILES]),
+          ),
+        );
+      }
+    } catch (e) {
+      console.error("[exportBundle] Không ghi được ảnh nền hóa đơn kèm file .html:", e);
+    }
+  }
+
+  // Mỗi làn có gọi BE (xml, pdf) được 2 worker; không làn nào -> chỉ dựng chuỗi + ghi file local.
+  const remoteLanes = Number(formats.xml) + Number(formats.pdf);
+  const concurrency = remoteLanes === 0 ? LOCAL_CONCURRENCY : remoteLanes * REMOTE_CONCURRENCY;
+
+  /**
+   * Ghi các định dạng CÒN THIẾU của 1 hóa đơn. Gọi lại được nhiều lần — mỗi lần chỉ làm phần dở.
+   * Trả `true` nếu ghi được ít nhất 1 file trong lần gọi này (vòng vá dùng làm tiêu chí tiến triển).
+   */
+  const processTask = async (st: TaskState): Promise<boolean> => {
+    const { htmlDir, xmlDir, pdfDir, base, direction } = st;
+    let wroteSomething = false;
+
+    /**
+     * Chạy 1 định dạng: lỗi -> GIỮ trong `pending` để vòng vá làm lại, rồi ĐI TIẾP. Tách từng định
+     * dạng (thay vì gói chung 1 try) vì chúng độc lập: PDF timeout không có lý do gì làm mất file
+     * XML/HTML của cùng hóa đơn, và tách ra thì con số báo về mới chỉ đúng khâu hỏng.
+     */
+    const step = async (kind: keyof ExportFormats, run: () => Promise<void>) => {
+      try {
+        await run();
+        st.pending[kind] = false;
+        wroteSomething = true;
+      } catch (e) {
+        // Token GDT hết hạn (BE trả 409 — xem `exportInvoiceXml`, KHÔNG phải 401 vì 401 bị lớp
+        // refresh của `apiFetchRaw` bắt): mọi hóa đơn còn lại cũng sẽ hỏng y hệt -> ngừng gọi cổng
+        // thuế và bỏ luôn các vòng vá.
+        if (e instanceof ApiError && e.status === 409) authExpired = true;
+        const msg = e instanceof Error ? e.message : String(e);
+        st.lastError = msg;
+        console.error(
+          `[exportBundle] Lỗi xuất ${kind} hóa đơn ${direction}/${base} | message: ${msg}\n`,
+          e instanceof Error ? e.stack : e,
+        );
+      }
+    };
+
+    // XML LẤY TRƯỚC HTML/PDF (không chỉ để ghi file): mã QR và tên ngân hàng chỉ nằm trong XML gốc,
+    // nên tờ hóa đơn dựng sau đó mới có hai thứ này. XML hỏng -> `view` giữ nguyên, tờ hóa đơn vẫn
+    // ra đủ, chỉ thiếu ô QR.
+    if (xmlDir && st.pending.xml && !authExpired) {
+      await step("xml", async () => {
+        // ĐÃ XUẤT LẦN TRƯỚC vào đúng thư mục này -> đọc từ đĩa, khỏi gọi lại cổng thuế. Hóa đơn
+        // đã ký là bất biến nên file cũ vẫn đúng. Xuất lại để bù vài hóa đơn lỗi là chuyện thường,
+        // và đây là thứ biến một lượt 25 phút thành vài giây.
+        //
+        // Phải KIỂM file có nguyên vẹn, không chỉ khác rỗng: file bị sửa/cắt từ ngoài (đồng bộ
+        // OneDrive, copy tay, bản xuất từ phiên bản cũ) mà nhận là hợp lệ thì hóa đơn được tính OK
+        // trong khi trên đĩa là file vô giá trị pháp lý, và mã QR mất im lặng vì parse không ra.
+        let xml = await readFileText(xmlDir, `${base}.xml`);
+        if (xml && !xml.includes("</HDon>")) {
+          console.warn(`[exportBundle] ${base}.xml có sẵn nhưng không nguyên vẹn — tải lại.`);
+          xml = null;
+        }
+        if (!xml) {
+          xml = await fetchOriginalInvoiceXml(
+            {
+              nbmst: st.view.seller.mst,
+              khhdon: st.view.kyHieu,
+              shdon: st.view.soHd,
+              khmshdon: st.view.mauSo,
+              // `ketQuaKt` giữ `ttxly` của GDT: "8" = hóa đơn máy tính tiền (nhánh sco-query).
+              cashRegister: st.view.ketQuaKt === "8",
+              direction,
+            },
+            // Chắc chắn có: guard đầu hàm đã ném lỗi nếu tick XML mà thiếu token (TS không giữ
+            // được narrowing đó qua closure vì điều kiện guard là phức hợp).
+            gdtToken as string,
+          );
+          await writeFile(xmlDir, `${base}.xml`, xml);
+        }
+
+        // Ưu tiên giá trị đã có từ payload chi tiết (nếu cổng thuế có trả), XML chỉ bù chỗ thiếu.
+        const extras = readOriginalXmlExtras(xml);
+        const enriched =
+          (!st.view.qrData && !!extras.qrData) ||
+          (!st.view.seller.tenNganHang && !!extras.sellerBankName) ||
+          (!st.view.buyer.tenNganHang && !!extras.buyerBankName);
+        if (!enriched) return;
+
+        st.view = {
+          ...st.view,
+          qrData: st.view.qrData || extras.qrData,
+          seller: {
+            ...st.view.seller,
+            tenNganHang: st.view.seller.tenNganHang || extras.sellerBankName,
+          },
+          buyer: {
+            ...st.view.buyer,
+            tenNganHang: st.view.buyer.tenNganHang || extras.buyerBankName,
+          },
+        };
+        // Vá được XML ở vòng sau -> HTML/PDF đã ghi trước đó KHÔNG có mã QR, phải dựng lại. Chỉ làm
+        // khi XML THẬT SỰ bổ sung được gì: hóa đơn không có `<DLQRCode>` (trường hợp code này tự
+        // lường trước) mà vẫn dựng lại là ghi ra file giống byte, đổi lấy một lượt render PDF ~2
+        // giây + ~265KB upload cho mỗi hóa đơn.
+        if (htmlDir) st.pending.html = true;
+        if (pdfDir) st.pending.pdf = true;
+      });
+    }
+    // Dựng thân tờ hóa đơn MỘT LẦN cho cả .html và PDF: hai tài liệu chỉ khác khối CSS ảnh, còn thân
+    // giống nhau từng byte. Dựng lại là sinh lại cả mã QR — đo được ~10ms CPU đồng bộ (chặn UI, vì
+    // `runPool` chạy cùng luồng) + ~31KB chuỗi cho mỗi lần thừa.
+    const needsBody = (htmlDir && st.pending.html) || (pdfDir && st.pending.pdf);
+    const body = needsBody ? renderInvoiceHtml(st.view) : "";
+
+    if (htmlDir && st.pending.html) {
+      await step("html", () =>
+        writeFile(
+          htmlDir,
+          `${base}.html`,
+          standaloneInvoiceHtml(st.view, { assets: RELATIVE_INVOICE_ASSETS, body }),
+        ),
       );
     }
+    if (pdfDir && st.pending.pdf) {
+      await step("pdf", async () =>
+        writeFile(pdfDir, `${base}.pdf`, await invoiceToPdfBlob(st.view, pdfAssets, body)),
+      );
+    }
+    return wroteSomething;
+  };
+
+  // ---- Pha chính: đi qua toàn bộ hóa đơn một lượt ----
+  await runPool(states, concurrency, async (st) => {
+    await processTask(st);
     done += 1;
-    onProgress?.(done, total);
+    onProgress?.({ done, total, round: 0 });
   });
 
-  return { total, ok, err, firstError: firstError || undefined };
+  // ---- Pha vá: quay lại các hóa đơn còn thiếu file ----
+  // Vá SAU khi đã đi hết một lượt, không thử lại ngay tại chỗ: nguyên nhân thường gặp là cổng thuế
+  // nghẹn tạm thời, nên để nó nghỉ trong lúc mình chạy các hóa đơn khác thì lần thử sau khả năng
+  // thành công cao hơn nhiều. Backend cũng đã tự retry 45 giây/hóa đơn trước khi bỏ về đây.
+  const stillMissing = () => states.filter((s) => s.pending.html || s.pending.xml || s.pending.pdf);
+  const missingAfterMain = stillMissing().length;
+  let retryRounds = 0;
+
+  for (let round = 1; round <= MISSING_RETRY_ROUNDS; round += 1) {
+    const remaining = stillMissing();
+    // Token hết hạn thì vá bằng cùng token cũng hỏng y hệt -> dừng, để người dùng đăng nhập lại.
+    if (remaining.length === 0 || authExpired) break;
+
+    retryRounds = round;
+    // Nghỉ tăng dần CHỈ KHI còn chờ cổng thuế. Lượt chỉ hỏng vài PDF (puppeteer nghẽn) thì nằm chờ
+    // 5+10+15 giây là bắt người dùng đợi vô cớ — bên nghẽn không liên quan gì tới cổng thuế.
+    if (remaining.some((s) => s.pending.xml)) await sleepMs(round * RETRY_ROUND_PAUSE_MS);
+
+    let progressed = false;
+    let doneInRound = 0;
+    await runPool(remaining, concurrency, async (st) => {
+      if (await processTask(st)) progressed = true;
+      doneInRound += 1;
+      onProgress?.({ done: doneInRound, total: remaining.length, round });
+    });
+
+    console.log(
+      `[exportBundle] Vòng vá ${round}: ${remaining.length} hóa đơn thiếu file -> ` +
+        `xong hẳn ${remaining.length - stillMissing().length}.`,
+    );
+    // Dừng khi KHÔNG GHI ĐƯỢC FILE NÀO, chứ không phải khi không hóa đơn nào xong hẳn: một vòng lấy
+    // được XML rồi trượt bước render PDF vẫn là tiến triển thật (và bước còn thiếu đó không phụ
+    // thuộc cổng thuế nên vòng sau gần như chắc chắn xong).
+    if (!progressed) break;
+  }
+
+  // ---- Tổng kết: mọi con số báo về FE đều tính ở ĐÂY, sau khi đã vá hết số vòng cho phép ----
+  const missing = stillMissing();
+  const failed: ExportFailedCount = {
+    html: missing.filter((s) => s.pending.html).length,
+    xml: missing.filter((s) => s.pending.xml).length,
+    pdf: missing.filter((s) => s.pending.pdf).length,
+  };
+  const err = missing.length;
+  const ok = total - err;
+  const recovered = missingAfterMain - err;
+  const firstError = missing.find((s) => s.lastError)?.lastError;
+
+  return {
+    total,
+    ok,
+    err,
+    failed,
+    recovered,
+    retryRounds,
+    firstError,
+    authExpired: authExpired || undefined,
+  };
 }

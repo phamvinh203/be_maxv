@@ -30,7 +30,6 @@ import { useCompanySwitch } from "../features/company/hooks/useCompanySwitch";
 import DialogLoginHddt from "./dialogLoginHddt";
 import logoMaxv from "../assets/Logo_Maxv.png";
 
-// TODO: điền link hướng dẫn sử dụng (mở tab mới). Để rỗng thì nút không điều hướng.
 const HUONG_DAN_SU_DUNG_URL = "https://docs.google.com/document/d/1OEBtaAepmMAEKHp8ArVPnGFBaQHQjA5I/edit";
 
 export default function AppHeader() {

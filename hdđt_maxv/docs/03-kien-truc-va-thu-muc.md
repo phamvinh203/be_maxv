@@ -101,7 +101,7 @@ flowchart TD
         A["api/*.ts<br/>hàm gọi HTTP thuần"]
     end
     subgraph L1["Lớp 1 — Logic thuần"]
-        U["invoiceRow, detailRow, invoiceView,<br/>invoiceHtml, invoiceXml, exportXlsx,<br/>format, dateUtils, pagination, syncLogText"]
+        U["invoiceRow, detailRow, invoiceView,<br/>invoiceHtml, invoiceQr, invoiceAssets,<br/>invoiceOriginalXml, exportXlsx,<br/>format, dateUtils, pagination, syncLogText"]
         T["templates/<br/>khai báo cột dùng chung<br/>cho bảng web và file xuất"]
     end
 

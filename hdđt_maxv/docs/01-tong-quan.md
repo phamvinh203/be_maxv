@@ -65,7 +65,7 @@ export const TAX_PAYER_API_BASE =
 | Lưu hóa đơn vào DB | BE | |
 | Lọc, phân trang, hiển thị bảng | **FE** | Phân trang phía client trên dữ liệu đã tải |
 | Dựng HTML tờ hóa đơn | **FE** | `invoiceHtml.ts` |
-| Dựng XML hóa đơn | **FE** | `invoiceXml.ts` |
+| Lấy XML gốc đã ký số | **BE gọi GDT** | Tải ZIP từ cổng thuế rồi rút `invoice.xml` — không tự dựng |
 | Sinh file Excel | **FE** | Thư viện `exceljs` chạy trong trình duyệt |
 | Render PDF | **BE** | Chromium headless — FE gửi HTML lên, nhận PDF về |
 | Ghi file xuống đĩa | **FE** | File System Access API (Chrome/Edge) |
