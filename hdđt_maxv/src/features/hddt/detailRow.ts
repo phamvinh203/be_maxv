@@ -31,8 +31,6 @@ const EMPTY_LINE = {
   gia: undefined,
   tienCk: undefined,
   tienChuaThue: undefined,
-  thue: undefined,
-  tienSauThue: undefined,
   tlCktm: undefined,
   thueSuat: "",
 };
@@ -47,7 +45,13 @@ const EMPTY_LINE = {
  *    tgia, tgtcthue, tgtthue, ttcktmai, tgtphi, tgtttbso, thtttoan, tthai, ttxly (giống field
  *    danh sách — đã dùng ổn).
  *  - Mảng hàng hóa: `hdhhdvu`. Mỗi dòng: ten, dvtinh, sluong, dgia, stckhau(tiền CK), tlckhau(%CK),
- *    thtien(tiền chưa thuế), sthue(tiền thuế dòng — có thể thiếu), tsuat/ltsuat(thuế suất).
+ *    thtien(tiền chưa thuế), tsuat/ltsuat(thuế suất).
+ *
+ * BỐN CỘT TIỀN LẤY Ở CẤP HÓA ĐƠN, KHÔNG theo dòng hàng (nên lặp y hệt ở mọi dòng của cùng hóa đơn):
+ *  - "Thuế" ← `tgtthue` · "Tiền sau thuế" ← `tgtttbso` · "Tổng CK" ← `ttcktmai` · "Tổng phí" ← `tgtphi`
+ *    ("Tổng phí" thiếu -> 0, không để trống — xem ghi chú tại chỗ)
+ * Payload chi tiết KHÔNG có tiền thuế theo từng dòng hàng ở field chuẩn (`hdhhdvu[].tthue` gần như
+ * luôn null), nên bốn cột này cố ý đọc tổng của cả hóa đơn.
  */
 export function toDetailRows(
   detail: Record<string, unknown> | null | undefined,
@@ -71,8 +75,14 @@ export function toDetailRows(
     tongTienHang: num(detail.tgtcthue),
     tongThue: num(detail.tgtthue),
     tongCk: num(detail.ttcktmai),
-    tongPhi: num(detail.tgtphi),
+    // Không như các cột tiền khác (thiếu -> ô trống): GDT để `tgtphi` null cho hóa đơn không có khoản
+    // phí nào, mà "không có phí" nghĩa là 0 đồng chứ không phải "chưa biết" -> hiện 0 cho cả bảng web
+    // lẫn sheet Excel (còn cộng được cả cột).
+    tongPhi: num(detail.tgtphi) ?? 0,
     tongTt: num(detail.tgtttbso),
+    // Cột "Thuế" và "Tiền sau thuế" — cấp hóa đơn, cùng nguồn với "Tổng tiền thuế"/"Tổng thanh toán".
+    thue: num(detail.tgtthue),
+    tienSauThue: num(detail.tgtttbso),
     hinhThucTt: s(detail.thtttoan),
     trangThaiHd: s(detail.tthai),
     ketQuaKt: s(detail.ttxly),
@@ -83,12 +93,6 @@ export function toDetailRows(
 
   return items.map((raw) => {
     const it = (raw ?? {}) as Record<string, unknown>;
-    const tienChuaThue = num(pick(it, "thtien", "thanhtien"));
-    const thue = num(pick(it, "sthue", "tthue"));
-    // Tiền sau thuế: ưu tiên field GDT nếu có, không thì cộng chưa thuế + thuế.
-    const tienSauThue =
-      num(pick(it, "thtiensauthue")) ??
-      (tienChuaThue != null && thue != null ? tienChuaThue + thue : undefined);
     return {
       ...header,
       tenHang: s(pick(it, "ten", "thang")),
@@ -96,9 +100,7 @@ export function toDetailRows(
       soLuong: num(pick(it, "sluong", "soluong")),
       gia: num(pick(it, "dgia", "dongia")),
       tienCk: num(pick(it, "stckhau", "tienck")),
-      tienChuaThue,
-      thue,
-      tienSauThue,
+      tienChuaThue: num(pick(it, "thtien", "thanhtien")),
       tlCktm: num(pick(it, "tlckhau", "tlck")),
       thueSuat: s(pick(it, "ltsuat", "tsuat", "thuesuat")),
     };

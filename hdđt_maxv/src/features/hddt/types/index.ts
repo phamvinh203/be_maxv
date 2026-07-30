@@ -171,6 +171,10 @@ export interface DetailRow {
   tongCk?: number;
   tongPhi?: number;
   tongTt?: number;
+  /** Cột "Thuế" — tổng tiền thuế của HÓA ĐƠN (`tgtthue`), không phải thuế của dòng hàng. */
+  thue?: number;
+  /** Cột "Tiền sau thuế" — tổng thanh toán của HÓA ĐƠN, đã gồm VAT (`tgtttbso`). */
+  tienSauThue?: number;
   hinhThucTt: string;
   trangThaiHd: string;
   ketQuaKt: string;
@@ -181,8 +185,6 @@ export interface DetailRow {
   gia?: number;
   tienCk?: number;
   tienChuaThue?: number;
-  thue?: number;
-  tienSauThue?: number;
   tlCktm?: number;
   thueSuat: string;
 }
