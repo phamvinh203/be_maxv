@@ -4,8 +4,9 @@
  * lấy danh sách (`fetchListPagePaced`) đều đi qua đây; luồng tra CHI TIẾT LẺ vẫn tự giãn nhịp riêng.
  * Đặc điểm:
  *
- *  - Tuần tự (concurrency = 1): mỗi lúc chỉ 1 call GDT chạy trên 1 MST — MỘT hàng đợi FIFO duy nhất
- *    cho cả 2 làn, vì ràng buộc "đừng dội GDT bằng 2 call song song trên 1 token" là chung.
+ *  - Hàng đợi FIFO theo MST. `list`/`detail` dùng CHUNG một hàng đợi chạy tuần tự (concurrency = 1)
+ *    vì ràng buộc "đừng dội GDT bằng 2 call song song trên 1 token" là chung; riêng `xml` có hàng
+ *    đợi riêng chạy 2 call song song (xem `LANE_QUEUE` / `QUEUE_CONCURRENCY`).
  *  - Khoảng cách tối thiểu THÍCH ỨNG giữa các call, nhưng ĐO RIÊNG THEO LÀN (xem `Lane` bên dưới):
  *    gặp 429/timeout -> giãn (×2, trần 15s) qua `reportRateLimited`; thành công -> co lại về sàn
  *    800ms qua `reportOk`.
@@ -20,10 +21,43 @@
  * danh sách hay bị GDT "nuốt" nên làn `list` thường xuyên bị giãn tới trần 15s — trước đây hai làn
  * DÙNG CHUNG một `intervalMs`, nên pha chi tiết chạy ngay sau pha danh sách (xem `startUpdateRun`)
  * kế thừa nguyên hình phạt đó và bò với 15s/HÓA ĐƠN dù bản thân endpoint detail chưa hề bị chặn.
- * Tách làn = mỗi endpoint tự trả giá cho lỗi của chính nó. KHÔNG tăng tải lên GDT: hàng đợi vẫn là
- * một, concurrency vẫn là 1.
+ * Tách làn = mỗi endpoint tự trả giá cho lỗi của chính nó.
+ *
+ * `list` và `detail` vẫn dùng CHUNG một hàng đợi tuần tự — không tăng tải lên GDT so với bản đầu.
+ * Riêng `xml` có hàng đợi riêng: xem `LANE_QUEUE` / `QUEUE_CONCURRENCY`.
  */
-export type Lane = "list" | "detail";
+export type Lane = "list" | "detail" | "xml";
+
+/**
+ * Làn `xml` (tải hóa đơn XML gốc, `export-xml`) có HÀNG ĐỢI RIÊNG, tách khỏi hàng đợi chung của
+ * `list`/`detail`.
+ *
+ * Lý do: hai luồng này khác nhau về bản chất. `list`/`detail` là lượt đồng bộ chạy nền, chậm vài
+ * phút không ai để ý. Còn `export-xml` chạy khi người dùng đang NGỒI CHỜ trước màn hình, mỗi call
+ * tốn ~3 giây và cần một call cho MỖI hóa đơn — 500 hóa đơn tuần tự là 25 phút. Cho làn này hàng
+ * đợi riêng vừa để chạy song song được, vừa để lượt xuất không phải xếp sau cả trăm call đồng bộ.
+ */
+type QueueName = "main" | "xml";
+
+/** Hàng đợi của từng làn. `list`/`detail` dùng chung — ràng buộc "đừng dội GDT" của chúng là một. */
+const LANE_QUEUE: Record<Lane, QueueName> = {
+  list: "main",
+  detail: "main",
+  xml: "xml",
+};
+
+/**
+ * Số call chạy ĐỒNG THỜI trên mỗi hàng đợi.
+ *
+ * `main` = 1: giữ nguyên ràng buộc cũ (2 call song song trên 1 token làm GDT nuốt request).
+ * `xml`  = 2: đo thực tế cho thấy cổng thuế chịu được, và đây là làn người dùng phải ngồi chờ.
+ *   Nếu nâng lên mà thấy log `[DEBUG-XML] ... lỗi TẠM THỜI` tăng vọt thì hạ về 1 — dội mạnh khiến
+ *   nhịp bị phạt ×2 tới trần 15s, hóa ra CHẬM HƠN chạy tuần tự.
+ *
+ * Khóa là union `QueueName` chứ không phải `string`: thêm hàng đợi mới mà quên khai số này thì LỖI
+ * BIÊN DỊCH, thay vì âm thầm chạy với 1 và biểu hiện thành "sao lượt này chậm thế".
+ */
+const QUEUE_CONCURRENCY: Record<QueueName, number> = { main: 1, xml: 2 };
 
 interface QueueItem {
   /** Làn của task — quyết định phải giãn bao lâu trước khi chạy. */
@@ -32,15 +66,19 @@ interface QueueItem {
   run: () => Promise<void>;
 }
 
+/** Một hàng đợi độc lập: danh sách chờ + số vòng bơm đang chạy + mốc call gần nhất. */
+interface QueueState {
+  items: QueueItem[];
+  /** Số pump đang chạy — chặn ở `QUEUE_CONCURRENCY` của hàng đợi đó. */
+  running: number;
+  /** Mốc bắt đầu call gần nhất TRONG HÀNG ĐỢI NÀY — để ép khoảng cách tối thiểu. */
+  lastStartAt: number;
+}
+
 interface Pacer {
-  /** MỘT hàng đợi cho cả 2 làn — giữ concurrency=1 trên mỗi MST. */
-  queue: QueueItem[];
-  /** Đang có vòng pump chạy (đợi interval / đợi task) — tránh chạy 2 pump song song trên 1 khóa. */
-  active: boolean;
+  queues: Record<QueueName, QueueState>;
   /** Khoảng cách tối thiểu hiện tại của TỪNG làn (thích ứng độc lập). */
   intervalMs: Record<Lane, number>;
-  /** Mốc bắt đầu call gần nhất (mọi làn) — để ép khoảng cách tối thiểu giữa 2 lần bắt đầu. */
-  lastStartAt: number;
 }
 
 /**
@@ -63,14 +101,14 @@ const OK_DECAY = 0.9;
 
 const pacers = new Map<string, Pacer>();
 
+const newQueue = (): QueueState => ({ items: [], running: 0, lastStartAt: 0 });
+
 function getPacer(key: string): Pacer {
   let p = pacers.get(key);
   if (!p) {
     p = {
-      queue: [],
-      active: false,
-      intervalMs: { list: START_MS, detail: START_MS },
-      lastStartAt: 0,
+      queues: { main: newQueue(), xml: newQueue() },
+      intervalMs: { list: START_MS, detail: START_MS, xml: START_MS },
     };
     pacers.set(key, p);
   }
@@ -81,24 +119,32 @@ const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
 
 /**
  * Vòng bơm: rút task đầu hàng -> đợi đủ interval CỦA LÀN TASK ĐÓ -> chạy tới xong -> lặp.
- * Chỉ 1 vòng/khóa. `lastStartAt` dùng chung mọi làn: khoảng cách ép là "làn này cần nghỉ bao lâu
- * kể từ call GDT gần nhất", bất kể call đó thuộc làn nào.
+ *
+ * Số vòng chạy đồng thời trên một hàng đợi bị chặn ở `QUEUE_CONCURRENCY`. `lastStartAt` tính theo
+ * TỪNG HÀNG ĐỢI: khoảng cách ép là "cần nghỉ bao lâu kể từ call gần nhất CỦA CHÍNH hàng đợi này" —
+ * hai hàng đợi độc lập nên không phải chờ nhau.
  */
-async function pump(key: string): Promise<void> {
+async function pump(key: string, queueName: QueueName): Promise<void> {
   const p = getPacer(key);
-  if (p.active) return;
-  p.active = true;
+  const q = p.queues[queueName];
+  if (q.running >= QUEUE_CONCURRENCY[queueName]) return;
+  q.running += 1;
   try {
     for (;;) {
-      const item = p.queue.shift();
+      const item = q.items.shift();
       if (!item) break;
-      const wait = p.lastStartAt + p.intervalMs[item.lane] - Date.now();
+      // GIỮ CHỖ mốc khởi hành TRƯỚC khi ngủ. Nếu chỉ ghi `lastStartAt` sau khi ngủ (như bản đầu),
+      // hai vòng bơm của hàng đợi `xml` cùng đọc một mốc cũ, cùng ngủ một lượng bằng nhau rồi cùng
+      // thức -> 2 call GDT khởi hành cách nhau 0ms. Đúng cái pacer sinh ra để chống, và tệ nhất ở
+      // lúc nhịp đã bị phạt lên 15s: dội một cụm 2 call rồi cả hai cùng lỗi -> phạt tiếp ×4.
+      const startAt = Math.max(Date.now(), q.lastStartAt + p.intervalMs[item.lane]);
+      q.lastStartAt = startAt;
+      const wait = startAt - Date.now();
       if (wait > 0) await sleep(wait);
-      p.lastStartAt = Date.now();
-      await item.run(); // concurrency=1: đợi task xong mới sang task kế
+      await item.run(); // mỗi vòng bơm chạy tuần tự; song song là do có nhiều vòng
     }
   } finally {
-    p.active = false;
+    q.running -= 1;
   }
 }
 
@@ -119,8 +165,11 @@ export function schedule<T>(key: string, lane: Lane, fn: () => Promise<T>): Prom
         }
       },
     };
-    getPacer(key).queue.push(item);
-    void pump(key);
+    const queueName = LANE_QUEUE[lane];
+    getPacer(key).queues[queueName].items.push(item);
+    // 1 item -> cần thêm tối đa 1 vòng bơm. Task thứ hai tới sẽ tự khởi vòng thứ hai (lúc đó
+    // `running` mới là 1 < 2), nên không cần gọi vòng lặp cho đủ số slot.
+    void pump(key, queueName);
   });
 }
 

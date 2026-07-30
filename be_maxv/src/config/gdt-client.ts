@@ -1,6 +1,6 @@
 const GDT_BASE_URL = "https://hoadondientu.gdt.gov.vn/api";
 
-/** Timeout mặc định mỗi request GDT — 1 socket treo không được chặn vô hạn (pacer concurrency=1). */
+/** Timeout mặc định mỗi request GDT — 1 socket treo không được chặn vô hạn cả hàng đợi pacer. */
 const GDT_TIMEOUT_MS = 30_000;
 
 /**
@@ -22,6 +22,22 @@ const GDT_TIMEOUT_MS = 30_000;
  * Riêng tải CHI TIẾT vẫn dùng `GDT_TIMEOUT_MS` (payload nặng hơn, không có hiện tượng bị nuốt).
  */
 export const GDT_LIST_TIMEOUT_MS = 3_000;
+
+/**
+ * Timeout riêng cho call TẢI XML GỐC (`/query|/sco-query .../export-xml`).
+ *
+ * Cùng bệnh "bị nuốt" như call danh sách: đo thực tế call THÀNH CÔNG mất 2,4–3,5s (kể cả gói ZIP
+ * ~200KB), còn call bị nuốt thì im lặng không trả nổi một byte header nào cho tới hết timeout. Để
+ * nguyên 30s mặc định thì mỗi lần bị nuốt đốt 30 giây VÀ chiếm một slot của hàng đợi `xml` (2 slot
+ * mỗi MST) — đo được 1 hóa đơn hỏng làm hóa đơn kế tiếp phải chờ 28s.
+ *
+ * 10s = ~3 lần mức chậm nhất quan sát được, đủ biên cho hóa đơn nhiều dòng hoặc mạng chậm hơn, mà
+ * cắt sớm để còn ngân sách thử lại (`EXPORT_XML_RETRY_BUDGET_MS`).
+ *
+ * NẾU NỚI LẠI: dấu hiệu đặt quá ngắn là log `[DEBUG-XML] ... lỗi TẠM THỜI` tăng vọt kèm mốc
+ * ~10000ms ở `[DEBUG-GDT]` — nghĩa là call hợp lệ đang bị mình cắt oan.
+ */
+export const GDT_EXPORT_XML_TIMEOUT_MS = 10_000;
 
 /**
  * Lỗi do GDT TRẢ VỀ (có HTTP status), phân biệt với lỗi tầng fetch (mạng/timeout/abort — không có
@@ -131,14 +147,22 @@ type GdtFetchInit = RequestInit & {
   bearerToken?: string;
 };
 
-export async function gdtFetch<T>(
+/**
+ * Gửi 1 request tới GDT: gắn cookie/bearer, log theo quy ước [DEBUG-GDT], thu Set-Cookie, và NÉM
+ * `GdtHttpError` nếu status không 2xx. Trả `Response` CHƯA đọc body — caller quyết đọc JSON
+ * (`gdtFetch`) hay nhị phân (`gdtFetchBinary`).
+ *
+ * `accept`: giá trị header `Accept` mặc định; `init.headers` vẫn ghi đè được như trước.
+ */
+async function gdtSend(
   path: string,
-  init?: GdtFetchInit
-): Promise<T> {
+  init: GdtFetchInit | undefined,
+  accept: string
+): Promise<{ response: Response; shortPath: string; startedAt: number }> {
   const { cookieKey, captureCookies, bearerToken, ...rest } = init ?? {};
 
   const headers: Record<string, string> = {
-    Accept: "application/json",
+    Accept: accept,
     ...((init?.headers as Record<string, string>) ?? {}),
   };
 
@@ -205,6 +229,15 @@ export async function gdtFetch<T>(
     throw new GdtHttpError(response.status, response.statusText, detail, elapsed);
   }
 
+  return { response, shortPath, startedAt };
+}
+
+export async function gdtFetch<T>(
+  path: string,
+  init?: GdtFetchInit
+): Promise<T> {
+  const { response, shortPath, startedAt } = await gdtSend(path, init, "application/json");
+
   try {
     return (await response.json()) as T;
   } catch (err) {
@@ -214,6 +247,28 @@ export async function gdtFetch<T>(
     // In cả chuỗi `cause` vì undici giấu lý do thật ở đó (vd SocketError: other side closed).
     console.error(
       `[DEBUG-GDT] ${shortPath} -> ${response.status} nhưng ĐỌC BODY HỎNG sau ` +
+        `${Date.now() - startedAt}ms: ${describeErrorChain(err)}`,
+    );
+    throw err;
+  }
+}
+
+/**
+ * Như `gdtFetch` nhưng trả BODY NHỊ PHÂN — cho endpoint không trả JSON. Dùng:
+ * `/query/invoices/export-xml` trả file ZIP (chứa hóa đơn XML gốc đã ký số).
+ */
+export async function gdtFetchBinary(
+  path: string,
+  init?: GdtFetchInit
+): Promise<Buffer> {
+  const { response, shortPath, startedAt } = await gdtSend(path, init, "*/*");
+
+  try {
+    return Buffer.from(await response.arrayBuffer());
+  } catch (err) {
+    // Cùng lý do như nhánh JSON: 200 rồi đứt socket giữa lúc tải body -> phải có log riêng.
+    console.error(
+      `[DEBUG-GDT] ${shortPath} -> ${response.status} nhưng ĐỌC BODY NHỊ PHÂN HỎNG sau ` +
         `${Date.now() - startedAt}ms: ${describeErrorChain(err)}`,
     );
     throw err;

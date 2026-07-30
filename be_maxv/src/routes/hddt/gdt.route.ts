@@ -11,6 +11,7 @@ import {
   purchaseDetailComplete,
   soldDetailComplete,
   renderInvoicePdf,
+  exportInvoiceXml,
   savedInvoiceDetailById,
   downloadOneInvoiceDetail,
   startPurchaseDetailRun,
@@ -85,6 +86,13 @@ export default async function (
     preHandler: [fastify.authenticate],
     bodyLimit: 5 * 1024 * 1024,
     handler: renderInvoicePdf,
+  });
+
+  // Tải HÓA ĐƠN XML GỐC (đã ký số) của 1 hóa đơn từ cổng thuế; trả application/xml. Cần X-Gdt-Token
+  // (BE gọi GDT) + JWT app (khóa pacer theo công ty). Dùng cho thư mục `xml/` khi xuất file.
+  fastify.get("/invoices/:direction/export-xml", {
+    preHandler: [fastify.authenticate],
+    handler: exportInvoiceXml,
   });
 
   // Đọc CHI TIẾT ĐÃ LƯU của 1 hóa đơn theo id (nút "Xem hóa đơn" dựng tờ hóa đơn GTGT) — đọc DB,
