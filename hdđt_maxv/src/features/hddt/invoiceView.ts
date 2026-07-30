@@ -49,6 +49,8 @@ export interface InvoiceViewSeller {
   diaChi: string;
   dienThoai: string;
   soTaiKhoan: string;
+  /** Tên ngân hàng, in cạnh số tài khoản. Thường CHỈ có trong XML gốc (`<TNHang>`). */
+  tenNganHang: string;
 }
 
 /** Bên mua trên tờ hóa đơn. */
@@ -64,6 +66,8 @@ export interface InvoiceViewBuyer {
   hoChieu: string;
   diaChi: string;
   soTaiKhoan: string;
+  /** Tên ngân hàng, in cạnh số tài khoản. Thường CHỈ có trong XML gốc (`<TNHang>`). */
+  tenNganHang: string;
 }
 
 /** 1 dòng hàng hóa/dịch vụ (mảng `hdhhdvu`). */
@@ -122,6 +126,12 @@ export interface InvoiceView {
   bangChu: string;
   trangThaiHd: string;
   ketQuaKt: string;
+  /**
+   * Nội dung mã QR góc trái tờ hóa đơn. Payload chi tiết của GDT hầu như không có (chuỗi này do bên
+   * phát hành sinh, nằm trong `<DLQRCode>` của XML gốc) — `exportBundle` bổ sung sau khi tải XML.
+   * Rỗng -> tờ hóa đơn không in ô QR. Xem `invoiceOriginalXml.ts`.
+   */
+  qrData: string;
 }
 
 /** Map 1 phần tử mảng hàng hóa `hdhhdvu` -> dòng hiển thị. */
@@ -192,6 +202,7 @@ export function toInvoiceView(
       diaChi: s(detail.nbdchi),
       dienThoai: s(pick(detail, "nbsdthoai", "nbdthoai")),
       soTaiKhoan: s(pick(detail, "nbstkhoan", "nbstk")),
+      tenNganHang: s(detail.nbtnhang),
     },
     buyer: {
       ten: s(detail.nmten),
@@ -202,6 +213,7 @@ export function toInvoiceView(
       hoChieu: s(pick(detail, "nmhchieu", "shochieu", "hochieu")),
       diaChi: s(detail.nmdchi),
       soTaiKhoan: s(pick(detail, "nmstkhoan", "nmstk")),
+      tenNganHang: s(detail.nmtnhang),
     },
     items: items.map(toItem),
     taxLines: taxLines.map(toTaxLine),
@@ -213,5 +225,9 @@ export function toInvoiceView(
     bangChu: s(pick(detail, "tgtttbchu", "tgttienchu")),
     trangThaiHd: s(detail.tthai),
     ketQuaKt: s(detail.ttxly),
+    // Payload chi tiết hầu như không có trường này (nguồn thật là `<DLQRCode>` trong XML gốc, do
+    // `exportBundle` bổ sung sau). Chỉ thử ĐÚNG MỘT tên: đoán thêm vài tên chưa từng thấy trong dữ
+    // liệu thật cũng không mang lại gì mà lại trông như đã kiểm chứng.
+    qrData: s(detail.dlqrcode),
   };
 }

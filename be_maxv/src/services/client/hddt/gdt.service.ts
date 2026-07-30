@@ -3,10 +3,13 @@ import {
   clearCookies,
   describeErrorChain,
   gdtFetch,
+  gdtFetchBinary,
   renameCookies,
   GDT_LIST_TIMEOUT_MS,
+  GDT_EXPORT_XML_TIMEOUT_MS,
   GdtHttpError,
 } from "../../../config/gdt-client";
+import { readZipEntry } from "../../../helpers/zip";
 import {
   CaptchaResponse,
   LoginRequest,
@@ -212,23 +215,228 @@ export interface InvoiceDetailKey {
  * Lấy CHI TIẾT 1 hóa đơn từ GDT (`/query/invoices/detail`, hoặc `/sco-query/.../detail` cho hóa
  * đơn máy tính tiền). Tương đương thân vòng lặp `GetEIInput` bản C#. Trả nguyên payload GDT.
  */
-export async function getInvoiceDetail(token: string, key: InvoiceDetailKey) {
-  const path = key.cashRegister
-    ? "/sco-query/invoices/detail"
-    : "/query/invoices/detail";
+/**
+ * Dựng path + header cho nhóm endpoint "1 hóa đơn" (`detail`, `export-xml`): cùng 4 tham số định
+ * danh, cùng cặp header, và cùng quy tắc hóa đơn máy tính tiền nằm ở nhánh `sco-query`. Gom về một
+ * chỗ để GDT đổi yêu cầu thì không có nguy cơ sửa được một endpoint mà quên endpoint kia — lỗi đó
+ * biểu hiện thành "request bị nuốt", đúng cái bệnh khó lần nhất của file này.
+ */
+function invoiceKeyRequest(
+  key: InvoiceDetailKey,
+  endpoint: "detail" | "export-xml",
+): { path: string; headers: Record<string, string> } {
+  const base = key.cashRegister ? "/sco-query/invoices" : "/query/invoices";
   const params = new URLSearchParams({
     nbmst: key.nbmst,
     khhdon: key.khhdon,
     shdon: key.shdon,
     khmshdon: key.khmshdon,
   });
-  return gdtFetch<Record<string, unknown>>(`${path}?${params.toString()}`, {
-    bearerToken: token,
+  return {
+    path: `${base}/${endpoint}?${params.toString()}`,
     headers: {
       "User-Agent": GDT_BROWSER_UA,
       "Cache-Control": "no-cache, no-store, max-age=0, must-revalidate",
     },
+  };
+}
+
+export async function getInvoiceDetail(token: string, key: InvoiceDetailKey) {
+  const { path, headers } = invoiceKeyRequest(key, "detail");
+  return gdtFetch<Record<string, unknown>>(path, { bearerToken: token, headers });
+}
+
+/** Tên file hóa đơn XML gốc bên trong gói ZIP mà `export-xml` trả về. */
+const ORIGINAL_XML_ENTRY = "invoice.xml";
+
+/**
+ * Tải HÓA ĐƠN XML GỐC ĐÃ KÝ SỐ của 1 hóa đơn từ cổng thuế (`/query/invoices/export-xml`, hoặc
+ * `/sco-query/...` cho hóa đơn máy tính tiền — cùng quy tắc như `getInvoiceDetail`).
+ *
+ * KHÁC với `getInvoiceDetail`: endpoint này trả về file ZIP chứa `invoice.xml` (bản chuẩn TT78, có
+ * `<MCCQT>` và `<DSCKS>` gồm chữ ký người bán + chữ ký Cục Thuế), kèm `invoice.html` bản thể hiện
+ * của người bán và tài nguyên đi kèm. Ở đây CHỈ rút `invoice.xml` — đây là bản duy nhất có giá trị
+ * pháp lý, khác hẳn XML dựng lại từ payload chi tiết.
+ *
+ * Trả nội dung XML dạng chuỗi UTF-8. Ném lỗi nếu cổng thuế trả về thứ không phải ZIP (thường là
+ * JSON báo lỗi khi token hết hạn hoặc hóa đơn không tồn tại).
+ */
+export async function getInvoiceOriginalXml(
+  token: string,
+  key: InvoiceDetailKey,
+): Promise<string> {
+  const { path, headers } = invoiceKeyRequest(key, "export-xml");
+  const zip = await gdtFetchBinary(path, {
+    bearerToken: token,
+    headers,
+    // Cắt sớm thay vì chờ 30s mặc định — xem `GDT_EXPORT_XML_TIMEOUT_MS`.
+    signal: AbortSignal.timeout(GDT_EXPORT_XML_TIMEOUT_MS),
   });
+
+  const entry = readZipEntry(zip, ORIGINAL_XML_ENTRY);
+  if (!entry) {
+    throw new Error(
+      `Gói tải về từ cổng thuế không chứa ${ORIGINAL_XML_ENTRY} (hóa đơn ${key.khhdon}-${key.shdon}).`,
+    );
+  }
+
+  // Kiểm tính nguyên vẹn NGAY LÚC NHẬN, trước khi ghi cache: làm ở đây thì mọi lớp cache phía sau
+  // (cột `xml_goc`, file trên đĩa của FE) đều được bảo vệ bằng một luật duy nhất. Nếu chỉ kiểm ở
+  // nơi đọc cache thì một bản XML bị cắt sẽ nằm trong DB và được trả về mãi.
+  const xml = entry.toString("utf8");
+  if (!xml.includes("</HDon>")) {
+    throw new Error(
+      `XML gốc từ cổng thuế không nguyên vẹn (hóa đơn ${key.khhdon}-${key.shdon}, ${xml.length} ký tự).`,
+    );
+  }
+  return xml;
+}
+
+/** Bộ 4 field tạo nên khóa unique của hóa đơn trong `vct50view`/`vct60view`. */
+function invoiceUniqueKey(key: InvoiceDetailKey) {
+  return {
+    nbmst: key.nbmst,
+    khmshdon: key.khmshdon,
+    khhdon: key.khhdon,
+    shdon: key.shdon,
+  };
+}
+
+/**
+ * Đọc XML gốc ĐÃ LƯU của 1 hóa đơn (khóa `nbmst+khmshdon+khhdon+shdon` — đúng bộ unique của bảng).
+ * `null` nếu chưa từng tải. Lỗi DB -> coi như chưa có (vẫn tải lại được), không làm hỏng lượt xuất.
+ */
+async function getCachedOriginalXml(
+  tenantDb: PrismaClient,
+  direction: "purchase" | "sold",
+  key: InvoiceDetailKey,
+): Promise<string | null> {
+  const where = { nbmst_khmshdon_khhdon_shdon: invoiceUniqueKey(key) };
+  const select = { xml_goc: true };
+  try {
+    const row =
+      direction === "purchase"
+        ? await tenantDb.vct60view.findUnique({ where, select })
+        : await tenantDb.vct50view.findUnique({ where, select });
+    return row?.xml_goc ?? null;
+  } catch (err) {
+    console.warn(`[DEBUG-XML] Không đọc được XML đã lưu: ${describeErrorChain(err)}`);
+    return null;
+  }
+}
+
+/**
+ * Lưu XML gốc vừa tải vào DB tenant. Hóa đơn đã ký là BẤT BIẾN nên lưu một lần dùng mãi.
+ *
+ * KHÔNG ném lỗi: XML đã nằm trong tay caller rồi, ghi cache hỏng thì cùng lắm lần sau tải lại — để
+ * nó làm hỏng lượt xuất mới là vô lý. `updateMany` (không phải `update`) để hóa đơn chưa có trong
+ * DB cũng không ném: cập nhật 0 dòng là chấp nhận được.
+ */
+async function saveOriginalXml(
+  tenantDb: PrismaClient,
+  direction: "purchase" | "sold",
+  key: InvoiceDetailKey,
+  xml: string,
+): Promise<void> {
+  const where = invoiceUniqueKey(key);
+  const data = { xml_goc: xml };
+  try {
+    if (direction === "purchase") await tenantDb.vct60view.updateMany({ where, data });
+    else await tenantDb.vct50view.updateMany({ where, data });
+  } catch (err) {
+    console.warn(`[DEBUG-XML] Không lưu được XML gốc: ${describeErrorChain(err)}`);
+  }
+}
+
+/**
+ * NGÂN SÁCH THỜI GIAN để lấy bằng được XML gốc của 1 hóa đơn khi gặp lỗi tạm thời.
+ *
+ * Với timeout 10s/lần thử + backoff 1s→2s→4s, ngân sách này cho ~4 lần thử. Đo thực tế: cổng thuế
+ * nuốt 1 request rồi hóa đơn NGAY SAU đó trả về bình thường trong 2,4s — nên chỉ cần vài lần thử là
+ * gần như chắc chắn qua, không cần kiên nhẫn hàng phút như phân trang danh sách.
+ *
+ * Trần phải có, và phải khớp với hạn thời gian phía FE (`fetchOriginalInvoiceXml`): hóa đơn nào
+ * thật sự không lấy được thì bỏ qua để lượt xuất còn chạy tiếp, FE đếm vào `failed.xml`.
+ */
+const EXPORT_XML_RETRY_BUDGET_MS = 45_000;
+
+/**
+ * `getInvoiceOriginalXml` qua PACER, làn `xml` (hàng đợi riêng, 2 call song song — xem gdtPacer),
+ * KÈM RETRY lỗi tạm thời và CACHE trong DB tenant. Bắt buộc đi qua pacer: lượt xuất gọi endpoint
+ * này hàng trăm lần liên tiếp — bắn thẳng sẽ ăn 429 rồi bị GDT phạt nhịp cho cả luồng đồng bộ.
+ *
+ * VÌ SAO PHẢI RETRY: cổng thuế thỉnh thoảng "nuốt" request export-xml — không trả byte nào cho tới
+ * hết timeout (hay gặp ở nhánh sco-query, cùng bệnh đã ghi ở `GDT_LIST_TIMEOUT_MS`). Không thử lại
+ * thì hóa đơn đó mất file XML vĩnh viễn dù bản gốc vẫn nằm ở cổng thuế và lần thử sau lấy được
+ * ngay. Chỉ "transient" mới thử lại: token hết hạn (auth) hay lỗi thật (permanent) thì retry vô
+ * nghĩa, ném ngay để FE dừng đúng lúc.
+ */
+export async function getInvoiceOriginalXmlPaced(
+  tenantDb: PrismaClient,
+  tenantKey: string,
+  token: string,
+  direction: "purchase" | "sold",
+  key: InvoiceDetailKey,
+): Promise<string> {
+  const label = `${key.khhdon}-${key.shdon}`;
+
+  // ĐÃ TẢI LẦN TRƯỚC -> khỏi gọi cổng thuế. Đây là thứ tăng tốc nhiều nhất: mỗi call tốn ~3 giây và
+  // chạy tuần tự, nên lượt xuất lại 500 hóa đơn giảm từ ~25 phút xuống còn vài giây.
+  const cached = await getCachedOriginalXml(tenantDb, direction, key);
+  if (cached) return cached;
+
+  const deadline = Date.now() + EXPORT_XML_RETRY_BUDGET_MS;
+  let attempt = 0;
+
+  for (;;) {
+    attempt += 1;
+    try {
+      const xml = await pacerSchedule(tenantKey, "xml", () => {
+        // Kiểm ngân sách SAU KHI tới lượt, không phải lúc xếp hàng: `deadline` chốt từ đầu nhưng
+        // thời gian nằm chờ hàng đợi cũng tính vào đó. Nhiều người cùng xuất trên một MST thì tới
+        // lượt đã quá hạn — lúc ấy client (hạn 120s) có thể đã bỏ request, đốt thêm một lượt gọi
+        // cổng thuế là vô ích.
+        if (Date.now() > deadline) {
+          throw new Error("Hết ngân sách thời gian trước khi tới lượt gọi cổng thuế.");
+        }
+        return getInvoiceOriginalXml(token, key);
+      });
+      pacerReportOk(tenantKey, "xml");
+      if (attempt > 1) {
+        console.log(`[DEBUG-XML] Hóa đơn ${label} lấy được XML gốc ở lần thử ${attempt}.`);
+      }
+      await saveOriginalXml(tenantDb, direction, key, xml);
+      return xml;
+    } catch (err) {
+      const kind = classifyGdtError(err);
+      const msg = err instanceof Error ? err.message : String(err);
+      const leftMs = deadline - Date.now();
+      // Backoff 1s→2s→4s, trần 8s: thử lại quá sớm thì rơi đúng vào cửa sổ GDT đang chặn.
+      const backoff = Math.min(8_000, 1000 * 2 ** (attempt - 1));
+
+      if (kind === "transient" && leftMs > backoff) {
+        // GDT quá tải/chặn -> giãn nhịp làn xml (làn detail của luồng đồng bộ không bị vạ lây).
+        pacerReportRateLimited(tenantKey, "xml");
+        console.warn(
+          `[DEBUG-XML] Hóa đơn ${label} lỗi TẠM THỜI lần ${attempt} ` +
+            `(còn ${Math.round(leftMs / 1000)}s ngân sách), nghỉ ${backoff}ms rồi thử lại. Lỗi: ${msg}`,
+        );
+        await engineSleep(backoff);
+        continue;
+      }
+
+      const why =
+        kind === "auth"
+          ? "TOKEN GDT HẾT HẠN"
+          : kind === "transient"
+            ? `HẾT NGÂN SÁCH ${Math.round(EXPORT_XML_RETRY_BUDGET_MS / 1000)}s`
+            : "lỗi thật (permanent)";
+      console.error(
+        `[DEBUG-XML] Hóa đơn ${label} BỎ QUA sau ${attempt} lần thử — ${why}. Lỗi: ${msg}`,
+      );
+      throw err;
+    }
+  }
 }
 
 const toStr = (v: unknown): string | undefined =>

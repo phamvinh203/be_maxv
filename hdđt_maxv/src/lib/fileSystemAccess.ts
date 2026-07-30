@@ -10,6 +10,7 @@ interface FsWritable {
 }
 interface FsFileHandle {
   createWritable(): Promise<FsWritable>;
+  getFile(): Promise<File>;
 }
 export interface FsDirHandle {
   name: string;
@@ -49,4 +50,22 @@ export async function writeFile(
   const w = await fh.createWritable();
   await w.write(data);
   await w.close();
+}
+
+/**
+ * Đọc nội dung văn bản của 1 file trong `dir`, hoặc `null` nếu file chưa tồn tại.
+ *
+ * Dùng để BỎ QUA việc tải lại: lượt xuất kiểm tra file đã có trong thư mục đích chưa, có rồi thì
+ * đọc từ đĩa (tức thì) thay vì gọi lại cổng thuế (~3 giây mỗi hóa đơn).
+ *
+ * `getFileHandle` KHÔNG kèm `create` -> ném `NotFoundError` khi chưa có; ở đây nuốt mọi lỗi thành
+ * `null` vì mọi tình huống không đọc được đều dẫn tới cùng một hành động: cứ tải lại cho chắc.
+ */
+export async function readFileText(dir: FsDirHandle, name: string): Promise<string | null> {
+  try {
+    const fh = await dir.getFileHandle(name);
+    return await (await fh.getFile()).text();
+  } catch {
+    return null;
+  }
 }

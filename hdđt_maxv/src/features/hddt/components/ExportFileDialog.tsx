@@ -27,7 +27,7 @@ import {
   type FsDirHandle,
 } from "../../../lib/fileSystemAccess";
 import { getErrorMessage } from "../../../lib/errors";
-import { useActiveCompanyMst } from "../../auth/useActiveCompanyMst";
+import { useActiveGdtToken } from "../gdtSession/useActiveGdtToken";
 import type { InvoiceQuery } from "../types";
 
 interface Props {
@@ -42,10 +42,14 @@ interface Props {
  * `<MST người nhập>/<khoảng ngày>/{purchase,sold}/{html,xml,pdf}` + 2 file Excel tổng hợp, ghi vào thư
  * mục người dùng chọn (File System Access — Chrome/Edge). Chỉ cho xuất khi CẢ 2 chiều đã "đồng bộ hoàn
  * thành" (mọi HĐ có chi tiết). Mở từ tab Hóa đơn.
+ *
+ * HTML/PDF dựng từ chi tiết đã lưu (không cần mạng ngoài); riêng XML là BẢN GỐC ĐÃ KÝ SỐ tải từ cổng
+ * thuế nên tick XML thì bắt buộc có token GDT của MST đang chọn.
  */
 export default function ExportFileDialog({ open, onClose, defaultRange }: Props) {
-  // MST công ty đang chọn — tên thư mục xuất + gate; KHÔNG dùng currentGdtMst (xem useActiveCompanyMst).
-  const activeMst = useActiveCompanyMst();
+  // MST công ty đang chọn (tên thư mục xuất + gate) và token GDT của ĐÚNG công ty đó — XML gốc phải
+  // xin từ cổng thuế nên cần token; KHÔNG dùng currentGdtMst (xem useActiveGdtToken).
+  const { activeMst, token: gdtToken } = useActiveGdtToken();
   const canPick = supportsDirectoryPicker();
   const [loai, setLoai] = useState<"all" | "ctt">("all");
   const [range, setRange] = useState(defaultRange);
@@ -72,8 +76,17 @@ export default function ExportFileDialog({ open, onClose, defaultRange }: Props)
   const bothLoaded = !!pData && !!sData;
   const synced = bothLoaded && pData.missing === 0 && sData.missing === 0;
   const totalInvoices = (pData?.total ?? 0) + (sData?.total ?? 0);
+  // XML gốc tải từ cổng thuế -> thiếu token thì chặn ngay, đừng để chạy rồi hỏng từng hóa đơn một.
+  const needsGdtLogin = formats.xml && !gdtToken;
   const canExport =
-    canPick && !!dir && !!activeMst && anyFormat && hasRange && synced && !exporting;
+    canPick &&
+    !!dir &&
+    !!activeMst &&
+    anyFormat &&
+    hasRange &&
+    synced &&
+    !needsGdtLogin &&
+    !exporting;
 
   const toggle = (k: keyof ExportFormats) => setFormats((f) => ({ ...f, [k]: !f[k] }));
 
@@ -97,15 +110,35 @@ export default function ExportFileDialog({ open, onClose, defaultRange }: Props)
         range: { tuNgay: range.tuNgay, denNgay: range.denNgay },
         formats,
         dir,
-        onProgress: (done, total) =>
-          toast.update(toastId, { render: `Đang xuất hóa đơn ${done}/${total}…` }),
+        gdtToken,
+        onProgress: (p) =>
+          toast.update(toastId, {
+            render:
+              p.round === 0
+                ? `Đang xuất hóa đơn ${p.done}/${p.total}…`
+                : `Đang tải lại hóa đơn còn thiếu (lượt ${p.round}) ${p.done}/${p.total}…`,
+          }),
       });
+
+      // Nêu rõ THIẾU FILE Ở ĐỊNH DẠNG NÀO: một hóa đơn có thể ra đủ HTML/PDF mà chỉ hỏng XML (cổng
+      // thuế chặn/không có bản gốc) — báo gộp "n lỗi" sẽ khiến người dùng chạy lại cả lượt vô ích.
+      const missing = (["html", "xml", "pdf"] as const)
+        .filter((k) => res.failed[k] > 0)
+        .map((k) => `${res.failed[k]} ${k.toUpperCase()}`)
+        .join(", ");
+      // Có vá được thì nói ra: người dùng thấy toast "đang tải lại" nên cần biết kết cục của nó.
+      const fixedNote = res.recovered > 0 ? ` Đã tự tải lại được ${res.recovered} hóa đơn.` : "";
       toast.update(toastId, {
         render:
           res.err > 0
-            ? `Đã xuất ${res.ok}/${res.total} hóa đơn (${res.err} lỗi) + Excel vào "${dir.name}".` +
-              (res.firstError ? ` Lỗi: ${res.firstError}` : "")
-            : `Đã xuất ${res.ok} hóa đơn (2 chiều) + Excel vào thư mục "${dir.name}".`,
+            ? `Đã xuất ${res.ok}/${res.total} hóa đơn + Excel vào "${dir.name}".${fixedNote} ` +
+              `Vẫn thiếu: ${missing} (đã thử lại ${res.retryRounds} lượt).` +
+              (res.authExpired
+                ? " Token Thuế điện tử hết hạn giữa chừng — đăng nhập lại rồi xuất lại phần XML."
+                : res.firstError
+                  ? ` Lỗi: ${res.firstError}`
+                  : "")
+            : `Đã xuất ${res.ok} hóa đơn (2 chiều) + Excel vào thư mục "${dir.name}".${fixedNote}`,
         type: res.err > 0 ? "warning" : "success",
         isLoading: false,
         autoClose: res.err > 0 ? 10000 : 5000,
@@ -134,7 +167,8 @@ export default function ExportFileDialog({ open, onClose, defaultRange }: Props)
         <Alert severity="info" sx={{ mb: 2 }}>
           Xuất CẢ 2 chiều (mua vào + bán ra) trong khoảng đã đồng bộ hoàn thành. Cấu trúc:{" "}
           <b>{activeMst ?? "MST"}</b> / <b>khoảng ngày</b> / {"{purchase, sold}"} /{" "}
-          {"{html, xml, pdf}"} + 2 file Excel. Phần mềm cần chút thời gian để render PDF.
+          {"{html, xml, pdf}"} + 2 file Excel. File XML là <b>bản gốc đã ký số</b> tải trực tiếp từ
+          Thuế điện tử. Phần mềm cần chút thời gian để render PDF và tải XML.
         </Alert>
 
         {!canPick && (
@@ -145,6 +179,12 @@ export default function ExportFileDialog({ open, onClose, defaultRange }: Props)
         {!activeMst && (
           <Alert severity="warning" sx={{ mb: 2 }}>
             Chưa chọn công ty có MST — không đặt được tên thư mục gốc. Hãy chọn công ty (có MST) trước.
+          </Alert>
+        )}
+        {needsGdtLogin && (
+          <Alert severity="warning" sx={{ mb: 2 }}>
+            Hóa đơn XML gốc được tải trực tiếp từ Thuế điện tử nên cần đăng nhập cổng thuế cho MST
+            đang chọn. Hãy đăng nhập, hoặc bỏ tick "Hóa đơn XML gốc (ký số)" để chỉ xuất HTML/PDF.
           </Alert>
         )}
 
@@ -190,7 +230,7 @@ export default function ExportFileDialog({ open, onClose, defaultRange }: Props)
           />
           <FormControlLabel
             control={<Checkbox checked={formats.xml} onChange={() => toggle("xml")} />}
-            label="Hóa đơn XML"
+            label="Hóa đơn XML gốc (ký số)"
           />
           <FormControlLabel
             control={<Checkbox checked={formats.pdf} onChange={() => toggle("pdf")} />}

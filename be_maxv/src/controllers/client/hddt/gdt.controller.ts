@@ -287,6 +287,79 @@ export async function renderInvoicePdf(
   }
 }
 
+/** Tham số định danh 1 hóa đơn để xin bản XML gốc từ cổng thuế. */
+interface ExportXmlQuery {
+  nbmst?: string;
+  khhdon?: string;
+  shdon?: string;
+  khmshdon?: string;
+  /** "1" = hóa đơn máy tính tiền (`ttxly=8`) -> cổng thuế để ở nhánh sco-query riêng. */
+  cttt?: string;
+}
+
+/**
+ * GET /gdt/invoices/:direction/export-xml?nbmst=&khhdon=&shdon=&khmshdon=[&cttt=1] — tải HÓA ĐƠN XML
+ * GỐC ĐÃ KÝ SỐ của 1 hóa đơn từ cổng thuế, trả về `application/xml`.
+ *
+ * `:direction` đi theo path như mọi endpoint hóa đơn khác (quyết định đọc/ghi cache XML ở bảng nào).
+ * Cần CẢ token GDT (X-Gdt-Token: BE gọi cổng thuế) lẫn JWT app (khóa pacer theo công ty đang chọn).
+ * Dùng: nút "Xuất file tổng hợp + hóa đơn" (thư mục `xml/`).
+ */
+export async function exportInvoiceXml(
+  request: FastifyRequest<{ Params: { direction: string }; Querystring: ExportXmlQuery }>,
+  reply: FastifyReply
+) {
+  const { direction } = request.params;
+  const { nbmst, khhdon, shdon, khmshdon, cttt } = request.query;
+  if (direction !== "purchase" && direction !== "sold") {
+    return reply.status(400).send({ message: "Tham số direction không hợp lệ" });
+  }
+  if (!nbmst || !khhdon || !shdon || !khmshdon) {
+    return reply.status(400).send({
+      message: "Thiếu tham số định danh hóa đơn (nbmst/khhdon/shdon/khmshdon)",
+    });
+  }
+
+  const gdtToken = extractGdtToken(request);
+  if (!gdtToken) {
+    return reply.status(401).send({ message: "Thiếu token GDT (X-Gdt-Token)" });
+  }
+
+  // Ngoài try/catch: lỗi quyền/tenant trả đúng mã qua error-handler chung. Gọi để chắc chắn người
+  // dùng có quyền trên công ty đang chọn TRƯỚC khi tiêu một lượt gọi cổng thuế.
+  const tenantDb = await resolveTenantDb(request);
+
+  try {
+    const xml = await GDTService.getInvoiceOriginalXmlPaced(
+      tenantDb,
+      tenantKeyOf(request),
+      gdtToken,
+      direction,
+      {
+        nbmst,
+        khhdon,
+        shdon,
+        khmshdon,
+        cashRegister: cttt === "1",
+      },
+    );
+    return reply.header("Content-Type", "application/xml; charset=utf-8").send(xml);
+  } catch (err) {
+    request.log.error(err);
+    // Token GDT hết hạn -> phải phân biệt được ở FE để dừng cả lượt xuất và nhắc đăng nhập lại,
+    // thay vì chạy tiếp hàng trăm hóa đơn mà cái nào cũng hỏng.
+    //
+    // KHÔNG dùng 401: interceptor `apiFetchRaw` của FE dành riêng 401 cho nghĩa "cookie app hết
+    // hạn" nên nó sẽ gọi /auth/refresh (thành công, vì phiên app còn hạn) rồi GỬI LẠI nguyên
+    // request -> mỗi hóa đơn đang bay đốt thêm một lượt gọi cổng thuế + một chu kỳ chờ pacer.
+    // Cũng không dùng 403/404: `resolveTenantDb` đã dùng hai mã đó cho lỗi quyền/tenant.
+    const status = GDTService.classifyGdtError(err) === "auth" ? 409 : 502;
+    return reply.status(status).send({
+      message: err instanceof Error ? err.message : "Không tải được XML gốc từ cổng thuế",
+    });
+  }
+}
+
 /**
  * GET /gdt/invoices/:direction/saved-detail/:id — đọc CHI TIẾT ĐÃ LƯU (cột `detail`) của 1 hóa đơn
  * theo id, cho nút "Xem hóa đơn" dựng tờ hóa đơn GTGT. Chỉ cần JWT app (resolveTenantDb), KHÔNG cần

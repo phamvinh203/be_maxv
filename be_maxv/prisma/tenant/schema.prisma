@@ -444,6 +444,12 @@ model vct50view {
   detail Json?   // Chi tiết hóa đơn tải riêng từ GDT (/query/invoices/detail); null nếu chưa tải
   tt_tai String? @db.VarChar(16) // Trạng thái tải chi tiết: "OK" | "error"
 
+  /// Hóa đơn XML GỐC đã ký số (rút từ gói ZIP của /query/invoices/export-xml).
+  /// Cache vĩnh viễn: hóa đơn đã ký là BẤT BIẾN nên tải một lần dùng mãi — lượt xuất file lần sau
+  /// không cần gọi lại cổng thuế (~3 giây/hóa đơn) và không cần token GDT.
+  /// ~13KB/hóa đơn, Postgres tự nén (TOAST) nên thực tế nhỏ hơn nhiều.
+  xml_goc String? @db.Text
+
   raw Json // Toàn bộ payload GDT gốc — đầy đủ mọi field, kể cả field mới phát sinh sau này
 
   datetime0 DateTime @default(now())
@@ -494,6 +500,12 @@ model vct60view {
 
   detail Json?   // Chi tiết hóa đơn tải riêng từ GDT (/query/invoices/detail); null nếu chưa tải
   tt_tai String? @db.VarChar(16) // Trạng thái tải chi tiết: "OK" | "error"
+
+  /// Hóa đơn XML GỐC đã ký số (rút từ gói ZIP của /query/invoices/export-xml).
+  /// Cache vĩnh viễn: hóa đơn đã ký là BẤT BIẾN nên tải một lần dùng mãi — lượt xuất file lần sau
+  /// không cần gọi lại cổng thuế (~3 giây/hóa đơn) và không cần token GDT.
+  /// ~13KB/hóa đơn, Postgres tự nén (TOAST) nên thực tế nhỏ hơn nhiều.
+  xml_goc String? @db.Text
 
   raw Json // Toàn bộ payload GDT gốc — đầy đủ mọi field, kể cả field mới phát sinh sau này
 

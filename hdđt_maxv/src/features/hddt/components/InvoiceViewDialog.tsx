@@ -13,7 +13,14 @@ import CloseRounded from "@mui/icons-material/CloseRounded";
 import PrintRounded from "@mui/icons-material/PrintRounded";
 import { useSavedInvoiceDetailByIdQuery } from "../api/invoiceDetailQueries";
 import { toInvoiceView } from "../invoiceView";
-import { INVOICE_CSS, renderInvoiceHtml, standaloneInvoiceHtml } from "../invoiceHtml";
+import {
+  INVOICE_CSS,
+  invoiceAssetCss,
+  renderInvoiceHtml,
+  standaloneInvoiceHtml,
+  PRINT_PAGE_CSS,
+} from "../invoiceHtml";
+import { PUBLIC_INVOICE_ASSETS } from "../invoiceAssets";
 import { getErrorMessage } from "../../../lib/errors";
 import type { InvoiceDirection } from "../types";
 
@@ -52,7 +59,10 @@ export default function InvoiceViewDialog({ open, onClose, direction, id }: Prop
       return;
     }
     doc.open();
-    doc.write(standaloneInvoiceHtml(view, "@page{margin:10mm;}body{margin:0;}"));
+    // In từ trong app -> ảnh vẫn lấy được từ `public/` (iframe cùng origin).
+    doc.write(
+      standaloneInvoiceHtml(view, { extraCss: PRINT_PAGE_CSS, assets: PUBLIC_INVOICE_ASSETS }),
+    );
     doc.close();
     const win = iframe.contentWindow;
     if (!win) {
@@ -96,7 +106,7 @@ export default function InvoiceViewDialog({ open, onClose, direction, id }: Prop
           </Alert>
         ) : (
           <Box sx={{ overflowX: "auto" }}>
-            <style>{INVOICE_CSS}</style>
+            <style>{INVOICE_CSS + invoiceAssetCss(PUBLIC_INVOICE_ASSETS)}</style>
             {/* HTML do renderInvoiceHtml dựng (giá trị động đã escape) — an toàn để nhúng. */}
             <div dangerouslySetInnerHTML={{ __html: renderInvoiceHtml(view) }} />
           </Box>

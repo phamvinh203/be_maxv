@@ -111,11 +111,22 @@ async function apiFetchRaw(path: string, options: ApiFetchOptions = {}): Promise
 }
 
 /**
+ * Ném `ApiError` kèm `message` của server nếu response không ok. Dùng chung cho cả 3 kiểu đọc body
+ * (JSON/blob/text) để định dạng thông báo lỗi không lệch nhau giữa các lối gọi.
+ */
+async function throwIfNotOk(res: Response): Promise<void> {
+  if (res.ok) return;
+  const body = (await res.json().catch(() => ({}))) as ApiErrorBody;
+  throw new ApiError(body.message || `Yêu cầu thất bại (${res.status})`, res.status);
+}
+
+/**
  * `apiFetchRaw` rồi parse JSON + ném Error kèm `message` của server khi response không ok.
  * Dùng chung cho mọi API client trong app thay vì mỗi hàm tự lặp lại đoạn này.
  */
 export async function apiFetch<T>(path: string, options: ApiFetchOptions = {}): Promise<T> {
   const res = await apiFetchRaw(path, options);
+  // Đọc body TRƯỚC khi kiểm ok: nhánh thành công cần chính body này, mà body chỉ đọc được 1 lần.
   const body = (await res.json().catch(() => ({}))) as T & ApiErrorBody;
   if (!res.ok) {
     throw new ApiError(body.message || `Yêu cầu thất bại (${res.status})`, res.status);
@@ -129,11 +140,19 @@ export async function apiFetch<T>(path: string, options: ApiFetchOptions = {}): 
  */
 export async function apiFetchBlob(path: string, options: ApiFetchOptions = {}): Promise<Blob> {
   const res = await apiFetchRaw(path, options);
-  if (!res.ok) {
-    const body = (await res.json().catch(() => ({}))) as ApiErrorBody;
-    throw new ApiError(body.message || `Yêu cầu thất bại (${res.status})`, res.status);
-  }
+  await throwIfNotOk(res);
   return res.blob();
+}
+
+/**
+ * Như `apiFetch` nhưng trả VĂN BẢN THÔ (vd XML gốc từ `/gdt/invoices/export-xml`) thay vì parse JSON.
+ * Lỗi (response không ok) -> đọc `message` JSON nếu có rồi ném `ApiError` kèm status, để caller phân
+ * biệt được 401 (token GDT hết hạn, phải dừng cả lượt) với lỗi lẻ của 1 hóa đơn.
+ */
+export async function apiFetchText(path: string, options: ApiFetchOptions = {}): Promise<string> {
+  const res = await apiFetchRaw(path, options);
+  await throwIfNotOk(res);
+  return res.text();
 }
 
 /** Envelope chuẩn `{success, data, message}` mà be_maxv trả cho mọi response (sendOk/sendCreated). */
