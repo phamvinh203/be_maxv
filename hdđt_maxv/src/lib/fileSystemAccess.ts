@@ -4,8 +4,16 @@
  * thiểu (lib.dom chưa chắc có `showDirectoryPicker` theo phiên bản TS).
  */
 
+/**
+ * Dữ liệu ghi xuống file. Dùng `ArrayBufferView` (tham số kiểu để mặc định `ArrayBufferLike`) thay
+ * cho `BufferSource`: `BufferSource` của TS đã siết thành `ArrayBufferView<ArrayBuffer>` — loại
+ * SharedArrayBuffer — nên `Uint8Array` do thư viện ngoài trả về (pdf-lib `save()`) không lọt, phải
+ * cast vô cớ. `write()` thật của File System Access nhận mọi ArrayBufferView, nên hẹp hơn là SAI.
+ */
+export type WritableData = Blob | string | ArrayBufferView | ArrayBuffer;
+
 interface FsWritable {
-  write(data: Blob | string | BufferSource): Promise<void>;
+  write(data: WritableData): Promise<void>;
   close(): Promise<void>;
 }
 interface FsFileHandle {
@@ -44,7 +52,7 @@ export async function pickDirectory(): Promise<FsDirHandle | null> {
 export async function writeFile(
   dir: FsDirHandle,
   name: string,
-  data: Blob | string | BufferSource,
+  data: WritableData,
 ): Promise<void> {
   const fh = await dir.getFileHandle(name, { create: true });
   const w = await fh.createWritable();
@@ -65,6 +73,23 @@ export async function readFileText(dir: FsDirHandle, name: string): Promise<stri
   try {
     const fh = await dir.getFileHandle(name);
     return await (await fh.getFile()).text();
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Đọc 1 file trong `dir` dạng NHỊ PHÂN, `null` nếu chưa có/không đọc được (cùng quy ước nuốt lỗi
+ * như `readFileText`).
+ *
+ * Dùng để gộp các PDF đã ghi thành một file: đọc LẠI TỪ ĐĨA thay vì giữ mọi Blob trong bộ nhớ suốt
+ * lượt xuất — lượt vài trăm hóa đơn sẽ ngốn hàng trăm MB nếu ôm sẵn — và vì đọc sau các vòng vá nên
+ * lấy đúng bản cuối cùng của từng hóa đơn.
+ */
+export async function readFileBytes(dir: FsDirHandle, name: string): Promise<ArrayBuffer | null> {
+  try {
+    const fh = await dir.getFileHandle(name);
+    return await (await fh.getFile()).arrayBuffer();
   } catch {
     return null;
   }

@@ -128,17 +128,30 @@ export default function ExportFileDialog({ open, onClose, defaultRange }: Props)
         .join(", ");
       // Có vá được thì nói ra: người dùng thấy toast "đang tải lại" nên cần biết kết cục của nó.
       const fixedNote = res.recovered > 0 ? ` Đã tự tải lại được ${res.recovered} hóa đơn.` : "";
+      // Hóa đơn không có XML gốc KHÔNG phải lỗi — nói thành câu riêng, giọng bình thường, để người
+      // dùng khỏi tưởng thiếu file rồi chạy lại cả lượt. Xuất hiện ở cả hai nhánh vì nó độc lập với
+      // việc lượt xuất có hóa đơn lỗi hay không.
+      const noXmlNote =
+        res.noOriginalXml > 0
+          ? ` ${res.noOriginalXml} hóa đơn không có XML gốc trên cổng thuế ` +
+            `(hóa đơn kê khai qua bảng tổng hợp) — các file khác vẫn đủ.`
+          : "";
+      // File PDF gộp là thứ người dùng đi tìm ngay sau khi xuất -> nói rõ có nó và gồm bao nhiêu tờ.
+      const mergedNote =
+        res.mergedPdf > 0
+          ? ` Kèm 1 file PDF gộp ${res.mergedPdf} hóa đơn (đứng đầu thư mục pdf/).`
+          : "";
       toast.update(toastId, {
         render:
           res.err > 0
-            ? `Đã xuất ${res.ok}/${res.total} hóa đơn + Excel vào "${dir.name}".${fixedNote} ` +
+            ? `Đã xuất ${res.ok}/${res.total} hóa đơn + Excel vào "${dir.name}".${fixedNote}${noXmlNote}${mergedNote} ` +
               `Vẫn thiếu: ${missing} (đã thử lại ${res.retryRounds} lượt).` +
               (res.authExpired
                 ? " Token Thuế điện tử hết hạn giữa chừng — đăng nhập lại rồi xuất lại phần XML."
                 : res.firstError
                   ? ` Lỗi: ${res.firstError}`
                   : "")
-            : `Đã xuất ${res.ok} hóa đơn (2 chiều) + Excel vào thư mục "${dir.name}".${fixedNote}`,
+            : `Đã xuất ${res.ok} hóa đơn (2 chiều) + Excel vào thư mục "${dir.name}".${fixedNote}${noXmlNote}${mergedNote}`,
         type: res.err > 0 ? "warning" : "success",
         isLoading: false,
         autoClose: res.err > 0 ? 10000 : 5000,

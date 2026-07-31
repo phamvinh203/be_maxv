@@ -34,15 +34,16 @@ export async function loginGdt(body: LoginPayload): Promise<LoginResult> {
 
 /**
  * Bảng mã trạng thái hóa đơn (`tthai`) của GDT — dùng chung cho dropdown lọc
- * (InvoiceFilterPanel) và hiển thị nhãn ở bảng kết quả (InvoiceListTabs).
+ * (InvoiceFilterPanel), nhãn ở bảng kết quả (InvoiceListTabs) và cột Excel xuất ra.
+ * Nhãn bám theo đúng chữ cổng thuế dùng — xem bảng 14.5 trong `docs/14-hop-dong-api.md`.
  */
 export const TRANG_THAI_HD_OPTIONS = [
   { value: "", label: "Tất cả" },
   { value: "1", label: "Hóa đơn mới" },
   { value: "2", label: "Hóa đơn thay thế" },
   { value: "3", label: "Hóa đơn điều chỉnh" },
-  { value: "4", label: "Hóa đơn bị thay thế" },
-  { value: "5", label: "Hóa đơn đã bị điều chỉnh" },
+  { value: "4", label: "Hóa đơn đã bị thay thế" },
+  { value: "5", label: "Hóa đơn bị điều chỉnh" },
   { value: "6", label: "Hóa đơn đã bị hủy" },
 ] as const;
 
@@ -60,13 +61,17 @@ export function trangThaiHdLabel(code: string): string {
 
 /**
  * Bảng mã kết quả kiểm tra hóa đơn (`ttxly`) của GDT — dùng chung cho dropdown lọc
- * (InvoiceFilterPanel) và hiển thị nhãn ở bảng kết quả (InvoiceListTabs).
+ * (InvoiceFilterPanel), nhãn ở bảng kết quả (InvoiceListTabs) và cột Excel xuất ra.
+ * Nhãn bám theo đúng chữ cổng thuế dùng — xem bảng 14.5 trong `docs/14-hop-dong-api.md`.
+ *
+ * Mã `8` còn quyết định ĐƯỜNG GỌI: backend đổi sang nhánh `/sco-query/...` cho hóa đơn có mã khởi
+ * tạo từ máy tính tiền, thay vì `/query/...` như hóa đơn thường.
  */
 export const KET_QUA_KIEM_TRA_OPTIONS = [
   { value: "", label: "Tất cả" },
   { value: "5", label: "Đã cấp mã hóa đơn" },
-  { value: "6", label: "Tổng cục thuế đã nhận không mã" },
-  { value: "8", label: "Tổng cục thuế đã nhận hóa đơn có khởi tạo từ máy tính tiền" },
+  { value: "6", label: "Cục Thuế đã nhận không mã" },
+  { value: "8", label: "Cục Thuế đã nhận hóa đơn có mã khởi tạo từ máy tính tiền" },
 ] as const;
 
 const KET_QUA_KIEM_TRA_LABEL: Record<string, string> = Object.fromEntries(

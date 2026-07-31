@@ -1,7 +1,11 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { GdtHttpError } from "../config/gdt-client";
-import { classifyGdtError, isBodyTerminated } from "../services/client/hddt/gdt.service";
+import {
+  classifyGdtError,
+  isBodyTerminated,
+  isMissingOriginalFile,
+} from "../services/client/hddt/gdt.service";
 
 /**
  * Phân loại lỗi GDT — quyết định retry hay dừng lượt.
@@ -117,6 +121,56 @@ test("isBodyTerminated: timeout/429/5xx KHÔNG phải ca này -> false (đừng 
     false,
   );
   assert.equal(isBodyTerminated(new Error("fetch failed")), false);
+});
+
+/**
+ * "Không tồn tại hồ sơ gốc của hóa đơn" — KHÔNG PHẢI SỰ CỐ, mà là câu trả lời đúng của cổng thuế.
+ *
+ * Bối cảnh (bug thật, 31/07/2026 — lượt xuất báo "Vẫn thiếu: 1 XML" kèm nguyên chuỗi JSON 500):
+ *   GET /invoices/export-xml?nbmst=0100109106&khhdon=K26TVB&shdon=2479932 -> 500 sau 384ms
+ *   {"message":"Không tồn tại hồ sơ gốc của hóa đơn."}
+ *
+ * Hóa đơn đó trong payload danh sách có `hsgoc: null` (id hồ sơ gốc), `hthdon: 2`, và cả
+ * `nky`/`nbcks`/`cqtcks`/`mhdon` đều null — tức hóa đơn được gửi cơ quan thuế qua BẢNG TỔNG HỢP
+ * DỮ LIỆU chứ không phải hóa đơn điện tử có file XML ký số. Nó VĨNH VIỄN không có XML để tải.
+ *
+ * Tách riêng khỏi "permanent" thường: permanent chỉ nói "đừng thử lại", còn ca này phải đi xa hơn —
+ * không được đếm vào số hóa đơn LỖI, vì chẳng có gì hỏng để người dùng đi sửa.
+ */
+const missingFileErr = (elapsedMs = 384) =>
+  new GdtHttpError(
+    500,
+    "Internal Server Error",
+    '{"timestamp":"31/07/2026 13:59:24","message":"Không tồn tại hồ sơ gốc của hóa đơn.","details":"","path":"uri=/invoices/export-xml"}',
+    elapsedMs,
+  );
+
+test("isMissingOriginalFile: đúng ca GDT báo không có hồ sơ gốc -> true", () => {
+  assert.equal(isMissingOriginalFile(missingFileErr()), true);
+  // Lỗi mất kiểu khi đi qua ranh giới vẫn phải nhận ra (chỉ còn chuỗi message).
+  assert.equal(
+    isMissingOriginalFile(new Error("GDT API Error: 500 ... Không tồn tại hồ sơ gốc của hóa đơn.")),
+    true,
+  );
+});
+
+test("isMissingOriginalFile: không phụ thuộc dấu tiếng Việt và chữ hoa/thường", () => {
+  assert.equal(
+    isMissingOriginalFile(new Error("KHONG TON TAI HO SO GOC CUA HOA DON")),
+    true,
+  );
+});
+
+test("isMissingOriginalFile: lỗi khác -> false (đừng nuốt lỗi thật thành 'không có file')", () => {
+  assert.equal(isMissingOriginalFile(httpErr(500, 4000)), false);
+  assert.equal(isMissingOriginalFile(httpErr(401, 50)), false);
+  assert.equal(isMissingOriginalFile(new Error("fetch failed")), false);
+  // Chữ "hồ sơ" trong một thông điệp khác hẳn thì KHÔNG được nhận nhầm.
+  assert.equal(isMissingOriginalFile(new Error("Hồ sơ đang được xử lý, vui lòng đợi")), false);
+});
+
+test("ca không có hồ sơ gốc vẫn là permanent (retry vô ích)", () => {
+  assert.equal(classifyGdtError(missingFileErr()), "permanent");
 });
 
 test("lỗi lạ hoàn toàn -> permanent (đừng retry thứ không hiểu)", () => {

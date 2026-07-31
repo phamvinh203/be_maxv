@@ -2065,6 +2065,36 @@ export function isBodyTerminated(err: unknown): boolean {
   return /terminated|UND_ERR_SOCKET|ECONNRESET|other side closed/i.test(describeErrorChain(err));
 }
 
+/** Bỏ dấu tiếng Việt + về chữ thường, để dò chuỗi không phụ thuộc dấu hay hoa/thường. */
+function noDiacritics(s: string): string {
+  return s
+    .normalize("NFD")
+    .replace(/[̀-ͯ]/g, "")
+    .replace(/[đĐ]/g, "d")
+    .toLowerCase();
+}
+
+/**
+ * Cổng thuế trả "Không tồn tại hồ sơ gốc của hóa đơn" cho `export-xml` — KHÔNG PHẢI SỰ CỐ, mà là
+ * câu trả lời ĐÚNG: hóa đơn đó vốn không có file XML gốc để tải.
+ *
+ * Gặp ở hóa đơn gửi cơ quan thuế qua BẢNG TỔNG HỢP DỮ LIỆU thay vì phát hành từng tờ có ký số —
+ * trong payload danh sách nhận ra được vì `hsgoc` (id hồ sơ gốc) là null, `hthdon = 2`, và cả
+ * `nky`/`nbcks`/`cqtcks`/`mhdon` đều null.
+ *
+ * Vì sao TÁCH RIÊNG khỏi "permanent": permanent mới chỉ nói "đừng thử lại". Ca này còn phải không
+ * được ĐẾM VÀO SỐ HÓA ĐƠN LỖI — chẳng có gì hỏng để người dùng đi sửa, mà báo lỗi thì họ sẽ chạy
+ * lại cả lượt xuất một cách vô ích.
+ *
+ * Dò trên `describeErrorChain` (không chỉ `message`) cho đồng bộ với `classifyGdtError`, và bỏ dấu
+ * trước khi so để không vỡ vì khác cách bỏ dấu/hoa-thường. Phải khớp CẢ HAI vế "khong ton tai" và
+ * "ho so goc": chỉ khớp một vế thì các thông điệp khác có chữ "hồ sơ" sẽ bị nuốt thành "không có file".
+ */
+export function isMissingOriginalFile(err: unknown): boolean {
+  const signature = noDiacritics(describeErrorChain(err));
+  return signature.includes("khong ton tai") && signature.includes("ho so goc");
+}
+
 export function classifyGdtError(err: unknown): "auth" | "transient" | "permanent" {
   if (err instanceof GdtHttpError) {
     if (err.status === 401 || err.status === 403) return "auth";

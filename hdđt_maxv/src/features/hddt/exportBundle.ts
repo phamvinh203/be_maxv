@@ -24,18 +24,34 @@ import {
   loadInlineInvoiceAssets,
 } from "./invoiceAssets";
 import { readOriginalXmlExtras } from "./invoiceOriginalXml";
+import { invoiceFileBase, invoiceKey, invoiceSttMap, safeName } from "./invoiceFileName";
 import {
   buildSummaryWorkbookBuffer,
   summaryWorkbookFilename,
   type ExportRange,
 } from "./exportXlsx";
 import type { InvoiceDirection, InvoiceQuery } from "./types";
-import { type FsDirHandle, writeFile, readFileText } from "../../lib/fileSystemAccess";
+import {
+  type FsDirHandle,
+  writeFile,
+  readFileText,
+  readFileBytes,
+} from "../../lib/fileSystemAccess";
 import { ApiError } from "../../lib/http";
 
-/** Bỏ ký tự không hợp lệ trong tên file (Windows/khác), gộp khoảng trắng. */
-function safeName(raw: string): string {
-  return (raw || "hoa-don").replace(/[\\/:*?"<>|]+/g, "_").replace(/\s+/g, " ").trim();
+/**
+ * Khóa định danh hóa đơn dựng từ payload chi tiết GDT thô (field kiểu `unknown`, `khmshdon`/`shdon`
+ * có khi là số) — để tra số thứ tự trong bảng Tổng quát. Cùng bộ field với `DisplayRow`, chỉ khác
+ * chỗ ở đây phải tự ép kiểu.
+ */
+function detailInvoiceKey(detail: Record<string, unknown>): string {
+  const str = (v: unknown): string => (v == null ? "" : String(v));
+  return invoiceKey(
+    str(detail.khmshdon),
+    str(detail.khhdon),
+    str(detail.shdon),
+    str(detail.nbmst),
+  );
 }
 
 /**
@@ -103,6 +119,16 @@ export interface ExportBundleResult {
   failed: ExportFailedCount;
   /** Số hóa đơn lỗi ở pha chính nhưng VÁ LẠI THÀNH CÔNG — để người dùng biết đã tự khắc phục. */
   recovered: number;
+  /**
+   * Số hóa đơn KHÔNG CÓ XML gốc trên cổng thuế (BE trả 410) — không phải lỗi, không nằm trong `err`.
+   * Tách ra để FE nói rõ thay vì để người dùng tưởng thiếu file rồi chạy lại cả lượt vô ích.
+   */
+  noOriginalXml: number;
+  /**
+   * Số hóa đơn đã vào FILE PDF GỘP (cộng cả 2 chiều). 0 = không tick PDF, hoặc bước gộp hỏng —
+   * các file PDF lẻ vẫn còn nguyên trên đĩa.
+   */
+  mergedPdf: number;
   /** Số vòng vá đã chạy (0 = pha chính xong xuôi, không cần vá). */
   retryRounds: number;
   /** Lỗi của hóa đơn ĐẦU TIÊN còn thiếu file (để FE hiện thay vì nuốt im lặng). */
@@ -114,6 +140,60 @@ export interface ExportBundleResult {
 /** Tên folder khoảng ngày: "tu-<từ>-den-<đến>". */
 function rangeFolderName(range: ExportRange): string {
   return `tu-${range.tuNgay}-den-${range.denNgay}`;
+}
+
+/**
+ * Tên file PDF GỘP, đặt ngay trong thư mục `pdf/` cạnh các file lẻ. Mở đầu bằng `0.` để nằm TRƯỚC
+ * `1.`, `2.`… — nhìn thấy ngay khi mở thư mục, thay vì lẫn vào cuối danh sách.
+ * Vẫn ghi rõ chiều + khoảng ngày để file còn tự mô tả được khi bị copy ra chỗ khác.
+ */
+function mergedPdfFilename(direction: InvoiceDirection, range: ExportRange): string {
+  const slug = direction === "purchase" ? "dau-vao" : "dau-ra";
+  return safeName(`0.Tat-ca-hoa-don-${slug}-${rangeFolderName(range)}.pdf`);
+}
+
+/**
+ * Gộp các file PDF ĐÃ GHI của một chiều thành MỘT file trong cùng thư mục `pdf/`. Trả số hóa đơn
+ * gộp được (0 = không có gì để gộp).
+ *
+ * VÌ SAO GỘP TỪ FILE PDF, KHÔNG PHẢI GỘP HTML RỒI RENDER MỘT LẦN: route `/gdt/render-pdf` giới hạn
+ * body 5MB, mà HTML một tờ hóa đơn ~31KB — cách kia sẽ vỡ ở khoảng 150 hóa đơn, trong khi lượt xuất
+ * thật lên tới cả nghìn. Gộp bản đã render còn đảm bảo file gộp giống hệt các file lẻ, không phải
+ * render lại lần hai (mỗi lần ~2 giây/tờ).
+ *
+ * Đọc lại từ đĩa và chạy SAU các vòng vá nên lấy đúng bản cuối cùng; hóa đơn nào thiếu/hỏng file thì
+ * bỏ qua rồi đi tiếp, không làm hỏng cả file gộp.
+ */
+async function mergeInvoicePdfs(
+  pdfDir: FsDirHandle,
+  tasks: TaskState[],
+  fileName: string,
+): Promise<number> {
+  // Lazy-load pdf-lib (~1MB) — chỉ tải khi thực sự có tick PDF, không nằm trong bundle chính.
+  const { PDFDocument } = await import("pdf-lib");
+  const merged = await PDFDocument.create();
+  let count = 0;
+
+  for (const st of tasks) {
+    const bytes = await readFileBytes(pdfDir, `${st.base}.pdf`);
+    if (!bytes) continue;
+    try {
+      const src = await PDFDocument.load(bytes);
+      const pages = await merged.copyPages(src, src.getPageIndices());
+      for (const page of pages) merged.addPage(page);
+      count += 1;
+    } catch (e) {
+      // 1 file hỏng không được kéo theo cả file gộp — bỏ qua tờ đó, các tờ còn lại vẫn vào.
+      console.error(`[exportBundle] Bỏ qua ${st.base}.pdf khi gộp:`, e);
+    }
+  }
+
+  if (count === 0) return 0;
+  // Ghi thẳng `Uint8Array` (BufferSource) chứ không bọc `new Blob([...])`: file gộp có thể hàng chục
+  // MB, bọc Blob là nhân đôi bộ nhớ ở đúng lúc đỉnh điểm. Phần mở rộng `.pdf` đã đủ để hệ điều hành
+  // nhận diện, không cần MIME type.
+  await writeFile(pdfDir, fileName, await merged.save());
+  return count;
 }
 
 /**
@@ -158,10 +238,14 @@ interface TaskState {
   pdfDir: FsDirHandle | null;
   /** Tên file (không phần mở rộng) — tính 1 lần, dùng cho cả 3 định dạng. */
   base: string;
+  /** Số thứ tự hóa đơn trong bảng Tổng quát — để file PDF gộp xếp đúng thứ tự bảng. */
+  stt: number;
   /** Được bổ sung mã QR + tên ngân hàng sau khi lấy được XML gốc (xem `processTask`). */
   view: InvoiceView;
   /** Định dạng nào CHƯA ghi được. Hết rỗng là hóa đơn xong. */
   pending: Record<keyof ExportFormats, boolean>;
+  /** Cổng thuế xác nhận hóa đơn KHÔNG có XML gốc — đã thôi chờ định dạng đó, và KHÔNG tính là lỗi. */
+  noOriginalXml?: boolean;
   /** Lỗi gần nhất — chỉ dùng để báo về FE khi hóa đơn vẫn thiếu file sau mọi vòng vá. */
   lastError?: string;
 }
@@ -230,8 +314,13 @@ export async function exportInvoiceBundle(opts: ExportBundleOptions): Promise<Ex
   const htmlDirs: FsDirHandle[] = [];
   for (const { direction, saved, details, views } of perDir) {
     const overviewRows = (saved.datas ?? []).map((r) => toDisplayRow(r, direction));
-    const detailRows = details.flatMap(toDetailRows);
-    const buffer = await buildSummaryWorkbookBuffer(overviewRows, detailRows, direction);
+    // NGUỒN DUY NHẤT của số thứ tự cho cả 3 kênh: sheet Tổng quát (vị trí dòng), sheet Chi tiết
+    // (tra theo khóa) và tên file ghi ra đĩa. Lệch nhau là cột "Tên file" chỉ tên file không có thật.
+    const sttOf = invoiceSttMap(overviewRows);
+    const detailRows = details.flatMap((d) =>
+      toDetailRows(d, sttOf.get(detailInvoiceKey(d)) ?? 0),
+    );
+    const buffer = await buildSummaryWorkbookBuffer(overviewRows, detailRows, direction, range);
     await writeFile(rangeDir, summaryWorkbookFilename(direction, range), buffer);
 
     if (!anyFormat || views.length === 0) continue;
@@ -244,18 +333,18 @@ export async function exportInvoiceBundle(opts: ExportBundleOptions): Promise<Ex
     if (htmlDir) htmlDirs.push(htmlDir);
 
     for (const view of views) {
+      const stt = sttOf.get(invoiceKey(view.mauSo, view.kyHieu, view.soHd, view.seller.mst)) ?? 0;
       states.push({
         direction,
+        stt,
         htmlDir,
         xmlDir,
         pdfDir,
-        // Gắn MST người bán để KHÔNG trùng tên: chiều mua vào gộp HĐ của nhiều người bán,
-        // `kyHieu-soHd` chỉ unique theo từng người bán -> thiếu MST sẽ ghi đè lẫn nhau (mất file).
-        //
-        // Khóa unique của cổng thuế còn có `khmshdon` (mẫu số) nhưng KHÔNG cần đưa vào tên file: ký
-        // tự đầu của `khhdon` chính là mẫu số ("1C25TAA") nên bộ ba này đã đủ phân biệt. Giữ nguyên
-        // tên file cũng để thư mục đã xuất lần trước còn dùng lại được (xem nhánh đọc file có sẵn).
-        base: safeName(`${view.seller.mst}-${view.kyHieu}-${view.soHd}`),
+        // Quy tắc đặt tên nằm ở `invoiceFileName` — dùng CHUNG với cột "Tên file hóa đơn
+        // (XML/HTML/PDF)" của bảng/Excel, để tên trong bảng luôn là tên file có thật trên đĩa.
+        // Đừng đổi tại chỗ: thư mục đã xuất lần trước còn dùng lại được nhờ tên ổn định (xem
+        // nhánh đọc file có sẵn bên dưới).
+        base: invoiceFileBase(stt, view.ngayLap, view.soHd, view.seller.mst),
         view,
         pending: { html: !!htmlDir, xml: !!xmlDir, pdf: !!pdfDir },
       });
@@ -316,6 +405,15 @@ export async function exportInvoiceBundle(opts: ExportBundleOptions): Promise<Ex
         // refresh của `apiFetchRaw` bắt): mọi hóa đơn còn lại cũng sẽ hỏng y hệt -> ngừng gọi cổng
         // thuế và bỏ luôn các vòng vá.
         if (e instanceof ApiError && e.status === 409) authExpired = true;
+        // 410 = cổng thuế xác nhận hóa đơn KHÔNG CÓ hồ sơ gốc (chỉ làn `xml` mới trả mã này). Đây
+        // là câu trả lời đúng chứ không phải sự cố: gỡ khỏi `pending` để vòng vá không thử lại một
+        // thứ vĩnh viễn không có, và đánh dấu để tổng kết đếm riêng thay vì gộp vào số hóa đơn lỗi.
+        if (e instanceof ApiError && e.status === 410) {
+          st.pending[kind] = false;
+          st.noOriginalXml = true;
+          console.info(`[exportBundle] ${direction}/${base}: không có XML gốc trên cổng thuế — bỏ qua.`);
+          return;
+        }
         const msg = e instanceof Error ? e.message : String(e);
         st.lastError = msg;
         console.error(
@@ -454,6 +552,29 @@ export async function exportInvoiceBundle(opts: ExportBundleOptions): Promise<Ex
     if (!progressed) break;
   }
 
+  // ---- Gộp PDF: 1 file chứa tất cả hóa đơn của mỗi chiều, cạnh các file lẻ ----
+  // ĐẶT SAU CÙNG có chủ ý: mọi file lẻ + Excel đã nằm trên đĩa rồi, nên dù bước gộp có hỏng (hoặc
+  // ngốn bộ nhớ với lượt vài nghìn hóa đơn) thì phần việc chính vẫn còn nguyên, chỉ thiếu file gộp.
+  let mergedPdf = 0;
+  if (formats.pdf) {
+    for (const direction of directions) {
+      const group = states
+        .filter((s) => s.direction === direction && s.pdfDir)
+        .sort((a, b) => a.stt - b.stt); // xếp theo đúng thứ tự bảng Tổng quát
+      const pdfDir = group[0]?.pdfDir;
+      if (!pdfDir) continue;
+      try {
+        mergedPdf += await mergeInvoicePdfs(
+          pdfDir,
+          group,
+          mergedPdfFilename(direction, range),
+        );
+      } catch (e) {
+        console.error(`[exportBundle] Không gộp được PDF chiều ${direction}:`, e);
+      }
+    }
+  }
+
   // ---- Tổng kết: mọi con số báo về FE đều tính ở ĐÂY, sau khi đã vá hết số vòng cho phép ----
   const missing = stillMissing();
   const failed: ExportFailedCount = {
@@ -465,6 +586,9 @@ export async function exportInvoiceBundle(opts: ExportBundleOptions): Promise<Ex
   const ok = total - err;
   const recovered = missingAfterMain - err;
   const firstError = missing.find((s) => s.lastError)?.lastError;
+  // Hóa đơn không có XML gốc đã được gỡ khỏi `pending` nên nằm trong `ok` — đúng, vì lượt xuất đã
+  // làm hết những gì làm được cho nó. Đếm riêng chỉ để FE nói rõ, không trừ vào `ok`.
+  const noOriginalXml = states.filter((s) => s.noOriginalXml).length;
 
   return {
     total,
@@ -472,6 +596,8 @@ export async function exportInvoiceBundle(opts: ExportBundleOptions): Promise<Ex
     err,
     failed,
     recovered,
+    noOriginalXml,
+    mergedPdf,
     retryRounds,
     firstError,
     authExpired: authExpired || undefined,

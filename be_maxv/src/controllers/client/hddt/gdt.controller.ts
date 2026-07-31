@@ -345,6 +345,20 @@ export async function exportInvoiceXml(
     );
     return reply.header("Content-Type", "application/xml; charset=utf-8").send(xml);
   } catch (err) {
+    // Hóa đơn KHÔNG CÓ hồ sơ gốc: cổng thuế trả lời đúng, không có gì hỏng. Trả 410 Gone (mã duy
+    // nhất còn trống ở endpoint này) để FE phân biệt được với lỗi thật — nó sẽ bỏ qua định dạng XML
+    // cho hóa đơn này thay vì thử lại rồi đếm vào số hóa đơn lỗi. Log mức warn, KHÔNG log error:
+    // đây là dữ liệu bình thường, đẩy vào log lỗi chỉ làm loãng lúc đi soi sự cố thật.
+    if (GDTService.isMissingOriginalFile(err)) {
+      request.log.warn(
+        `[export-xml] ${nbmst}/${khhdon}-${shdon}: cổng thuế báo không có hồ sơ gốc — bỏ qua XML.`,
+      );
+      return reply.status(410).send({
+        message:
+          "Hóa đơn này không có hồ sơ gốc trên cổng thuế nên không có XML để tải " +
+          "(thường là hóa đơn kê khai qua bảng tổng hợp dữ liệu).",
+      });
+    }
     request.log.error(err);
     // Token GDT hết hạn -> phải phân biệt được ở FE để dừng cả lượt xuất và nhắc đăng nhập lại,
     // thay vì chạy tiếp hàng trăm hóa đơn mà cái nào cũng hỏng.

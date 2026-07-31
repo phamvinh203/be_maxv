@@ -21,6 +21,14 @@ export interface InvoiceColumn<T> {
   /** numFmt kiểu Excel cho cột số (vd "#,##0"). Có numFmt = cột số, web tự gọi `formatMoney`. */
   numFmt?: string;
   /**
+   * Ép ô thành CHỮ trong Excel (numFmt "@") — cho cột ngày dd/MM/yyyy và mã số, để Excel khỏi tự
+   * đoán kiểu rồi đổi "02/01/2026" thành ngày kiểu Mỹ hay cắt số 0 đứng đầu.
+   *
+   * Cố ý KHÔNG dùng chung `numFmt`: `renderCell` hiểu "có numFmt = cột số" nên nhét "@" vào đó sẽ
+   * làm bảng web đem chuỗi ngày đi `formatMoney` và hiện ô trống. Kênh web bỏ qua cờ này.
+   */
+  excelText?: boolean;
+  /**
    * Giá trị THÔ của ô (`stt` = số thứ tự 1-based). Excel/CSV dùng thẳng — cột số phải trả `number`
    * để Excel còn cộng/lọc được. Trả `undefined` cho ô không có dữ liệu: file xuất ghi ô TRỐNG
    * (không phải 0), web hiện `NO_DATA_YET`.
@@ -35,9 +43,21 @@ export interface InvoiceColumn<T> {
 /** Cột chưa có nguồn dữ liệu (cần API/tính năng riêng, chưa xây) — web hiện tạm "—". */
 export const NO_DATA_YET = "—";
 
-// --- numFmt dùng lại nhiều lần trong các file khai báo cột ---
-export const MONEY_FMT = "#,##0";
-export const NUM_FMT = "#,##0.##";
+/**
+ * --- numFmt dùng lại nhiều lần trong các file khai báo cột ---
+ *
+ * QUY TẮC BẤT DI BẤT DỊCH: định dạng ở đây KHÔNG ĐƯỢC LÀM TRÒN. Excel làm tròn theo số chữ số mà
+ * numFmt cho phép, nên `#,##0.0` sẽ biến 9,69 thành 9,7 — sai số liệu hóa đơn ngay trên màn hình
+ * kế toán dù ô vẫn giữ giá trị đúng. Vì vậy mọi định dạng đều có ĐUÔI `#` dự phòng:
+ *   `0` = chữ số bắt buộc (hiện cả khi bằng 0) · `#` = chữ số chỉ hiện khi có
+ * -> phần nguyên và 2 số lẻ đầu luôn hiện (đúng dáng mẫu Excel của kế toán), các số lẻ sau đó chỉ
+ * hiện khi hóa đơn thực sự có, và KHÔNG có chữ số nào bị cắt.
+ */
+export const NUM_FMT = "#,##0.########";
+/** Cột tiền: tối thiểu 2 số lẻ cho đúng mẫu, tối đa 8 để không làm tròn tiền nguyên tệ. */
+export const MONEY2_FMT = "#,##0.00######";
+/** Tỷ giá: tối thiểu 2 số lẻ (hóa đơn VND ra "1.00" đúng mẫu), giữ đủ số lẻ của tỷ giá ngoại tệ. */
+export const RATE_FMT = "0.00######";
 
 /**
  * Render 1 ô trên web. Cột có `cell` thì `cell` quyết định tất cả; còn lại: cột số -> `formatMoney`,
