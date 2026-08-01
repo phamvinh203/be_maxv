@@ -30,7 +30,7 @@ import { useCompanySwitch } from "../features/company/hooks/useCompanySwitch";
 import DialogLoginHddt from "./dialogLoginHddt";
 import logoMaxv from "../assets/Logo_Maxv.png";
 
-const HUONG_DAN_SU_DUNG_URL = "https://docs.google.com/document/d/1OEBtaAepmMAEKHp8ArVPnGFBaQHQjA5I/edit";
+const HUONG_DAN_SU_DUNG_URL = "https://youtu.be/sVQpgkOtsyo?si=SIJmznWNTZg5ufVG";
 
 export default function AppHeader() {
   const { user, logout, companies, currentCompanyId } = useAuth();
