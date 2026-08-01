@@ -57,7 +57,12 @@ export default function ExportFileDialog({ open, onClose, defaultRange }: Props)
   const canPick = supportsDirectoryPicker();
   const [loai, setLoai] = useState<"all" | "ctt">("all");
   const [range, setRange] = useState(defaultRange);
-  const [formats, setFormats] = useState<ExportFormats>({ html: true, xml: true, pdf: true });
+  const [formats, setFormats] = useState<ExportFormats>({
+    html: true,
+    xml: true,
+    pdf: true,
+    excel: true,
+  });
   const [dir, setDir] = useState<FsDirHandle | null>(null);
   const [exporting, setExporting] = useState(false);
 
@@ -75,7 +80,10 @@ export default function ExportFileDialog({ open, onClose, defaultRange }: Props)
   const pData = purchaseComplete.data;
   const sData = soldComplete.data;
 
+  // anyFormat = có tick file TỪNG hóa đơn (html/xml/pdf); anySelected gồm cả Excel tổng hợp — chỉ tick
+  // Excel cũng đủ để xuất (tải mỗi bảng kê, không kèm file hóa đơn).
   const anyFormat = formats.html || formats.xml || formats.pdf;
+  const anySelected = anyFormat || formats.excel;
   const hasRange = !!range.tuNgay && !!range.denNgay;
   const bothLoaded = !!pData && !!sData;
   const synced = bothLoaded && pData.missing === 0 && sData.missing === 0;
@@ -86,7 +94,7 @@ export default function ExportFileDialog({ open, onClose, defaultRange }: Props)
     canPick &&
     !!dir &&
     !!activeMst &&
-    anyFormat &&
+    anySelected &&
     hasRange &&
     synced &&
     !needsGdtLogin &&
@@ -145,17 +153,25 @@ export default function ExportFileDialog({ open, onClose, defaultRange }: Props)
         res.mergedPdf > 0
           ? ` Kèm 1 file PDF gộp ${res.mergedPdf} hóa đơn (đứng đầu thư mục pdf/).`
           : "";
+      // "+ Excel" chỉ đúng khi có tick Excel — đừng nhắc Excel khi người dùng chỉ tải file hóa đơn.
+      const excelNote = formats.excel ? " + Excel tổng hợp" : "";
+      // Chỉ tick Excel (không html/xml/pdf) -> không ghi file hóa đơn nào, nên câu tổng kết nói theo
+      // Excel thay vì "đã xuất N hóa đơn". Nhánh lỗi (res.err > 0) chỉ xảy ra khi có file hóa đơn, nên
+      // ở đó luôn có "hóa đơn".
+      const okSummary = anyFormat
+        ? `Đã xuất ${res.ok} hóa đơn (2 chiều)${excelNote} vào thư mục "${dir.name}".${fixedNote}${noXmlNote}${mergedNote}`
+        : `Đã xuất Excel tổng hợp (2 chiều) vào thư mục "${dir.name}".`;
       toast.update(toastId, {
         render:
           res.err > 0
-            ? `Đã xuất ${res.ok}/${res.total} hóa đơn + Excel vào "${dir.name}".${fixedNote}${noXmlNote}${mergedNote} ` +
+            ? `Đã xuất ${res.ok}/${res.total} hóa đơn${excelNote} vào "${dir.name}".${fixedNote}${noXmlNote}${mergedNote} ` +
               `Vẫn thiếu: ${missing} (đã thử lại ${res.retryRounds} lượt).` +
               (res.authExpired
                 ? " Token Thuế điện tử hết hạn giữa chừng — đăng nhập lại rồi xuất lại phần XML."
                 : res.firstError
                   ? ` Lỗi: ${res.firstError}`
                   : "")
-            : `Đã xuất ${res.ok} hóa đơn (2 chiều) + Excel vào thư mục "${dir.name}".${fixedNote}${noXmlNote}${mergedNote}`,
+            : okSummary,
         type: res.err > 0 ? "warning" : "success",
         isLoading: false,
         autoClose: res.err > 0 ? 10000 : 5000,
@@ -184,8 +200,9 @@ export default function ExportFileDialog({ open, onClose, defaultRange }: Props)
         <Alert severity="info" sx={{ mb: 2 }}>
           Xuất CẢ 2 chiều (mua vào + bán ra) trong khoảng đã đồng bộ hoàn thành. Cấu trúc:{" "}
           <b>{activeMst ?? "MST"}</b> / <b>khoảng ngày</b> / {"{purchase, sold}"} /{" "}
-          {"{html, xml, pdf}"} + 2 file Excel. File XML là <b>bản gốc đã ký số</b> tải trực tiếp từ
-          Thuế điện tử. Phần mềm cần chút thời gian để render PDF và tải XML.
+          {"{html, xml, pdf}"} + 2 file Excel tổng hợp — mỗi phần xuất theo ô tick bên dưới. File XML
+          là <b>bản gốc đã ký số</b> tải trực tiếp từ Thuế điện tử. Phần mềm cần chút thời gian để
+          render PDF và tải XML.
         </Alert>
 
         {!canPick && (
@@ -238,6 +255,14 @@ export default function ExportFileDialog({ open, onClose, defaultRange }: Props)
             onChange={(e) => setRange((r) => ({ ...r, denNgay: e.target.value }))}
           />
         </Stack>
+
+        <FormLabel sx={{ fontWeight: 600, fontSize: 14 }}>Bảng kê tổng hợp</FormLabel>
+        <FormGroup sx={{ mb: 1.5, mt: 0.5 }}>
+          <FormControlLabel
+            control={<Checkbox checked={formats.excel} onChange={() => toggle("excel")} />}
+            label="Excel tổng hợp (mua vào + bán ra)"
+          />
+        </FormGroup>
 
         <FormLabel sx={{ fontWeight: 600, fontSize: 14 }}>Xuất kèm hóa đơn dạng</FormLabel>
         <FormGroup row sx={{ mb: 2, mt: 0.5 }}>

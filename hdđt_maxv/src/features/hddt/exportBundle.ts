@@ -1,7 +1,7 @@
 /**
- * Orchestrator nút "Xuất file tổng hợp + hóa đơn": đọc HĐ đã lưu + chi tiết trong khoảng, sinh 1 file
- * Excel tổng hợp (2 sheet) + file từng hóa đơn (HTML/XML/PDF theo ô tick), rồi GHI thẳng vào thư mục
- * người dùng chọn qua File System Access API (Chrome/Edge).
+ * Orchestrator nút "Xuất file tổng hợp + hóa đơn": đọc HĐ đã lưu + chi tiết trong khoảng, sinh file
+ * Excel tổng hợp (2 sheet) và/hoặc file từng hóa đơn (HTML/XML/PDF) — MỖI PHẦN theo ô tick riêng —
+ * rồi GHI thẳng vào thư mục người dùng chọn qua File System Access API (Chrome/Edge).
  *
  * HTML/PDF dựng tại chỗ từ chi tiết đã lưu; riêng XML là BẢN GỐC ĐÃ KÝ SỐ tải từ cổng thuế qua BE
  * (`fetchOriginalInvoiceXml`) — nên lượt xuất có tick XML cần token GDT còn hạn.
@@ -77,10 +77,19 @@ async function invoiceToPdfBlob(
   );
 }
 
+/**
+ * Định dạng file TỪNG tờ hóa đơn (ghi cho mỗi hóa đơn). Excel tổng hợp KHÔNG nằm ở đây — nó là bảng
+ * kê per-chiều, ghi một lần, nên mọi cấu trúc theo dõi per-tờ (pending/failed) chỉ xoay quanh 3 định
+ * dạng này.
+ */
+export type InvoiceFileFormat = "html" | "xml" | "pdf";
+
 export interface ExportFormats {
   html: boolean;
   xml: boolean;
   pdf: boolean;
+  /** Bảng kê Excel tổng hợp 2 chiều (mua vào + bán ra). Độc lập với file từng hóa đơn ở trên. */
+  excel: boolean;
 }
 
 /** Tiến độ lượt xuất — phân biệt pha chính với các vòng vá lại hóa đơn còn thiếu file. */
@@ -107,7 +116,7 @@ export interface ExportBundleOptions {
 }
 
 /** Số FILE không xuất được, tách theo định dạng — biết lỗi nằm ở khâu nào. */
-export type ExportFailedCount = Record<keyof ExportFormats, number>;
+export type ExportFailedCount = Record<InvoiceFileFormat, number>;
 
 export interface ExportBundleResult {
   /** Số hóa đơn có chi tiết để xuất (gộp 2 chiều). */
@@ -243,7 +252,7 @@ interface TaskState {
   /** Được bổ sung mã QR + tên ngân hàng sau khi lấy được XML gốc (xem `processTask`). */
   view: InvoiceView;
   /** Định dạng nào CHƯA ghi được. Hết rỗng là hóa đơn xong. */
-  pending: Record<keyof ExportFormats, boolean>;
+  pending: Record<InvoiceFileFormat, boolean>;
   /** Cổng thuế xác nhận hóa đơn KHÔNG có XML gốc — đã thôi chờ định dạng đó, và KHÔNG tính là lỗi. */
   noOriginalXml?: boolean;
   /** Lỗi gần nhất — chỉ dùng để báo về FE khi hóa đơn vẫn thiếu file sau mọi vòng vá. */
@@ -355,12 +364,18 @@ export async function exportInvoiceBundle(opts: ExportBundleOptions): Promise<Ex
     const overviewRows = (saved.datas ?? []).map((r) => toDisplayRow(r, direction));
     // NGUỒN DUY NHẤT của số thứ tự cho cả 3 kênh: sheet Tổng quát (vị trí dòng), sheet Chi tiết
     // (tra theo khóa) và tên file ghi ra đĩa. Lệch nhau là cột "Tên file" chỉ tên file không có thật.
+    // Cần cho CẢ Excel lẫn tên file từng hóa đơn, nên tính kể cả khi không tick Excel.
     const sttOf = invoiceSttMap(overviewRows);
-    const detailRows = details.flatMap((d) =>
-      toDetailRows(d, sttOf.get(detailInvoiceKey(d)) ?? 0),
-    );
-    const buffer = await buildSummaryWorkbookBuffer(overviewRows, detailRows, direction, range);
-    await writeFile(rangeDir, summaryWorkbookFilename(direction, range), buffer);
+
+    // Excel tổng hợp giờ là lựa chọn RIÊNG (ô tick "Excel tổng hợp"): trước đây luôn ghi kèm, nay chỉ
+    // ghi khi người dùng tick — cho phép chỉ tải Excel, hoặc chỉ tải file hóa đơn mà không kèm Excel.
+    if (formats.excel) {
+      const detailRows = details.flatMap((d) =>
+        toDetailRows(d, sttOf.get(detailInvoiceKey(d)) ?? 0),
+      );
+      const buffer = await buildSummaryWorkbookBuffer(overviewRows, detailRows, direction, range);
+      await writeFile(rangeDir, summaryWorkbookFilename(direction, range), buffer);
+    }
 
     if (!anyFormat || views.length === 0) continue;
 
@@ -434,7 +449,7 @@ export async function exportInvoiceBundle(opts: ExportBundleOptions): Promise<Ex
      * dạng (thay vì gói chung 1 try) vì chúng độc lập: PDF timeout không có lý do gì làm mất file
      * XML/HTML của cùng hóa đơn, và tách ra thì con số báo về mới chỉ đúng khâu hỏng.
      */
-    const step = async (kind: keyof ExportFormats, run: () => Promise<void>) => {
+    const step = async (kind: InvoiceFileFormat, run: () => Promise<void>) => {
       try {
         await run();
         st.pending[kind] = false;
