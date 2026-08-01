@@ -8,6 +8,42 @@
 import type { ReactNode } from "react";
 import { formatMoney } from "../format";
 
+/** Kiểu tô 1 hàng Excel. Màu dạng ARGB 8 ký tự của exceljs ("FF" + RRGGBB). */
+export interface ExcelCellStyle {
+  /** Màu nền. */
+  bg: string;
+  /** Màu chữ — bỏ trống thì giữ màu chữ mặc định. */
+  fg?: string;
+}
+
+/**
+ * Màu tô CẢ HÀNG của hóa đơn theo mã trạng thái `tthai`.
+ *
+ * Ý NGHĨA MÃ nằm ở `TRANG_THAI_HD_OPTIONS` (`api/gdt.ts`) — đây chỉ là phần trình bày, nên KHÔNG
+ * lặp lại nhãn ở đây; thêm mã mới thì thêm cả hai chỗ.
+ *
+ * Mã `1` (Hóa đơn mới) CỐ Ý không có màu: đó là đa số tuyệt đối, tô hết thì màu mất tác dụng báo
+ * hiệu. Chỉ tô các trạng thái đã BIẾN ĐỘNG, đậm dần theo mức nghiêm trọng — hủy là đỏ.
+ *
+ * Màu phải NHẠT: nó phủ hết bề ngang bảng (46 cột) chứ không phải một ô, nền đậm sẽ nuốt chữ đen.
+ * Riêng mã `6` thêm màu CHỮ đỏ sẫm — vẫn thừa tương phản trên nền hồng nhạt.
+ */
+export const TRANG_THAI_HD_FILL: Record<string, ExcelCellStyle> = {
+  "2": { bg: "FFDDEBF7" }, // thay thế — xanh nhạt
+  "3": { bg: "FFFFF2CC" }, // điều chỉnh — vàng nhạt
+  "4": { bg: "FFFCE4D6" }, // đã bị thay thế — cam nhạt
+  "5": { bg: "FFF8CBAD" }, // bị điều chỉnh — cam
+  "6": { bg: "FFFFC7CE", fg: "FF9C0006" }, // đã bị hủy — hồng, chữ đỏ sẫm
+};
+
+/**
+ * Tô cả hàng theo trạng thái hóa đơn; `undefined` = hóa đơn mới/mã lạ -> để hàng nguyên.
+ * Dùng cho sheet "Chi tiết" của CẢ HAI chiều (quy tắc giống nhau nên để chung, không nhân đôi).
+ */
+export function trangThaiHdRowFill(row: { trangThaiHd: string }): ExcelCellStyle | undefined {
+  return TRANG_THAI_HD_FILL[row.trangThaiHd];
+}
+
 /** 1 cột hóa đơn. Kênh nào cần thuộc tính gì thì đọc thuộc tính đó. */
 export interface InvoiceColumn<T> {
   /** Khóa ổn định — React key + tra cứu cột. KHÔNG đổi khi đổi tiêu đề. */
@@ -20,6 +56,14 @@ export interface InvoiceColumn<T> {
   align?: "right" | "center";
   /** numFmt kiểu Excel cho cột số (vd "#,##0"). Có numFmt = cột số, web tự gọi `formatMoney`. */
   numFmt?: string;
+  /**
+   * Ép ô thành CHỮ trong Excel (numFmt "@") — cho cột ngày dd/MM/yyyy và mã số, để Excel khỏi tự
+   * đoán kiểu rồi đổi "02/01/2026" thành ngày kiểu Mỹ hay cắt số 0 đứng đầu.
+   *
+   * Cố ý KHÔNG dùng chung `numFmt`: `renderCell` hiểu "có numFmt = cột số" nên nhét "@" vào đó sẽ
+   * làm bảng web đem chuỗi ngày đi `formatMoney` và hiện ô trống. Kênh web bỏ qua cờ này.
+   */
+  excelText?: boolean;
   /**
    * Giá trị THÔ của ô (`stt` = số thứ tự 1-based). Excel/CSV dùng thẳng — cột số phải trả `number`
    * để Excel còn cộng/lọc được. Trả `undefined` cho ô không có dữ liệu: file xuất ghi ô TRỐNG
@@ -35,9 +79,21 @@ export interface InvoiceColumn<T> {
 /** Cột chưa có nguồn dữ liệu (cần API/tính năng riêng, chưa xây) — web hiện tạm "—". */
 export const NO_DATA_YET = "—";
 
-// --- numFmt dùng lại nhiều lần trong các file khai báo cột ---
-export const MONEY_FMT = "#,##0";
-export const NUM_FMT = "#,##0.##";
+/**
+ * --- numFmt dùng lại nhiều lần trong các file khai báo cột ---
+ *
+ * QUY TẮC BẤT DI BẤT DỊCH: định dạng ở đây KHÔNG ĐƯỢC LÀM TRÒN. Excel làm tròn theo số chữ số mà
+ * numFmt cho phép, nên `#,##0.0` sẽ biến 9,69 thành 9,7 — sai số liệu hóa đơn ngay trên màn hình
+ * kế toán dù ô vẫn giữ giá trị đúng. Vì vậy mọi định dạng đều có ĐUÔI `#` dự phòng:
+ *   `0` = chữ số bắt buộc (hiện cả khi bằng 0) · `#` = chữ số chỉ hiện khi có
+ * -> phần nguyên và 2 số lẻ đầu luôn hiện (đúng dáng mẫu Excel của kế toán), các số lẻ sau đó chỉ
+ * hiện khi hóa đơn thực sự có, và KHÔNG có chữ số nào bị cắt.
+ */
+export const NUM_FMT = "#,##0.########";
+/** Cột tiền: tối thiểu 2 số lẻ cho đúng mẫu, tối đa 8 để không làm tròn tiền nguyên tệ. */
+export const MONEY2_FMT = "#,##0.00######";
+/** Tỷ giá: tối thiểu 2 số lẻ (hóa đơn VND ra "1.00" đúng mẫu), giữ đủ số lẻ của tỷ giá ngoại tệ. */
+export const RATE_FMT = "0.00######";
 
 /**
  * Render 1 ô trên web. Cột có `cell` thì `cell` quyết định tất cả; còn lại: cột số -> `formatMoney`,

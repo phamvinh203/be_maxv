@@ -309,12 +309,53 @@ Các ô số truyền **số thật** kèm `numFmt`, không truyền chuỗi đ�
 
 ### Khác biệt giữa hai chiều
 
+Cả hai chiều nay bám theo mẫu Excel của phần mềm kế toán, nên **số cột giống nhau** — chỉ khác đúng một cột địa chỉ ở bảng Tổng quát:
+
 | | Mua vào (`dauVao.ts`) | Bán ra (`dauRa.ts`) |
 |---|---|---|
-| Tổng quát | 22 cột web / **21 cột trong file** — MST, Tên người bán (= nhà cung cấp) | 23 cột web / **22 cột trong file** — MST người mua, Tên công ty người mua, **Địa chỉ người mua** |
-| Chi tiết | 27 cột (web và file như nhau) | 28 cột (thêm Địa chỉ người mua) |
+| Tổng quát | 22 cột web / **20 cột trong file** — cột địa chỉ là **Địa chỉ người bán** | 22 cột web / **20 cột trong file** — cột địa chỉ là **Địa chỉ người mua** |
+| Chi tiết | 46 cột (web và file như nhau) | 46 cột — **trùng khớp từng cột với mua vào** |
 
-Bảng Tổng quát lệch 1 cột giữa web và file vì cột checkbox "Chọn" mang cờ `webOnly`.
+Bảng Tổng quát của cả hai chiều lệch 2 cột giữa web và file vì các cột **công cụ màn hình** mang cờ `webOnly`: checkbox "Chọn" và đèn "T. thái tải" (tiến độ tải chi tiết) — chúng không phải dữ liệu hóa đơn nên không ra file.
+
+Bảng Tổng quát nay hiện **cả hai bên** (người bán và người mua) ở cả hai chiều, dù bên "mình" lặp y hệt ở mọi dòng — mẫu Excel của kế toán có cột đó nên giữ cho khớp.
+
+Bảng Chi tiết theo mẫu lưới rộng của phần mềm kế toán: có thêm khối tiền **nguyên tệ / (VND)** theo từng dòng hàng (quy đổi bằng `tyGia` của chính hóa đơn), cột "Tên file hóa đơn (XML/HTML/PDF)" (suy từ `invoiceFileName.ts` — cùng hàm mà lượt xuất dùng để đặt tên file), và 1 cột chưa có nguồn dữ liệu trả `undefined`.
+
+### Tên file từng tờ hóa đơn
+
+`invoiceFileName.ts` là **nguồn duy nhất**, dùng chung cho cả tên file ghi ra đĩa lẫn cột "Tên file…" của hai sheet:
+
+```
+<STT>.<ngày lập yyyy-MM-dd>_<số HĐ>_<MST người bán>      vd  1.2026-07-06_8_0106861880
+```
+
+**STT bắt buộc phải có**, không phải để cho đẹp: phần sau dấu chấm thiếu *ký hiệu hóa đơn* (khóa unique của cổng thuế là mẫu số + ký hiệu + số + MST bán), nên hai hóa đơn cùng người bán, cùng ngày, cùng số mà khác ký hiệu sẽ **ghi đè mất file** của nhau. STT là duy nhất trong lượt xuất nên chặn hẳn ca đó.
+
+STT = **vị trí hóa đơn trong bảng Tổng quát**, lấy qua `invoiceSttMap()` và tra theo **khóa định danh**, không theo vị trí mảng. Lý do: bảng Tổng quát và bảng Chi tiết là hai truy vấn riêng, cùng `ORDER BY tdlap DESC`, mà `tdlap` trùng nhau hàng loạt — Postgres không đảm bảo thứ tự giữa các dòng bằng nhau ở khóa sắp xếp, nên ghép theo vị trí sẽ cho ra "Excel ghi file số 7 mà trên đĩa là file số 9".
+
+Ở sheet Chi tiết, cột này đọc `DetailRow.stt` (số thứ tự HÓA ĐƠN) chứ **không** dùng tham số `stt` của `value(row, stt)` — ở bảng đó tham số kia là số thứ tự *dòng hàng*, một hóa đơn nhiều dòng sẽ sinh ra nhiều tên file khác nhau.
+
+> Hai hàm `detailDauVao`/`detailDauRa` hiện giống nhau từng cột nhưng **vẫn để riêng** theo kiến trúc "mỗi chiều một file". Hệ quả phải nhớ: sửa một cột chi tiết là phải sửa ở **cả hai** file, nếu không hai chiều lệch nhau âm thầm.
+
+### Bố cục sheet Excel
+
+Bám theo mẫu Excel kế toán đang dùng — `addStyledSheet` nhận thêm tham số `banner`:
+
+| | Sheet có `banner` (Tổng quát) | Sheet không có (Chi tiết) |
+|---|---|---|
+| Dòng 1–2 | trống | dòng 1 trống |
+| Dòng 3 | "DANH SÁCH HÓA ĐƠN" (gộp hết bề ngang) | — |
+| Dòng 4 | "Từ ngày dd-MM-yyyy đến ngày dd-MM-yyyy" (gộp) | — |
+| Dòng 5 | trống | — |
+| Tiêu đề cột | dòng 6 | dòng 2 |
+| Dữ liệu | từ dòng 7 | từ dòng 3 |
+
+Freeze + auto-filter luôn đặt tại đúng hàng tiêu đề. Vì tiêu đề không còn nằm ở dòng 1 nên **không dùng `ws.columns = [{header}]`** (cách đó ghi tiêu đề vào dòng 1) — chỉ đặt độ rộng/định dạng cho cột rồi ghi ô theo chỉ số dòng tuyệt đối.
+
+Cột ngày và mã số mang cờ `excelText` → Excel nhận numFmt `"@"` (ô chữ) để không tự đổi "02/01/2026" sang ngày kiểu Mỹ. Cố ý tách khỏi `numFmt` vì `renderCell` hiểu "có numFmt = cột số"; nhét `"@"` vào đó sẽ làm bảng web đem chuỗi ngày đi `formatMoney`.
+
+Tiền suy ra (thuế theo dòng, các cột `(VND)`) đều **làm tròn** trước khi ghi — VND về đồng, ngoại tệ 2 số lẻ. Không làm tròn thì `240633 × 10%` ra `24063.300000000003` và mọi phép cộng cột trong Excel đều lệch.
 
 Mỗi chiều hiện **bên đối tác**: mua vào hiện người bán (nhà cung cấp), bán ra hiện người mua (khách hàng) — bên còn lại vốn đã là công ty đang chọn nên lặp y hệt ở mọi dòng, không mang thông tin gì. Địa chỉ bên mua lấy từ `nmdchi`, trường đã có sẵn trong `SAVED_LIST_SELECT` của backend (không cần sửa BE).
 

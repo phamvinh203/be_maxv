@@ -37,6 +37,7 @@ import { toast } from "react-toastify";
 import type { InvoiceDirection, InvoiceFilterValues, InvoiceQuery } from "../types";
 import { toDisplayRow } from "../invoiceRow";
 import { toDetailRows } from "../detailRow";
+import { invoiceKey, invoiceSttMap } from "../invoiceFileName";
 import { overviewColumns, renderCell } from "../templates";
 import InvoiceFilterPanel from "./InvoiceFilterPanel";
 import InvoiceDetailPanel from "./InvoiceDetailPanel";
@@ -147,10 +148,17 @@ function InvoiceTablePanel({ direction, active }: InvoiceTablePanelProps) {
     () => (savedQuery.data?.datas ?? []).map((r) => toDisplayRow(r, direction)),
     [savedQuery.data, direction],
   );
-  const detailRows = useMemo(
-    () => (savedDetailsQuery.data ?? []).flatMap(toDetailRows),
-    [savedDetailsQuery.data],
-  );
+  // Số thứ tự hóa đơn lấy từ BẢNG TỔNG QUÁT (`rows`), tra theo khóa định danh chứ không theo vị trí:
+  // hai bảng là hai truy vấn riêng, cùng sắp theo ngày lập nên thứ tự giữa các hóa đơn CÙNG NGÀY
+  // không được đảm bảo trùng nhau. Cột "Tên file hóa đơn" đọc số này nên ghép sai là chỉ nhầm file.
+  const detailRows = useMemo(() => {
+    const sttOf = invoiceSttMap(rows);
+    return (savedDetailsQuery.data ?? []).flatMap((d) => {
+      const str = (v: unknown): string => (v == null ? "" : String(v));
+      const key = invoiceKey(str(d.khmshdon), str(d.khhdon), str(d.shdon), str(d.nbmst));
+      return toDetailRows(d, sttOf.get(key) ?? 0);
+    });
+  }, [savedDetailsQuery.data, rows]);
   // Kẹp trang trong khoảng hợp lệ (refetch nền trả ít dòng hơn -> khỏi kẹt ở trang trống).
   const safePage = clampPage(page, rows.length, rowsPerPage);
   const pagedRows = rows.slice(safePage * rowsPerPage, safePage * rowsPerPage + rowsPerPage);

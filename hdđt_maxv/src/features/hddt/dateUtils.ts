@@ -35,12 +35,24 @@ export function formatDateTimeVN(s?: string): string {
 
 /**
  * yyyy-MM-dd cho <input type="date">.
- * Dùng: nội bộ file này — `currentMonthRange`.
+ * Dùng: nội bộ file này — `currentMonthRange`, `formatDateIso`.
  */
 function toDateInput(d: Date): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(
     d.getDate(),
   ).padStart(2, "0")}`;
+}
+
+/**
+ * Ngày (chuỗi ISO/date) -> yyyy-MM-dd; rỗng/không hợp lệ trả "".
+ * Đọc theo giờ ĐỊA PHƯƠNG giống `formatDateVN` — hai hàm phải cùng múi giờ, nếu không cột
+ * "Ngày lập" và tên file suy từ chính ngày đó sẽ lệch nhau một ngày ở các hóa đơn sát nửa đêm.
+ * Dùng: `invoiceFileName.invoiceFileBase`.
+ */
+export function formatDateIso(s?: string): string {
+  if (!s) return "";
+  const d = new Date(s);
+  return Number.isNaN(d.getTime()) ? "" : toDateInput(d);
 }
 
 /**

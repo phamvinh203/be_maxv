@@ -116,6 +116,8 @@ export interface DisplayRow {
   ngayKy: string;
   sellerMst: string;
   sellerTen: string;
+  /** Địa chỉ bên bán (nbdchi) — cột "Địa chỉ người bán" của chiều MUA VÀO. */
+  sellerDiaChi: string;
   buyerMst: string;
   /** Tên bên mua: tên đơn vị (nmten), rỗng thì họ tên người mua hàng (nmtnmua) — xem `toDisplayRow`. */
   buyerTen: string;
@@ -153,17 +155,45 @@ export interface InvoiceDetailResult {
  */
 export interface DetailRow {
   // Thông tin hóa đơn (lặp mỗi dòng hàng)
+  /**
+   * Số thứ tự của HÓA ĐƠN trong bảng Tổng quát (1-based) — KHÔNG phải số thứ tự dòng hàng.
+   * Cần vì bảng Chi tiết có nhiều dòng cho cùng một hóa đơn, nên chỉ số dòng không dùng để dựng
+   * tên file được. Nguồn: `invoiceSttMap`. 0 = không tra được (hóa đơn không có trong bảng Tổng quát).
+   */
+  stt: number;
   mauHd: string;
   kyHieu: string;
   soHd: string;
   ngayHd: string;
+  /** Ngày người bán ký số (nky) — rỗng nếu payload chi tiết không có. */
+  ngayKy: string;
   sellerMst: string;
   sellerTen: string;
+  /** Địa chỉ bên bán (nbdchi) — cột "Địa chỉ người bán" của chiều MUA VÀO. */
+  sellerDiaChi: string;
   buyerMst: string;
   /** Tên bên mua: tên đơn vị (nmten), rỗng thì họ tên người mua hàng (nmtnmua) — xem `toDetailRows`. */
   buyerTen: string;
   /** Địa chỉ bên mua (nmdchi) — cột "Địa chỉ người mua" của chiều BÁN RA. */
   buyerDiaChi: string;
+  /** Mã của cơ quan thuế (MCCQT) — chỉ hóa đơn có mã CQT mới có. */
+  mccqt: string;
+  /** Thời điểm Cơ quan Thuế ký số/cấp mã — chỉ hóa đơn CÓ MÃ mới có (`ttxly=5`). */
+  ngayCqtKy: string;
+  /** Ghi chú của hóa đơn (gchu) — cột "Ghi chú 1". */
+  ghiChu: string;
+  /** Website người bán (nbwebsite). */
+  websiteNb: string;
+  /** Trang tra cứu hóa đơn gốc của người bán (`ttkhac.PortalLink`). */
+  urlTraCuu: string;
+  /** Mã tra cứu hóa đơn gốc trên trang của người bán — mỗi nhà cung cấp đặt một tên field khác nhau. */
+  maTraCuu: string;
+  /** Mã tổ chức truyền nhận (TVAN) đẩy hóa đơn lên cổng thuế, vd `tvan_misa` (`ngcnhat`). */
+  tvan: string;
+  /** Biển số xe đọc từ "họ tên người mua" — hóa đơn xăng dầu/vận tải hay ghi phương tiện vào ô đó. */
+  bienSoXe: string;
+  /** Mô tả hóa đơn gốc bị thay thế/điều chỉnh (dựng từ nhóm field `…goc`); rỗng với hóa đơn mới. */
+  ghiChuLienQuan: string;
   maNt: string;
   tyGia?: number;
   tongTienHang?: number;
@@ -179,14 +209,33 @@ export interface DetailRow {
   trangThaiHd: string;
   ketQuaKt: string;
   // Dòng hàng hóa (line item)
+  /** Mã hàng hóa/vật tư do người bán đặt — nhiều hóa đơn để trống. */
+  maVt: string;
   tenHang: string;
   dvt: string;
   soLuong?: number;
   gia?: number;
   tienCk?: number;
   tienChuaThue?: number;
-  tlCktm?: number;
+  /**
+   * Tỷ lệ chiết khấu (%) của dòng hàng. KHÔNG optional: "không có chiết khấu" nghĩa là 0%, nên cột
+   * này luôn ra con số — cùng lý do với `thueDong`/`tienSauThueDong` bên dưới.
+   */
+  tlCktm: number;
   thueSuat: string;
+  /** Mã tính chất dòng hàng (tchat): 1 hàng hóa, 2 khuyến mại, 3 chiết khấu, 4 ghi chú. */
+  tinhChat: string;
+  /**
+   * Tiền thuế của DÒNG hàng, nguyên tệ. Khác `thue` (tổng thuế của cả hóa đơn): cột này theo từng
+   * dòng hàng. GDT gần như luôn để trống nên phần lớn là số suy ra — xem `toDetailRows`.
+   *
+   * KHÔNG optional (khác mọi cột tiền còn lại của `DetailRow`): kế toán yêu cầu nhóm cột thuế/sau
+   * thuế LUÔN hiện số — hóa đơn không chịu thuế ("KKKNT", "KCT") là 0 chứ không phải ô trống. Để
+   * kiểu `number` ở đây để compiler chặn, thay vì trông chờ mỗi nơi gọi tự nhớ `?? 0`.
+   */
+  thueDong: number;
+  /** Tiền sau thuế của DÒNG hàng, nguyên tệ = `tienChuaThue` + `thueDong`. Luôn là số, xem trên. */
+  tienSauThueDong: number;
 }
 
 // ============================================================

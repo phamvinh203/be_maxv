@@ -622,9 +622,76 @@ Xóa **toàn bộ** hóa đơn đã lưu của công ty đang chọn, kể cả 
 
 ---
 
-## 14.5. Bảng mã dùng chung
+## 14.5. API cổng thuế và bảng mã trạng thái
 
-Định nghĩa ở `features/hddt/api/gdt.ts`, dùng cho cả dropdown lọc và nhãn hiển thị.
+Phần này mô tả API **thượng nguồn** trên cổng thuế mà `be_maxv` gọi ra (frontend không gọi thẳng — xem 14.4), kèm hai bảng mã trạng thái mà cả backend, dropdown lọc và nhãn hiển thị đều dùng.
+
+Base URL: `https://hoadondientu.gdt.gov.vn/api` (khai ở `be_maxv/src/config/gdt-client.ts`).
+Xác thực: header `Authorization: Bearer <token GDT>`.
+
+### Khóa định danh 1 hóa đơn
+
+**MST người bán – Ký hiệu – Số hóa đơn**, cộng thêm mẫu số:
+
+| Tham số | Nghĩa |
+|---|---|
+| `nbmst` | MST **người bán** — kể cả ở chiều mua vào, đây là bên phát hành |
+| `khhdon` | Ký hiệu hóa đơn (vd `K26DAA`) |
+| `shdon` | Số hóa đơn |
+| `khmshdon` | Ký hiệu mẫu số |
+
+Bộ này là tham số của nhóm endpoint "1 hóa đơn" (`/detail`, `/export-xml`) và cũng là khóa `@@unique` của `vct50view`/`vct60view`.
+
+### Endpoint danh sách hóa đơn
+
+| Loại hóa đơn | Path |
+|---|---|
+| Thường (điện tử có mã / không mã) | `/query/invoices/{purchase\|sold}` |
+| **Có mã khởi tạo từ máy tính tiền** | `/sco-query/invoices/{purchase\|sold}` |
+
+Chọn nhánh theo `ttxly`: `ketQuaHd === "8"` → `sco-query`, còn lại → `query`. Cùng quy tắc này áp cho `/detail` và `/export-xml` (xem `invoiceKeyRequest`).
+
+**Query string:**
+
+| Tham số | Giá trị |
+|---|---|
+| `sort` | `tdlap:desc` |
+| `size` | số dòng mỗi trang |
+| `search` | các điều kiện nối bằng `;` (xem dưới) |
+| `state` | cursor phân trang, chỉ có từ trang thứ 2 |
+
+**Cú pháp `search`** — toán tử `=ge=` (≥), `=le=` (≤), `==` (bằng); ngày ở dạng `dd/MM/yyyyTHH:mm:ss`:
+
+```
+tdlap=ge=01/07/2026T00:00:00;tdlap=le=31/07/2026T23:59:59;tthai==1;ttxly==8
+```
+
+Các vế lọc thêm: `nbmst==` (chiều mua vào) / `nmmst==` (chiều bán ra), `khmshdon==`, `khhdon==`, `shdon==`. Vế nào rỗng thì bỏ hẳn khỏi chuỗi — xem `getPurchaseInvoices`/`getSoldInvoices` bên `be_maxv`.
+
+**Ví dụ thật (chiều mua vào, tháng 07/2026):**
+
+```
+# Đã cấp mã hóa đơn
+https://hoadondientu.gdt.gov.vn/api/query/invoices/purchase?sort=tdlap:desc&size=15&search=tdlap=ge=01/07/2026T00:00:00;tdlap=le=31/07/2026T23:59:59;ttxly==5
+
+# Cục Thuế đã nhận không mã
+https://hoadondientu.gdt.gov.vn/api/query/invoices/purchase?sort=tdlap:desc&size=15&search=tdlap=ge=01/07/2026T00:00:00;tdlap=le=31/07/2026T23:59:59;ttxly==6
+
+# Có mã khởi tạo từ máy tính tiền
+https://hoadondientu.gdt.gov.vn/api/query/invoices/purchase?sort=tdlap:desc&size=15&search=tdlap=ge=01/07/2026T00:00:00;tdlap=le=31/07/2026T23:59:59;ttxly==8
+
+# Kết hợp thêm trạng thái hóa đơn
+https://hoadondientu.gdt.gov.vn/api/query/invoices/purchase?sort=tdlap:desc&size=15&search=tdlap=ge=01/07/2026T00:00:00;tdlap=le=31/07/2026T23:59:59;tthai==1;ttxly==8
+https://hoadondientu.gdt.gov.vn/api/query/invoices/purchase?sort=tdlap:desc&size=15&search=tdlap=ge=01/07/2026T00:00:00;tdlap=le=31/07/2026T23:59:59;tthai==2;ttxly==5
+```
+
+**Hóa đơn có mã khởi tạo từ máy tính tiền** — cùng bộ lọc nhưng đổi sang nhánh `sco-query`:
+
+```
+https://hoadondientu.gdt.gov.vn/api/sco-query/invoices/purchase?sort=tdlap:desc&size=15&search=tdlap=ge=01/07/2026T00:00:00;tdlap=le=31/07/2026T23:59:59;ttxly==8
+```
+
+Chiều bán ra dùng y hệt, chỉ đổi `purchase` → `sold`.
 
 ### Trạng thái hóa đơn (`tthai` / `trangThaiHd`)
 
@@ -633,19 +700,21 @@ Xóa **toàn bộ** hóa đơn đã lưu của công ty đang chọn, kể cả 
 | `1` | Hóa đơn mới |
 | `2` | Hóa đơn thay thế |
 | `3` | Hóa đơn điều chỉnh |
-| `4` | Hóa đơn bị thay thế |
-| `5` | Hóa đơn đã bị điều chỉnh |
+| `4` | Hóa đơn đã bị thay thế |
+| `5` | Hóa đơn bị điều chỉnh |
 | `6` | Hóa đơn đã bị hủy |
 
-### Kết quả kiểm tra (`ttxly` / `ketQuaHd`)
+### Kết quả kiểm tra hóa đơn (`ttxly` / `ketQuaHd`)
 
 | Mã | Nhãn |
 |:--:|---|
 | `5` | Đã cấp mã hóa đơn |
-| `6` | Tổng cục thuế đã nhận không mã |
-| `8` | Tổng cục thuế đã nhận hóa đơn có khởi tạo từ máy tính tiền |
+| `6` | Cục Thuế đã nhận không mã |
+| `8` | Cục Thuế đã nhận hóa đơn có mã khởi tạo từ máy tính tiền |
 
-Mã `8` cũng được dùng làm bộ lọc "hóa đơn máy tính tiền" trong dialog xuất file:
+Hai bảng trên định nghĩa ở `features/hddt/api/gdt.ts` (`TRANG_THAI_HD_OPTIONS`, `KET_QUA_KIEM_TRA_OPTIONS`) — dùng chung cho dropdown lọc, nhãn trên bảng và cột Excel, nên sửa nhãn ở đó là đổi cả ba nơi.
+
+Mã `8` còn được dùng làm bộ lọc "hóa đơn máy tính tiền" trong dialog xuất file:
 
 ```ts
 ...(loai === "ctt" ? { ketQuaHd: "8" } : {}),
