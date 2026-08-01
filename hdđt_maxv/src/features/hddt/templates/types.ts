@@ -8,6 +8,42 @@
 import type { ReactNode } from "react";
 import { formatMoney } from "../format";
 
+/** Kiểu tô 1 hàng Excel. Màu dạng ARGB 8 ký tự của exceljs ("FF" + RRGGBB). */
+export interface ExcelCellStyle {
+  /** Màu nền. */
+  bg: string;
+  /** Màu chữ — bỏ trống thì giữ màu chữ mặc định. */
+  fg?: string;
+}
+
+/**
+ * Màu tô CẢ HÀNG của hóa đơn theo mã trạng thái `tthai`.
+ *
+ * Ý NGHĨA MÃ nằm ở `TRANG_THAI_HD_OPTIONS` (`api/gdt.ts`) — đây chỉ là phần trình bày, nên KHÔNG
+ * lặp lại nhãn ở đây; thêm mã mới thì thêm cả hai chỗ.
+ *
+ * Mã `1` (Hóa đơn mới) CỐ Ý không có màu: đó là đa số tuyệt đối, tô hết thì màu mất tác dụng báo
+ * hiệu. Chỉ tô các trạng thái đã BIẾN ĐỘNG, đậm dần theo mức nghiêm trọng — hủy là đỏ.
+ *
+ * Màu phải NHẠT: nó phủ hết bề ngang bảng (46 cột) chứ không phải một ô, nền đậm sẽ nuốt chữ đen.
+ * Riêng mã `6` thêm màu CHỮ đỏ sẫm — vẫn thừa tương phản trên nền hồng nhạt.
+ */
+export const TRANG_THAI_HD_FILL: Record<string, ExcelCellStyle> = {
+  "2": { bg: "FFDDEBF7" }, // thay thế — xanh nhạt
+  "3": { bg: "FFFFF2CC" }, // điều chỉnh — vàng nhạt
+  "4": { bg: "FFFCE4D6" }, // đã bị thay thế — cam nhạt
+  "5": { bg: "FFF8CBAD" }, // bị điều chỉnh — cam
+  "6": { bg: "FFFFC7CE", fg: "FF9C0006" }, // đã bị hủy — hồng, chữ đỏ sẫm
+};
+
+/**
+ * Tô cả hàng theo trạng thái hóa đơn; `undefined` = hóa đơn mới/mã lạ -> để hàng nguyên.
+ * Dùng cho sheet "Chi tiết" của CẢ HAI chiều (quy tắc giống nhau nên để chung, không nhân đôi).
+ */
+export function trangThaiHdRowFill(row: { trangThaiHd: string }): ExcelCellStyle | undefined {
+  return TRANG_THAI_HD_FILL[row.trangThaiHd];
+}
+
 /** 1 cột hóa đơn. Kênh nào cần thuộc tính gì thì đọc thuộc tính đó. */
 export interface InvoiceColumn<T> {
   /** Khóa ổn định — React key + tra cứu cột. KHÔNG đổi khi đổi tiêu đề. */

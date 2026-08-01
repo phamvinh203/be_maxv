@@ -4,6 +4,7 @@
  */
 import type { Workbook } from "exceljs";
 import { detailColumns, fileColumns, overviewColumns, type InvoiceColumn } from "./templates";
+import { trangThaiHdRowFill, type ExcelCellStyle } from "./templates/types";
 import type { DetailRow, DisplayRow, InvoiceDirection } from "./types";
 
 // Trang trí sheet — không gắn với cột nào nên thuộc về file này, không thuộc template cột.
@@ -30,6 +31,18 @@ interface SheetBanner {
   subtitle: string;
 }
 
+/** Tùy chọn của 1 sheet — gom thành object vì đã tới cái thứ hai, thêm tham số vị trí là khó đọc. */
+interface SheetOptions<T> {
+  banner?: SheetBanner;
+  /**
+   * Tô màu CẢ HÀNG theo dữ liệu của dòng; `undefined` = để hàng nguyên.
+   * Dùng cho sheet Chi tiết: hóa đơn đã bị thay thế/điều chỉnh/hủy được tô nguyên hàng, lướt file
+   * vài nghìn dòng là thấy ngay. Tô cả hàng chứ không chỉ ô "Trạng thái hóa đơn" — cột đó nằm mãi
+   * cột 36, cuộn ngang một chút là khuất, tô mỗi nó thì gần như vô hình.
+   */
+  rowFill?: (row: T) => ExcelCellStyle | undefined;
+}
+
 /**
  * Thêm 1 sheet có tiêu đề IN ĐẬM + nền + freeze + auto-filter, GIÃN DÒNG (chiều cao hàng thoáng) vào
  * workbook. Lõi dùng chung cho sheet Tổng quát và Chi tiết.
@@ -40,7 +53,7 @@ function addStyledSheet<T>(
   sheetName: string,
   allCols: InvoiceColumn<T>[],
   rows: T[],
-  banner?: SheetBanner,
+  { banner, rowFill }: SheetOptions<T> = {},
 ): void {
   const cols = fileColumns(allCols);
   const headerAt = banner ? BANNER_HEADER_ROW : PLAIN_HEADER_ROW;
@@ -93,11 +106,20 @@ function addStyledSheet<T>(
   // Ô không có dữ liệu ghi `null` -> Excel để TRỐNG, không phải 0.
   rows.forEach((row, i) => {
     const r = ws.getRow(headerAt + 1 + i);
-    cols.forEach((c, ci) => {
-      r.getCell(ci + 1).value = c.value(row, i + 1) ?? null;
-    });
+    // Đặt style của HÀNG trước rồi mới ghi ô: `row.alignment` quét lại các ô đang có và ghi đè
+    // style của chúng, nên làm sau sẽ xóa mất màu nền vừa tô ở dưới.
     r.height = ROW_HEIGHT;
     r.alignment = { vertical: "middle" };
+    const fill = rowFill?.(row);
+    cols.forEach((c, ci) => {
+      const cell = r.getCell(ci + 1);
+      cell.value = c.value(row, i + 1) ?? null;
+      if (!fill) return;
+      // Tô TỪNG Ô của vùng dữ liệu, không đặt `r.fill` cấp hàng: style cấp hàng trong xlsx phủ tới
+      // tận cột cuối bảng tính, kéo vệt màu chạy dài khỏi mép bảng.
+      cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: fill.bg } };
+      if (fill.fg) cell.font = { color: { argb: fill.fg } };
+    });
   });
 
   ws.autoFilter = {
@@ -153,10 +175,11 @@ export async function buildSummaryWorkbookBuffer(
   const { text } = DIR_LABEL[direction];
   const wb = new Workbook();
   addStyledSheet(wb, `Tổng quát ${text}`, overviewColumns(direction), overviewRows, {
-    title: "DANH SÁCH HÓA ĐƠN",
-    subtitle: rangeBannerLine(range),
+    banner: { title: "DANH SÁCH HÓA ĐƠN", subtitle: rangeBannerLine(range) },
   });
-  addStyledSheet(wb, `Chi tiết ${text}`, detailColumns(direction), detailRows);
+  addStyledSheet(wb, `Chi tiết ${text}`, detailColumns(direction), detailRows, {
+    rowFill: trangThaiHdRowFill,
+  });
   return (await wb.xlsx.writeBuffer()) as ArrayBuffer;
 }
 
