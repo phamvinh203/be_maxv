@@ -173,6 +173,25 @@ test("ca không có hồ sơ gốc vẫn là permanent (retry vô ích)", () => 
   assert.equal(classifyGdtError(missingFileErr()), "permanent");
 });
 
+/**
+ * BẪY (sự cố 01/08/2026): `classifyGdtError` chỉ nhìn status + thời gian, nên một 500 "không có hồ
+ * sơ gốc" trả về CHẬM (đo thực tế 635ms và 1085ms) bị xếp nhầm thành "transient" — y hệt GDT quá
+ * tải thật. Test 384ms ở trên qua được chỉ vì TÌNH CỜ nhanh hơn ngưỡng FAST_5XX_PERMANENT_MS.
+ *
+ * Hệ quả nếu để lọt: vòng retry `getInvoiceOriginalXmlPaced` retry vô nghĩa (hóa đơn này vĩnh viễn
+ * không có XML) + mỗi lần fail gọi `pacerReportRateLimited` nhân đôi nhịp làn xml tới trần 15s ->
+ * mọi hóa đơn khỏe khác chết đói trong hàng đợi -> "Hết ngân sách trước khi tới lượt" -> 502.
+ *
+ * Vì vậy vòng retry PHẢI chặn bằng `isMissingOriginalFile` TRƯỚC, không được dựa vào `classifyGdtError`.
+ * Test này khóa cả hai vế: classify nhầm "transient", nhưng `isMissingOriginalFile` vẫn nhận ra.
+ */
+test("500 'không có hồ sơ gốc' CHẬM: classify nhầm 'transient' -> phải chặn bằng isMissingOriginalFile", () => {
+  for (const elapsedMs of [635, 1085]) {
+    assert.equal(classifyGdtError(missingFileErr(elapsedMs)), "transient");
+    assert.equal(isMissingOriginalFile(missingFileErr(elapsedMs)), true);
+  }
+});
+
 test("lỗi lạ hoàn toàn -> permanent (đừng retry thứ không hiểu)", () => {
   assert.equal(classifyGdtError(new Error("chuyện gì đó khác")), "permanent");
   assert.equal(classifyGdtError("không phải Error"), "permanent");

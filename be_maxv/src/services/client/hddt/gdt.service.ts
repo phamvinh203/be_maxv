@@ -378,7 +378,11 @@ export async function getInvoiceOriginalXmlPaced(
   direction: "purchase" | "sold",
   key: InvoiceDetailKey,
 ): Promise<string> {
-  const label = `${key.khhdon}-${key.shdon}`;
+  // Nhãn định danh hóa đơn cho mọi dòng [DEBUG-XML]: KÝ HIỆU ĐẦY ĐỦ = mẫu số (`khmshdon`) + ký hiệu
+  // (`khhdon`) dán liền như trên tờ hóa đơn (vd 1K26DAB), kèm SỐ hóa đơn (`shdon`). Đọc log là biết
+  // ngay file XML nào lỗi để đối chiếu với hóa đơn trên phần mềm. Trước chỉ có `khhdon-shdon` nên
+  // thiếu mẫu số, chưa đủ ký hiệu.
+  const label = `Ký hiệu ${key.khmshdon}${key.khhdon} - Số ${key.shdon}`;
 
   // ĐÃ TẢI LẦN TRƯỚC -> khỏi gọi cổng thuế. Đây là thứ tăng tốc nhiều nhất: mỗi call tốn ~3 giây và
   // chạy tuần tự, nên lượt xuất lại 500 hóa đơn giảm từ ~25 phút xuống còn vài giây.
@@ -408,8 +412,23 @@ export async function getInvoiceOriginalXmlPaced(
       await saveOriginalXml(tenantDb, direction, key, xml);
       return xml;
     } catch (err) {
-      const kind = classifyGdtError(err);
       const msg = err instanceof Error ? err.message : String(err);
+
+      // KHÔNG CÓ HỒ SƠ GỐC = câu trả lời ĐÚNG của cổng thuế (hóa đơn kê khai qua BẢNG TỔNG HỢP DỮ
+      // LIỆU, vốn không có file XML gốc), KHÔNG phải quá tải. Phải chặn Ở ĐÂY vì GDT trả 500 CHẬM
+      // (>FAST_5XX_PERMANENT_MS) nên `classifyGdtError` xếp nhầm thành "transient". Nếu để lọt:
+      // (1) retry vô nghĩa — thử lại bao lần cũng y hệt; (2) mỗi lần fail lại gọi
+      // `pacerReportRateLimited` nhân đôi nhịp làn xml tới trần 15s, làm MỌI hóa đơn khỏe khác chết
+      // đói trong hàng đợi -> "Hết ngân sách trước khi tới lượt" -> cả lượt xuất 502. Ném NGAY:
+      // controller bắt lại bằng `isMissingOriginalFile` -> 410, FE bỏ qua, KHÔNG đếm vào số HĐ lỗi.
+      if (isMissingOriginalFile(err)) {
+        console.warn(
+          `[DEBUG-XML] Hóa đơn ${label} KHÔNG CÓ hồ sơ gốc trên cổng thuế — bỏ qua ngay, không retry. Lỗi: ${msg}`,
+        );
+        throw err;
+      }
+
+      const kind = classifyGdtError(err);
       const leftMs = deadline - Date.now();
       // Backoff 1s→2s→4s, trần 8s: thử lại quá sớm thì rơi đúng vào cửa sổ GDT đang chặn.
       const backoff = Math.min(8_000, 1000 * 2 ** (attempt - 1));

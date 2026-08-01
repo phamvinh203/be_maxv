@@ -20,7 +20,11 @@ import FolderOpenRounded from "@mui/icons-material/FolderOpenRounded";
 import FileDownloadRounded from "@mui/icons-material/FileDownloadRounded";
 import { toast } from "react-toastify";
 import { useDetailCompleteQuery } from "../api/invoiceDetailQueries";
-import { exportInvoiceBundle, type ExportFormats } from "../exportBundle";
+import {
+  exportInvoiceBundle,
+  NO_ORIGINAL_XML_FILENAME,
+  type ExportFormats,
+} from "../exportBundle";
 import {
   supportsDirectoryPicker,
   pickDirectory,
@@ -134,7 +138,7 @@ export default function ExportFileDialog({ open, onClose, defaultRange }: Props)
       const noXmlNote =
         res.noOriginalXml > 0
           ? ` ${res.noOriginalXml} hóa đơn không có XML gốc trên cổng thuế ` +
-            `(hóa đơn kê khai qua bảng tổng hợp) — các file khác vẫn đủ.`
+            `(hóa đơn kê khai qua bảng tổng hợp) — vẫn đủ PDF/HTML, đã liệt kê trong file "${NO_ORIGINAL_XML_FILENAME}".`
           : "";
       // File PDF gộp là thứ người dùng đi tìm ngay sau khi xuất -> nói rõ có nó và gồm bao nhiêu tờ.
       const mergedNote =

@@ -265,6 +265,45 @@ async function runPool<T>(
 }
 
 /**
+ * Tên file txt liệt kê hóa đơn cổng thuế xác nhận KHÔNG có hóa đơn gốc (XML ký số). Ghi ở thư mục
+ * gốc lượt xuất (`<MST>/<khoảng ngày>/`), gộp cả 2 chiều. `safeName` giữ nguyên (không có ký tự cấm),
+ * chỉ gộp khoảng trắng.
+ */
+export const NO_ORIGINAL_XML_FILENAME = "các hóa đơn không có hóa đơn gốc gdt.txt";
+
+/** Nhãn chiều hóa đơn cho file ghi chú — dùng đúng thuật ngữ kế toán (đầu vào/đầu ra). */
+const DIRECTION_NOTE_LABEL: Record<InvoiceDirection, string> = {
+  purchase: "HÓA ĐƠN ĐẦU VÀO (mua vào)",
+  sold: "HÓA ĐƠN ĐẦU RA (bán ra)",
+};
+
+/**
+ * Nội dung file txt trên: GOM THEO CHIỀU (đầu vào / đầu ra) để người dùng biết ngay hóa đơn thuộc
+ * chiều nào — trước đây trộn chung nên không phân biệt được. Mỗi mục có tiêu đề chiều + số lượng,
+ * rồi mỗi dòng là "<Ký hiệu> - <Số HĐ>" (ký hiệu = mẫu số + ký hiệu, vd 1K26DAA). Chỉ in mục có hóa
+ * đơn. Có BOM UTF-8 để Notepad/Excel trên Windows đọc đúng tiếng Việt.
+ *
+ * Chỉ gồm hóa đơn mà cổng thuế TRẢ 410 (`noOriginalXml`) — câu trả lời chắc chắn "không có XML".
+ * Hóa đơn hỏng vì lý do khác (mạng/token/502) KHÔNG vào đây: chúng vẫn có thể có XML, chỉ là chưa
+ * lấy được — trộn vào sẽ khiến người dùng tưởng nhầm là "vĩnh viễn không có".
+ */
+function noOriginalXmlNote(states: TaskState[], range: ExportRange): string {
+  const header = `Hóa đơn KHÔNG có hóa đơn gốc (XML ký số) trên cổng thuế — khoảng ${range.tuNgay} đến ${range.denNgay}`;
+  const sections = (["purchase", "sold"] as InvoiceDirection[])
+    .map((direction) => {
+      const lines = states
+        .filter((s) => s.noOriginalXml && s.direction === direction)
+        .map((s) => `${s.view.mauSo}${s.view.kyHieu} - ${s.view.soHd}`);
+      if (lines.length === 0) return null;
+      return [`── ${DIRECTION_NOTE_LABEL[direction]}: ${lines.length} hóa đơn ──`, ...lines].join(
+        "\r\n",
+      );
+    })
+    .filter((s): s is string => s !== null);
+  return String.fromCharCode(0xfeff) + [header, "", sections.join("\r\n\r\n")].join("\r\n") + "\r\n";
+}
+
+/**
  * Chạy lượt xuất CẢ 2 CHIỀU vào cấu trúc:
  *   <MST người nhập>/<khoảng ngày>/
  *     purchase/{html,xml,pdf}/<ký hiệu>-<số HĐ>.<ext>
@@ -572,6 +611,18 @@ export async function exportInvoiceBundle(opts: ExportBundleOptions): Promise<Ex
       } catch (e) {
         console.error(`[exportBundle] Không gộp được PDF chiều ${direction}:`, e);
       }
+    }
+  }
+
+  // ---- Ghi chú các hóa đơn KHÔNG có hóa đơn gốc (cổng thuế trả 410) ra file txt ở thư mục gốc ----
+  // Để người dùng biết rõ hóa đơn nào cổng thuế xác nhận không có XML ký số, khỏi tưởng bị thiếu file
+  // rồi chạy lại cả lượt vô ích. Chỉ ghi khi có ≥1; ghi hỏng thì bỏ qua (đừng để mất file ghi chú kéo
+  // theo hỏng cả kết quả — mọi file dữ liệu đã nằm trên đĩa rồi).
+  if (states.some((s) => s.noOriginalXml)) {
+    try {
+      await writeFile(rangeDir, safeName(NO_ORIGINAL_XML_FILENAME), noOriginalXmlNote(states, range));
+    } catch (e) {
+      console.error("[exportBundle] Không ghi được file ghi chú hóa đơn không có hóa đơn gốc:", e);
     }
   }
 
