@@ -17,6 +17,7 @@ import Refresh from "@mui/icons-material/Refresh";
 import Visibility from "@mui/icons-material/Visibility";
 import VisibilityOff from "@mui/icons-material/VisibilityOff";
 import { getCaptcha, loginGdt } from "../features/hddt/api/gdt";
+import { solveCaptcha } from "../features/hddt/captcha/solveCaptcha";
 import { getErrorMessage } from "../lib/errors";
 import logoThueNhaNuoc from "../assets/logo_thue_nha_nuoc.jpg";
 
@@ -95,6 +96,18 @@ export default function DialogLoginHddt({
     setError("");
     setDone(false);
   }, [open, initialUsername]);
+
+  // TỰ ĐIỀN MÃ CAPTCHA: mỗi khi có ảnh SVG mới (`captcha.content` đổi — lúc mở dialog hoặc bấm
+  // refresh), giải mã ngay từ SVG bằng `solveCaptcha` rồi đổ vào ô nhập. Giải không ra (trả null,
+  // vd font captcha đổi) thì để trống cho người dùng gõ tay. Ô vẫn sửa tay ghi đè được; server vẫn
+  // là nơi xác thực mã khi đăng nhập.
+  useEffect(() => {
+    if (!captcha?.content) return;
+    const answer = solveCaptcha(captcha.content);
+    if (!answer) return;
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setCaptchaInput(answer);
+  }, [captcha?.content]);
 
   /**
    * Đăng nhập xong -> để người dùng kịp đọc "Đăng nhập thành công." rồi tự đóng sau 1s.
