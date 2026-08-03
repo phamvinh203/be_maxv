@@ -293,7 +293,7 @@ export function detailDauVao(): InvoiceColumn<DetailRow>[] {
       width: 14,
       align: "right",
       numFmt: MONEY2_FMT,
-      value: (r) => r.tongCk,
+      value: (r) => (r.isFirstRow ? r.tongCk : undefined),
     },
     {
       key: "tongPhi",
@@ -301,7 +301,7 @@ export function detailDauVao(): InvoiceColumn<DetailRow>[] {
       width: 14,
       align: "right",
       numFmt: MONEY2_FMT,
-      value: (r) => r.tongPhi,
+      value: (r) => (r.isFirstRow ? r.tongPhi : undefined),
     },
     {
       key: "tongTt",
@@ -309,7 +309,7 @@ export function detailDauVao(): InvoiceColumn<DetailRow>[] {
       width: 14,
       align: "right",
       numFmt: MONEY2_FMT,
-      value: (r) => r.tongTt,
+      value: (r) => (r.isFirstRow ? r.tongTt : undefined),
     },
     {
       key: "tongTtVnd",
@@ -317,7 +317,7 @@ export function detailDauVao(): InvoiceColumn<DetailRow>[] {
       width: 14,
       align: "right",
       numFmt: MONEY2_FMT,
-      value: (r) => toVnd(r.tongTt, r.tyGia),
+      value: (r) => (r.isFirstRow ? toVnd(r.tongTt, r.tyGia) : undefined),
     },
     {
       // Cùng hàm đặt tên với lượt xuất file -> tên ở đây là tên file có thật trên đĩa.

@@ -88,10 +88,14 @@ export const NO_DATA_YET = "—";
  *   `0` = chữ số bắt buộc (hiện cả khi bằng 0) · `#` = chữ số chỉ hiện khi có
  * -> phần nguyên và 2 số lẻ đầu luôn hiện (đúng dáng mẫu Excel của kế toán), các số lẻ sau đó chỉ
  * hiện khi hóa đơn thực sự có, và KHÔNG có chữ số nào bị cắt.
+ *
+ * Lưu ý: Excel format code không hỗ trợ đổi thousand separator sang dấu chấm (.).
+ * Format bên dưới dùng dấu phẩy (,) cho thousand separator theo chuẩn Excel.
+ * Để hiển thị dấu chấm trên Excel, cần thay đổi Region Settings của hệ thống.
  */
-export const NUM_FMT = "#,##0.########";
-/** Cột tiền: tối thiểu 2 số lẻ cho đúng mẫu, tối đa 8 để không làm tròn tiền nguyên tệ. */
-export const MONEY2_FMT = "#,##0.00######";
+export const NUM_FMT = "#,##0"; // Không có phần thập phân
+/** Cột tiền: không có phần thập phân, bỏ .0 ở cuối */
+export const MONEY2_FMT = "#,##0"; // Không có phần thập phân
 /** Tỷ giá: tối thiểu 2 số lẻ (hóa đơn VND ra "1.00" đúng mẫu), giữ đủ số lẻ của tỷ giá ngoại tệ. */
 export const RATE_FMT = "0.00######";
 

@@ -1,17 +1,14 @@
 /**
- * Số chữ số thập phân tối đa khi hiện tiền. Mặc định của `toLocaleString` là 3 — tức 9,6954 bị làm
- * tròn thành 9,695 ngay trên bảng. Số liệu hóa đơn KHÔNG được làm tròn, nên nới rộng hẳn.
- */
-const MAX_FRACTION_DIGITS = 8;
-
-/**
- * Định dạng số tiền theo locale vi-VN (1.234.567); không phải số thì trả chuỗi rỗng.
+ * Định dạng số tiền theo style Việt Nam (1.234.567); không phải số thì trả chuỗi rỗng.
  * KHÔNG làm tròn: 9,69 hiện đúng "9,69", không thành "9,7" — xem `MAX_FRACTION_DIGITS`.
  * Dùng chung: bảng "Tổng quát" (InvoiceListTabs) và bảng "Chi tiết hóa đơn" (InvoiceDetailPanel).
+ * Dùng dấu chấm (.) làm thousand separator, không hiển thị phần thập phân.
  */
 export function formatMoney(n?: number): string {
   if (typeof n !== "number") return "";
-  return n.toLocaleString("vi-VN", { maximumFractionDigits: MAX_FRACTION_DIGITS });
+  // Làm tròn về số nguyên rồi format với dấu chấm làm thousand separator
+  const rounded = Math.round(n);
+  return rounded.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ".");
 }
 
 /**

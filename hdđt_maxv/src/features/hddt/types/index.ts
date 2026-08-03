@@ -236,6 +236,12 @@ export interface DetailRow {
   thueDong: number;
   /** Tiền sau thuế của DÒNG hàng, nguyên tệ = `tienChuaThue` + `thueDong`. Luôn là số, xem trên. */
   tienSauThueDong: number;
+  /**
+   * Đánh dấu dòng ĐẦU TIÊN của mỗi hóa đơn.
+   * Các cột tổng tiền (tongTt, tongTtVnd, tongThue, etc.) chỉ hiển thị ở dòng đầu tiên,
+   * tránh lặp lại ở mọi dòng hàng của cùng một hóa đơn.
+   */
+  isFirstRow?: boolean;
 }
 
 // ============================================================

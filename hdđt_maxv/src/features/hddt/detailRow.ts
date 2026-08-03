@@ -232,7 +232,7 @@ export function toDetailRows(
   // Dựng MỘT LẦN cho cả hóa đơn, không dựng lại ở từng dòng hàng.
   const rateByLabel = taxRateByLabel(detail);
 
-  return items.map((raw) => {
+  return items.map((raw, idx) => {
     const it = (raw ?? {}) as Record<string, unknown>;
     const tienChuaThue = num(pick(it, "thtien", "thanhtien"));
     const thueSuat = s(pick(it, "ltsuat", "tsuat", "thuesuat"));
@@ -266,6 +266,8 @@ export function toDetailRows(
       tinhChat: s(pick(it, "tchat", "tinhchat")),
       thueDong,
       tienSauThueDong: stripFloatNoise((tienChuaThue ?? 0) + thueDong),
+      // Đánh dấu dòng đầu tiên của mỗi hóa đơn để chỉ hiển thị tổng tiền một lần
+      isFirstRow: idx === 0,
     };
   });
 }
