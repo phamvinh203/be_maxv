@@ -1011,6 +1011,63 @@ function monthlyChunks(
   return chunks;
 }
 
+/** Dòng lịch sử "Đồng bộ" hoàn thành — chỉ giữ các field cần để xét "tháng đã phủ trọn chưa". */
+interface DoneSyncLogRef {
+  direction: string;
+  loai: string;
+  tu_ngay: Date;
+  den_ngay: Date;
+}
+
+/**
+ * `loai` của dòng lịch sử có phủ nguồn đang quét không? `all` phủ cả hai; `only_ctt` chỉ hóa đơn máy
+ * tính tiền; `except_ctt`/rỗng chỉ hóa đơn thường. So đúng biến thể, nếu không một bản ghi "trừ máy
+ * tính tiền" sẽ lọt toàn bộ hoá đơn máy tính tiền của tháng đó.
+ */
+function sourceVariantCoveredBy(loai: string, cashRegister: boolean): boolean {
+  if (loai === "all") return true;
+  return loai === "only_ctt" ? cashRegister : !cashRegister;
+}
+
+/**
+ * Cửa sổ tháng này đã được một lượt "Đồng bộ" HOÀN THÀNH trước đó quét trọn chưa? Đối chiếu:
+ * đúng chiều, dòng lịch sử có khoảng ngày phủ trọn `[chunk.tuNgay, chunk.denNgay]`, và loại máy tính
+ * tiền của log khớp nguồn đang quét. Chỉ tin `trang_thai=done` + "Đồng bộ" (không phải "Cập nhật"):
+ * "partial" nghĩa là còn thiếu, nên vẫn phải quét lại. So chuỗi "yyyy-MM-dd" (cả hai bên về cùng
+ * dạng qua `toYmd`) nên không lệch múi giờ.
+ */
+function isMonthCoveredByDoneLog(
+  logs: DoneSyncLogRef[],
+  source: SyncSource,
+  chunk: { tuNgay: string; denNgay: string },
+): boolean {
+  return logs.some(
+    (log) =>
+      log.direction === source.direction &&
+      toYmd(log.tu_ngay) <= chunk.tuNgay &&
+      toYmd(log.den_ngay) >= chunk.denNgay &&
+      sourceVariantCoveredBy(log.loai, source.cashRegister),
+  );
+}
+
+/** Đếm hóa đơn đã lưu trong khoảng `tdlap` của đúng chiều — dùng làm số "đã có sẵn" khi bỏ qua tháng. */
+async function countSavedByRange(
+  tenantDb: PrismaClient,
+  direction: "purchase" | "sold",
+  tuNgay: string,
+  denNgay: string,
+): Promise<number> {
+  const where = {
+    tdlap: {
+      gte: new Date(`${tuNgay}T00:00:00`),
+      lte: new Date(`${denNgay}T23:59:59.999`),
+    },
+  };
+  return direction === "purchase"
+    ? tenantDb.vct60view.count({ where })
+    : tenantDb.vct50view.count({ where });
+}
+
 /** 1 dòng sync_log kèm số liệu đối chiếu (chỉ trả về, không lưu cột đối chiếu vào DB). */
 export type SyncRunResult = sync_log & { daCo: number; boSung: number };
 
@@ -1254,6 +1311,16 @@ export async function runSync(
   const cancelled = () => ctl?.isCancelled?.() === true;
   const sources = resolveSyncSources(params.direction, params.loai);
   const chunks = monthlyChunks(params.tuNgay, params.denNgay);
+  // Lịch sử "Đồng bộ" HOÀN THÀNH trước đây (bon qua "Cập nhật" và "partial") — để lượt này bỏ qua
+  // các cửa sổ tháng đã quét trọn, không gọi lại GDT (upsert vốn idempotent nhưng một tháng có thể
+  // hàng chục nghìn hóa đơn, quét lại là đốt cổng thuế). Phân biệt bằng prefix `dien_giai` mà
+  // `buildDienGiai` đặt cho nút "Đồng bộ" (`"Đồng bộ hóa đơn …"`).
+  const doneLogs = (await db().sync_log.findMany({
+    where: { trang_thai: "done", dien_giai: { startsWith: "Đồng bộ" } },
+    select: { direction: true, loai: true, tu_ngay: true, den_ngay: true },
+    orderBy: { created_at: "desc" },
+    take: 100,
+  })) as DoneSyncLogRef[];
   // [DEBUG-SYNC] Mốc bắt đầu + đếm dòng tích lũy toàn lượt: đối chiếu "dừng ở khoảng hóa đơn thứ mấy"
   // và "chạy được bao nhiêu giây" (nếu request bị cắt ở proxy thì log BE vẫn chạy tiếp sau đó).
   const runStartedAt = Date.now();
@@ -1277,6 +1344,8 @@ export async function runSync(
     let daCo = 0;
     let boSung = 0;
     const seenIds = new Set<string>();
+    // Chunk đã đếm "đã có sẵn" (đếm 1 lần/cửa sổ tháng vì nguồn thường + máy tính tiền chung 1 bảng).
+    const countedChunkKeys = new Set<string>();
     let partial = false;
     let message = "";
     let aborted = false;
@@ -1285,6 +1354,22 @@ export async function runSync(
       for (const chunk of chunks) {
         if (cancelled()) break;
         if (st) st.phase = sourceLabel(source.direction, source.cashRegister, chunk);
+
+        // Tháng này đã được lượt "Đồng bộ" HOÀN THÀNH trước đó quét trọn (đúng chiều + đúng loại máy
+        // tính tiền) -> hóa đơn đã nằm đủ trong DB, KHÔNG gọi lại GDT. Số "đã có sẵn" tính bằng số
+        // dòng đã lưu trong khoảng đó (đếm 1 lần/cửa sổ, tránh đếm trùng giữa 2 nguồn cùng 1 bảng).
+        if (isMonthCoveredByDoneLog(doneLogs, source, chunk)) {
+          const key = `${chunk.tuNgay}|${chunk.denNgay}`;
+          if (!countedChunkKeys.has(key)) {
+            countedChunkKeys.add(key);
+            daCo += await countSavedByRange(db(), dir, chunk.tuNgay, chunk.denNgay);
+          }
+          console.log(
+            `[DEBUG-SYNC] Bỏ qua ${sourceLabel(source.direction, source.cashRegister, chunk)} — ` +
+              `tháng đã đồng bộ hoàn thành trước đó.`,
+          );
+          continue;
+        }
         try {
           let state: string | undefined = undefined;
           let pages = 0;
@@ -2035,6 +2120,12 @@ export interface DetailRunStatus {
 /** Số lần thử tối đa 1 hóa đơn trước khi bỏ qua (429/500 tạm thời) — lượt sau/"Đồng bộ" thử lại. */
 const MAX_DETAIL_RETRY = 8;
 
+/** Số lượt retry TỰ ĐỘNG cho toàn bộ lượt khi có hóa đơn lỗi (5 lần = 1 lượt chính + 5 lần retry). */
+const MAX_AUTO_RETRY_ROUNDS = 5;
+
+/** Thời gian chờ giữa các lượt retry (giây) — để GDT ổn định lại. */
+const DELAY_BEFORE_RETRY_SEC = 30;
+
 /** Tiến độ theo (MST + chiều): mỗi chiều 1 lượt tải chi tiết do người dùng bấm. */
 const detailRuns = new Map<string, DetailRunStatus>();
 /** "Thế hệ" hiện tại của mỗi khóa — lượt mới bump lên để lượt cũ (đổi khoảng/bộ lọc) tự dừng. */
@@ -2338,107 +2429,172 @@ export function runDetailFetch(
   // Giữ promise của lượt để caller nào cần ĐỢI thì await `done` (lượt "Cập nhật" hợp nhất 2 pha
   // dùng cái này để biết pha chi tiết đã xong) — vẫn không chặn nơi gọi thông thường.
   const done = (async () => {
-    try {
-      // orderBy tdlap desc: tải chi tiết hóa đơn MỚI trước, giảm dần về cũ.
-      const candidates = await freshModel().findMany({
-        where,
-        select: DETAIL_SELECT,
-        orderBy: { tdlap: "desc" },
-      });
-      status.total = candidates.length;
-      console.log(
-        `[gdt.detailRun] ${direction} BẮT ĐẦU: ${status.total} hóa đơn cần tải chi tiết ` +
-          `(nhịp làn detail hiện tại ${Math.round(pacerIntervalMs(tenantKey, "detail"))}ms/HĐ).`,
-      );
+    let retryRound = 0;
 
-      for (const row of candidates) {
-        if (detailRunGen.get(key) !== gen) break; // bị lượt mới thay thế -> dừng
-        let attempt = 0;
-        for (;;) {
-          attempt += 1;
-          try {
-            const detail = await pacerSchedule(tenantKey, "detail", () =>
-              getInvoiceDetail(token, {
-                nbmst: row.nbmst,
-                khhdon: row.khhdon,
-                shdon: row.shdon,
-                khmshdon: row.khmshdon,
-                cashRegister: row.ttxly === "8",
-              }),
+    for (retryRound = 0; retryRound < MAX_AUTO_RETRY_ROUNDS; retryRound++) {
+      const isAutoRetry = retryRound > 0;
+      const roundLabel = isAutoRetry ? `LẦN RETRY ${retryRound}/${MAX_AUTO_RETRY_ROUNDS - 1}` : "LƯỢT CHÍNH";
+
+      try {
+        // Lượt chính: tt_tai null HOẶC error. Các lượt retry: chỉ tt_tai error.
+        const roundWhere = isAutoRetry
+          ? { ...buildSavedWhere(direction, query), tt_tai: "error" }
+          : where;
+
+        // orderBy tdlap desc: tải chi tiết hóa đơn MỚI trước, giảm dần về cũ.
+        const candidates = await freshModel().findMany({
+          where: roundWhere,
+          select: DETAIL_SELECT,
+          orderBy: { tdlap: "desc" },
+        });
+
+        if (isAutoRetry) {
+          // Lượt retry: chỉ tính các HĐ lỗi của round trước
+          if (candidates.length === 0) {
+            console.log(
+              `[gdt.detailRun] ${direction} ${roundLabel}: Không còn hóa đơn lỗi nào → dừng retry.`,
             );
-            await freshModel().update({
-              where: { id: row.id },
-              data: { detail: detail as Prisma.InputJsonValue, tt_tai: "OK" },
-            });
-            pacerReportOk(tenantKey, "detail");
-            status.ok += 1;
-            break;
-          } catch (err) {
-            const kind = classifyGdtError(err);
-            if (kind === "auth") {
-              // Token GDT hết hạn -> KHÔNG đánh lỗi HĐ này (không phải lỗi của nó); dừng cả lượt,
-              // các HĐ còn lại giữ nguyên (tt_tai null/error) để đăng nhập lại rồi chạy tiếp.
-              console.warn(
-                `[gdt.detailRun] token GDT hết hạn (${direction}) -> dừng lượt ở ${status.done}/${status.total}.`,
-              );
-              status.authExpired = true;
-              return;
-            }
-            if (kind === "transient" && attempt < MAX_DETAIL_RETRY) {
-              pacerReportRateLimited(tenantKey, "detail");
-              retries += 1;
-              await engineSleep(Math.min(5000, 500 * 2 ** (attempt - 1)));
-              continue;
-            }
-            // Hết retry hoặc lỗi thật -> đánh dấu lỗi, bỏ qua (lượt sau/"Đồng bộ" thử lại).
-            console.warn(
-              `[gdt.detailRun] id=${row.id} shdon=${row.shdon} bỏ qua sau ${attempt} lần: ${
-                err instanceof Error ? err.message : String(err)
-              }`,
-            );
-            await freshModel()
-              .updateMany({ where: { id: row.id }, data: { tt_tai: "error" } })
-              .catch(() => {});
-            status.err += 1;
             break;
           }
-        }
-        status.done += 1;
-        // Log tiến độ mỗi 20 hóa đơn để theo dõi lượt chạy ở terminal BE — kèm tốc độ THỰC TẾ của
-        // đoạn vừa rồi và nhịp pacer hiện hành, để thấy ngay lượt đang bị giãn nhịp hay đang chạy sàn.
-        if (status.done % 20 === 0) {
-          const now = Date.now();
-          const perInvoice = Math.round((now - lastMarkAt) / (status.done - lastMarkDone));
-          lastMarkAt = now;
-          lastMarkDone = status.done;
           console.log(
-            `[gdt.detailRun] ${direction} tiến độ ${status.done}/${status.total} ` +
-              `(ok ${status.ok}, lỗi ${status.err}) — ${perInvoice}ms/HĐ, ` +
-              `nhịp pacer ${Math.round(pacerIntervalMs(tenantKey, "detail"))}ms, retry ${retries}.`,
+            `[gdt.detailRun] ${direction} ${roundLabel}: Retry ${candidates.length} hóa đơn lỗi ` +
+              `(sau ${DELAY_BEFORE_RETRY_SEC}s chờ).`,
+          );
+        } else {
+          // Lượt chính: set total (không đổi trong các lượt retry)
+          status.total = candidates.length;
+          console.log(
+            `[gdt.detailRun] ${direction} BẮT ĐẦU: ${status.total} hóa đơn cần tải chi tiết ` +
+              `(nhịp làn detail hiện tại ${Math.round(pacerIntervalMs(tenantKey, "detail"))}ms/HĐ).`,
           );
         }
-      }
-    } catch (err) {
-      console.warn(
-        `[gdt.detailRun] lượt (${direction}) dừng do lỗi: ${
-          err instanceof Error ? err.message : String(err)
-        }`,
-      );
-    } finally {
-      // Chỉ đóng lượt nếu vẫn là lượt hiện tại (không đè trạng thái của lượt mới đã thay thế).
-      if (detailRunGen.get(key) === gen) {
-        status.active = false;
-        status.finishedAt = Date.now();
-        const elapsed = status.finishedAt - status.startedAt;
-        // Trung bình ms/HĐ của CẢ lượt: con số một dòng để so sánh giữa các lượt và giữa các MST.
-        const avg = status.done > 0 ? Math.round(elapsed / status.done) : 0;
-        console.log(
-          `[gdt.detailRun] ${direction} XONG: ok ${status.ok}/${status.total}, lỗi ${status.err}${
-            status.authExpired ? " (dừng vì token GDT hết hạn)" : ""
-          } — ${Math.round(elapsed / 1000)}s cho ${status.done} HĐ (${avg}ms/HĐ), ` +
-            `retry ${retries}, nhịp pacer cuối ${Math.round(pacerIntervalMs(tenantKey, "detail"))}ms.`,
+
+        for (const row of candidates) {
+          if (detailRunGen.get(key) !== gen) break; // bị lượt mới thay thế -> dừng
+          let attempt = 0;
+          for (;;) {
+            attempt += 1;
+            try {
+              const detail = await pacerSchedule(tenantKey, "detail", () =>
+                getInvoiceDetail(token, {
+                  nbmst: row.nbmst,
+                  khhdon: row.khhdon,
+                  shdon: row.shdon,
+                  khmshdon: row.khmshdon,
+                  cashRegister: row.ttxly === "8",
+                }),
+              );
+              await freshModel().update({
+                where: { id: row.id },
+                data: { detail: detail as Prisma.InputJsonValue, tt_tai: "OK" },
+              });
+              pacerReportOk(tenantKey, "detail");
+              status.ok += 1;
+              // Lượt retry: HĐ này từ error → OK (giữ nguyên status.err, chỉ tăng ok)
+              break;
+            } catch (err) {
+              const kind = classifyGdtError(err);
+              if (kind === "auth") {
+                // Token GDT hết hạn -> KHÔNG đánh lỗi HĐ này (không phải lỗi của nó); dừng cả lượt,
+                // các HĐ còn lại giữ nguyên (tt_tai null/error) để đăng nhập lại rồi chạy tiếp.
+                console.warn(
+                  `[gdt.detailRun] token GDT hết hạn (${direction}) -> dừng lượt ở ${status.done}/${status.total}.`,
+                );
+                status.authExpired = true;
+                return;
+              }
+              if (kind === "transient" && attempt < MAX_DETAIL_RETRY) {
+                pacerReportRateLimited(tenantKey, "detail");
+                retries += 1;
+                await engineSleep(Math.min(5000, 500 * 2 ** (attempt - 1)));
+                continue;
+              }
+              // Hết retry hoặc lỗi thật -> đánh dấu lỗi, bỏ qua (lượt sau/"Đồng bộ" thử lại).
+              console.warn(
+                `[gdt.detailRun] id=${row.id} shdon=${row.shdon} bỏ qua sau ${attempt} lần: ${
+                  err instanceof Error ? err.message : String(err)
+                }`,
+              );
+              await freshModel()
+                .updateMany({ where: { id: row.id }, data: { tt_tai: "error" } })
+                .catch(() => {});
+              // Lượt chính: đếm lỗi. Lượt retry: giữ nguyên (đã đếm từ lượt chính)
+              if (!isAutoRetry) status.err += 1;
+              break;
+            }
+          }
+          status.done += 1;
+          // Log tiến độ mỗi 20 hóa đơn để theo dõi lượt chạy ở terminal BE — kèm tốc độ THỰC TẾ của
+          // đoạn vừa rồi và nhịp pacer hiện hành, để thấy ngay lượt đang bị giãn nhịp hay đang chạy sàn.
+          if (status.done % 20 === 0) {
+            const now = Date.now();
+            const perInvoice = Math.round((now - lastMarkAt) / (status.done - lastMarkDone));
+            lastMarkAt = now;
+            lastMarkDone = status.done;
+            console.log(
+              `[gdt.detailRun] ${direction} tiến độ ${status.done}/${status.total} ` +
+                `(ok ${status.ok}, lỗi ${status.err}) — ${perInvoice}ms/HĐ, ` +
+                `nhịp pacer ${Math.round(pacerIntervalMs(tenantKey, "detail"))}ms, retry ${retries}.`,
+            );
+          }
+        }
+      } catch (err) {
+        console.warn(
+          `[gdt.detailRun] lượt (${direction}) ${roundLabel} dừng do lỗi: ${
+            err instanceof Error ? err.message : String(err)
+          }`,
         );
       }
+
+      // Lượt chính xong: kiểm tra có lỗi không để tự động retry
+      if (!isAutoRetry && status.err > 0 && !status.authExpired) {
+        if (detailRunGen.get(key) !== gen) break; // bị thay thế -> dừng
+        if (retryRound < MAX_AUTO_RETRY_ROUNDS - 1) {
+          console.log(
+            `[gdt.detailRun] ${direction} Lượt chính xong với ${status.err} lỗi ` +
+              `→ Tự động retry sau ${DELAY_BEFORE_RETRY_SEC}s...`,
+          );
+          await engineSleep(DELAY_BEFORE_RETRY_SEC * 1000);
+          continue;
+        }
+      }
+
+      // Lượt retry xong: nếu còn lỗi và còn lượt retry -> tiếp tục
+      if (isAutoRetry && status.err > 0 && !status.authExpired) {
+        if (detailRunGen.get(key) !== gen) break; // bị thay thế -> dừng
+        if (retryRound < MAX_AUTO_RETRY_ROUNDS - 1) {
+          console.log(
+            `[gdt.detailRun] ${direction} Retry ${retryRound}/${MAX_AUTO_RETRY_ROUNDS - 1} xong, còn ${status.err} lỗi ` +
+              `→ Retry tiếp sau ${DELAY_BEFORE_RETRY_SEC}s...`,
+          );
+          await engineSleep(DELAY_BEFORE_RETRY_SEC * 1000);
+          continue;
+        }
+      }
+
+      // Hết lỗi hoặc hết lượt retry -> dừng
+      break;
+    }
+
+    // Finally: đóng lượt
+    if (detailRunGen.get(key) === gen) {
+      status.active = false;
+      status.finishedAt = Date.now();
+      const elapsed = status.finishedAt - status.startedAt;
+      // Trung bình ms/HĐ của CẢ lượt: con số một dòng để so sánh giữa các lượt và giữa các MST.
+      const avg = status.done > 0 ? Math.round(elapsed / status.done) : 0;
+      const totalRounds = retryRound + 1;
+
+      // Số lỗi cuối cùng = các HĐ còn tt_tai="error" sau tất cả lượt retry
+      const finalErrors = status.total > 0 && status.ok < status.total ? (status.total - status.ok) : 0;
+
+      console.log(
+        `[gdt.detailRun] ${direction} XONG (${totalRounds} lượt, ${totalRounds > 1 ? "có auto-retry" : "không retry"}): ` +
+          `ok ${status.ok}/${status.total}, còn lại ${finalErrors} lỗi${
+          status.authExpired ? " (dừng vì token GDT hết hạn)" : ""
+        } — ${Math.round(elapsed / 1000)}s cho ${status.done} HĐ (${avg}ms/HĐ), ` +
+          `retry ${retries}, nhịp pacer cuối ${Math.round(pacerIntervalMs(tenantKey, "detail"))}ms.`,
+      );
     }
   })();
 
