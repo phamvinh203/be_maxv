@@ -28,6 +28,7 @@ import {
   cancelSyncRun,
   syncHistory,
   clearSyncData,
+  deleteSyncLog,
   systemStats,
 } from "../../controllers/client/hddt/gdt.controller";
 
@@ -176,6 +177,11 @@ export default async function (
   fastify.delete("/sync/data", {
     preHandler: [fastify.authenticate],
     handler: clearSyncData,
+  });
+  // Xóa 1 dòng lịch sử đồng bộ (CHỈ bản ghi log, không đụng hóa đơn đã lưu) — nút xóa từng dòng.
+  fastify.delete("/sync/history/:id", {
+    preHandler: [fastify.authenticate],
+    handler: deleteSyncLog,
   });
 
   // Thống kê dữ liệu đã lưu (tab Cài đặt › Dữ liệu hệ thống).

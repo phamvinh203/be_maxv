@@ -802,6 +802,31 @@ export async function clearSyncData(request: FastifyRequest, reply: FastifyReply
   }
 }
 
+/** DELETE /gdt/sync/history/:id — xóa 1 dòng lịch sử đồng bộ (CHỈ bản ghi log, không đụng hóa đơn). */
+export async function deleteSyncLog(
+  request: FastifyRequest<{ Params: { id: string } }>,
+  reply: FastifyReply,
+) {
+  const { id } = request.params;
+  if (!id) {
+    return reply.status(400).send({ message: "Thiếu id dòng lịch sử" });
+  }
+
+  const tenantDb = await resolveTenantDb(request);
+  try {
+    const count = await GDTService.deleteSyncLog(tenantDb, id);
+    if (count === 0) {
+      return reply.status(404).send({ message: "Không tìm thấy dòng lịch sử đồng bộ" });
+    }
+    return reply.send({ deleted: count });
+  } catch (err) {
+    request.log.error(err);
+    return reply.status(500).send({
+      message: err instanceof Error ? err.message : "Không xóa được dòng lịch sử đồng bộ",
+    });
+  }
+}
+
 /** GET /gdt/stats — thống kê dữ liệu đã lưu (tab Dữ liệu hệ thống). */
 export async function systemStats(request: FastifyRequest, reply: FastifyReply) {
   const tenantDb = await resolveTenantDb(request);
