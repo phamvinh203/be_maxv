@@ -368,7 +368,7 @@ export default function SyncInvoiceDialog({ open, onClose }: Props) {
     <Dialog
       open={open}
       onClose={clearing ? undefined : onClose}
-      maxWidth="md"
+      maxWidth="lg"
       fullWidth
       slotProps={{ paper: { sx: { borderRadius: 2 } } }}
     >
