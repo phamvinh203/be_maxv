@@ -1,6 +1,12 @@
 import { useMutation, useQuery, useQueryClient, type QueryClient } from "@tanstack/react-query";
 import { useAuth } from "../../auth/useAuth";
-import { cancelSyncRun, clearSyncData, getSyncHistory, startSyncRun } from "./sync";
+import {
+  cancelSyncRun,
+  clearSyncData,
+  deleteSyncHistoryEntry,
+  getSyncHistory,
+  startSyncRun,
+} from "./sync";
 import { invoiceKeys } from "./invoiceQueries";
 import { statsKeys } from "./statsQueries";
 import type { SyncRequest } from "../types";
@@ -68,5 +74,19 @@ export function useClearSyncMutation() {
   return useMutation({
     mutationFn: () => clearSyncData(),
     onSuccess: () => invalidateTenantInvoiceData(qc, currentCompanyId),
+  });
+}
+
+/**
+ * Xóa 1 dòng lịch sử đồng bộ (CHỈ bản ghi log, không đụng hóa đơn) rồi nạp lại danh sách lịch sử.
+ * Chỉ invalidate `history` — hóa đơn đã lưu không đổi nên khỏi đụng bảng hóa đơn/thống kê.
+ * Dùng: `SyncInvoiceDialog` — nút xóa ở cột "Hành động" trong bảng lịch sử.
+ */
+export function useDeleteSyncHistoryMutation() {
+  const { currentCompanyId } = useAuth();
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => deleteSyncHistoryEntry(id),
+    onSuccess: () => qc.invalidateQueries({ queryKey: syncKeys.history(currentCompanyId) }),
   });
 }

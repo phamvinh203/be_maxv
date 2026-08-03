@@ -1819,6 +1819,16 @@ export async function listSyncLogs(tenantDb: PrismaClient) {
 }
 
 /**
+ * Xóa 1 dòng lịch sử đồng bộ theo id — CHỈ bản ghi log, KHÔNG đụng hóa đơn đã lưu (khác
+ * `clearSyncedData` xóa tất cả). Dùng `deleteMany` để không ném khi id không tồn tại; trả số
+ * dòng đã xóa để controller phân biệt 404.
+ */
+export async function deleteSyncLog(tenantDb: PrismaClient, id: string): Promise<number> {
+  const { count } = await tenantDb.sync_log.deleteMany({ where: { id } });
+  return count;
+}
+
+/**
  * Xóa toàn bộ dữ liệu đã đồng bộ trong DB tenant: hóa đơn (vct50view/vct60view) + lịch sử
  * đồng bộ. KHÔNG đụng dữ liệu gốc trên GDT. Trả về số dòng đã xóa từng loại.
  */

@@ -46,3 +46,13 @@ export async function getSyncHistory(): Promise<SyncLog[]> {
 export async function clearSyncData(): Promise<ClearSyncResult> {
   return apiFetch<ClearSyncResult>("/gdt/sync/data", { method: "DELETE" });
 }
+
+/**
+ * DELETE /gdt/sync/history/:id — xóa 1 dòng lịch sử đồng bộ (CHỈ bản ghi log, KHÔNG đụng hóa đơn
+ * đã lưu). Dùng: `useDeleteSyncHistoryMutation` (syncQueries) — nút xóa ở cột "Hành động".
+ */
+export async function deleteSyncHistoryEntry(id: string): Promise<{ deleted: number }> {
+  return apiFetch<{ deleted: number }>(`/gdt/sync/history/${encodeURIComponent(id)}`, {
+    method: "DELETE",
+  });
+}
