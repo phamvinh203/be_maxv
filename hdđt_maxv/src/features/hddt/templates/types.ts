@@ -44,6 +44,24 @@ export function trangThaiHdRowFill(row: { trangThaiHd: string }): ExcelCellStyle
   return TRANG_THAI_HD_FILL[row.trangThaiHd];
 }
 
+/** Màu xám nhạt cho cảnh báo (thiếu địa chỉ người mua, v.v.) */
+export const WARNING_FILL: ExcelCellStyle = { bg: "FFE0E0E0" }; // xám nhạt
+
+/**
+ * Tô cả hàng kết hợp: Ưu tiên trạng thái hóa đơn, nếu không có mới dùng warning.
+ * Dùng cho sheet "Chi tiết" để tô cảnh báo mà không đè màu trạng thái quan trọng.
+ */
+export function detailRowFill(row: { trangThaiHd: string; buyerDiaChi?: string }): ExcelCellStyle | undefined {
+  // Ưu tiên trạng thái hóa đơn (đỏ/hồng quan trọng hơn)
+  const statusFill = TRANG_THAI_HD_FILL[row.trangThaiHd];
+  if (statusFill) return statusFill;
+
+  // Nếu không có trạng thái đặc biệt, kiểm tra warning
+  if (!row.buyerDiaChi) return WARNING_FILL;
+
+  return undefined; // Không tô màu
+}
+
 /** 1 cột hóa đơn. Kênh nào cần thuộc tính gì thì đọc thuộc tính đó. */
 export interface InvoiceColumn<T> {
   /** Khóa ổn định — React key + tra cứu cột. KHÔNG đổi khi đổi tiêu đề. */

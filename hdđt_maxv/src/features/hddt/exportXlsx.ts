@@ -3,8 +3,8 @@
  * Danh sách cột nằm ở `templates/`, dùng chung với bảng trên web nên hai bên không lệch nhau được.
  */
 import type { Workbook } from "exceljs";
-import { detailColumns, fileColumns, overviewColumns, type InvoiceColumn } from "./templates";
-import { trangThaiHdRowFill, type ExcelCellStyle } from "./templates/types";
+import { detailColumns, detailRowFill, fileColumns, overviewColumns, type InvoiceColumn } from "./templates";
+import type { ExcelCellStyle } from "./templates/types";
 import type { DetailRow, DisplayRow, InvoiceDirection } from "./types";
 
 // Trang trí sheet — không gắn với cột nào nên thuộc về file này, không thuộc template cột.
@@ -178,7 +178,7 @@ export async function buildSummaryWorkbookBuffer(
     banner: { title: "DANH SÁCH HÓA ĐƠN", subtitle: rangeBannerLine(range) },
   });
   addStyledSheet(wb, `Chi tiết ${text}`, detailColumns(direction), detailRows, {
-    rowFill: trangThaiHdRowFill,
+    rowFill: detailRowFill,
   });
   return (await wb.xlsx.writeBuffer()) as ArrayBuffer;
 }
