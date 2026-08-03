@@ -37,10 +37,11 @@ import { useQueryClient } from "@tanstack/react-query";
 import { currentMonthRange, formatDateVN, formatDateTimeVN } from "../dateUtils";
 import { syncLogDescription, syncLogReason } from "../syncLogText";
 import { getErrorMessage } from "../../../lib/errors";
-import { type SyncDirection, type SyncKind, type SyncRunStatus } from "../types";
+import { type SyncDirection, type SyncKind, type SyncLog, type SyncRunStatus } from "../types";
 import {
   useCancelSyncRunMutation,
   useClearSyncMutation,
+  useDeleteSyncHistoryMutation,
   useInvalidateTenantInvoiceData,
   useStartSyncRunMutation,
   useSyncHistoryQuery,
@@ -66,6 +67,7 @@ const HISTORY_COLUMNS = [
   "Trạng thái",
   "Diễn giải",
   "Ngày đồng bộ",
+  "Hành động",
 ];
 
 /**
@@ -105,6 +107,8 @@ export default function SyncInvoiceDialog({ open, onClose }: Props) {
   const [range, setRange] = useState(currentMonthRange);
   const [scheduleOpen, setScheduleOpen] = useState(false);
   const [confirmClear, setConfirmClear] = useState(false);
+  /** Dòng lịch sử đang chờ xác nhận xóa (null = không mở dialog xác nhận xóa dòng). */
+  const [confirmDeleteRow, setConfirmDeleteRow] = useState<SyncLog | null>(null);
   const [error, setError] = useState("");
 
   /** Tiến độ lượt đồng bộ nền ở BE (null = chưa có lượt nào trong phiên xem này). */
@@ -121,6 +125,7 @@ export default function SyncInvoiceDialog({ open, onClose }: Props) {
   const cancelMutation = useCancelSyncRunMutation();
   const invalidateInvoiceData = useInvalidateTenantInvoiceData();
   const clearMutation = useClearSyncMutation();
+  const deleteHistoryMutation = useDeleteSyncHistoryMutation();
 
   // "Đang đồng bộ" = đang gọi POST /sync/run HOẶC BE báo còn lượt chạy (poll). Không dùng
   // `startMutation.isPending` một mình: request đó trả về sau ~50ms, lượt mới chỉ vừa bắt đầu.
@@ -346,6 +351,19 @@ export default function SyncInvoiceDialog({ open, onClose }: Props) {
     });
   };
 
+  /** Xóa 1 dòng lịch sử đồng bộ (chỉ bản ghi log, không đụng hóa đơn đã lưu). */
+  const handleDeleteRow = () => {
+    if (!confirmDeleteRow) return;
+    setError("");
+    deleteHistoryMutation.mutate(confirmDeleteRow.id, {
+      onSuccess: () => {
+        setConfirmDeleteRow(null);
+        toast.success("Đã xóa dòng lịch sử đồng bộ.");
+      },
+      onError: (e) => setError(getErrorMessage(e, "Không xóa được dòng lịch sử đồng bộ.")),
+    });
+  };
+
   return (
     <Dialog
       open={open}
@@ -535,7 +553,9 @@ export default function SyncInvoiceDialog({ open, onClose }: Props) {
             <TableHead>
               <TableRow sx={{ "& th": { fontWeight: 700, bgcolor: "action.hover" } }}>
                 {HISTORY_COLUMNS.map((col) => (
-                  <TableCell key={col}>{col}</TableCell>
+                  <TableCell key={col} align={col === "Hành động" ? "center" : "left"}>
+                    {col}
+                  </TableCell>
                 ))}
               </TableRow>
             </TableHead>
@@ -565,6 +585,26 @@ export default function SyncInvoiceDialog({ open, onClose }: Props) {
                     </TableCell>
                     <TableCell>{syncLogDescription(row)}</TableCell>
                     <TableCell>{formatDateTimeVN(row.created_at)}</TableCell>
+                    <TableCell align="center">
+                      <Tooltip title="Xóa dòng lịch sử này">
+                        {/* span để Tooltip vẫn hiện khi nút bị disabled */}
+                        <span>
+                          <IconButton
+                            size="small"
+                            color="error"
+                            aria-label="Xóa dòng lịch sử đồng bộ"
+                            disabled={
+                              busy ||
+                              (deleteHistoryMutation.isPending &&
+                                deleteHistoryMutation.variables === row.id)
+                            }
+                            onClick={() => setConfirmDeleteRow(row)}
+                          >
+                            <DeleteOutlineRounded fontSize="small" />
+                          </IconButton>
+                        </span>
+                      </Tooltip>
+                    </TableCell>
                   </TableRow>
                 ))
               ) : (
@@ -632,6 +672,40 @@ export default function SyncInvoiceDialog({ open, onClose }: Props) {
           </Button>
           <Button variant="contained" color="error" onClick={handleClear} disabled={clearing}>
             {clearing ? <CircularProgress size={20} color="inherit" /> : "Xóa"}
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Xác nhận xóa 1 dòng lịch sử đồng bộ */}
+      <Dialog
+        open={!!confirmDeleteRow}
+        onClose={() => !deleteHistoryMutation.isPending && setConfirmDeleteRow(null)}
+        maxWidth="xs"
+        fullWidth
+      >
+        <DialogTitle sx={{ fontWeight: 700 }}>Xóa dòng lịch sử đồng bộ</DialogTitle>
+        <DialogContent>
+          <DialogContentText>
+            {confirmDeleteRow && (
+              <>
+                Xóa dòng lịch sử đồng bộ từ {formatDateVN(confirmDeleteRow.tu_ngay)} đến{" "}
+                {formatDateVN(confirmDeleteRow.den_ngay)} khỏi danh sách?{" "}
+              </>
+            )}
+            Chỉ xóa bản ghi lịch sử này, KHÔNG ảnh hưởng đến hóa đơn đã lưu trong cơ sở dữ liệu.
+          </DialogContentText>
+        </DialogContent>
+        <DialogActions sx={{ px: 3, pb: 2 }}>
+          <Button onClick={() => setConfirmDeleteRow(null)} disabled={deleteHistoryMutation.isPending}>
+            Hủy
+          </Button>
+          <Button
+            variant="contained"
+            color="error"
+            onClick={handleDeleteRow}
+            disabled={deleteHistoryMutation.isPending}
+          >
+            {deleteHistoryMutation.isPending ? <CircularProgress size={20} color="inherit" /> : "Xóa"}
           </Button>
         </DialogActions>
       </Dialog>
