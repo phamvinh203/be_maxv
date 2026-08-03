@@ -339,7 +339,12 @@ export function detailDauVao(): InvoiceColumn<DetailRow>[] {
       key: "ghiChuDacBiet",
       header: "Ghi Chú: Các trường hợp đặc biệt kế toán xem xét kỹ hơn",
       width: 30,
-      value: () => undefined,
+      value: (r) => {
+        const warnings: string[] = [];
+        if (!r.buyerDiaChi) warnings.push("Thiếu địa chỉ người mua");
+        if (r.trangThaiHd === "4") warnings.push("Hóa đơn này không được kê khai (do hóa đơn đã bị thay thế)");
+        return warnings.length > 0 ? warnings.join(". ") : undefined;
+      },
     },
     { key: "ghiChu1", header: "Ghi chú 1", width: 12, value: (r) => r.ghiChu },
     { key: "hinhThucTt", header: "Hình thức thanh toán", width: 12, value: (r) => r.hinhThucTt },

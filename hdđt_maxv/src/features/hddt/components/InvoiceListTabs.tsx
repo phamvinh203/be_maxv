@@ -36,7 +36,7 @@ import { useAuth } from "../../auth/useAuth";
 import { toast } from "react-toastify";
 import type { InvoiceDirection, InvoiceFilterValues, InvoiceQuery } from "../types";
 import { toDisplayRow } from "../invoiceRow";
-import { toDetailRows } from "../detailRow";
+import { buildReplacedByMap, toDetailRows } from "../detailRow";
 import { invoiceKey, invoiceSttMap } from "../invoiceFileName";
 import { overviewColumns, renderCell } from "../templates";
 import InvoiceFilterPanel from "./InvoiceFilterPanel";
@@ -153,10 +153,13 @@ function InvoiceTablePanel({ direction, active }: InvoiceTablePanelProps) {
   // không được đảm bảo trùng nhau. Cột "Tên file hóa đơn" đọc số này nên ghép sai là chỉ nhầm file.
   const detailRows = useMemo(() => {
     const sttOf = invoiceSttMap(rows);
-    return (savedDetailsQuery.data ?? []).flatMap((d) => {
+    const details = savedDetailsQuery.data ?? [];
+    // Bản đồ ngược "HĐ này bị HĐ nào thay thế/điều chỉnh" — dựng cùng khoảng (xem detailRow.ts).
+    const replacedBy = buildReplacedByMap(details);
+    return details.flatMap((d) => {
       const str = (v: unknown): string => (v == null ? "" : String(v));
       const key = invoiceKey(str(d.khmshdon), str(d.khhdon), str(d.shdon), str(d.nbmst));
-      return toDetailRows(d, sttOf.get(key) ?? 0);
+      return toDetailRows(d, sttOf.get(key) ?? 0, replacedBy);
     });
   }, [savedDetailsQuery.data, rows]);
   // Kẹp trang trong khoảng hợp lệ (refetch nền trả ít dòng hơn -> khỏi kẹt ở trang trống).
