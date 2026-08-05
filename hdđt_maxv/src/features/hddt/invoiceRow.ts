@@ -42,5 +42,7 @@ export function toDisplayRow(r: InvoiceRaw, direction: InvoiceDirection): Displa
     trangThaiHd: r.tthai,
     ketQuaKt: r.ttxly,
     ttTai: typeof r.tt_tai === "string" ? r.tt_tai : undefined,
+    // MST NCC phát hành (vd Viettel/MISA) — keyed với `TRA_CUU_NCC`; BE trích từ raw trong SAVED_LIST.
+    msttcgp: rowStr(r.msttcgp),
   };
 }

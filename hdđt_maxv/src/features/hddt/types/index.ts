@@ -134,6 +134,11 @@ export interface DisplayRow {
   ketQuaKt: string;
   /** Trạng thái tải chi tiết ("OK" | "error" | undefined = chưa tải) — cột "T. thái tải". */
   ttTai?: string;
+  /**
+   * MST nhà cung cấp phát hành (`msttcgp`, vd Viettel/MISA) — có sẵn ngay từ lúc tìm kiếm. Dùng cho
+   * dialog "Tải hóa đơn gốc" để gom/lọc theo `TRA_CUU_NCC`. Rỗng nếu raw thiếu field này.
+   */
+  msttcgp: string;
 }
 
 // ============================================================
@@ -184,10 +189,12 @@ export interface DetailRow {
   ghiChu: string;
   /** Website người bán (nbwebsite). */
   websiteNb: string;
-  /** Trang tra cứu hóa đơn gốc của người bán (`ttkhac.PortalLink`). */
+  /** MST nhà cung cấp hóa đơn gốc (`msttcgp`) — có sẵn ngay từ lúc tìm kiếm, mỗi HĐ một NCC. */
+  msttcgp: string;
+  /** URL tra cứu hóa đơn gốc (`urlTraCuu`) — link trực tiếp đến trang tra cứu của NCC phát hành. */
   urlTraCuu: string;
-  /** Mã tra cứu hóa đơn gốc trên trang của người bán — mỗi nhà cung cấp đặt một tên field khác nhau. */
-  maTraCuu: string;
+  /** Thông tin tra cứu hóa đơn gốc (`dliu`) — chuỗi tra cứu trên trang của NCC phát hành. */
+  dliu: string;
   /** Mã tổ chức truyền nhận (TVAN) đẩy hóa đơn lên cổng thuế, vd `tvan_misa` (`ngcnhat`). */
   tvan: string;
   /** Biển số xe đọc từ "họ tên người mua" — hóa đơn xăng dầu/vận tải hay ghi phương tiện vào ô đó. */

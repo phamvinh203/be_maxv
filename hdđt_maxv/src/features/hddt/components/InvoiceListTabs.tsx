@@ -43,6 +43,7 @@ import InvoiceFilterPanel from "./InvoiceFilterPanel";
 import InvoiceDetailPanel from "./InvoiceDetailPanel";
 import InvoiceViewDialog from "./InvoiceViewDialog";
 import ExportFileDialog from "./ExportFileDialog";
+import DownloadOriginalDialog from "./DownloadOriginalDialog";
 import InvoicePagination, { DEFAULT_ROWS_PER_PAGE } from "./InvoicePagination";
 import { clampPage } from "../pagination";
 import { currentMonthRange } from "../dateUtils";
@@ -105,6 +106,8 @@ function InvoiceTablePanel({ direction, active }: InvoiceTablePanelProps) {
   // Hóa đơn đang chọn (checkbox cột "Chọn") để bật nút "Xem hóa đơn"; null = chưa chọn.
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [viewOpen, setViewOpen] = useState(false);
+  // Dialog "Tải hóa đơn gốc" (theo chiều): mở bằng nút "Tải hóa đơn gốc" trong từng tab.
+  const [downloadOriginalOpen, setDownloadOriginalOpen] = useState(false);
   /** Mở form đăng nhập Thuế điện tử khi thao tác cần token mà công ty đang chọn chưa đăng nhập. */
   const [loginOpen, setLoginOpen] = useState(false);
   /**
@@ -446,7 +449,20 @@ function InvoiceTablePanel({ direction, active }: InvoiceTablePanelProps) {
             >
               Xem hóa đơn
             </Button>
+            
           )}
+
+          <Button
+            variant="contained"
+            size="small"
+            startIcon={<FileDownloadRounded fontSize="small" />}
+            sx={{ textTransform: "none", whiteSpace: "nowrap" }}
+            disabled={rows.length === 0 || detailRunning || updateRunning}
+            onClick={() => setDownloadOriginalOpen(true)}
+          >
+            Tải hóa đơn gốc
+          </Button>
+
           <Button
             variant="contained"
             size="small"
@@ -559,6 +575,16 @@ function InvoiceTablePanel({ direction, active }: InvoiceTablePanelProps) {
         }}
         initialUsername={activeMst}
         onLoginSuccess={handleLoginSuccess}
+      />
+
+      {/* "Tải hóa đơn gốc" — tải file PDF gốc theo NCC (hiện MISA). Truyền rows + khoảng đang lọc
+          để dựng danh sách NCC và nối chi tiết lấy mã tra cứu. */}
+      <DownloadOriginalDialog
+        open={downloadOriginalOpen}
+        onClose={() => setDownloadOriginalOpen(false)}
+        direction={direction}
+        rows={rows}
+        range={{ tuNgay: appliedFilters.tuNgay, denNgay: appliedFilters.denNgay }}
       />
     </Box>
   );

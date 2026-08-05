@@ -1,5 +1,6 @@
 import { formatDateVN } from "./dateUtils";
 import { stripFloatNoise } from "./format";
+import { traCuuNcc } from "./traCuuNcc";
 import type { DetailRow } from "./types";
 
 /** Ép về string an toàn (null/undefined -> ""). */
@@ -93,26 +94,6 @@ function chuKySigningTime(v: unknown): string {
   } catch {
     return ""; // GDT đổi định dạng chuỗi ký -> mất 1 ô, không được làm hỏng cả dòng
   }
-}
-
-/**
- * Đọc một giá trị trong mảng "thông tin khác" của GDT (`ttkhac`, `cttkhac`, `nbttkhac`…). Mỗi phần
- * tử là `{ ttruong, kdlieu, dlieu }`.
- *
- * Phải dò theo NHIỀU tên `ttruong`: mỗi nhà cung cấp hóa đơn tự đặt tên khóa của mình
- * (EasyInvoice: `Fkey`/`PortalLink`, MISA: `TransactionID`, một số bên ghi thẳng "Mã tra cứu"…).
- * Trả giá trị đầu tiên tìm được theo THỨ TỰ tên truyền vào; không có -> "".
- */
-function pickTtKhac(arr: unknown, ...names: string[]): string {
-  if (!Array.isArray(arr)) return "";
-  for (const name of names) {
-    for (const raw of arr) {
-      const it = raw as Record<string, unknown> | null;
-      if (it?.ttruong !== name) continue;
-      if (it.dlieu != null && it.dlieu !== "") return String(it.dlieu);
-    }
-  }
-  return "";
 }
 
 /**
@@ -210,6 +191,11 @@ export function toDetailRows(
 ): DetailRow[] {
   if (!detail) return [];
 
+  // Tra cứu hóa đơn gốc theo NCC phát hành (registry keyed bằng `msttcgp`, xem traCuuNcc.ts).
+  // Tính 1 lần cho cả hóa đơn: `urlTraCuu` = link trang tra cứu của NCC, `dliu` = mã tra cứu trích
+  // đúng field của NCC đó. NCC chưa có trong registry -> cả hai rỗng.
+  const traCuu = traCuuNcc(detail);
+
   // Thông tin hóa đơn — lặp mỗi dòng hàng.
   const header = {
     // Số thứ tự của HÓA ĐƠN (do nơi gọi tra từ bảng Tổng quát), lặp y hệt ở mọi dòng hàng.
@@ -233,12 +219,10 @@ export function toDetailRows(
     ngayCqtKy: chuKySigningTime(detail.cqtcks) || s(detail.ncma),
     ghiChu: s(detail.gchu),
     websiteNb: s(detail.nbwebsite),
-    urlTraCuu: pickTtKhac(detail.ttkhac, "PortalLink"),
-    // "Mã tra cứu" (một số bên ghi thẳng tiếng Việt), "Fkey" (EasyInvoice/SoftDreams),
-    // "KeySearch" (PM Quản lý doanh nghiệp), "TransactionID" (MISA — nằm ở `cttkhac`).
-    maTraCuu:
-      pickTtKhac(detail.ttkhac, "Mã tra cứu", "Fkey", "KeySearch") ||
-      pickTtKhac(detail.cttkhac, "TransactionID"),
+    // MST nhà cung cấp phát hành — khóa ghép với registry `TRA_CUU_NCC`.
+    msttcgp: s(detail.msttcgp),
+    urlTraCuu: traCuu?.url ?? "",
+    dliu: traCuu?.maTraCuu ?? "",
     tvan: s(detail.ngcnhat),
     // `nmtnmua` = họ tên người mua hàng; hóa đơn xăng dầu/vận tải ghi biển số xe vào đây.
     bienSoXe: bienSoXe(s(detail.nmtnmua)),

@@ -350,11 +350,10 @@ export function detailDauRa(): InvoiceColumn<DetailRow>[] {
     },
     { key: "bienSoXe", header: "Biển số xe", width: 12, value: (r) => r.bienSoXe },
     { key: "websiteNb", header: "Website người bán", width: 12, value: (r) => r.websiteNb },
-    { key: "urlTraCuu", header: "url tra cứu hóa đơn gốc", width: 12, value: (r) => r.urlTraCuu },
-    { key: "maTraCuu", header: "Mã tra cứu hóa đơn gốc", width: 30, value: (r) => r.maTraCuu },
+    { key: "msttcgp", header: "Nhà cung cấp hóa đơn gốc", width: 20, value: (r) => r.msttcgp },
+    { key: "urlTraCuu", header: "URL tra cứu hóa đơn gốc", width: 30, value: (r) => r.urlTraCuu },
+    { key: "dliu", header: "Mã tra cứu hóa đơn gốc", width: 30, value: (r) => r.dliu },
     {
-      // Chuỗi copy thẳng sang Google để tìm trang tra cứu, khi hóa đơn không kèm sẵn link:
-      // tên nhà cung cấp hóa đơn (TVAN) cho ra đúng trang tra cứu hơn là tên người bán.
       key: "timGoogle",
       header: "Copy dòng này lên google để tìm link tra cứu hóa đơn gốc",
       width: 30,
