@@ -39,7 +39,7 @@ const MISA_IFRAME_HEADERS: Record<string, string> = {
 export const misa: ProviderDownloader = {
   mst: "0101243150",
   ten: "MISA",
-  async download(code) {
+  async download({ code }) {
     // Bước 1: mint token ext (toàn cục theo thời gian; vẫn gửi `code` cho giống trình duyệt).
     const ext = await mintTokenForm({
       url: `${MISA_TRA_CUU}/GetRequestTimeEnCode`,

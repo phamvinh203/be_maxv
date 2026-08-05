@@ -14,6 +14,20 @@ export interface FileHoaDonGoc {
 }
 
 /**
+ * Dữ liệu 1 hóa đơn cần để tải file gốc. NCC đơn giản (MISA) chỉ dùng `code`; NCC khác dùng thêm:
+ *  - `sellerMst`: MST người bán (nbmst) — Viettel cần cho `supplierTaxCode`/`taxCode`.
+ *  - `recaptcha`: token captcha do NGƯỜI DÙNG giải (Viettel). App KHÔNG tự giải/bỏ qua captcha.
+ */
+export interface DownloadRequest {
+  /** Mã tra cứu hóa đơn (MISA = TransactionID; Viettel = reservationCode). */
+  code: string;
+  /** MST người bán (nbmst). Bắt buộc với NCC cần (Viettel); MISA bỏ qua. */
+  sellerMst?: string;
+  /** Token captcha do người dùng cung cấp. Bắt buộc với NCC có captcha (Viettel); MISA bỏ qua. */
+  recaptcha?: string;
+}
+
+/**
  * Bộ tải hóa đơn gốc (PDF) của MỘT NCC. Thêm NCC mới = viết 1 object thế này (thường chỉ khác URL +
  * cách lấy token + header) rồi đăng ký 1 dòng trong `index.ts`. Boilerplate (fetch, timeout, body
  * rỗng, parse tên file…) nằm ở `shared.ts` nên `download` của mỗi NCC rất ngắn.
@@ -23,8 +37,8 @@ export interface ProviderDownloader {
   mst: string;
   /** Tên NCC (dùng trong thông báo lỗi). */
   ten: string;
-  /** Tải file PDF gốc 1 hóa đơn theo mã tra cứu. */
-  download(code: string): Promise<FileHoaDonGoc>;
+  /** Tải file PDF gốc 1 hóa đơn. */
+  download(req: DownloadRequest): Promise<FileHoaDonGoc>;
 }
 
 /** Mã lỗi ngữ nghĩa — controller tự map sang HTTP status (xem `traCuuGoc.controller.ts`). */
