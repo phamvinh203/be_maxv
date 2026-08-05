@@ -452,7 +452,7 @@ function InvoiceTablePanel({ direction, active }: InvoiceTablePanelProps) {
             
           )}
 
-          {/* <Button
+          <Button
             variant="contained"
             size="small"
             startIcon={<FileDownloadRounded fontSize="small" />}
@@ -461,7 +461,7 @@ function InvoiceTablePanel({ direction, active }: InvoiceTablePanelProps) {
             onClick={() => setDownloadOriginalOpen(true)}
           >
             Tải hóa đơn gốc
-          </Button> */}
+          </Button>
 
           <Button
             variant="contained"

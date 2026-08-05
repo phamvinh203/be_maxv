@@ -172,7 +172,8 @@ export default function DownloadOriginalDialog({
 
       const sttOf = invoiceSttMap(rows);
       // Hàng đợi tải: chỉ HĐ thuộc NCC đã tick + có bộ tải + có mã tra cứu.
-      const queue: { msttcgp: string; code: string; base: string }[] = [];
+      // `sellerMst` (nbmst) đi kèm vì NCC như Viettel cần nó làm `supplierTaxCode`; MISA bỏ qua.
+      const queue: { msttcgp: string; code: string; sellerMst: string; base: string }[] = [];
       let thieuMa = 0; // đã tick + hỗ trợ nhưng chưa có mã (chưa tải chi tiết)
       for (const row of rows) {
         if (!checked.has(row.msttcgp) || !nccHoTroTai(row.msttcgp)) continue;
@@ -185,6 +186,7 @@ export default function DownloadOriginalDialog({
         queue.push({
           msttcgp: row.msttcgp,
           code,
+          sellerMst: row.sellerMst,
           base: invoiceFileBase(sttOf.get(key) ?? 0, row.ngayLap, row.soHd, row.sellerMst),
         });
       }
@@ -199,7 +201,11 @@ export default function DownloadOriginalDialog({
 
       for (const item of queue) {
         try {
-          const blob = await taiHoaDonGoc({ msttcgp: item.msttcgp, code: item.code });
+          const blob = await taiHoaDonGoc({
+            msttcgp: item.msttcgp,
+            code: item.code,
+            sellerMst: item.sellerMst,
+          });
           await writeFile(dir, `${item.base}.pdf`, blob);
           ok += 1;
         } catch {

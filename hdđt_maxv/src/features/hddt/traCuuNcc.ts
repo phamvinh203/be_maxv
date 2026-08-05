@@ -76,6 +76,7 @@ export const TRA_CUU_NCC: Record<string, NccTraCuu> = {
     ten: "Tập đoàn Công nghiệp - Viễn thông quân đội",
     url: "https://vinvoice.viettel.vn/utilities/invoice-search",
     maTraCuu: { src: "ttkhac", ttruong: "Mã số bí mật" },
+    taiTuDong: true,
   },
   "0109282176": {
     ten: "Công ty Cổ phần Hóa đơn điện tử VININVOICE",
