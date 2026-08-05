@@ -155,27 +155,6 @@ export function overviewDauRa(): InvoiceColumn<DisplayRow>[] {
   ];
 }
 
-/**
- * Bảng "Chi tiết hóa đơn" đầu ra — 46 cột. 1 dòng = 1 dòng hàng hóa; thông tin hóa đơn lặp lại
- * ở mỗi dòng hàng của cùng một hóa đơn.
- *
- * Hiện TRÙNG KHỚP từng cột với `detailDauVao` (mẫu Excel của kế toán dùng chung một lưới chi tiết
- * cho cả hai chiều) nhưng vẫn để hai hàm riêng theo kiến trúc "mỗi chiều một file" — xem đầu file.
- * Hệ quả: sửa một cột chi tiết phải sửa ở CẢ HAI file, nếu không hai chiều lệch nhau âm thầm.
- *
- * BA NHÓM CỘT TIỀN, đọc kỹ kẻo lẫn:
- *  - "…nguyên tệ": theo TỪNG DÒNG HÀNG, đơn vị là `maNt` của hóa đơn;
- *  - "…(VND)": chính cột nguyên tệ nhân `tyGia` (hóa đơn VND có tỷ giá 1 nên bằng nhau);
- *  - "Tổng…": của CẢ HÓA ĐƠN, nên lặp y hệt ở mọi dòng hàng — đừng cộng cả cột.
- *
- * CÒN ĐÚNG MỘT CỘT CHƯA CÓ NGUỒN DỮ LIỆU: "Ghi Chú: Các trường hợp đặc biệt kế toán xem xét kỹ
- * hơn" — cột này là CẢNH BÁO TỰ SINH (mẫu Excel ghi kiểu "Thiếu địa chỉ người mua"), phải chốt bộ
- * quy tắc nghiệp vụ trước mới làm được, không phải chỉ map thêm field.
- *
- * Các cột còn lại đều đọc từ payload chi tiết GDT — xem `detailRow.ts` để biết field nguồn. Nhiều
- * cột chỉ có giá trị ở một số loại hóa đơn (vd "Ngày CQT ký số" chỉ hóa đơn CÓ MÃ mới có, "Biển số
- * xe" chỉ hóa đơn xăng dầu/vận tải), ô trống ở đây là ĐÚNG chứ không phải thiếu mapping.
- */
 export function detailDauRa(): InvoiceColumn<DetailRow>[] {
   return [
     { key: "mauHd", header: "Mẫu số HD", width: 6, value: (r) => numericText(r.mauHd) },
@@ -188,7 +167,6 @@ export function detailDauRa(): InvoiceColumn<DetailRow>[] {
       excelText: true,
       value: (r) => formatDateVN(r.ngayHd),
     },
-    // `|| undefined` để ô rỗng đi theo quy ước chung: file xuất ghi ô trống, web hiện "—".
     {
       key: "ngayKy",
       header: "Ngày người bán ký số",
@@ -295,7 +273,7 @@ export function detailDauRa(): InvoiceColumn<DetailRow>[] {
       width: 14,
       align: "right",
       numFmt: MONEY2_FMT,
-      value: (r) => r.tongCk,
+      value: (r) => (r.isFirstRow ? r.tongCk : undefined),
     },
     {
       key: "tongPhi",
@@ -303,7 +281,7 @@ export function detailDauRa(): InvoiceColumn<DetailRow>[] {
       width: 14,
       align: "right",
       numFmt: MONEY2_FMT,
-      value: (r) => r.tongPhi,
+      value: (r) => (r.isFirstRow ? r.tongPhi : undefined),
     },
     {
       key: "tongTt",
@@ -311,7 +289,7 @@ export function detailDauRa(): InvoiceColumn<DetailRow>[] {
       width: 14,
       align: "right",
       numFmt: MONEY2_FMT,
-      value: (r) => r.tongTt,
+      value: (r) => (r.isFirstRow ? r.tongTt : undefined),
     },
     {
       key: "tongTtVnd",
@@ -319,7 +297,7 @@ export function detailDauRa(): InvoiceColumn<DetailRow>[] {
       width: 14,
       align: "right",
       numFmt: MONEY2_FMT,
-      value: (r) => toVnd(r.tongTt, r.tyGia),
+      value: (r) => (r.isFirstRow ? toVnd(r.tongTt, r.tyGia) : undefined),
     },
     {
       // Cùng hàm đặt tên với lượt xuất file -> tên ở đây là tên file có thật trên đĩa.
@@ -341,7 +319,12 @@ export function detailDauRa(): InvoiceColumn<DetailRow>[] {
       key: "ghiChuDacBiet",
       header: "Ghi Chú: Các trường hợp đặc biệt kế toán xem xét kỹ hơn",
       width: 30,
-      value: () => undefined,
+      value: (r) => {
+        const warnings: string[] = [];
+        if (!r.buyerDiaChi) warnings.push("Thiếu địa chỉ người mua");
+        if (r.trangThaiHd === "4") warnings.push("Hóa đơn này không được kê khai ");
+        return warnings.length > 0 ? warnings.join(". ") : undefined;
+      },
     },
     { key: "ghiChu1", header: "Ghi chú 1", width: 12, value: (r) => r.ghiChu },
     { key: "hinhThucTt", header: "Hình thức thanh toán", width: 12, value: (r) => r.hinhThucTt },
@@ -367,11 +350,10 @@ export function detailDauRa(): InvoiceColumn<DetailRow>[] {
     },
     { key: "bienSoXe", header: "Biển số xe", width: 12, value: (r) => r.bienSoXe },
     { key: "websiteNb", header: "Website người bán", width: 12, value: (r) => r.websiteNb },
-    { key: "urlTraCuu", header: "url tra cứu hóa đơn gốc", width: 12, value: (r) => r.urlTraCuu },
-    { key: "maTraCuu", header: "Mã tra cứu hóa đơn gốc", width: 30, value: (r) => r.maTraCuu },
+    { key: "msttcgp", header: "Nhà cung cấp hóa đơn gốc", width: 20, value: (r) => r.msttcgp },
+    { key: "urlTraCuu", header: "URL tra cứu hóa đơn gốc", width: 30, value: (r) => r.urlTraCuu },
+    { key: "dliu", header: "Mã tra cứu hóa đơn gốc", width: 30, value: (r) => r.dliu },
     {
-      // Chuỗi copy thẳng sang Google để tìm trang tra cứu, khi hóa đơn không kèm sẵn link:
-      // tên nhà cung cấp hóa đơn (TVAN) cho ra đúng trang tra cứu hơn là tên người bán.
       key: "timGoogle",
       header: "Copy dòng này lên google để tìm link tra cứu hóa đơn gốc",
       width: 30,

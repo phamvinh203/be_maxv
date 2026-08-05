@@ -36,13 +36,14 @@ import { useAuth } from "../../auth/useAuth";
 import { toast } from "react-toastify";
 import type { InvoiceDirection, InvoiceFilterValues, InvoiceQuery } from "../types";
 import { toDisplayRow } from "../invoiceRow";
-import { toDetailRows } from "../detailRow";
+import { buildReplacedByMap, toDetailRows } from "../detailRow";
 import { invoiceKey, invoiceSttMap } from "../invoiceFileName";
 import { overviewColumns, renderCell } from "../templates";
 import InvoiceFilterPanel from "./InvoiceFilterPanel";
 import InvoiceDetailPanel from "./InvoiceDetailPanel";
 import InvoiceViewDialog from "./InvoiceViewDialog";
 import ExportFileDialog from "./ExportFileDialog";
+import DownloadOriginalDialog from "./DownloadOriginalDialog";
 import InvoicePagination, { DEFAULT_ROWS_PER_PAGE } from "./InvoicePagination";
 import { clampPage } from "../pagination";
 import { currentMonthRange } from "../dateUtils";
@@ -105,6 +106,8 @@ function InvoiceTablePanel({ direction, active }: InvoiceTablePanelProps) {
   // Hóa đơn đang chọn (checkbox cột "Chọn") để bật nút "Xem hóa đơn"; null = chưa chọn.
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [viewOpen, setViewOpen] = useState(false);
+  // Dialog "Tải hóa đơn gốc" (theo chiều): mở bằng nút "Tải hóa đơn gốc" trong từng tab.
+  const [downloadOriginalOpen, setDownloadOriginalOpen] = useState(false);
   /** Mở form đăng nhập Thuế điện tử khi thao tác cần token mà công ty đang chọn chưa đăng nhập. */
   const [loginOpen, setLoginOpen] = useState(false);
   /**
@@ -153,10 +156,13 @@ function InvoiceTablePanel({ direction, active }: InvoiceTablePanelProps) {
   // không được đảm bảo trùng nhau. Cột "Tên file hóa đơn" đọc số này nên ghép sai là chỉ nhầm file.
   const detailRows = useMemo(() => {
     const sttOf = invoiceSttMap(rows);
-    return (savedDetailsQuery.data ?? []).flatMap((d) => {
+    const details = savedDetailsQuery.data ?? [];
+    // Bản đồ ngược "HĐ này bị HĐ nào thay thế/điều chỉnh" — dựng cùng khoảng (xem detailRow.ts).
+    const replacedBy = buildReplacedByMap(details);
+    return details.flatMap((d) => {
       const str = (v: unknown): string => (v == null ? "" : String(v));
       const key = invoiceKey(str(d.khmshdon), str(d.khhdon), str(d.shdon), str(d.nbmst));
-      return toDetailRows(d, sttOf.get(key) ?? 0);
+      return toDetailRows(d, sttOf.get(key) ?? 0, replacedBy);
     });
   }, [savedDetailsQuery.data, rows]);
   // Kẹp trang trong khoảng hợp lệ (refetch nền trả ít dòng hơn -> khỏi kẹt ở trang trống).
@@ -443,7 +449,20 @@ function InvoiceTablePanel({ direction, active }: InvoiceTablePanelProps) {
             >
               Xem hóa đơn
             </Button>
+            
           )}
+
+          {/* <Button
+            variant="contained"
+            size="small"
+            startIcon={<FileDownloadRounded fontSize="small" />}
+            sx={{ textTransform: "none", whiteSpace: "nowrap" }}
+            disabled={rows.length === 0 || detailRunning || updateRunning}
+            onClick={() => setDownloadOriginalOpen(true)}
+          >
+            Tải hóa đơn gốc
+          </Button> */}
+
           <Button
             variant="contained"
             size="small"
@@ -556,6 +575,16 @@ function InvoiceTablePanel({ direction, active }: InvoiceTablePanelProps) {
         }}
         initialUsername={activeMst}
         onLoginSuccess={handleLoginSuccess}
+      />
+
+      {/* "Tải hóa đơn gốc" — tải file PDF gốc theo NCC (hiện MISA). Truyền rows + khoảng đang lọc
+          để dựng danh sách NCC và nối chi tiết lấy mã tra cứu. */}
+      <DownloadOriginalDialog
+        open={downloadOriginalOpen}
+        onClose={() => setDownloadOriginalOpen(false)}
+        direction={direction}
+        rows={rows}
+        range={{ tuNgay: appliedFilters.tuNgay, denNgay: appliedFilters.denNgay }}
       />
     </Box>
   );

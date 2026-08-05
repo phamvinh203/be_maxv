@@ -44,6 +44,24 @@ export function trangThaiHdRowFill(row: { trangThaiHd: string }): ExcelCellStyle
   return TRANG_THAI_HD_FILL[row.trangThaiHd];
 }
 
+/** Màu xám nhạt cho cảnh báo (thiếu địa chỉ người mua, v.v.) */
+export const WARNING_FILL: ExcelCellStyle = { bg: "FFE0E0E0" }; // xám nhạt
+
+/**
+ * Tô cả hàng kết hợp: Ưu tiên trạng thái hóa đơn, nếu không có mới dùng warning.
+ * Dùng cho sheet "Chi tiết" để tô cảnh báo mà không đè màu trạng thái quan trọng.
+ */
+export function detailRowFill(row: { trangThaiHd: string; buyerDiaChi?: string }): ExcelCellStyle | undefined {
+  // Ưu tiên trạng thái hóa đơn (đỏ/hồng quan trọng hơn)
+  const statusFill = TRANG_THAI_HD_FILL[row.trangThaiHd];
+  if (statusFill) return statusFill;
+
+  // Nếu không có trạng thái đặc biệt, kiểm tra warning
+  if (!row.buyerDiaChi) return WARNING_FILL;
+
+  return undefined; // Không tô màu
+}
+
 /** 1 cột hóa đơn. Kênh nào cần thuộc tính gì thì đọc thuộc tính đó. */
 export interface InvoiceColumn<T> {
   /** Khóa ổn định — React key + tra cứu cột. KHÔNG đổi khi đổi tiêu đề. */
@@ -88,10 +106,14 @@ export const NO_DATA_YET = "—";
  *   `0` = chữ số bắt buộc (hiện cả khi bằng 0) · `#` = chữ số chỉ hiện khi có
  * -> phần nguyên và 2 số lẻ đầu luôn hiện (đúng dáng mẫu Excel của kế toán), các số lẻ sau đó chỉ
  * hiện khi hóa đơn thực sự có, và KHÔNG có chữ số nào bị cắt.
+ *
+ * Lưu ý: Excel format code không hỗ trợ đổi thousand separator sang dấu chấm (.).
+ * Format bên dưới dùng dấu phẩy (,) cho thousand separator theo chuẩn Excel.
+ * Để hiển thị dấu chấm trên Excel, cần thay đổi Region Settings của hệ thống.
  */
-export const NUM_FMT = "#,##0.########";
-/** Cột tiền: tối thiểu 2 số lẻ cho đúng mẫu, tối đa 8 để không làm tròn tiền nguyên tệ. */
-export const MONEY2_FMT = "#,##0.00######";
+export const NUM_FMT = "#,##0"; // Không có phần thập phân
+/** Cột tiền: không có phần thập phân, bỏ .0 ở cuối */
+export const MONEY2_FMT = "#,##0"; // Không có phần thập phân
 /** Tỷ giá: tối thiểu 2 số lẻ (hóa đơn VND ra "1.00" đúng mẫu), giữ đủ số lẻ của tỷ giá ngoại tệ. */
 export const RATE_FMT = "0.00######";
 

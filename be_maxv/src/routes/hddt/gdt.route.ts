@@ -2,6 +2,7 @@ import { FastifyInstance } from "fastify";
 import {
   captcha,
   login,
+  getGdtCredential,
   purchaseInvoices,
   soldInvoices,
   savedPurchaseInvoices,
@@ -31,12 +32,29 @@ import {
   deleteSyncLog,
   systemStats,
 } from "../../controllers/client/hddt/gdt.controller";
+import { downloadOriginalInvoice } from "../../controllers/client/hddt/traCuuGoc.controller";
 
 export default async function (
   fastify: FastifyInstance
 ) {
   fastify.get("/captcha", captcha);
-  fastify.post("/login", login);
+  // Login cần JWT app: để biết công ty (MST) đang chọn mà dùng/lưu mật khẩu cổng thuế đã lưu ở
+  // server. Dialog đăng nhập GDT luôn nằm trong app đã đăng nhập nên yêu cầu này không phá luồng cũ.
+  fastify.post("/login", { preHandler: [fastify.authenticate], handler: login });
+
+  // Mật khẩu cổng thuế đã lưu của công ty đang chọn — trả bản đã giải mã để FE điền sẵn vào ô mật
+  // khẩu khi mở dialog. Chỉ cần JWT app (đọc DonVi theo quyền), không cần X-Gdt-Token.
+  fastify.get("/credential", {
+    preHandler: [fastify.authenticate],
+    handler: getGdtCredential,
+  });
+
+  // Tải FILE PDF GỐC 1 hóa đơn trực tiếp từ trang tra cứu của NCC phát hành (MISA…).
+  // Chỉ cần JWT app (không gọi cổng thuế -> không cần X-Gdt-Token). Trả nguyên bytes file.
+  fastify.get("/tra-cuu-goc", {
+    preHandler: [fastify.authenticate],
+    handler: downloadOriginalInvoice,
+  });
 
   // Cần JWT app (Authorization) để resolveTenantDb biết ghi vào DB công ty nào (tra cứu
   // GDT luôn lưu vào DB); token GDT gửi qua header X-Gdt-Token (xem gdt.controller.ts).

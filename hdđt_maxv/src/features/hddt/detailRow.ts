@@ -1,5 +1,6 @@
 import { formatDateVN } from "./dateUtils";
 import { stripFloatNoise } from "./format";
+import { traCuuNcc } from "./traCuuNcc";
 import type { DetailRow } from "./types";
 
 /** Ép về string an toàn (null/undefined -> ""). */
@@ -96,26 +97,6 @@ function chuKySigningTime(v: unknown): string {
 }
 
 /**
- * Đọc một giá trị trong mảng "thông tin khác" của GDT (`ttkhac`, `cttkhac`, `nbttkhac`…). Mỗi phần
- * tử là `{ ttruong, kdlieu, dlieu }`.
- *
- * Phải dò theo NHIỀU tên `ttruong`: mỗi nhà cung cấp hóa đơn tự đặt tên khóa của mình
- * (EasyInvoice: `Fkey`/`PortalLink`, MISA: `TransactionID`, một số bên ghi thẳng "Mã tra cứu"…).
- * Trả giá trị đầu tiên tìm được theo THỨ TỰ tên truyền vào; không có -> "".
- */
-function pickTtKhac(arr: unknown, ...names: string[]): string {
-  if (!Array.isArray(arr)) return "";
-  for (const name of names) {
-    for (const raw of arr) {
-      const it = raw as Record<string, unknown> | null;
-      if (it?.ttruong !== name) continue;
-      if (it.dlieu != null && it.dlieu !== "") return String(it.dlieu);
-    }
-  }
-  return "";
-}
-
-/**
  * Biển số xe Việt Nam trong chuỗi bất kỳ — vd "Xe 29K-225.29" -> "29K-225.29".
  * Hóa đơn xăng dầu/vận tải hay ghi phương tiện vào ô "họ tên người mua" (`nmtnmua`) thay vì tên người.
  * Mẫu: 2 số tỉnh + 1-2 chữ (có thể kèm 1 số) + "-" + 3 số + (dấu chấm) + 2-3 số.
@@ -128,52 +109,92 @@ function bienSoXe(v: string): string {
 }
 
 /**
- * Mô tả hóa đơn GỐC mà hóa đơn này thay thế/điều chỉnh, dựng từ nhóm field `…goc` của GDT
- * (`khmshdgoc`, `khhdgoc`, `shdgoc`, `tdlhdgoc`, `gchdgoc`). Hóa đơn mới thì cả nhóm là null -> "".
+ * Bản đồ ngược "HĐ này bị HĐ nào thay thế/điều chỉnh".
  *
- * CHƯA ĐỐI CHIẾU được với dữ liệu thật: mọi mẫu payload có trong tay đều là hóa đơn mới (`tthai=1`)
- * nên nhóm field này luôn null. Cách ghép ở đây chỉ là nối các mảnh định danh, GDT trả gì hiện nấy.
+ * Payload chi tiết của HĐ BỊ thay thế (tthai=4) / bị điều chỉnh (tthai=5) KHÔNG mang field nào trỏ
+ * tới HĐ thay thế (toàn bộ nhóm `…goc` đều null) — liên kết MỘT CHIỀU: chỉ HĐ thay thế (tthai=2) /
+ * điều chỉnh (tthai=3) biết HĐ gốc, qua `khhdgoc`/`shdgoc`. Nên phải dựng ở cấp lô (nơi có toàn bộ
+ * details của cùng khoảng) rồi truyền vào `toDetailRows`.
+ *
+ * Key: `${nbmst}|${khhdon}|${shdon}` của HĐ GỐC — cùng người bán (chỉ NB tự thay thế HĐ của mình),
+ * thêm `nbmst` để khỏi nhầm khi một lô MUA VÀO gom HĐ của nhiều NB khác nhau.
+ * Value: số + ngày lập + loại (`tthai`) của HĐ thay thế/điều chỉnh.
  */
-function ghiChuHoaDonGoc(detail: Record<string, unknown>): string {
-  const kyHieu = s(detail.khhdgoc);
-  const soHd = s(detail.shdgoc);
-  const ngay = s(detail.tdlhdgoc);
-  const parts = [
-    kyHieu || soHd ? `HĐ gốc ${[kyHieu, soHd].filter(Boolean).join("-")}` : "",
-    ngay ? `ngày ${formatDateVN(ngay)}` : "",
-    s(detail.gchdgoc),
-  ].filter(Boolean);
-  return parts.join(" · ");
+export type ReplacedByMap = Map<string, { soHd: string; ngay: string; tthai: string }>;
+
+export function buildReplacedByMap(
+  details: (Record<string, unknown> | null | undefined)[],
+): ReplacedByMap {
+  const m: ReplacedByMap = new Map();
+  for (const d of details) {
+    if (!d) continue;
+    const tthai = s(d.tthai);
+    if (tthai !== "2" && tthai !== "3") continue;
+    const kyHieuGoc = s(d.khhdgoc);
+    const soHdGoc = s(d.shdgoc);
+    if (!kyHieuGoc || !soHdGoc) continue;
+    m.set(`${s(d.nbmst)}|${kyHieuGoc}|${soHdGoc}`, {
+      soHd: s(d.shdon),
+      ngay: s(d.tdlap),
+      tthai,
+    });
+  }
+  return m;
 }
 
 /**
- * Chuyển payload chi tiết GDT (`/detail`) -> danh sách dòng bảng "Chi tiết hóa đơn".
- * Mỗi phần tử mảng hàng hóa `hdhhdvu` thành 1 dòng, lặp lại thông tin hóa đơn (header) ở mỗi dòng.
- * Hóa đơn không có dòng hàng -> vẫn trả 1 dòng chỉ gồm header (đỡ trống trơn).
+ * Nội dung cột "Ghi chú: Hóa đơn thay thế, điều chỉnh, bị thay thế, bị điều chỉnh" — 2 hướng liên kết:
  *
- * `stt` = số thứ tự của hóa đơn trong bảng Tổng quát, do nơi gọi tra qua `invoiceSttMap` — cần cho
- * cột "Tên file hóa đơn". Bỏ trống thì tên file mất số thứ tự, nên nơi gọi phải truyền.
+ * - HĐ này THAY THẾ (tthai=2) / ĐIỀU CHỈNH (tthai=3) HĐ khác: nhóm `…goc` của chính nó có dữ liệu
+ *   -> "Thay thế cho hóa đơn 1796 ngày 20-05-2026".
+ * - HĐ này BỊ THAY THẾ (tthai=4) / BỊ ĐIỀU CHỈNH (tthai=5): payload bản thân nó KHÔNG biết HĐ kia,
+ *   phải tra `replacedBy` (dựng từ các HĐ tthai 2/3 trong cùng lô) theo khóa của chính nó
+ *   -> "Bị thay thế bởi hóa đơn 1772 ngày 19-05-2026". Không tra được (thiếu HĐ thay thế trong lô) -> "".
  *
- * GHI CHÚ ÁNH XẠ (chỉnh Ở ĐÂY nếu tên field GDT thực tế lệch):
- *  - Header: khmshdon, khhdon, shdon, tdlap, nky, nbmst, nbten, nbdchi, nmmst, nmten/nmtnmua,
- *    nmdchi, mhso/mcqt/mhdon(MCCQT), gchu, dvtte, tgia, tgtcthue, tgtthue, ttcktmai, tgtphi,
- *    tgtttbso, thtttoan, tthai, ttxly (giống field danh sách — đã dùng ổn).
- *  - Chữ ký / tra cứu: cqtcks(chuỗi JSON, lấy SigningTime = CQT ký số), ncma(ngày cấp mã),
- *    nbwebsite, ngcnhat(mã TVAN), và mảng ttkhac/cttkhac chứa link + mã tra cứu của người bán.
- *  - Mảng hàng hóa: `hdhhdvu`. Mỗi dòng: ma(mã VT), ten, dvtinh, sluong, dgia, stckhau(tiền CK),
- *    tlckhau(%CK), thtien(tiền chưa thuế), tsuat/ltsuat(thuế suất), tchat(tính chất).
- *
- * BỐN CỘT TIỀN LẤY Ở CẤP HÓA ĐƠN, KHÔNG theo dòng hàng (nên lặp y hệt ở mọi dòng của cùng hóa đơn):
- *  - "Thuế" ← `tgtthue` · "Tiền sau thuế" ← `tgtttbso` · "Tổng CK" ← `ttcktmai` · "Tổng phí" ← `tgtphi`
- *    ("Tổng phí" thiếu -> 0, không để trống — xem ghi chú tại chỗ)
- * Payload chi tiết KHÔNG có tiền thuế theo từng dòng hàng ở field chuẩn (`hdhhdvu[].tthue` gần như
- * luôn null), nên bốn cột này cố ý đọc tổng của cả hóa đơn.
+ * Bỏ field `gchdgoc` (ghi chú dài của NB, vd "Hóa đơn thay thế cho hóa đơn điện tử mẫu 1 ký hiệu
+ * C26TLT số 1796 lập ngày…") — thừa; số + ngày gốc là đủ cho kế toán định danh. Ngày gốc định dạng
+ * `dd-MM-yyyy` (dấu `-`) để phân biệt với các mặt phân tách khác. Hóa đơn mới (tthai=1) -> "".
  */
+function tinhGhiChuLienQuan(
+  detail: Record<string, unknown>,
+  replacedBy?: ReplacedByMap,
+): string {
+  const tthai = s(detail.tthai);
+  if (tthai === "2" || tthai === "3") {
+    const soHd = s(detail.shdgoc);
+    const ngay = s(detail.tdlhdgoc);
+    if (!soHd && !ngay) return "";
+    const dongTu = tthai === "3" ? "Điều chỉnh" : "Thay thế";
+    const ngayFmt = ngay ? formatDateVN(ngay).replace(/\//g, "-") : "";
+    return [`${dongTu} cho hóa đơn`, soHd, ngayFmt ? `ngày ${ngayFmt}` : ""]
+      .filter(Boolean)
+      .join(" ");
+  }
+  if (tthai === "4" || tthai === "5") {
+    const key = `${s(detail.nbmst)}|${s(detail.khhdon)}|${s(detail.shdon)}`;
+    const r = replacedBy?.get(key);
+    if (!r) return "";
+    const dongTu = tthai === "5" ? "Bị điều chỉnh" : "Bị thay thế";
+    const ngayFmt = r.ngay ? formatDateVN(r.ngay).replace(/\//g, "-") : "";
+    return [`${dongTu} bởi hóa đơn`, r.soHd, ngayFmt ? `ngày ${ngayFmt}` : ""]
+      .filter(Boolean)
+      .join(" ");
+  }
+  return "";
+}
+
+
 export function toDetailRows(
   detail: Record<string, unknown> | null | undefined,
   stt = 0,
+  replacedBy?: ReplacedByMap,
 ): DetailRow[] {
   if (!detail) return [];
+
+  // Tra cứu hóa đơn gốc theo NCC phát hành (registry keyed bằng `msttcgp`, xem traCuuNcc.ts).
+  // Tính 1 lần cho cả hóa đơn: `urlTraCuu` = link trang tra cứu của NCC, `dliu` = mã tra cứu trích
+  // đúng field của NCC đó. NCC chưa có trong registry -> cả hai rỗng.
+  const traCuu = traCuuNcc(detail);
 
   // Thông tin hóa đơn — lặp mỗi dòng hàng.
   const header = {
@@ -198,16 +219,14 @@ export function toDetailRows(
     ngayCqtKy: chuKySigningTime(detail.cqtcks) || s(detail.ncma),
     ghiChu: s(detail.gchu),
     websiteNb: s(detail.nbwebsite),
-    urlTraCuu: pickTtKhac(detail.ttkhac, "PortalLink"),
-    // "Mã tra cứu" (một số bên ghi thẳng tiếng Việt), "Fkey" (EasyInvoice/SoftDreams),
-    // "KeySearch" (PM Quản lý doanh nghiệp), "TransactionID" (MISA — nằm ở `cttkhac`).
-    maTraCuu:
-      pickTtKhac(detail.ttkhac, "Mã tra cứu", "Fkey", "KeySearch") ||
-      pickTtKhac(detail.cttkhac, "TransactionID"),
+    // MST nhà cung cấp phát hành — khóa ghép với registry `TRA_CUU_NCC`.
+    msttcgp: s(detail.msttcgp),
+    urlTraCuu: traCuu?.url ?? "",
+    dliu: traCuu?.maTraCuu ?? "",
     tvan: s(detail.ngcnhat),
     // `nmtnmua` = họ tên người mua hàng; hóa đơn xăng dầu/vận tải ghi biển số xe vào đây.
     bienSoXe: bienSoXe(s(detail.nmtnmua)),
-    ghiChuLienQuan: ghiChuHoaDonGoc(detail),
+    ghiChuLienQuan: tinhGhiChuLienQuan(detail, replacedBy),
     maNt: s(detail.dvtte),
     tyGia: num(detail.tgia),
     tongTienHang: num(detail.tgtcthue),
@@ -232,7 +251,7 @@ export function toDetailRows(
   // Dựng MỘT LẦN cho cả hóa đơn, không dựng lại ở từng dòng hàng.
   const rateByLabel = taxRateByLabel(detail);
 
-  return items.map((raw) => {
+  return items.map((raw, idx) => {
     const it = (raw ?? {}) as Record<string, unknown>;
     const tienChuaThue = num(pick(it, "thtien", "thanhtien"));
     const thueSuat = s(pick(it, "ltsuat", "tsuat", "thuesuat"));
@@ -266,6 +285,8 @@ export function toDetailRows(
       tinhChat: s(pick(it, "tchat", "tinhchat")),
       thueDong,
       tienSauThueDong: stripFloatNoise((tienChuaThue ?? 0) + thueDong),
+      // Đánh dấu dòng đầu tiên của mỗi hóa đơn để chỉ hiển thị tổng tiền một lần
+      isFirstRow: idx === 0,
     };
   });
 }

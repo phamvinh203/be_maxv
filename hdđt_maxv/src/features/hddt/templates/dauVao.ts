@@ -293,7 +293,7 @@ export function detailDauVao(): InvoiceColumn<DetailRow>[] {
       width: 14,
       align: "right",
       numFmt: MONEY2_FMT,
-      value: (r) => r.tongCk,
+      value: (r) => (r.isFirstRow ? r.tongCk : undefined),
     },
     {
       key: "tongPhi",
@@ -301,7 +301,7 @@ export function detailDauVao(): InvoiceColumn<DetailRow>[] {
       width: 14,
       align: "right",
       numFmt: MONEY2_FMT,
-      value: (r) => r.tongPhi,
+      value: (r) => (r.isFirstRow ? r.tongPhi : undefined),
     },
     {
       key: "tongTt",
@@ -309,7 +309,7 @@ export function detailDauVao(): InvoiceColumn<DetailRow>[] {
       width: 14,
       align: "right",
       numFmt: MONEY2_FMT,
-      value: (r) => r.tongTt,
+      value: (r) => (r.isFirstRow ? r.tongTt : undefined),
     },
     {
       key: "tongTtVnd",
@@ -317,7 +317,7 @@ export function detailDauVao(): InvoiceColumn<DetailRow>[] {
       width: 14,
       align: "right",
       numFmt: MONEY2_FMT,
-      value: (r) => toVnd(r.tongTt, r.tyGia),
+      value: (r) => (r.isFirstRow ? toVnd(r.tongTt, r.tyGia) : undefined),
     },
     {
       // Cùng hàm đặt tên với lượt xuất file -> tên ở đây là tên file có thật trên đĩa.
@@ -339,7 +339,12 @@ export function detailDauVao(): InvoiceColumn<DetailRow>[] {
       key: "ghiChuDacBiet",
       header: "Ghi Chú: Các trường hợp đặc biệt kế toán xem xét kỹ hơn",
       width: 30,
-      value: () => undefined,
+      value: (r) => {
+        const warnings: string[] = [];
+        if (!r.buyerDiaChi) warnings.push("Thiếu địa chỉ người mua");
+        if (r.trangThaiHd === "4") warnings.push("Hóa đơn này không được kê khai");
+        return warnings.length > 0 ? warnings.join(". ") : undefined;
+      },
     },
     { key: "ghiChu1", header: "Ghi chú 1", width: 12, value: (r) => r.ghiChu },
     { key: "hinhThucTt", header: "Hình thức thanh toán", width: 12, value: (r) => r.hinhThucTt },
@@ -365,8 +370,9 @@ export function detailDauVao(): InvoiceColumn<DetailRow>[] {
     },
     { key: "bienSoXe", header: "Biển số xe", width: 12, value: (r) => r.bienSoXe },
     { key: "websiteNb", header: "Website người bán", width: 12, value: (r) => r.websiteNb },
-    { key: "urlTraCuu", header: "url tra cứu hóa đơn gốc", width: 12, value: (r) => r.urlTraCuu },
-    { key: "maTraCuu", header: "Mã tra cứu hóa đơn gốc", width: 30, value: (r) => r.maTraCuu },
+    { key: "msttcgp", header: "Nhà cung cấp hóa đơn gốc", width: 20, value: (r) => r.msttcgp },
+    { key: "urlTraCuu", header: "URL tra cứu hóa đơn gốc", width: 30, value: (r) => r.urlTraCuu },
+    { key: "dliu", header: "Mã tra cứu hóa đơn gốc", width: 30, value: (r) => r.dliu },
     {
       // Chuỗi copy thẳng sang Google để tìm trang tra cứu, khi hóa đơn không kèm sẵn link:
       // tên nhà cung cấp hóa đơn (TVAN) cho ra đúng trang tra cứu hơn là tên người bán.

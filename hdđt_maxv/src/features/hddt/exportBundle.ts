@@ -9,7 +9,7 @@
 import { getSavedInvoices } from "./api/gdt";
 import { getSavedDetails, renderInvoicePdf, fetchOriginalInvoiceXml } from "./api/invoiceDetail";
 import { toDisplayRow } from "./invoiceRow";
-import { toDetailRows } from "./detailRow";
+import { buildReplacedByMap, toDetailRows } from "./detailRow";
 import { toInvoiceView, type InvoiceView } from "./invoiceView";
 import {
   renderInvoiceHtml,
@@ -370,8 +370,10 @@ export async function exportInvoiceBundle(opts: ExportBundleOptions): Promise<Ex
     // Excel tổng hợp giờ là lựa chọn RIÊNG (ô tick "Excel tổng hợp"): trước đây luôn ghi kèm, nay chỉ
     // ghi khi người dùng tick — cho phép chỉ tải Excel, hoặc chỉ tải file hóa đơn mà không kèm Excel.
     if (formats.excel) {
+      // Bản đồ ngược "HĐ này bị HĐ nào thay thế/điều chỉnh" — dựng cùng khoảng (xem detailRow.ts).
+      const replacedBy = buildReplacedByMap(details);
       const detailRows = details.flatMap((d) =>
-        toDetailRows(d, sttOf.get(detailInvoiceKey(d)) ?? 0),
+        toDetailRows(d, sttOf.get(detailInvoiceKey(d)) ?? 0, replacedBy),
       );
       const buffer = await buildSummaryWorkbookBuffer(overviewRows, detailRows, direction, range);
       await writeFile(rangeDir, summaryWorkbookFilename(direction, range), buffer);

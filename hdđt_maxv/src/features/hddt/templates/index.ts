@@ -28,3 +28,4 @@ export function detailColumns(direction: InvoiceDirection): InvoiceColumn<Detail
 
 export { backupColumns } from "./backupColumns";
 export { fileColumns, renderCell, type InvoiceColumn } from "./types";
+export { detailRowFill } from "./types";
