@@ -16,15 +16,14 @@ export interface FileHoaDonGoc {
 /**
  * Dữ liệu 1 hóa đơn cần để tải file gốc. NCC đơn giản (MISA) chỉ dùng `code`; NCC khác dùng thêm:
  *  - `sellerMst`: MST người bán (nbmst) — Viettel cần cho `supplierTaxCode`/`taxCode`.
- *  - `recaptcha`: token captcha do NGƯỜI DÙNG giải (Viettel). App KHÔNG tự giải/bỏ qua captcha.
+ * (Viettel có captcha nhưng BE TỰ giải bên trong provider — xem `vinvoice_viettel.ts` — nên captcha
+ *  không phải là input ở đây.)
  */
 export interface DownloadRequest {
   /** Mã tra cứu hóa đơn (MISA = TransactionID; Viettel = reservationCode). */
   code: string;
   /** MST người bán (nbmst). Bắt buộc với NCC cần (Viettel); MISA bỏ qua. */
   sellerMst?: string;
-  /** Token captcha do người dùng cung cấp. Bắt buộc với NCC có captcha (Viettel); MISA bỏ qua. */
-  recaptcha?: string;
 }
 
 /**

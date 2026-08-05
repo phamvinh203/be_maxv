@@ -72,7 +72,7 @@ interface Supplier {
  *
  * LUỒNG TẢI: lấy chi tiết đã lưu của khoảng (`getSavedDetails`) -> rút mã tra cứu từng HĐ
  * (`traCuuNcc(detail).maTraCuu`) -> gọi BE proxy `taiHoaDonGoc` tải PDF -> ghi vào thư mục đã chọn.
- * Chỉ NCC có cờ `taiTuDong` trong registry (hiện MISA) tải được; NCC khác đánh dấu "chưa hỗ trợ".
+ * Chỉ NCC có cờ `taiTuDong` trong registry (hiện MISA, Viettel) tải được; NCC khác đánh dấu "chưa hỗ trợ".
  */
 export default function DownloadOriginalDialog({
   open,
