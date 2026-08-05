@@ -745,6 +745,9 @@ const SAVED_LIST_SELECT = {
   tthai: true,
   ttxly: true,
   tt_tai: true,
+  // `raw` (payload GDT gốc) chỉ đọc để lấy `msttcgp` (MST NCC phát hành) — dùng cho dialog "Tải hóa
+  // đơn gốc" lọc theo TRA_CUU_NCC. `mapSavedRow` trích ra rồi bỏ, không đẩy nguyên `raw` ra FE.
+  raw: true,
 } as const;
 
 /** 1 hóa đơn đã lưu, chuẩn hóa lại đúng tên field GDT để FE dùng chung mapping với luồng tra cứu GDT. */
@@ -772,6 +775,11 @@ export interface SavedInvoiceRow {
   ttxly?: string;
   /** Trạng thái tải chi tiết: "OK" | "error" | undefined (chưa tải) — cột "T. thái tải". */
   tt_tai?: string;
+  /**
+   * MST nhà cung cấp phát hành (`msttcgp`, vd Viettel/MISA) — trích từ `raw` (payload GDT gốc) trong
+   * `mapSavedRow`. Dùng cho dialog "Tải hóa đơn gốc" để gom/lọc theo `TRA_CUU_NCC`. Rỗng nếu raw thiếu.
+   */
+  msttcgp?: string;
 }
 
 /** Ép 1 dòng DB (Decimal/Date) về kiểu JSON thuần (number/string) — tránh Decimal serialize thành chuỗi ở FE. */
@@ -799,6 +807,8 @@ function mapSavedRow(row: Record<string, unknown>): SavedInvoiceRow {
     tthai: toStr(row.tthai),
     ttxly: toStr(row.ttxly),
     tt_tai: toStr(row.tt_tai),
+    // Trích `msttcgp` từ payload GDT gốc (`raw`) — không đẩy nguyên `raw` ra FE.
+    msttcgp: toStr((row.raw as Record<string, unknown> | null)?.msttcgp),
   };
 }
 

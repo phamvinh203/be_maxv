@@ -31,12 +31,20 @@ import {
   deleteSyncLog,
   systemStats,
 } from "../../controllers/client/hddt/gdt.controller";
+import { downloadOriginalInvoice } from "../../controllers/client/hddt/traCuuGoc.controller";
 
 export default async function (
   fastify: FastifyInstance
 ) {
   fastify.get("/captcha", captcha);
   fastify.post("/login", login);
+
+  // Tải FILE PDF GỐC 1 hóa đơn trực tiếp từ trang tra cứu của NCC phát hành (MISA…).
+  // Chỉ cần JWT app (không gọi cổng thuế -> không cần X-Gdt-Token). Trả nguyên bytes file.
+  fastify.get("/tra-cuu-goc", {
+    preHandler: [fastify.authenticate],
+    handler: downloadOriginalInvoice,
+  });
 
   // Cần JWT app (Authorization) để resolveTenantDb biết ghi vào DB công ty nào (tra cứu
   // GDT luôn lưu vào DB); token GDT gửi qua header X-Gdt-Token (xem gdt.controller.ts).
