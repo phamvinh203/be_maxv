@@ -1,6 +1,7 @@
 import { apiFetch } from "../../../lib/http";
 import type {
   CaptchaInfo,
+  GdtSavedPassword,
   InvoiceDirection,
   InvoiceQuery,
   InvoiceRaw,
@@ -30,6 +31,14 @@ export async function loginGdt(body: LoginPayload): Promise<LoginResult> {
     throw new Error(data.message || "Đăng nhập thất bại");
   }
   return data;
+}
+
+/**
+ * GET /api/v1/gdt/credential → { password } — mật khẩu cổng thuế đã lưu (đã giải mã) của công ty
+ * đang chọn; `null` nếu chưa lưu. Dùng: `DialogLoginHddt` (điền sẵn vào ô mật khẩu khi mở dialog).
+ */
+export async function getGdtSavedPassword(): Promise<GdtSavedPassword> {
+  return apiFetch<GdtSavedPassword>("/gdt/credential");
 }
 
 /**

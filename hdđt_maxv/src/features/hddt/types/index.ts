@@ -23,6 +23,11 @@ export interface LoginResult {
   message?: string;
 }
 
+/** Mật khẩu cổng thuế đã lưu của công ty đang chọn (GET /gdt/credential); `null` = chưa lưu. */
+export interface GdtSavedPassword {
+  password: string | null;
+}
+
 // ============================================================
 //  Hóa đơn (tra cứu GDT / đọc DB / hiển thị)
 // ============================================================

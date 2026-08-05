@@ -1,5 +1,5 @@
 import { useEffect, useId, useMemo, useRef, useState, type FormEvent } from "react";
-import { useMutation, useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import Dialog from "@mui/material/Dialog";
 import DialogContent from "@mui/material/DialogContent";
 import DialogActions from "@mui/material/DialogActions";
@@ -17,6 +17,10 @@ import Refresh from "@mui/icons-material/Refresh";
 import Visibility from "@mui/icons-material/Visibility";
 import VisibilityOff from "@mui/icons-material/VisibilityOff";
 import { getCaptcha, loginGdt } from "../features/hddt/api/gdt";
+import {
+  gdtSavedPasswordKey,
+  useGdtSavedPasswordQuery,
+} from "../features/hddt/api/credentialQueries";
 import { solveCaptcha } from "../features/hddt/captcha/solveCaptcha";
 import { getErrorMessage } from "../lib/errors";
 import logoThueNhaNuoc from "../assets/logo_thue_nha_nuoc.jpg";
@@ -67,6 +71,15 @@ export default function DialogLoginHddt({
   const loginMutation = useMutation({ mutationFn: loginGdt });
   const submitting = loginMutation.isPending;
 
+  // Mật khẩu cổng thuế đã lưu (server suy theo MST công ty đang chọn = `initialUsername`) — điền
+  // sẵn vào ô mật khẩu khi mở dialog.
+  const queryClient = useQueryClient();
+  const activeMst = initialUsername ?? "";
+  const savedPwQuery = useGdtSavedPasswordQuery(activeMst, open);
+  const savedPassword = savedPwQuery.data?.password ?? null;
+  // Chỉ điền sẵn 1 lần mỗi lần mở, để không đè lên khi người dùng đã sửa tay.
+  const didPrefillRef = useRef(false);
+
   // Ẩn ảnh captcha cũ khi lấy captcha lỗi — tránh người dùng nhập theo phiên đã hỏng.
   const captchaSrc = useMemo(
     () =>
@@ -95,7 +108,16 @@ export default function DialogLoginHddt({
     setCaptchaInput("");
     setError("");
     setDone(false);
+    didPrefillRef.current = false;
   }, [open, initialUsername]);
+
+  // ĐIỀN SẴN mật khẩu đã lưu khi mở dialog (một lần/lần mở). Query trả về sau bước reset ở trên nên
+  // đặt ở effect riêng; dùng functional set để không đè lên nếu người dùng đã kịp gõ mật khẩu khác.
+  useEffect(() => {
+    if (!open || didPrefillRef.current || !savedPassword) return;
+    didPrefillRef.current = true;
+    setPassword((prev) => (prev ? prev : savedPassword));
+  }, [open, savedPassword]);
 
   // TỰ ĐIỀN MÃ CAPTCHA: mỗi khi có ảnh SVG mới (`captcha.content` đổi — lúc mở dialog hoặc bấm
   // refresh), giải mã ngay từ SVG bằng `solveCaptcha` rồi đổ vào ô nhập. Giải không ra (trả null,
@@ -127,7 +149,11 @@ export default function DialogLoginHddt({
     return () => clearTimeout(timer);
   }, [done]);
 
-  /** Validate + gọi loginGdt; thành công báo lên qua onLoginSuccess, thất bại thì lấy captcha mới. Dùng: submit form (nút "Đăng nhập" hoặc phím Enter). */
+  /**
+   * Validate + gọi loginGdt; thành công báo lên qua onLoginSuccess, thất bại thì lấy captcha mới.
+   * Server tự lưu/cập nhật mật khẩu khi đăng nhập thành công, nên FE chỉ cần làm mới cache mật khẩu
+   * đã lưu để lần mở sau điền đúng bản mới nhất. Dùng: submit form (nút "Đăng nhập" hoặc phím Enter).
+   */
   const handleSubmit = (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     if (submitting || done) return;
@@ -142,6 +168,8 @@ export default function DialogLoginHddt({
       {
         onSuccess: (res) => {
           setDone(true);
+          // Server vừa lưu/cập nhật mật khẩu -> làm mới cache để lần mở sau điền đúng bản mới nhất.
+          void queryClient.invalidateQueries({ queryKey: gdtSavedPasswordKey(mst) });
           if (res.token) onLoginSuccess?.(res.token, mst);
         },
         onError: (e) => {
