@@ -67,6 +67,14 @@ model DonVi {
   sdt               String? // số điện thoại công ty
   loaiHinhKinhDoanh String? // loại hình kinh doanh (hộ KD, công ty TNHH, CP...)
 
+  // Mật khẩu cổng thuế (GDT) đã lưu — DÙNG CHUNG cho mọi user có quyền trên MST này, để lần sau
+  // (kể cả trình duyệt khác) khỏi gõ lại. Mã hóa AES-256-GCM (xem services/client/hddt/gdtCredential.ts):
+  // KHÔNG bao giờ lưu plaintext, KHÔNG hash (phải giải ngược để đăng nhập hộ). null = chưa lưu; cả ba
+  // cột luôn cùng null hoặc cùng có giá trị (bất biến giữ ở tầng service, không ở DB).
+  gdtPasswordCipher String? // ciphertext (base64)
+  gdtPasswordIv     String? // IV/nonce 12 byte (base64)
+  gdtPasswordTag    String? // GCM auth tag (base64)
+
   // Owner sở hữu MST này (đếm giới hạn gói + xác định ai quản lý/nhân viên thuộc account nào)
   ownerId String
   owner   User   @relation("DonViOwner", fields: [ownerId], references: [id], onDelete: Cascade)

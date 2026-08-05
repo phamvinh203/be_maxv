@@ -6,6 +6,13 @@ import {
   resolveTenantInfo,
 } from "../../../helpers/resolveTenantDb";
 import { renderPdfFromHtml } from "../../../helpers/pdfRenderer";
+import { sysPrisma } from "../../../config/db.sys";
+import { accessibleDonViWhere } from "../../../helpers/access";
+import {
+  decryptGdtPassword,
+  encryptGdtPassword,
+  type EncryptedBlob,
+} from "../../../services/client/hddt/gdtCredential";
 import {
   InvoiceDetailOneBody,
   LoginRequest,
@@ -13,6 +20,40 @@ import {
   SoldInvoiceQuery,
   SyncRequestBody,
 } from "../../../types/gdt";
+
+/**
+ * Công ty đang chọn (theo `req.user.donViId`) kèm credential GDT đã lưu, có kiểm quyền
+ * (`accessibleDonViWhere`). `null` nếu chưa chọn công ty / hết quyền — luồng login vẫn chạy được
+ * bằng mật khẩu gõ tay, chỉ là không dùng/không lưu được mật khẩu đã lưu.
+ */
+async function activeCompanyCredential(request: FastifyRequest): Promise<{
+  id: string;
+  maSoThue: string;
+  storedBlob: EncryptedBlob | null;
+} | null> {
+  const donViId = request.user?.donViId;
+  if (!donViId) return null;
+  const scope = accessibleDonViWhere(request.user.userId, request.user.role);
+  if (!scope) return null;
+
+  const dv = await sysPrisma.donVi.findFirst({
+    where: { ...scope, id: donViId },
+    select: {
+      id: true,
+      maSoThue: true,
+      gdtPasswordCipher: true,
+      gdtPasswordIv: true,
+      gdtPasswordTag: true,
+    },
+  });
+  if (!dv) return null;
+
+  const storedBlob =
+    dv.gdtPasswordCipher && dv.gdtPasswordIv && dv.gdtPasswordTag
+      ? { cipher: dv.gdtPasswordCipher, iv: dv.gdtPasswordIv, tag: dv.gdtPasswordTag }
+      : null;
+  return { id: dv.id, maSoThue: dv.maSoThue, storedBlob };
+}
 
 /** Token đăng nhập GDT gửi qua header riêng `X-Gdt-Token` (Authorization đã dành cho JWT app). */
 function extractGdtToken(request: FastifyRequest): string | undefined {
@@ -37,21 +78,70 @@ export async function captcha(
   }
 }
 
+/**
+ * POST /gdt/login (authenticated) — đăng nhập cổng thuế. Đăng nhập THÀNH CÔNG thì tự MÃ HÓA LƯU mật
+ * khẩu cho công ty đang chọn (khi MST khớp + đã cấu hình khóa) để lần sau điền sẵn. Không có bước
+ * "ghi nhớ": mỗi lần đăng nhập đúng là cập nhật lại mật khẩu đã lưu (đổi mật khẩu cổng thuế -> lần
+ * đăng nhập đúng kế tiếp tự ghi đè bản cũ).
+ */
 export async function login(
   request: FastifyRequest<{ Body: LoginRequest }>,
   reply: FastifyReply
 ) {
+  const body = request.body;
+  if (!body?.mst || !body?.password || !body?.captcha || !body?.key) {
+    return reply.status(400).send({ message: "Vui lòng nhập đầy đủ thông tin." });
+  }
+
   try {
-    const result = await GDTService.login(request.body);
+    const result = await GDTService.login(body);
+
+    // Đăng nhập OK -> lưu/cập nhật mật khẩu đã mã hóa cho công ty đang chọn (nếu MST khớp + có khóa).
+    // MST khớp: tránh ghi mật khẩu của MST khác đè lên công ty đang chọn. Lỗi lưu / thiếu khóa KHÔNG
+    // làm hỏng đăng nhập (token đã có trong tay), chỉ là lần sau không điền sẵn được.
+    const active = await activeCompanyCredential(request);
+    if (active && body.mst === active.maSoThue) {
+      const blob = encryptGdtPassword(body.password);
+      if (blob) {
+        await sysPrisma.donVi
+          .update({
+            where: { id: active.id },
+            data: {
+              gdtPasswordCipher: blob.cipher,
+              gdtPasswordIv: blob.iv,
+              gdtPasswordTag: blob.tag,
+            },
+          })
+          .catch((e) =>
+            request.log.warn({ err: e }, "[gdt.login] không lưu được mật khẩu GDT"),
+          );
+      }
+    }
 
     return reply.send(result);
   } catch (err) {
     request.log.error(err);
 
-    return reply.status(401).send({
+    // KHÔNG dùng 401: interceptor `apiFetchRaw` của FE dành riêng 401 cho nghĩa "cookie app hết hạn"
+    // -> nó sẽ gọi /auth/refresh (thành công vì phiên app còn hạn) rồi GỬI LẠI request đăng nhập với
+    // captcha đã bị dùng, thành 2 lượt gọi cổng thuế cho 1 lần bấm. 400 = sai captcha/thông tin GDT.
+    return reply.status(400).send({
       message: err instanceof Error ? err.message : "Đăng nhập GDT thất bại",
     });
   }
+}
+
+/**
+ * GET /gdt/credential (authenticated) — trả MẬT KHẨU đã lưu (đã giải mã) của công ty đang chọn để
+ * FE điền sẵn vào ô mật khẩu; `{ password: null }` nếu chưa lưu / chưa cấu hình khóa. Không cần token GDT.
+ *
+ * LƯU Ý BẢO MẬT: endpoint này gửi MẬT KHẨU THẬT về trình duyệt (đã đăng nhập app + đúng quyền công
+ * ty đang chọn) để điền sẵn — đúng theo thiết kế "điền thẳng mật khẩu vào ô".
+ */
+export async function getGdtCredential(request: FastifyRequest, reply: FastifyReply) {
+  const active = await activeCompanyCredential(request);
+  const password = active?.storedBlob ? decryptGdtPassword(active.storedBlob) : null;
+  return reply.send({ password });
 }
 
 /**
