@@ -12,9 +12,14 @@ import IconButton from "@mui/material/IconButton";
 import Checkbox from "@mui/material/Checkbox";
 import FormControlLabel from "@mui/material/FormControlLabel";
 import LinearProgress from "@mui/material/LinearProgress";
+import ToggleButton from "@mui/material/ToggleButton";
+import ToggleButtonGroup from "@mui/material/ToggleButtonGroup";
 import CloseRounded from "@mui/icons-material/CloseRounded";
 import FolderOpenRounded from "@mui/icons-material/FolderOpenRounded";
 import FileDownloadRounded from "@mui/icons-material/FileDownloadRounded";
+import CheckCircleRounded from "@mui/icons-material/CheckCircleRounded";
+import ErrorOutlineRounded from "@mui/icons-material/ErrorOutlineRounded";
+import RemoveCircleOutlineRounded from "@mui/icons-material/RemoveCircleOutlineRounded";
 import {
   supportsDirectoryPicker,
   pickDirectory,
@@ -48,6 +53,39 @@ interface TaiSummary {
   severity: "success" | "warning" | "error";
   text: string;
 }
+
+/**
+ * Ba nhóm kết quả của một lượt tải — mỗi nhóm là 1 nút bấm xem danh sách:
+ *  - `ok`     : tải được file, đã ghi xuống thư mục.
+ *  - `loi`    : ĐÃ GỌI BE nhưng hỏng (mã sai/hết hạn, NCC lỗi, timeout) — đáng thử lại.
+ *  - `boQua`  : KHÔNG gọi BE vì thiếu điều kiện tra cứu (không có URL tra cứu gốc, NCC chưa hỗ trợ
+ *               tải tự động, hoặc hóa đơn chưa có mã tra cứu). Thử lại y nguyên cũng vô ích.
+ */
+type KetQuaNhom = "ok" | "loi" | "boQua";
+
+/** Một dòng trong danh sách kết quả. `file` cho nhóm ok, `lyDo` cho nhóm lỗi/bỏ qua. */
+interface KetQuaItem {
+  key: string;
+  soHd: string;
+  /** Tên NCC phát hành (theo registry), rỗng thì hiện MST để còn tra được. */
+  nccTen: string;
+  /** Tên bên bán trên hóa đơn — để kế toán nhận ra tờ nào. */
+  benTen: string;
+  file?: string;
+  lyDo?: string;
+}
+
+type KetQuaTai = Record<KetQuaNhom, KetQuaItem[]>;
+
+/** Nhãn + màu + icon của từng nhóm, dùng chung cho nút bấm và tiêu đề danh sách. */
+const NHOM_META: Record<
+  KetQuaNhom,
+  { nhan: string; mau: "success" | "error" | "warning"; Icon: typeof CheckCircleRounded }
+> = {
+  ok: { nhan: "Tải thành công", mau: "success", Icon: CheckCircleRounded },
+  loi: { nhan: "Lỗi", mau: "error", Icon: ErrorOutlineRounded },
+  boQua: { nhan: "Bỏ qua", mau: "warning", Icon: RemoveCircleOutlineRounded },
+};
 
 interface Props {
   open: boolean;
@@ -87,6 +125,9 @@ export default function DownloadOriginalDialog({
   const [downloading, setDownloading] = useState(false);
   const [progress, setProgress] = useState<TaiProgress | null>(null);
   const [summary, setSummary] = useState<TaiSummary | null>(null);
+  const [ketQua, setKetQua] = useState<KetQuaTai | null>(null);
+  /** Nhóm đang mở danh sách; `null` = chưa bấm nút nào. */
+  const [nhomDangXem, setNhomDangXem] = useState<KetQuaNhom | null>(null);
 
   const isPurchase = direction === "purchase";
 
@@ -116,6 +157,8 @@ export default function DownloadOriginalDialog({
       setDownloading(false);
       setProgress(null);
       setSummary(null);
+      setKetQua(null);
+      setNhomDangXem(null);
     }
   }, [open, suppliers]);
 
@@ -153,6 +196,8 @@ export default function DownloadOriginalDialog({
     setDownloading(true);
     setSummary(null);
     setProgress(null);
+    setKetQua(null);
+    setNhomDangXem(null);
     try {
       // Chi tiết đã lưu của cả khoảng — nơi duy nhất có `cttkhac` để rút mã tra cứu (chưa tải chi
       // tiết -> không có mã -> đếm vào `thieuMa`).
@@ -173,66 +218,86 @@ export default function DownloadOriginalDialog({
       const sttOf = invoiceSttMap(rows);
       // Hàng đợi tải: chỉ HĐ thuộc NCC đã tick + có bộ tải + có mã tra cứu.
       // `sellerMst` (nbmst) đi kèm vì NCC như Viettel cần nó làm `supplierTaxCode`; MISA bỏ qua.
-      const queue: { msttcgp: string; code: string; sellerMst: string; base: string }[] = [];
-      let thieuMa = 0; // đã tick + hỗ trợ nhưng chưa có mã (chưa tải chi tiết)
+      const queue: (KetQuaItem & { msttcgp: string; code: string; sellerMst: string; base: string })[] =
+        [];
+      const boQua: KetQuaItem[] = [];
+
       for (const row of rows) {
-        if (!checked.has(row.msttcgp) || !nccHoTroTai(row.msttcgp)) continue;
         const key = invoiceKey(row.mauHd, row.soSeri, row.soHd, row.sellerMst);
+        const nccMst = row.msttcgp || "";
+        const ncc = nccMst ? TRA_CUU_NCC[nccMst] : undefined;
+        const item: KetQuaItem = {
+          key,
+          soHd: row.soHd,
+          nccTen: ncc?.ten.trim() || nccMst,
+          benTen: isPurchase ? row.sellerTen : row.buyerTen,
+        };
+
+        // NCC phát hành không có trong registry -> KHÔNG có URL tra cứu hóa đơn gốc để mà tải.
+        // Nhóm này trước đây bị loại khỏi dialog hoàn toàn nên người dùng không thấy chúng ở đâu cả.
+        if (!ncc) {
+          boQua.push({
+            ...item,
+            lyDo: nccMst
+              ? `Không có URL tra cứu hóa đơn gốc — NCC phát hành ${nccMst} chưa có trong danh mục`
+              : "Không có URL tra cứu hóa đơn gốc — hóa đơn thiếu MST NCC phát hành (msttcgp)",
+          });
+          continue;
+        }
+        // NCC người dùng chủ động bỏ tick -> không tính vào nhóm nào, tránh nhiễu danh sách.
+        if (!checked.has(nccMst)) continue;
+        if (!nccHoTroTai(nccMst)) {
+          boQua.push({ ...item, lyDo: "NCC chưa hỗ trợ tải tự động — mở URL tra cứu để tải tay" });
+          continue;
+        }
         const code = maByKey.get(key) ?? "";
         if (!code) {
-          thieuMa += 1;
+          boQua.push({ ...item, lyDo: "Chưa có mã tra cứu — cần tải chi tiết hóa đơn trước" });
           continue;
         }
         queue.push({
-          msttcgp: row.msttcgp,
+          ...item,
+          msttcgp: nccMst,
           code,
           sellerMst: row.sellerMst,
           base: invoiceFileBase(sttOf.get(key) ?? 0, row.ngayLap, row.soHd, row.sellerMst),
         });
       }
 
-      // NCC đã tick nhưng chưa có bộ tải -> báo để người dùng khỏi tưởng bị bỏ sót.
-      const nccChuaHoTro = suppliers.filter((s) => checked.has(s.key) && !nccHoTroTai(s.key));
-
       const total = queue.length;
-      let done = 0;
-      let ok = 0;
-      setProgress({ total, done, ok });
+      const ok: KetQuaItem[] = [];
+      const loi: KetQuaItem[] = [];
+      setProgress({ total, done: 0, ok: 0 });
 
       for (const item of queue) {
+        const file = `${item.base}.pdf`;
         try {
           const blob = await taiHoaDonGoc({
             msttcgp: item.msttcgp,
             code: item.code,
             sellerMst: item.sellerMst,
           });
-          await writeFile(dir, `${item.base}.pdf`, blob);
-          ok += 1;
-        } catch {
-          // Lỗi 1 hóa đơn (mã sai/hết hạn/NCC lỗi) không dừng cả lượt — số lỗi suy ra ở phần tóm tắt.
+          await writeFile(dir, file, blob);
+          ok.push({ ...item, file });
+        } catch (e) {
+          // Lỗi 1 hóa đơn (mã sai/hết hạn/NCC lỗi) không dừng cả lượt — giữ message để xem ở nhóm "Lỗi".
+          loi.push({ ...item, lyDo: getErrorMessage(e, "Không tải được hóa đơn này.") });
         }
-        done += 1;
-        setProgress({ total, done, ok });
+        setProgress({ total, done: ok.length + loi.length, ok: ok.length });
       }
 
-      // Dựng câu tóm tắt: kết quả tải + phần thiếu mã + phần NCC chưa hỗ trợ.
-      const notes: string[] = [];
-      if (thieuMa > 0) notes.push(`${thieuMa} HĐ chưa có mã tra cứu (tải chi tiết trước)`);
-      if (nccChuaHoTro.length > 0) {
-        notes.push(`${nccChuaHoTro.length} NCC khác chưa hỗ trợ tải tự động`);
-      }
-      const noteText = notes.length ? ` ${notes.join("; ")}.` : "";
-
+      setKetQua({ ok, loi, boQua });
       if (total === 0) {
         setSummary({
-          severity: nccChuaHoTro.length || thieuMa ? "warning" : "success",
-          text: `Không có hóa đơn nào để tải.${noteText}`,
+          severity: boQua.length > 0 ? "warning" : "success",
+          text: boQua.length
+            ? `Không có hóa đơn nào tải được, ${boQua.length} hóa đơn bị bỏ qua.`
+            : "Không có hóa đơn nào để tải.",
         });
       } else {
-        const err = total - ok;
         setSummary({
-          severity: err > 0 ? "warning" : "success",
-          text: `Đã tải ${ok}/${total} hóa đơn` + (err > 0 ? `, ${err} lỗi.` : ".") + noteText,
+          severity: loi.length > 0 || boQua.length > 0 ? "warning" : "success",
+          text: `Đã tải ${ok.length}/${total} hóa đơn.`,
         });
       }
     } catch (e) {
@@ -406,9 +471,82 @@ export default function DownloadOriginalDialog({
               </Typography>
             </Stack>
           ) : summary ? (
-            <Alert severity={summary.severity} sx={{ py: 0.5 }}>
-              {summary.text}
-            </Alert>
+            <Stack spacing={1.5}>
+              <Alert severity={summary.severity} sx={{ py: 0.5 }}>
+                {summary.text}
+              </Alert>
+
+              {ketQua && (
+                <>
+                  {/* 3 nhóm kết quả — bấm để mở/đóng danh sách hóa đơn của nhóm đó. */}
+                  <ToggleButtonGroup
+                    size="small"
+                    exclusive
+                    value={nhomDangXem}
+                    onChange={(_, v: KetQuaNhom | null) => setNhomDangXem(v)}
+                    sx={{ flexWrap: "wrap" }}
+                  >
+                    {(Object.keys(NHOM_META) as KetQuaNhom[]).map((nhom) => {
+                      const { nhan, mau, Icon } = NHOM_META[nhom];
+                      const soLuong = ketQua[nhom].length;
+                      return (
+                        <ToggleButton
+                          key={nhom}
+                          value={nhom}
+                          color={mau}
+                          disabled={soLuong === 0}
+                          sx={{ textTransform: "none", gap: 0.75, px: 1.5 }}
+                        >
+                          <Icon fontSize="small" color={soLuong ? mau : "disabled"} />
+                          {nhan} <b>{soLuong}</b>
+                        </ToggleButton>
+                      );
+                    })}
+                  </ToggleButtonGroup>
+
+                  {nhomDangXem && (
+                    <Box
+                      sx={{
+                        maxHeight: 200,
+                        overflowY: "auto",
+                        border: 1,
+                        borderColor: "divider",
+                        borderRadius: 1,
+                      }}
+                    >
+                      {ketQua[nhomDangXem].map((item) => (
+                        <Box
+                          key={item.key}
+                          sx={{
+                            px: 1.5,
+                            py: 0.75,
+                            borderBottom: 1,
+                            borderColor: "divider",
+                            "&:last-of-type": { borderBottom: 0 },
+                          }}
+                        >
+                          <Typography variant="body2" sx={{ fontWeight: 600 }}>
+                            HĐ {item.soHd || "(không số)"}
+                            <Typography component="span" variant="body2" color="text.secondary">
+                              {" "}
+                              — {item.benTen || "(không rõ tên)"}
+                              {item.nccTen ? ` · ${item.nccTen}` : ""}
+                            </Typography>
+                          </Typography>
+                          <Typography
+                            variant="caption"
+                            color={nhomDangXem === "ok" ? "text.secondary" : `${NHOM_META[nhomDangXem].mau}.main`}
+                            sx={{ wordBreak: "break-word" }}
+                          >
+                            {item.file ?? item.lyDo}
+                          </Typography>
+                        </Box>
+                      ))}
+                    </Box>
+                  )}
+                </>
+              )}
+            </Stack>
           ) : (
             <Typography variant="body2" color="text.secondary">
               Chưa bắt đầu tải. Nhấn “Tải xuống” để bắt đầu.
@@ -425,7 +563,10 @@ export default function DownloadOriginalDialog({
           variant="contained"
           startIcon={<FileDownloadRounded />}
           onClick={handleDownload}
-          disabled={!dir || checked.size === 0 || totalInvoices === 0 || downloading}
+          // KHÔNG chặn khi chưa tick NCC nào: hóa đơn của NCC ngoài registry không hề xuất hiện trong
+          // danh sách tick, nên chặn ở đây thì lượt chỉ toàn HĐ loại đó sẽ không bao giờ xem được
+          // nhóm "Bỏ qua" (lý do: không có URL tra cứu gốc).
+          disabled={!dir || totalInvoices === 0 || downloading}
           sx={{ textTransform: "none" }}
         >
           Tải xuống

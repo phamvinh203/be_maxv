@@ -22,8 +22,11 @@
  *      Response: redirect 303 tới `/HomeNoLogin/downloadPDF?checkCode=<code>` HOẶC HTML chứa link.
  *   4) `downloadPdf(session, checkCode)` — GET `/HomeNoLogin/downloadPDF?checkCode=<code>` -> PDF bytes.
  *
- * OCR KHÔNG HOÀN HẢO — Tesseract.js thuần đạt ~70–85% với captcha ASP.NET. Provider `vpt` ở cuối
- * file tự retry 5 lần (mỗi lần GET ảnh mới -> text khác). Nếu accuracy vẫn thấp, xem notes cuối file.
+ * OCR không hoàn hảo nhưng đã tối ưu nhiều lớp: sharp preprocess (upscale 3x + grayscale + normalize +
+ * binarize threshold + median despeckle) -> OCR đa biến thể × đa PSM -> chọn kết quả confidence cao nhất
+ * -> confidence gate loại bỏ text rác. Provider `vpt` ở cuối file retry 2 cấp TỚI KHI THÀNH CÔNG: mỗi
+ * session 8 ảnh mới, hết thì init session mới (token/cookie mới) — chạy trong khung 30s (env
+ * `VPT_RETRY_DEADLINE_MS`), fkey sai thì dừng ngay. Chi tiết ở section PREPROCESSING + `solveCaptcha`.
  *
  * HEADER NAVIGATION: cả POST search và GET downloadPDF BẮT BUỘC gửi Sec-Fetch-Mode=navigate +
  * Upgrade-Insecure-Requests=1 — thiếu server trả lỗi hoặc body rỗng (giống DownloadHandler của MISA).
@@ -31,6 +34,7 @@
 
 import { createWorker, PSM } from "tesseract.js";
 import type { Worker } from "tesseract.js";
+import sharp from "sharp";
 import { fetchUpstream, pdfFromResponse } from "./shared";
 import { FileHoaDonGoc, ProviderDownloader, TraCuuGocError } from "./types";
 
@@ -70,8 +74,95 @@ const NAVIGATE_HEADERS: Record<string, string> = {
   "upgrade-insecure-requests": "1",
 };
 
-/** Số lần thử lại khi OCR sai (server không trả checkCode). Mỗi lần GET captcha mới -> text khác. */
-const MAX_CAPTCHA_RETRIES = 5;
+/** Số lần thử captcha trong MỘT session (mỗi lần GET ảnh mới -> text khác). Mỗi lượt chỉ tốn 1 GET ảnh
+ * + OCR ~200–400ms — rẻ hơn nhiều so với init session lại, nên thử dày trong cùng session. */
+const MAX_CAPTCHA_RETRIES = 8;
+
+/**
+ * Thời gian tối đa (ms) cho 1 lần tải: vòng retry session chạy TỚI KHI LẤY ĐƯỢC hóa đơn, chỉ dừng khi
+ * hết deadline này (hoặc fkey sai). Mỗi lượt (1 ảnh + OCR + POST) ~250–400ms, 30s ≈ 10+ session × 8
+ * lượt. Override bằng env `VPT_RETRY_DEADLINE_MS` khi cần chờ lâu hơn / VNPT rate-limit mạnh.
+ */
+const RETRY_DEADLINE_MS = Number(process.env.VPT_RETRY_DEADLINE_MS) || 30_000;
+
+/** Cứu cánh cuối: kể cả deadline còn dư, không quá ngần này session — chống vòng lặp vô hạn nếu env
+ * `VPT_RETRY_DEADLINE_MS` đặt sai (vd quá lớn). 12 session = 96 lượt, xác suất thành công ~100%. */
+const MAX_SESSION_HARD_CAP = 12;
+
+// ============================================================
+//  PREPROCESSING + OCR — sharp pipeline, đa biến thể, confidence gate
+// ============================================================
+
+/**
+ * Các biến thể preprocess để OCR CÙNG 1 ảnh: bản `bin` binarize + despeckle (cắt đường nhiễu chéo và
+ * đốm nhiễu của captcha VNPT), bản `gray` giữ nguyên chi tiết chữ (binarize quá tay có thể làm mất
+ * nét chữ mảnh). OCR cả 2 rồi chọn confidence cao nhất — vì mỗi phép xử lý làm hỏng một kiểu nhiễu
+ * khác nhau, chạy nhiều biến thể tăng xác suất ít nhất 1 biến thể ra text đúng.
+ */
+const PREPROCESS_VARIANTS: { name: string; width: number; threshold?: number }[] = [
+  { name: "bin", width: 360, threshold: 180 },
+  { name: "gray", width: 360 },
+];
+
+/** Cả 2 PSM chạy trên mỗi biến thể — captcha đôi khi chỉ là 1 "từ" gọn, đôi khi có khoảng hở lẻ. */
+const CAPTCHA_PSMS = [PSM.SINGLE_LINE, PSM.SINGLE_WORD] as const;
+const PSM_NAME: Record<number, string> = {
+  [PSM.SINGLE_LINE]: "line",
+  [PSM.SINGLE_WORD]: "word",
+};
+
+/** Ngưỡng confidence tối thiểu — dưới ngưỡng này coi như đọc hỏng, trả `null` để caller lấy ảnh mới
+ * thử lại thay vì POST text rác lên VNPT. Tesseract trên ảnh captcha nhiễu thường 40–70%, ngưỡng 35
+ * lọc được đọc bừa mà không loại bỏ lần đọc đúng nhưng tự tin thấp. */
+const MIN_OCR_CONFIDENCE = 35;
+
+/** Captcha VNPT thường 4–6 ký tự — lần đọc ra ngoài khoảng rộng 3–7 là nghi dính chữ / mất chữ. */
+function captchaLengthOk(text: string): boolean {
+  return text.length >= 3 && text.length <= 7;
+}
+
+/**
+ * Preprocess ảnh captcha bằng sharp thành các biến thể PNG: upscale ~3x (width 360 — LSTM nhận diện
+ * chữ to tốt hơn hẳn chữ nhỏ ~30px), grayscale + normalize (căng tương phản), bản `bin` thêm
+ * threshold binarize + median despeckle để cắt đường nhiễu chéo. sharp tự decode PNG/JPEG nên không
+ * cần thư viện decode riêng. sharp hỏng (ảnh không phải raster…) -> trả `[]` để caller OCR ảnh gốc.
+ */
+async function preprocessCaptcha(
+  image: Buffer,
+): Promise<{ name: string; buffer: Buffer }[]> {
+  try {
+    return await Promise.all(
+      PREPROCESS_VARIANTS.map(async ({ name, width, threshold }) => {
+        let pipeline = sharp(image).resize({ width, kernel: "lanczos3" }).grayscale().normalize();
+        if (threshold !== undefined) {
+          pipeline = pipeline.threshold(threshold).median(3);
+        }
+        return { name, buffer: await pipeline.png().toBuffer() };
+      }),
+    );
+  } catch (err) {
+    // eslint-disable-next-line no-console
+    console.log(`[VNPT-OCR] sharp preprocess thất bại (${err instanceof Error ? err.message : String(err)}) — OCR ảnh gốc`);
+    return [];
+  }
+}
+
+/**
+ * Chọn lần đọc tốt nhất trong các cặp (biến thể × PSM): chỉ xét các lần đọc có độ dài hợp lý (3–7 ký
+ * tự — lần đọc thiếu/mất chữ là rác), trong đó chọn confidence cao nhất; KHÔNG có lần nào đạt độ dài
+ * hợp lý thì coi như toàn đọc hỏng -> `null`. Confidence của ứng viên dưới `MIN_OCR_CONFIDENCE` cũng
+ * về `null` (confidence gate — đọc được text dài hợp lý nhưng tự tin quá thấp vẫn là đoán bừa).
+ */
+function pickBestCaptcha(
+  reads: { text: string; confidence: number }[],
+): { text: string; confidence: number } | null {
+  if (reads.length === 0) return null;
+  const best = reads
+    .filter((r) => captchaLengthOk(r.text))
+    .sort((a, b) => b.confidence - a.confidence)[0];
+  if (!best || best.confidence < MIN_OCR_CONFIDENCE) return null;
+  return best;
+}
 
 // ============================================================
 //  TESSERACT WORKER — cache toàn cục, init lazy
@@ -278,21 +369,98 @@ export async function fetchCaptchaImage(session: VptSession): Promise<Buffer> {
 }
 
 /**
- * Bước 2b: Tự giải captcha VNPT — fetch ảnh -> Tesseract.js -> cleanup text (bỏ ký tự không alphanumeric).
- * Trả text CHỮA+SỐ đã sạch, thường 4–6 ký tự. Text rỗng sau OCR -> `UPSTREAM` (caller nên retry).
+ * Bước 2b: Tự giải captcha VNPT — fetch ảnh -> sharp preprocess thành 2 biến thể (bin cắt nhiễu, gray
+ * giữ chi tiết) -> mỗi biến thể OCR với cả 2 PSM -> chọn lần đọc confidence cao nhất có độ dài hợp lý.
+ * Trả text CHỮ+SỐ đã sạch (thường 4–6 ký tự), hoặc `null` khi không đọc được (rỗng / độ dài bất hợp
+ * lý / confidence dưới ngưỡng).
+ *
+ * Ba lớp tăng tỉ lệ tự giải so với Tesseract thuần (chỉ ~10–30% với captcha ASP.NET):
+ *   1) Preprocess: upscale 3x + grayscale + normalize tương phản; bản `bin` thêm binarize threshold +
+ *      median despeckle — cắt đường nhiễu chéo mà Tesseract thuần hay nhầm thành ký tự.
+ *   2) Đa biến thể × đa PSM: 4 lần đọc cho 1 ảnh, chọn kết quả TỐT NHẤT chứ không tin 1 lần đọc duy
+ *      nhất — các lần đọc sai độc lập với nhau, ít nhất 1 biến thể thường ra text đúng.
+ *   3) Confidence gate: text rác (confidence thấp / độ dài bất hợp lý) bị loại ngay tại đây -> caller
+ *      lấy ảnh mới thử lại, không tốn POST search với text chắc chắn sai.
+ *
+ * `null` CHỨ KHÔNG ném lỗi: ảnh nhiễu quá là chuyện thường, caller chỉ cần lấy ảnh mới thử lại. Ném
+ * ở đây thì lỗi thoát ra ngoài vòng retry của `vpt` và giết luôn cả 8 lượt. Lỗi THẬT (không GET được
+ * ảnh, ảnh 0 byte) vẫn ném `UPSTREAM` từ `fetchCaptchaImage`.
  */
-export async function solveCaptcha(session: VptSession): Promise<string> {
+export async function solveCaptcha(session: VptSession): Promise<string | null> {
   const image = await fetchCaptchaImage(session);
   const worker = await getWorker();
-  const { data } = await worker.recognize(image);
-  // Tesseract có thể dính space/newline/dấu câu — captcha VNPT chỉ alphanumeric nên lọc sạch.
-  const text = (data.text || "").replace(/[^A-Za-z0-9]/g, "");
-  dbg("solveCaptcha raw", data.text || "(rỗng)");
-  dbg("solveCaptcha cleaned", text || "(rỗng)");
-  if (!text) {
-    throw new TraCuuGocError("UPSTREAM", "OCR không đọc được captcha VNPT (text rỗng)");
+
+  // OCR mọi cặp (biến thể × PSM). 4 lần đọc ~400–800ms với worker đã warm — chấp nhận được so với
+  // xác suất đúng tăng lên đáng kể. setParameters trước mỗi recognize vì PSM đổi theo cặp.
+  // Preprocess fail -> chỉ còn biến thể `raw` (ảnh gốc) — chạy như phiên bản Tesseract thuần trước đây.
+  const variants = await preprocessCaptcha(image);
+  const ocrVariants = variants.length > 0 ? variants : [{ name: "raw", buffer: image }];
+  const reads: { text: string; confidence: number; variant: string; psm: string }[] = [];
+  for (const variant of ocrVariants) {
+    for (const psm of CAPTCHA_PSMS) {
+      await worker.setParameters({ tessedit_pageseg_mode: psm });
+      const { data } = await worker.recognize(variant.buffer);
+      // Tesseract có thể dính space/newline/dấu câu — captcha VNPT chỉ alphanumeric nên lọc sạch.
+      const text = (data.text || "").replace(/[^A-Za-z0-9]/g, "");
+      if (text) reads.push({ text, confidence: data.confidence, variant: variant.name, psm: PSM_NAME[psm] });
+    }
   }
-  return text;
+
+  const best = pickBestCaptcha(reads);
+  // Log THẲNG (không qua `dbg`/DEBUG_VNPT) để lúc nào cũng đối chiếu được OCR đọc ra gì với thông báo
+  // lỗi "captcha sai (OCR nhận ...)" ở `searchByFkey`. JSON.stringify để lộ cả \n và khoảng trắng
+  // Tesseract hay chèn — nhìn chuỗi trần không phân biệt được "" với " \n".
+  // eslint-disable-next-line no-console
+  console.log(
+    `[VNPT-OCR] ${reads
+      .map((r) => `${r.variant}/${r.psm}=${JSON.stringify(r.text)}(${Math.round(r.confidence)}%)`)
+      .join(" ")}` +
+      ` -> captcha=${best ? JSON.stringify(best.text) : "null"}${best ? "" : " — coi như đọc hỏng"}`,
+  );
+  return best?.text ?? null;
+}
+
+/**
+ * Câu VNPT trả về khi captcha sai — LẤY TỪ RESPONSE THẬT, không phải đoán:
+ *   "… Website: https://vnpt.com.vn Mã xác thực không chính xác"
+ *
+ * BẮT BUỘC test trên TEXT đã bóc tag (`htmlToText`), KHÔNG test trên HTML thô. Trang search luôn
+ * nhúng sẵn ô captcha (`<img src="/Captcha/Show">`, `name="captch"`) nên bất kỳ pattern nào chứa chữ
+ * "captcha" cũng khớp 100% số lần trên HTML thô — biến phép kiểm tra thành hằng `true` và làm nhánh
+ * "fkey sai" không bao giờ chạy được. Bản cũ `/captcha|mã (xác nhận|bảo mật)|không đúng/` dính đúng
+ * bẫy đó, đồng thời cả 3 alternative đều SAI chữ ("xác thực" chứ không phải "xác nhận", "không chính
+ * xác" chứ không phải "không đúng").
+ */
+const CAPTCHA_ERR_TEXT = "mã xác thực không chính xác".normalize("NFC");
+
+/**
+ * So khớp "captcha sai" trên text đã bóc tag. Chuẩn hóa NFC + lowercase trước khi so: tiếng Việt có
+ * thể về ở dạng TỔ HỢP (NFD — "a" + dấu rời), lúc đó so trực tiếp với literal NFC trong file này sẽ
+ * TRƯỢT dù chữ hiện ra y hệt nhau. Trượt ở đây rất tai hại: mọi lượt captcha sai sẽ bị gán nhãn
+ * "mã tra cứu sai", báo cho kế toán một nguyên nhân hoàn toàn bịa.
+ */
+function laLoiCaptcha(text: string): boolean {
+  return text.normalize("NFC").toLowerCase().includes(CAPTCHA_ERR_TEXT);
+}
+
+/**
+ * Bóc script/style + tag -> text người đọc được, gộp khoảng trắng.
+ *
+ * Trang search của VNPT nặng ~67KB HTML nhưng phần chữ chỉ vài KB. `dbg` cắt 2000 ký tự ĐẦU của HTML
+ * thô nên chỉ thấy `<head>` với đống <link>/<script> — thông báo lỗi nằm sâu dưới body, chưa lần nào
+ * lọt vào log. Bóc tag trước rồi mới cắt thì câu thông báo mới hiện ra.
+ */
+function htmlToText(html: string): string {
+  return html
+    .replace(/<(script|style)\b[^>]*>[\s\S]*?<\/\1>/gi, " ")
+    .replace(/<[^>]+>/g, " ")
+    .replace(/&nbsp;/gi, " ")
+    .replace(/&amp;/gi, "&")
+    .replace(/&lt;/gi, "<")
+    .replace(/&gt;/gi, ">")
+    .replace(/&quot;/gi, '"')
+    .replace(/\s+/g, " ")
+    .trim();
 }
 
 /**
@@ -350,14 +518,31 @@ export async function searchByFkey(
   const checkCode = extractCheckCode(res, html);
   dbg("searchByFkey checkCode", checkCode ?? "(không tìm thấy)");
   if (!checkCode) {
-    // Phân biệt: captcha sai (thường có text "mã xác nhận không đúng") vs fkey không tồn tại.
-    const looksLikeCaptchaErr = /captcha|mã\s*(xác\s*nhận|bảo\s*mật)|không\s*đúng/i.test(html);
-    throw new TraCuuGocError(
+    // Phân biệt: captcha sai ("Mã xác thực không chính xác") vs fkey không tồn tại.
+    const text = htmlToText(html);
+    const looksLikeCaptchaErr = laLoiCaptcha(text);
+
+    // Ca "không phải captcha sai" đến giờ CHƯA có mẫu thật nào — mọi response quan sát được đều là
+    // captcha sai. Nên log nguyên text lần đầu gặp, để bắt được câu VNPT dùng cho fkey sai/hết hạn
+    // (hiện chỉ suy đoán). Captcha sai thì im lặng, tránh spam vì nó xảy ra liên tục.
+    if (!looksLikeCaptchaErr) {
+      // eslint-disable-next-line no-console
+      console.log(
+        `[VNPT-ERR] không khớp mẫu captcha sai — fkey=${JSON.stringify(fkey)}` +
+          ` captcha=${JSON.stringify(captcha)}\n[VNPT-ERR] text trang: ${text.slice(0, 1500)}`,
+      );
+    }
+
+    const err = new TraCuuGocError(
       "INVALID_CODE",
       looksLikeCaptchaErr
         ? `VNPT: captcha sai (OCR nhận "${captcha}") — nên retry`
         : `VNPT không trả checkCode cho fkey "${fkey}" (mã sai hoặc đã hết hạn tra cứu)`,
     );
+    // Hint cho vòng retry của `vpt.download`: captcha sai là TẠM THỜI (sang session mới thử tiếp có ích),
+    // fkey sai là DỨT KHOÁT (session mới không làm fkey đúng hơn) -> throw ngay không phí 24 lượt.
+    err.retryable = looksLikeCaptchaErr;
+    throw err;
   }
   return checkCode;
 }
@@ -393,11 +578,18 @@ export async function downloadPdf(
 // ============================================================
 
 /**
- * Bộ tải VNPT đầy đủ — orchestrate 4 bước + retry captcha khi OCR sai. Origin portal tenant build từ
+ * Bộ tải VNPT đầy đủ — orchestrate 4 bước + retry TỚI KHI THÀNH CÔNG. Origin portal tenant build từ
  * `sellerMst` (MST của công ty phát hành — tab đang hiển thị) nên BẮT BUỘC truyền `sellerMst`.
  *
- * Retry strategy: mỗi lần retry sẽ KHÔNG init session lại (token + cookie còn hạn ngắn ~vài phút),
- * chỉ GET captcha mới -> OCR -> POST lại. Lý do: init lại tốn 1 request + có thể bị rate-limit.
+ * Retry 2 cấp, chạy tới khi lấy được PDF (captcha sai = nguyên nhân TẠM THỜI nên không bỏ cuộc sớm):
+ *  - vòng TRONG: `MAX_CAPTCHA_RETRIES` (8) lần GET ảnh mới + OCR + POST trong CÙNG session — ảnh mới
+ *    mỗi lần GET nên 8 lần này là 8 ảnh khác nhau.
+ *  - vòng NGOÀI: hết 8 lượt trong session mà vẫn captcha sai -> init session MỚI (form token + cookie
+ *    mới) -> 8 ảnh mới tiếp theo. Lặp cho tới khi thành công, giới hạn bởi `RETRY_DEADLINE_MS` (30s,
+ *    env `VPT_RETRY_DEADLINE_MS`) và `MAX_SESSION_HARD_CAP` (12 session) — ảnh random mỗi lượt, xác
+ *    suất đúng độc lập, nên càng thử nhiều càng gần chắc chắn đúng.
+ *  - Lỗi `retryable=false` (fkey SAI, không phải captcha sai) -> throw NGAY — session mới không làm
+ *    fkey đúng hơn, thử tiếp chỉ phí thời gian.
  */
 export const vpt: ProviderDownloader = {
   mst: "0100684378",
@@ -409,23 +601,39 @@ export const vpt: ProviderDownloader = {
         "Thiếu sellerMst — VNPT build origin portal tenant `<mst>-tt78.vnpt-invoice.com.vn` từ MST này",
       );
     }
-    const session = await initSession(sellerMst);
 
-    let lastErr: unknown;
-    for (let i = 0; i < MAX_CAPTCHA_RETRIES; i++) {
-      const captcha = await solveCaptcha(session);
-      try {
-        const checkCode = await searchByFkey(session, code, captcha);
-        return await downloadPdf(session, checkCode);
-      } catch (err) {
-        // INVALID_CODE có thể là captcha sai (OCR nhầm) HOẶC fkey thật sự sai. Retry để phân biệt:
-        // - Nếu retry vẫn fail cùng cách -> nhiều khả năng fkey sai -> throw sau khi hết retry.
-        // - Nếu retry thành công ở lần sau -> chắc chắn là OCR sai lần trước.
-        lastErr = err;
-        if (err instanceof TraCuuGocError && err.code === "INVALID_CODE") {
-          continue;
+    // Khởi tạo sẵn: nếu toàn bộ lượt OCR ra rỗng (hoặc captcha sai đến hết deadline) thì không có err
+    // nào từ `catch` để ném — cần 1 lỗi mặc định thông báo rõ giới hạn đã thử.
+    const deadline = Date.now() + RETRY_DEADLINE_MS;
+    let lastErr: unknown = new TraCuuGocError(
+      "UPSTREAM",
+      `VNPT: không tải được hóa đơn trong ${RETRY_DEADLINE_MS / 1000}s retry captcha` +
+        ` (${MAX_CAPTCHA_RETRIES} ảnh/session, tối đa ${MAX_SESSION_HARD_CAP} session) — thử tải lại`,
+    );
+    let sessions = 0;
+    while (Date.now() < deadline && sessions < MAX_SESSION_HARD_CAP) {
+      sessions++;
+      const session = await initSession(sellerMst);
+      for (let i = 0; i < MAX_CAPTCHA_RETRIES; i++) {
+        // Deadline giữa chừng cũng dừng — không bắt đầu lượt mới khi sắp hết thời gian.
+        if (Date.now() >= deadline) break;
+        // PHẢI nằm TRONG vòng lặp và KHÔNG được ném khi OCR rỗng — đây là nhánh hỏng hay gặp nhất,
+        // lấy ảnh mới thử lại thường qua. Rỗng -> bỏ lượt luôn, chưa tốn POST search.
+        const captcha = await solveCaptcha(session);
+        if (!captcha) continue;
+        try {
+          const checkCode = await searchByFkey(session, code, captcha);
+          return await downloadPdf(session, checkCode);
+        } catch (err) {
+          lastErr = err;
+          if (err instanceof TraCuuGocError && err.code === "INVALID_CODE") {
+            // Captcha sai (retryable=true) -> tiếp tục vòng trong, hết vòng trong thì sang session mới
+            // ở vòng ngoài. Fkey sai (retryable=false) -> throw ngay, vô ích thử tiếp.
+            if (!err.retryable) throw err;
+            continue;
+          }
+          throw err; // UPSTREAM / lỗi khác — không retry.
         }
-        throw err; // UPSTREAM / lỗi khác — không retry.
       }
     }
     throw lastErr;
@@ -434,7 +642,13 @@ export const vpt: ProviderDownloader = {
 
 // ============================================================
 //  NOTES
-//  - PREPROCESSING (nếu accuracy <70%): cài `sharp`, convert grayscale + threshold nhị phân trước
-//    khi đưa vào `worker.recognize`. captcha VNPT thường có 1–2 đường nhiễu chéo — threshold cắt được.
+//  - PREPROCESSING đã tích hợp sẵn: sharp upscale 3x + grayscale + normalize, bản `bin` thêm threshold
+//    binarize + median despeckle; OCR đa biến thể × đa PSM chọn confidence cao nhất. Nếu accuracy vẫn
+//    thấp: chụp ảnh captcha thật, chạy `DEBUG_VNPT=1` xem log [VNPT-OCR] rồi tinh chỉnh
+//    `PREPROCESS_VARIANTS` (threshold, width) hoặc thêm biến thể (vd threshold thấp hơn / blur nhẹ).
+//  - RETRY: vòng ngoài chạy tới khi lấy được PDF, giới hạn `RETRY_DEADLINE_MS` (30s, env
+//    `VPT_RETRY_DEADLINE_MS`) + `MAX_SESSION_HARD_CAP` (12 session × 8 ảnh). Từ log [VNPT-OCR] đếm
+//    được tỉ lệ POST thành công, chỉnh deadline sao cho xác suất tổng (1-(1-p)^n) chấp nhận được.
+//    Lưu ý: thử nhiều = gửi nhiều request tới VNPT — nếu bị rate-limit nên GIẢM deadline thay vì tăng.
 //  - PROD: `buildVptOrigin` hardcode version `tt78` — nếu NCC nâng version portal, sửa tại đó.
 // ============================================================
