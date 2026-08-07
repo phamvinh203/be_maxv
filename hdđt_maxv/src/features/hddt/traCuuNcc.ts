@@ -54,12 +54,23 @@ export type MaTraCuuSpec =
   | { src: "ttkhac"; ttruong?: string }
   | { src: "cttkhac"; ttruong?: string };
 
+/** Context cho URL builder động — chứa dữ liệu của từng hóa đơn để build URL per-row. */
+export interface NccUrlCtx {
+  /** MST người bán đầy đủ (nbmst) — có thể có đuôi chi nhánh `-001` (vd `0900887803-001`). */
+  sellerMst: string;
+}
+
 /** 1 entry registry: NCC phát hành + URL tra cứu + cách lấy mã tra cứu. */
 export interface NccTraCuu {
   /** Tên NCC (hiển thị/chú thích). */
   ten: string;
-  /** Trang tra cứu hóa đơn gốc của NCC. */
-  url: string;
+  /**
+   * Trang tra cứu hóa đơn gốc của NCC. Có thể là:
+   *  - string cố định (MISA, Viettel…) — portal chung cho mọi hóa đơn của NCC đó.
+   *  - function nhận `{ sellerMst }` trả URL per-row — cho NCC portal per-tenant như VNPT (mỗi MST
+   *    người bán có subdomain riêng `<mst>-tt78.vnpt-invoice.com.vn`).
+   */
+  url: string | ((ctx: NccUrlCtx) => string);
   /** Đường dẫn lấy mã tra cứu từ payload GDT. */
   maTraCuu: MaTraCuuSpec;
   /**
@@ -101,8 +112,11 @@ export const TRA_CUU_NCC: Record<string, NccTraCuu> = {
   },
   "0100684378": {
     ten: "Tập Đoàn Bưu chính viễn thông Việt Nam",
-    url: "https://4900848858-tt78.vnpt-invoice.com.vn/",
+    // Portal tenant VNPT: subdomain theo `nbmst` ĐẦY ĐỦ, giữ cả đuôi chi nhánh `-001`/`-002`.
+    // Mỗi công ty/chi nhánh có portal riêng (vd `0900887803-001` -> `0900887803-001-tt78...`).
+    url: ({ sellerMst }) => `https://${sellerMst.trim()}-tt78.vnpt-invoice.com.vn/`,
     maTraCuu: { src: "field", field: "mhdon" },
+    taiTuDong: true,
   }
 };
 
@@ -117,12 +131,17 @@ export interface TraCuuResult {
 /**
  * Tra NCC theo `detail.msttcgp`. Trả `{ ten, url, maTraCuu }` nếu khớp registry, ngược lại `undefined`.
  * `maTraCuu` rỗng khi NCC có entry nhưng payload không có field chứa mã (vd thiếu cttkhac).
+ *
+ * URL: nếu registry khai function (NCC per-tenant như VNPT), gọi function với `sellerMst` = `nbmst`
+ * của từng hóa đơn để build URL riêng. Còn string thì dùng nguyên.
  */
 export function traCuuNcc(detail: Record<string, unknown> | null | undefined): TraCuuResult | undefined {
   if (!detail) return undefined;
   const cfg = TRA_CUU_NCC[rowStr(detail.msttcgp)];
   if (!cfg) return undefined;
-  return { ten: cfg.ten, url: cfg.url, maTraCuu: layMaTraCuu(detail, cfg.maTraCuu) };
+  const sellerMst = rowStr(detail.nbmst);
+  const url = typeof cfg.url === "function" ? cfg.url({ sellerMst }) : cfg.url;
+  return { ten: cfg.ten, url, maTraCuu: layMaTraCuu(detail, cfg.maTraCuu) };
 }
 
 /** Lấy mã tra cứu từ payload theo đặc tả. Export riêng để dùng khi đã giữ sẵn `NccTraCuu`. */
