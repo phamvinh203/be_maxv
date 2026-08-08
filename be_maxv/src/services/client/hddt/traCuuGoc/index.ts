@@ -9,12 +9,13 @@
  */
 
 import { misa } from "./misa";
+import { msInvoice } from "./ms_invoice";
 import { viettel } from "./vinvoice_viettel";
 import { vpt } from "./vnpt";
 import { DownloadRequest, FileHoaDonGoc, ProviderDownloader, TraCuuGocError } from "./types";
 
 /** Danh sách bộ tải đã có. Thêm NCC mới = thêm 1 phần tử ở đây. */
-const REGISTRY: ProviderDownloader[] = [misa, viettel, vpt];
+const REGISTRY: ProviderDownloader[] = [misa, viettel, vpt, msInvoice];
 
 const BY_MST = new Map(REGISTRY.map((p) => [p.mst, p]));
 

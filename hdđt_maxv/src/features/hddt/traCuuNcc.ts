@@ -112,9 +112,18 @@ export const TRA_CUU_NCC: Record<string, NccTraCuu> = {
   },
   "0100684378": {
     ten: "Tập Đoàn Bưu chính viễn thông Việt Nam",
-    // Portal tenant VNPT: subdomain theo `nbmst` ĐẦY ĐỦ, giữ cả đuôi chi nhánh `-001`/`-002`.
-    // Mỗi công ty/chi nhánh có portal riêng (vd `0900887803-001` -> `0900887803-001-tt78...`).
     url: ({ sellerMst }) => `https://${sellerMst.trim()}-tt78.vnpt-invoice.com.vn/`,
+    maTraCuu: { src: "field", field: "mhdon" },
+    taiTuDong: true,
+  },
+  "0105232093": {
+    ten: "Công ty Cổ phần CyberLotus",
+    url: "https://tracuuhoadon1.xcyber.vn/#/tracuuhoadon/tracuu",
+    maTraCuu: { src: "cttkhac", ttruong: "MaTraCuu" },
+  },
+  "0108971656": {
+    ten: "Công ty Cổ phần My Software",
+    url: "https://tracuu.myinvoice.vn/#/",
     maTraCuu: { src: "field", field: "mhdon" },
     taiTuDong: true,
   }
@@ -137,7 +146,7 @@ export interface TraCuuResult {
  */
 export function traCuuNcc(detail: Record<string, unknown> | null | undefined): TraCuuResult | undefined {
   if (!detail) return undefined;
-  const cfg = TRA_CUU_NCC[rowStr(detail.msttcgp)];
+  const cfg = TRA_CUU_NCC[rowStr(detail.msttcgp).trim()];
   if (!cfg) return undefined;
   const sellerMst = rowStr(detail.nbmst);
   const url = typeof cfg.url === "function" ? cfg.url({ sellerMst }) : cfg.url;
