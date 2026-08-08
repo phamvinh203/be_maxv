@@ -41,17 +41,11 @@ function nccHoTroTai(msttcgp: string): boolean {
   return TRA_CUU_NCC[msttcgp]?.taiTuDong === true;
 }
 
-/** Tiến trình tải: tổng số hóa đơn + đã xử lý + số hóa đơn tải OK (số lỗi = done − ok). */
+/** Tiến trình tải: tổng số hóa đơn + đã xử lý + số hóa đơn lỗi. */
 interface TaiProgress {
   total: number;
   done: number;
-  ok: number;
-}
-
-/** Kết quả tóm tắt sau khi tải xong (hoặc lỗi cả lượt). */
-interface TaiSummary {
-  severity: "success" | "warning" | "error";
-  text: string;
+  loi: number;
 }
 
 /**
@@ -63,7 +57,7 @@ interface TaiSummary {
  */
 type KetQuaNhom = "ok" | "loi" | "boQua";
 
-/** Một dòng trong danh sách kết quả. `file` cho nhóm ok, `lyDo` cho nhóm lỗi/bỏ qua. */
+/** Một dòng trong danh sách kết quả. */
 interface KetQuaItem {
   key: string;
   soHd: string;
@@ -71,11 +65,31 @@ interface KetQuaItem {
   nccTen: string;
   /** Tên bên bán trên hóa đơn — để kế toán nhận ra tờ nào. */
   benTen: string;
-  file?: string;
-  lyDo?: string;
+  /** Dòng phụ hiển thị dưới số HĐ: tên file đã ghi (nhóm ok) hoặc lý do (nhóm lỗi/bỏ qua). */
+  moTa: string;
 }
 
 type KetQuaTai = Record<KetQuaNhom, KetQuaItem[]>;
+
+/**
+ * Câu tóm tắt của cả lượt — DẪN XUẤT từ `ketQua` chứ không giữ state riêng, khỏi phải nhớ set/reset
+ * song song hai chỗ. `total` = số HĐ thật sự gọi BE (ok + lỗi); `boQua` không tính vào vì chưa gọi.
+ */
+function tomTatKetQua(kq: KetQuaTai): { severity: "success" | "warning"; text: string } {
+  const total = kq.ok.length + kq.loi.length;
+  if (total === 0) {
+    return kq.boQua.length > 0
+      ? {
+          severity: "warning",
+          text: `Không có hóa đơn nào tải được, ${kq.boQua.length} hóa đơn bị bỏ qua.`,
+        }
+      : { severity: "success", text: "Không có hóa đơn nào để tải." };
+  }
+  return {
+    severity: kq.loi.length > 0 || kq.boQua.length > 0 ? "warning" : "success",
+    text: `Đã tải ${kq.ok.length}/${total} hóa đơn.`,
+  };
+}
 
 /** Nhãn + màu + icon của từng nhóm, dùng chung cho nút bấm và tiêu đề danh sách. */
 const NHOM_META: Record<
@@ -124,8 +138,9 @@ export default function DownloadOriginalDialog({
   const [checked, setChecked] = useState<Set<string>>(new Set());
   const [downloading, setDownloading] = useState(false);
   const [progress, setProgress] = useState<TaiProgress | null>(null);
-  const [summary, setSummary] = useState<TaiSummary | null>(null);
   const [ketQua, setKetQua] = useState<KetQuaTai | null>(null);
+  /** Lỗi làm HỎNG CẢ LƯỢT (không đọc được chi tiết…) — khác lỗi từng hóa đơn nằm trong `ketQua.loi`. */
+  const [loiCaLuot, setLoiCaLuot] = useState<string | null>(null);
   /** Nhóm đang mở danh sách; `null` = chưa bấm nút nào. */
   const [nhomDangXem, setNhomDangXem] = useState<KetQuaNhom | null>(null);
 
@@ -156,8 +171,8 @@ export default function DownloadOriginalDialog({
       setChecked(new Set(suppliers.map((s) => s.key)));
       setDownloading(false);
       setProgress(null);
-      setSummary(null);
       setKetQua(null);
+      setLoiCaLuot(null);
       setNhomDangXem(null);
     }
   }, [open, suppliers]);
@@ -194,9 +209,9 @@ export default function DownloadOriginalDialog({
   const handleDownload = async () => {
     if (!dir) return;
     setDownloading(true);
-    setSummary(null);
     setProgress(null);
     setKetQua(null);
+    setLoiCaLuot(null);
     setNhomDangXem(null);
     try {
       // Chi tiết đã lưu của cả khoảng — nơi duy nhất có `cttkhac` để rút mã tra cứu (chưa tải chi
@@ -218,15 +233,15 @@ export default function DownloadOriginalDialog({
       const sttOf = invoiceSttMap(rows);
       // Hàng đợi tải: chỉ HĐ thuộc NCC đã tick + có bộ tải + có mã tra cứu.
       // `sellerMst` (nbmst) đi kèm vì NCC như Viettel cần nó làm `supplierTaxCode`; MISA bỏ qua.
-      const queue: (KetQuaItem & { msttcgp: string; code: string; sellerMst: string; base: string })[] =
-        [];
+      // `moTa` của item trong hàng đợi là TÊN FILE sẽ ghi — vào nhóm "ok" thì dùng luôn, khỏi dựng lại.
+      const queue: (KetQuaItem & { msttcgp: string; code: string; sellerMst: string })[] = [];
       const boQua: KetQuaItem[] = [];
 
       for (const row of rows) {
         const key = invoiceKey(row.mauHd, row.soSeri, row.soHd, row.sellerMst);
         const nccMst = row.msttcgp || "";
         const ncc = nccMst ? TRA_CUU_NCC[nccMst] : undefined;
-        const item: KetQuaItem = {
+        const item = {
           key,
           soHd: row.soHd,
           nccTen: ncc?.ten.trim() || nccMst,
@@ -236,77 +251,60 @@ export default function DownloadOriginalDialog({
         // NCC phát hành không có trong registry -> KHÔNG có URL tra cứu hóa đơn gốc để mà tải.
         // Nhóm này trước đây bị loại khỏi dialog hoàn toàn nên người dùng không thấy chúng ở đâu cả.
         if (!ncc) {
-          boQua.push({
-            ...item,
-            lyDo: nccMst
-              ? `Không có URL tra cứu hóa đơn gốc — NCC phát hành ${nccMst} chưa có trong danh mục`
-              : "Không có URL tra cứu hóa đơn gốc — hóa đơn thiếu MST NCC phát hành (msttcgp)",
-          });
+          const thieu = nccMst ? `NCC phát hành ${nccMst} chưa có trong danh mục` : "hóa đơn thiếu MST NCC phát hành (msttcgp)";
+          boQua.push({ ...item, moTa: `Không có URL tra cứu hóa đơn gốc — ${thieu}` });
           continue;
         }
         // NCC người dùng chủ động bỏ tick -> không tính vào nhóm nào, tránh nhiễu danh sách.
         if (!checked.has(nccMst)) continue;
-        if (!nccHoTroTai(nccMst)) {
-          boQua.push({ ...item, lyDo: "NCC chưa hỗ trợ tải tự động — mở URL tra cứu để tải tay" });
+        if (ncc.taiTuDong !== true) {
+          boQua.push({ ...item, moTa: "NCC chưa hỗ trợ tải tự động — mở URL tra cứu để tải tay" });
           continue;
         }
         const code = maByKey.get(key) ?? "";
         if (!code) {
-          boQua.push({ ...item, lyDo: "Chưa có mã tra cứu — cần tải chi tiết hóa đơn trước" });
+          boQua.push({ ...item, moTa: "Chưa có mã tra cứu — cần tải chi tiết hóa đơn trước" });
           continue;
         }
         queue.push({
           ...item,
+          moTa: `${invoiceFileBase(sttOf.get(key) ?? 0, row.ngayLap, row.soHd, row.sellerMst)}.pdf`,
           msttcgp: nccMst,
           code,
           sellerMst: row.sellerMst,
-          base: invoiceFileBase(sttOf.get(key) ?? 0, row.ngayLap, row.soHd, row.sellerMst),
         });
       }
 
       const total = queue.length;
       const ok: KetQuaItem[] = [];
       const loi: KetQuaItem[] = [];
-      setProgress({ total, done: 0, ok: 0 });
+      setProgress({ total, done: 0, loi: 0 });
 
       for (const item of queue) {
-        const file = `${item.base}.pdf`;
         try {
           const blob = await taiHoaDonGoc({
             msttcgp: item.msttcgp,
             code: item.code,
             sellerMst: item.sellerMst,
           });
-          await writeFile(dir, file, blob);
-          ok.push({ ...item, file });
+          await writeFile(dir, item.moTa, blob);
+          ok.push(item);
         } catch (e) {
           // Lỗi 1 hóa đơn (mã sai/hết hạn/NCC lỗi) không dừng cả lượt — giữ message để xem ở nhóm "Lỗi".
-          loi.push({ ...item, lyDo: getErrorMessage(e, "Không tải được hóa đơn này.") });
+          loi.push({ ...item, moTa: getErrorMessage(e, "Không tải được hóa đơn này.") });
         }
-        setProgress({ total, done: ok.length + loi.length, ok: ok.length });
+        setProgress({ total, done: ok.length + loi.length, loi: loi.length });
       }
 
       setKetQua({ ok, loi, boQua });
-      if (total === 0) {
-        setSummary({
-          severity: boQua.length > 0 ? "warning" : "success",
-          text: boQua.length
-            ? `Không có hóa đơn nào tải được, ${boQua.length} hóa đơn bị bỏ qua.`
-            : "Không có hóa đơn nào để tải.",
-        });
-      } else {
-        setSummary({
-          severity: loi.length > 0 || boQua.length > 0 ? "warning" : "success",
-          text: `Đã tải ${ok.length}/${total} hóa đơn.`,
-        });
-      }
     } catch (e) {
-      setSummary({ severity: "error", text: getErrorMessage(e, "Không tải được hóa đơn gốc.") });
+      setLoiCaLuot(getErrorMessage(e, "Không tải được hóa đơn gốc."));
     } finally {
       setDownloading(false);
     }
   };
 
+  const tomTat = ketQua ? tomTatKetQua(ketQua) : null;
   const totalInvoices = rows.length;
   const selectedInvoiceCount = suppliers
     .filter((s) => checked.has(s.key))
@@ -465,86 +463,86 @@ export default function DownloadOriginalDialog({
               <Typography variant="body2" color="text.secondary">
                 {progress && progress.total > 0
                   ? `Đang tải ${progress.done}/${progress.total} hóa đơn` +
-                    (progress.done - progress.ok > 0 ? ` (${progress.done - progress.ok} lỗi)` : "") +
+                    (progress.loi > 0 ? ` (${progress.loi} lỗi)` : "") +
                     "…"
                   : "Đang đọc chi tiết hóa đơn…"}
               </Typography>
             </Stack>
-          ) : summary ? (
+          ) : loiCaLuot ? (
+            <Alert severity="error" sx={{ py: 0.5 }}>
+              {loiCaLuot}
+            </Alert>
+          ) : ketQua && tomTat ? (
             <Stack spacing={1.5}>
-              <Alert severity={summary.severity} sx={{ py: 0.5 }}>
-                {summary.text}
+              <Alert severity={tomTat.severity} sx={{ py: 0.5 }}>
+                {tomTat.text}
               </Alert>
 
-              {ketQua && (
-                <>
-                  {/* 3 nhóm kết quả — bấm để mở/đóng danh sách hóa đơn của nhóm đó. */}
-                  <ToggleButtonGroup
-                    size="small"
-                    exclusive
-                    value={nhomDangXem}
-                    onChange={(_, v: KetQuaNhom | null) => setNhomDangXem(v)}
-                    sx={{ flexWrap: "wrap" }}
-                  >
-                    {(Object.keys(NHOM_META) as KetQuaNhom[]).map((nhom) => {
-                      const { nhan, mau, Icon } = NHOM_META[nhom];
-                      const soLuong = ketQua[nhom].length;
-                      return (
-                        <ToggleButton
-                          key={nhom}
-                          value={nhom}
-                          color={mau}
-                          disabled={soLuong === 0}
-                          sx={{ textTransform: "none", gap: 0.75, px: 1.5 }}
-                        >
-                          <Icon fontSize="small" color={soLuong ? mau : "disabled"} />
-                          {nhan} <b>{soLuong}</b>
-                        </ToggleButton>
-                      );
-                    })}
-                  </ToggleButtonGroup>
+              {/* 3 nhóm kết quả — bấm để mở/đóng danh sách hóa đơn của nhóm đó. */}
+              <ToggleButtonGroup
+                size="small"
+                exclusive
+                value={nhomDangXem}
+                onChange={(_, v: KetQuaNhom | null) => setNhomDangXem(v)}
+                sx={{ flexWrap: "wrap" }}
+              >
+                {(Object.keys(NHOM_META) as KetQuaNhom[]).map((nhom) => {
+                  const { nhan, mau, Icon } = NHOM_META[nhom];
+                  const soLuong = ketQua[nhom].length;
+                  return (
+                    <ToggleButton
+                      key={nhom}
+                      value={nhom}
+                      color={mau}
+                      disabled={soLuong === 0}
+                      sx={{ textTransform: "none", gap: 0.75, px: 1.5 }}
+                    >
+                      <Icon fontSize="small" color={soLuong ? mau : "disabled"} />
+                      {nhan} <b>{soLuong}</b>
+                    </ToggleButton>
+                  );
+                })}
+              </ToggleButtonGroup>
 
-                  {nhomDangXem && (
+              {nhomDangXem && (
+                <Box
+                  sx={{
+                    maxHeight: 200,
+                    overflowY: "auto",
+                    border: 1,
+                    borderColor: "divider",
+                    borderRadius: 1,
+                  }}
+                >
+                  {ketQua[nhomDangXem].map((item) => (
                     <Box
+                      key={item.key}
                       sx={{
-                        maxHeight: 200,
-                        overflowY: "auto",
-                        border: 1,
+                        px: 1.5,
+                        py: 0.75,
+                        borderBottom: 1,
                         borderColor: "divider",
-                        borderRadius: 1,
+                        "&:last-of-type": { borderBottom: 0 },
                       }}
                     >
-                      {ketQua[nhomDangXem].map((item) => (
-                        <Box
-                          key={item.key}
-                          sx={{
-                            px: 1.5,
-                            py: 0.75,
-                            borderBottom: 1,
-                            borderColor: "divider",
-                            "&:last-of-type": { borderBottom: 0 },
-                          }}
-                        >
-                          <Typography variant="body2" sx={{ fontWeight: 600 }}>
-                            HĐ {item.soHd || "(không số)"}
-                            <Typography component="span" variant="body2" color="text.secondary">
-                              {" "}
-                              — {item.benTen || "(không rõ tên)"}
-                              {item.nccTen ? ` · ${item.nccTen}` : ""}
-                            </Typography>
-                          </Typography>
-                          <Typography
-                            variant="caption"
-                            color={nhomDangXem === "ok" ? "text.secondary" : `${NHOM_META[nhomDangXem].mau}.main`}
-                            sx={{ wordBreak: "break-word" }}
-                          >
-                            {item.file ?? item.lyDo}
-                          </Typography>
-                        </Box>
-                      ))}
+                      <Typography variant="body2" sx={{ fontWeight: 600 }}>
+                        HĐ {item.soHd || "(không số)"}
+                        <Typography component="span" variant="body2" color="text.secondary">
+                          {" "}
+                          — {item.benTen || "(không rõ tên)"}
+                          {item.nccTen ? ` · ${item.nccTen}` : ""}
+                        </Typography>
+                      </Typography>
+                      <Typography
+                        variant="caption"
+                        color={nhomDangXem === "ok" ? "text.secondary" : `${NHOM_META[nhomDangXem].mau}.main`}
+                        sx={{ wordBreak: "break-word" }}
+                      >
+                        {item.moTa}
+                      </Typography>
                     </Box>
-                  )}
-                </>
+                  ))}
+                </Box>
               )}
             </Stack>
           ) : (
