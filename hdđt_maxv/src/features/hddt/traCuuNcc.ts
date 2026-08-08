@@ -127,6 +127,17 @@ export const TRA_CUU_NCC: Record<string, NccTraCuu> = {
     url: "https://tracuu.myinvoice.vn/#/",
     maTraCuu: { src: "field", field: "mhdon" },
     taiTuDong: true,
+  },
+  "0105987432": {
+    ten: "Công ty Cổ phần Đầu tư công nghệ và thương mại Softdreams",
+    // Portal tenant EasyInvoice: subdomain là `<nbmst>hd` (vd `0108787907` -> `0108787907hd.easyinvoice.vn`).
+    // Giống VNPT, mỗi công ty phát hành qua Softdreams có cổng riêng nên KHÔNG hardcode được MST nào.
+    // Giữ NGUYÊN `nbmst` kể cả đuôi chi nhánh `-001`: chưa gặp mẫu hóa đơn chi nhánh nào để biết
+    // Softdreams tách cổng theo chi nhánh (như VNPT) hay dùng chung cổng MST mẹ — gặp thì kiểm chứng
+    // rồi sửa ở đây, đừng tự strip đuôi vì đoán.
+    url: ({ sellerMst }) => `https://${sellerMst.trim()}hd.easyinvoice.vn/Search/Index`,
+    maTraCuu: { src: "ttkhac", ttruong: "Fkey" },
+    taiTuDong: true,
   }
 };
 

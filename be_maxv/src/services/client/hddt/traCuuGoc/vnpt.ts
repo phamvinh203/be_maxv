@@ -34,7 +34,19 @@ import { createWorker, PSM } from "tesseract.js";
 import type { Worker } from "tesseract.js";
 import sharp from "sharp";
 import { describeErrorChain } from "../../../../config/gdt-client";
-import { fetchUpstream, pdfFromResponse } from "./shared";
+import {
+  NAVIGATE_HEADERS,
+  TESSERACT_QUIET,
+  assertMst,
+  fetchUpstream,
+  htmlToText,
+  khopCum,
+  loiHetLuotThuLai,
+  makeDbg,
+  makeDeadline,
+  mergeSetCookie,
+  pdfFromResponse,
+} from "./shared";
 import { FileHoaDonGoc, ProviderDownloader, TraCuuGocError } from "./types";
 
 // ============================================================
@@ -48,7 +60,7 @@ import { FileHoaDonGoc, ProviderDownloader, TraCuuGocError } from "./types";
  * portal của MST chính, nên KHÔNG được strip đuôi. Version `tt78` cố định — NCC nâng version thì sửa đây.
  */
 export function buildVptOrigin(nbmst: string): string {
-  return `https://${nbmst.trim()}-tt78.vnpt-invoice.com.vn`;
+  return `https://${assertMst(nbmst, "VNPT")}-tt78.vnpt-invoice.com.vn`;
 }
 
 const VPT_SEARCH_PATH = "/HomeNoLogin/SearchByFkey";
@@ -59,36 +71,17 @@ const VPT_DOWNLOAD_PATH = "/HomeNoLogin/downloadPDF";
 const CAPTCHA_CHARSET =
   "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz";
 
-/**
- * Header "navigation" — VNPT kiểm tra Sec-Fetch-Mode=navigate cho POST search và GET downloadPDF.
- * Thiếu -> server trả lỗi hoặc body rỗng. accept text/html vì đây là browser navigation, không phải XHR.
- */
-const NAVIGATE_HEADERS: Record<string, string> = {
-  accept:
-    "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7",
-  "sec-fetch-dest": "document",
-  "sec-fetch-mode": "navigate",
-  "sec-fetch-site": "same-origin",
-  "sec-fetch-user": "?1",
-  "upgrade-insecure-requests": "1",
-};
 
 /** Số lần thử captcha trong MỘT session (mỗi lần GET ảnh mới -> text khác). Mỗi lượt chỉ tốn 1 GET ảnh
  * + OCR ~200–400ms — rẻ hơn nhiều so với init session lại, nên thử dày trong cùng session. */
 const MAX_CAPTCHA_RETRIES = 8;
 
 /**
- * Thời gian tối đa (ms) cho 1 lần tải: vòng retry session chạy TỚI KHI LẤY ĐƯỢC hóa đơn, chỉ dừng khi
- * hết deadline này (hoặc fkey sai). Mỗi lượt (1 ảnh + OCR + POST) ~250–400ms, 30s ≈ 10+ session × 8
- * lượt. Override bằng env `VPT_RETRY_DEADLINE_MS` khi cần chờ lâu hơn / VNPT rate-limit mạnh.
- *
- * Đọc LÚC GỌI chứ không lúc import: `server.ts` import `./app` TRƯỚC `./config/env` nên biến môi
- * trường từ `.env.local` chưa chắc đã có ở thời điểm module này được nạp (xem cảnh báo cùng kiểu ở
- * `gdt.service.ts`) — đọc lúc import thì knob có thể im lặng không ăn.
+ * Ngân sách thời gian cho 1 lần tải: vòng retry session chạy tới khi lấy được hóa đơn, chỉ dừng khi
+ * hết ngân sách (hoặc fkey sai). Mỗi lượt (1 ảnh + OCR + POST) ~250–400ms, 30s ≈ 10+ session × 8 lượt.
+ * Override bằng env khi cần chờ lâu hơn / VNPT rate-limit mạnh.
  */
-function retryDeadlineMs(): number {
-  return Number(process.env.VPT_RETRY_DEADLINE_MS) || 30_000;
-}
+const retryDeadlineMs = makeDeadline("VPT_RETRY_DEADLINE_MS");
 
 /** Cứu cánh cuối: kể cả deadline còn dư, không quá ngần này session — chống vòng lặp vô hạn nếu env
  * `VPT_RETRY_DEADLINE_MS` đặt sai (vd quá lớn). 12 session = 96 lượt, xác suất thành công ~100%. */
@@ -166,7 +159,11 @@ async function getWorker(): Promise<Worker> {
   if (!workerPromise) {
     workerPromise = (async () => {
       const worker = await createWorker("eng", 1, { logger: () => {} });
-      await worker.setParameters({ tessedit_char_whitelist: CAPTCHA_CHARSET });
+      await worker.setParameters({
+        tessedit_char_whitelist: CAPTCHA_CHARSET,
+        // Chặn Leptonica xả debug ra stdout — xem `TESSERACT_QUIET`.
+        ...TESSERACT_QUIET,
+      });
       return worker;
     })();
   }
@@ -203,34 +200,6 @@ export interface VptSession {
   formToken: string;
 }
 
-/**
- * Merge Set-Cookie headers của response vào cookie string hiện tại —同名 overwrite, name mới thêm vào.
- * ASP.NET set-cookie nhiều lần qua lifecycle (session init, captcha, search) — không merge sẽ bị reject.
- */
-function mergeSetCookie(currentCookie: string, setCookieHeaders: string[]): string {
-  const map = new Map<string, string>();
-  for (const part of currentCookie.split(";")) {
-    const idx = part.indexOf("=");
-    if (idx > 0) {
-      const k = part.slice(0, idx).trim();
-      const v = part.slice(idx + 1).trim();
-      if (k) map.set(k, v);
-    }
-  }
-  for (const sc of setCookieHeaders) {
-    // Set-Cookie: name=value; Path=/; HttpOnly; ...  -> chỉ lấy phần "name=value" đầu.
-    const nv = sc.split(";")[0];
-    const idx = nv.indexOf("=");
-    if (idx > 0) {
-      const k = nv.slice(0, idx).trim();
-      const v = nv.slice(idx + 1).trim();
-      if (k) map.set(k, v);
-    }
-  }
-  return Array.from(map.entries())
-    .map(([k, v]) => `${k}=${v}`)
-    .join("; ");
-}
 
 /** Cập nhật cookie session từ Set-Cookie headers của response. Trả về cookie string mới (merge). */
 function absorbSetCookie(session: VptSession, res: Response): string {
@@ -240,22 +209,14 @@ function absorbSetCookie(session: VptSession, res: Response): string {
 }
 
 /**
- * Debug logger tạm thời — bật bằng `DEBUG_VNPT=1` khi chạy BE. In ra thông tin chiến lược ở từng bước
- * (form token, status, HTML response, captcha text) để chẩn đoán khi provider fail. Để lại trong code
- * (không xóa) vì hay cần debug khi NCC đổi template — chỉ tắt khi DEBUG_VNPT không set.
+ * Debug logger — bật bằng `DEBUG_VNPT=1` khi chạy BE. In thông tin từng bước (form token, status, HTML
+ * response, captcha text) để chẩn đoán khi provider fail. Để lại trong code (không xóa) vì hay cần
+ * debug khi NCC đổi template.
+ *
+ * Khác bản viết tay trước đây một điểm: payload không phải string giờ được `JSON.stringify` thay vì
+ * đưa thẳng cho `console.log` — log ra một dòng thay vì object nhiều dòng, dễ grep hơn.
  */
-function dbg(label: string, payload: unknown): void {
-  if (process.env.DEBUG_VNPT !== "1") return;
-  if (typeof payload === "string") {
-    // Cắt HTML dài > 2000 ký tự để log không bị tràn — phần đầu đủ để xem cấu trúc template.
-    const trimmed = payload.length > 2000 ? `${payload.slice(0, 2000)}… (+${payload.length - 2000} chars)` : payload;
-    // eslint-disable-next-line no-console
-    console.log(`[VNPT-DBG] ${label}:`, trimmed);
-  } else {
-    // eslint-disable-next-line no-console
-    console.log(`[VNPT-DBG] ${label}:`, payload);
-  }
-}
+const dbg = makeDbg("VNPT-DBG", "DEBUG_VNPT");
 
 /**
  * Extract form anti-forgery token từ HTML trang search. ASP.NET MVC render:
@@ -404,37 +365,9 @@ export async function solveCaptcha(session: VptSession): Promise<string | null> 
  * bẫy đó, đồng thời cả 3 alternative đều SAI chữ ("xác thực" chứ không phải "xác nhận", "không chính
  * xác" chứ không phải "không đúng").
  */
-const CAPTCHA_ERR_TEXT = "mã xác thực không chính xác".normalize("NFC");
+const CAPTCHA_ERR_TEXT = ["mã xác thực không chính xác"];
 
-/**
- * So khớp "captcha sai" trên text đã bóc tag. Chuẩn hóa NFC + lowercase trước khi so: tiếng Việt có
- * thể về ở dạng TỔ HỢP (NFD — "a" + dấu rời), lúc đó so trực tiếp với literal NFC trong file này sẽ
- * TRƯỢT dù chữ hiện ra y hệt nhau. Trượt ở đây rất tai hại: mọi lượt captcha sai sẽ bị gán nhãn
- * "mã tra cứu sai", báo cho kế toán một nguyên nhân hoàn toàn bịa.
- */
-function laLoiCaptcha(text: string): boolean {
-  return text.normalize("NFC").toLowerCase().includes(CAPTCHA_ERR_TEXT);
-}
 
-/**
- * Bóc script/style + tag -> text người đọc được, gộp khoảng trắng.
- *
- * Trang search của VNPT nặng ~67KB HTML nhưng phần chữ chỉ vài KB. `dbg` cắt 2000 ký tự ĐẦU của HTML
- * thô nên chỉ thấy `<head>` với đống <link>/<script> — thông báo lỗi nằm sâu dưới body, chưa lần nào
- * lọt vào log. Bóc tag trước rồi mới cắt thì câu thông báo mới hiện ra.
- */
-function htmlToText(html: string): string {
-  return html
-    .replace(/<(script|style)\b[^>]*>[\s\S]*?<\/\1>/gi, " ")
-    .replace(/<[^>]+>/g, " ")
-    .replace(/&nbsp;/gi, " ")
-    .replace(/&amp;/gi, "&")
-    .replace(/&lt;/gi, "<")
-    .replace(/&gt;/gi, ">")
-    .replace(/&quot;/gi, '"')
-    .replace(/\s+/g, " ")
-    .trim();
-}
 
 /**
  * Bước 3: POST `/HomeNoLogin/SearchByFkey` với strFkey + captcha đã solve. Trả về `checkCode` để
@@ -493,7 +426,7 @@ export async function searchByFkey(
   if (!checkCode) {
     // Phân biệt: captcha sai ("Mã xác thực không chính xác") vs fkey không tồn tại.
     const text = htmlToText(html);
-    const loiCaptcha = laLoiCaptcha(text);
+    const loiCaptcha = khopCum(text, CAPTCHA_ERR_TEXT);
     // Ca "không phải captcha sai" đến giờ CHƯA có mẫu thật nào — mọi response quan sát được đều là
     // captcha sai. Log text trang khi gặp, để bắt câu VNPT dùng cho fkey sai/hết hạn (hiện chỉ suy đoán).
     if (!loiCaptcha) dbg("searchByFkey text trang (không khớp mẫu captcha sai)", text);
@@ -533,7 +466,9 @@ export async function downloadPdf(
   if (!res.ok) {
     throw new TraCuuGocError("UPSTREAM", `VNPT downloadPDF trả lỗi (HTTP ${res.status})`);
   }
-  return pdfFromResponse(res, checkCode, "VNPT");
+  // `maDaXacThuc: true` — có `checkCode` nghĩa là fkey đã qua bước search; body rỗng ở đây là
+  // checkCode hết hạn / cổng trục trặc, đáng thử lại chứ không phải "mã tra cứu sai".
+  return pdfFromResponse(res, checkCode, "VNPT", true);
 }
 
 // ============================================================
@@ -565,15 +500,10 @@ export const vpt: ProviderDownloader = {
       );
     }
 
-    // Khởi tạo sẵn: nếu toàn bộ lượt OCR ra rỗng (hoặc captcha sai đến hết deadline) thì không có err
-    // nào từ `catch` để ném — cần 1 lỗi mặc định thông báo rõ giới hạn đã thử.
     const budgetMs = retryDeadlineMs();
     const deadline = Date.now() + budgetMs;
-    let lastErr: unknown = new TraCuuGocError(
-      "UPSTREAM",
-      `VNPT: không tải được hóa đơn trong ${budgetMs / 1000}s retry captcha` +
-        ` (${MAX_CAPTCHA_RETRIES} ảnh/session, tối đa ${MAX_SESSION_HARD_CAP} session) — thử tải lại`,
-    );
+    // `null` khi mọi lượt OCR đều ra rỗng — `loiHetLuotThuLai` lo ca đó, khỏi dựng sẵn lỗi mồi.
+    let lastErr: unknown = null;
     let sessions = 0;
     while (Date.now() < deadline && sessions < MAX_SESSION_HARD_CAP) {
       sessions++;
@@ -597,7 +527,8 @@ export const vpt: ProviderDownloader = {
         }
       }
     }
-    throw lastErr;
+
+    throw loiHetLuotThuLai("VNPT", budgetMs, lastErr);
   },
 };
 

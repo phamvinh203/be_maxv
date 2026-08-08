@@ -85,13 +85,24 @@ function readEntryData(
   throw new Error(`ZIP: "${name}" dùng kiểu nén chưa hỗ trợ (method ${method}).`);
 }
 
+/** Một bản ghi trong mục lục — chỉ metadata, dữ liệu lấy sau bằng `readEntryData`. */
+interface CentralEntry {
+  name: string;
+  flags: number;
+  method: number;
+  compressedSize: number;
+  localOffset: number;
+}
+
 /**
- * Trả nội dung entry tên `entryName` trong `zip`, hoặc `null` nếu ZIP không có entry đó.
+ * Duyệt mục lục (central directory) của ZIP.
  *
- * So khớp theo TÊN CUỐI đường dẫn và KHÔNG phân biệt hoa thường — phòng bên đóng gói bọc thêm thư
- * mục cha (`hoadon/invoice.xml`) hoặc đổi cách viết hoa.
+ * Đọc từ MỤC LỤC chứ không quét local header: khi bit 3 của general purpose flags bật, local header
+ * ghi kích thước = 0 và số thật nằm ở data descriptor SAU phần dữ liệu; mục lục thì luôn có số đúng.
+ *
+ * Generator để nơi gọi dừng sớm khi đã tìm thấy — khỏi đọc nốt mục lục.
  */
-export function readZipEntry(zip: Buffer, entryName: string): Buffer | null {
+function* duyetMucLuc(zip: Buffer): Generator<CentralEntry> {
   const eocd = findEndOfCentralDirectory(zip);
   if (eocd < 0) {
     throw new Error("Dữ liệu tải về không phải file ZIP hợp lệ (thiếu bản ghi cuối).");
@@ -103,8 +114,6 @@ export function readZipEntry(zip: Buffer, entryName: string): Buffer | null {
     throw new Error("ZIP dùng định dạng ZIP64 — chưa hỗ trợ.");
   }
 
-  const wanted = entryName.toLowerCase();
-
   for (let i = 0; i < entryCount; i += 1) {
     if (
       offset + CENTRAL_ENTRY_SIZE > zip.length ||
@@ -113,28 +122,70 @@ export function readZipEntry(zip: Buffer, entryName: string): Buffer | null {
       throw new Error("ZIP hỏng: mục lục không đọc được.");
     }
 
-    const flags = zip.readUInt16LE(offset + 8);
-    const method = zip.readUInt16LE(offset + 10);
-    const compressedSize = zip.readUInt32LE(offset + 20);
     const nameLen = zip.readUInt16LE(offset + 28);
     const extraLen = zip.readUInt16LE(offset + 30);
     const commentLen = zip.readUInt16LE(offset + 32);
-    const localOffset = zip.readUInt32LE(offset + 42);
     const nameStart = offset + CENTRAL_ENTRY_SIZE;
-    const name = zip.toString("utf8", nameStart, nameStart + nameLen);
 
-    if (name.split("/").pop()?.toLowerCase() === wanted) {
-      if (flags & FLAG_ENCRYPTED) {
-        throw new Error(`ZIP: "${name}" được đặt mật khẩu.`);
-      }
-      if (compressedSize === ZIP64_MARKER || localOffset === ZIP64_MARKER) {
-        throw new Error(`ZIP: "${name}" dùng định dạng ZIP64 — chưa hỗ trợ.`);
-      }
-      return readEntryData(zip, localOffset, method, compressedSize, name);
-    }
+    yield {
+      name: zip.toString("utf8", nameStart, nameStart + nameLen),
+      flags: zip.readUInt16LE(offset + 8),
+      method: zip.readUInt16LE(offset + 10),
+      compressedSize: zip.readUInt32LE(offset + 20),
+      localOffset: zip.readUInt32LE(offset + 42),
+    };
 
     offset += CENTRAL_ENTRY_SIZE + nameLen + extraLen + commentLen;
   }
+}
 
+/** Giải nén 1 entry đã tìm được, sau khi loại các ca chưa hỗ trợ. */
+function giaiNen(zip: Buffer, e: CentralEntry): Buffer {
+  if (e.flags & FLAG_ENCRYPTED) {
+    throw new Error(`ZIP: "${e.name}" được đặt mật khẩu.`);
+  }
+  if (e.compressedSize === ZIP64_MARKER || e.localOffset === ZIP64_MARKER) {
+    throw new Error(`ZIP: "${e.name}" dùng định dạng ZIP64 — chưa hỗ trợ.`);
+  }
+  return readEntryData(zip, e.localOffset, e.method, e.compressedSize, e.name);
+}
+
+/**
+ * Trả nội dung entry tên `entryName` trong `zip`, hoặc `null` nếu ZIP không có entry đó.
+ *
+ * So khớp theo TÊN CUỐI đường dẫn và KHÔNG phân biệt hoa thường — phòng bên đóng gói bọc thêm thư
+ * mục cha (`hoadon/invoice.xml`) hoặc đổi cách viết hoa.
+ */
+export function readZipEntry(zip: Buffer, entryName: string): Buffer | null {
+  const wanted = entryName.toLowerCase();
+  for (const e of duyetMucLuc(zip)) {
+    if (e.name.split("/").pop()?.toLowerCase() === wanted) return giaiNen(zip, e);
+  }
   return null;
+}
+
+/**
+ * Trả entry ĐẦU TIÊN có đuôi `ext` (vd `".pdf"`, so không phân biệt hoa thường), kèm tên để đặt tên
+ * file. `null` nếu không có.
+ *
+ * Dùng khi KHÔNG biết trước tên file bên trong: EasyInvoice đóng gói `HOADON_<mst>_<mẫu>_<số>.zip`
+ * gồm PDF + XML ký số, tên PDF đổi theo từng hóa đơn nên chỉ bám được vào đuôi.
+ * Bỏ qua entry thư mục (tên kết thúc bằng `/`).
+ */
+export function readZipEntryByExtension(
+  zip: Buffer,
+  ext: string,
+): { name: string; data: Buffer } | null {
+  const duoi = ext.toLowerCase();
+  for (const e of duyetMucLuc(zip)) {
+    if (e.name.endsWith("/")) continue;
+    if (!e.name.toLowerCase().endsWith(duoi)) continue;
+    return { name: e.name, data: giaiNen(zip, e) };
+  }
+  return null;
+}
+
+/** Tên mọi entry trong ZIP — để báo lỗi "trong gói có gì" mà không phải tải file về mở tay. */
+export function listZipEntryNames(zip: Buffer): string[] {
+  return Array.from(duyetMucLuc(zip), (e) => e.name);
 }

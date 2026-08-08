@@ -38,6 +38,7 @@ import {
   readFileBytes,
 } from "../../lib/fileSystemAccess";
 import { ApiError } from "../../lib/http";
+import { runPool } from "../../lib/pool";
 
 /**
  * Khóa định danh hóa đơn dựng từ payload chi tiết GDT thô (field kiểu `unknown`, `khmshdon`/`shdon`
@@ -257,20 +258,6 @@ interface TaskState {
   noOriginalXml?: boolean;
   /** Lỗi gần nhất — chỉ dùng để báo về FE khi hóa đơn vẫn thiếu file sau mọi vòng vá. */
   lastError?: string;
-}
-
-/** Chạy `worker` trên `items` với tối đa `limit` việc đồng thời (bounded pool, không phụ thuộc lib ngoài). */
-async function runPool<T>(
-  items: T[],
-  limit: number,
-  worker: (item: T) => Promise<void>,
-): Promise<void> {
-  let next = 0;
-  const runners = Array.from({ length: Math.min(limit, items.length) }, async () => {
-    // `next++` đọc + tăng trong 1 tick (không await xen giữa) nên mỗi runner lấy 1 index riêng — an toàn.
-    while (next < items.length) await worker(items[next++]);
-  });
-  await Promise.all(runners);
 }
 
 /**

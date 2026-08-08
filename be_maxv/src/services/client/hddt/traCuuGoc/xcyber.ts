@@ -4,7 +4,16 @@ import { createWorker, PSM } from "tesseract.js";
 import type { Worker } from "tesseract.js";
 import sharp from "sharp";
 import { describeErrorChain } from "../../../../config/gdt-client";
-import { fetchFileGoc, fetchUpstream, makeDbg } from "./shared";
+import {
+  TESSERACT_QUIET,
+  fetchFileGoc,
+  fetchUpstream,
+  khopCum,
+  laPdf,
+  loiHetLuotThuLai,
+  makeDbg,
+  makeDeadline,
+} from "./shared";
 import { FileHoaDonGoc, ProviderDownloader, TraCuuGocError } from "./types";
 
 interface CaptchaChallenge {
@@ -47,9 +56,8 @@ const CAPTCHA_PSMS = [PSM.SINGLE_LINE, PSM.SINGLE_WORD] as const;
 const MAX_CAPTCHA_RETRIES = 10;
 const MAX_CANDIDATES_PER_CAPTCHA = 3;
 
-function retryDeadlineMs(): number {
-  return Number(process.env.XCYBER_RETRY_DEADLINE_MS) || 30_000;
-}
+/** Ngân sách thời gian cho 1 lần tải; override bằng env khi cần chờ lâu hơn. */
+const retryDeadlineMs = makeDeadline("XCYBER_RETRY_DEADLINE_MS");
 
 interface CaptchaRead {
   text: string;
@@ -62,7 +70,11 @@ async function getWorker(): Promise<Worker> {
   if (!workerPromise) {
     workerPromise = (async () => {
       const worker = await createWorker("eng", 1, { logger: () => {} });
-      await worker.setParameters({ tessedit_char_whitelist: CAPTCHA_CHARSET });
+      await worker.setParameters({
+        tessedit_char_whitelist: CAPTCHA_CHARSET,
+        // Chặn Leptonica xả debug ra stdout — xem `TESSERACT_QUIET`.
+        ...TESSERACT_QUIET,
+      });
       return worker;
     })();
   }
@@ -225,24 +237,24 @@ async function refreshCaptcha(): Promise<CaptchaChallenge> {
 // ============================================================
 
 /**
- * Mẫu câu "captcha sai" của CyberLotus — PHỎNG ĐOÁN, chưa đối chiếu với chuỗi nguyên văn của NCC.
+ * Mẫu câu "captcha sai" của CyberLotus.
  *
- * VNPT từng dính đúng chỗ này: bản đầu đoán 3 biến thể thì cả 3 đều sai chữ, khiến mọi lỗi captcha bị
- * gán nhãn "mã tra cứu sai" — báo cho kế toán một nguyên nhân bịa. Hai lớp bù ở đây:
+ * ĐÃ ĐỐI CHIẾU VỚI RESPONSE THẬT: cổng trả nguyên văn `"Mã xác thực không hợp lệ"` — khớp mục
+ * `"mã xác thực"` dưới đây, nên phân loại đang chạy đúng. (Lưu ý VNPT dùng câu KHÁC cho cùng tình
+ * huống: `"Mã xác thực không chính xác"` — chung tiền tố, khác đuôi. Đó là lý do dò theo CỤM NGẮN chứ
+ * không so nguyên câu.)
+ *
+ * Các mục còn lại vẫn là dự phòng chưa gặp; giữ vì rẻ và cứu được khi NCC đổi cách diễn đạt.
+ *
+ * VNPT từng dính bẫy ở chỗ này: bản đầu đoán 3 biến thể thì cả 3 đều sai chữ, khiến mọi lỗi captcha bị
+ * gán nhãn "mã tra cứu sai" — báo cho kế toán một nguyên nhân bịa. Hai lớp bù vẫn giữ nguyên:
  *   - thông báo GỐC của NCC luôn được ném kèm nguyên văn, nên dù phân loại sai thì người dùng vẫn đọc
  *     được lý do thật;
  *   - `TraCuu` không kèm message thì mặc định coi là captcha sai (`retryable`), vì đó là nguyên nhân
  *     áp đảo — sai mã tra cứu thì NCC có nói lý do.
- * Bắt được chuỗi thật (bật `DEBUG_XCYBER=1`, xem log `TraCuu result`) thì THAY danh sách này.
  */
 const CAPTCHA_ERR_HINTS = ["captcha", "mã xác thực", "mã bảo vệ", "mã kiểm tra"];
 
-/** Có phải thông báo về captcha không. Chuẩn hóa NFC + lowercase trước khi so: tiếng Việt về dạng tổ
- * hợp (NFD) sẽ trượt mọi so sánh với literal NFC trong file này dù chữ hiện ra y hệt. */
-function laLoiCaptcha(message: string): boolean {
-  const m = message.normalize("NFC").toLowerCase();
-  return CAPTCHA_ERR_HINTS.some((h) => m.includes(h.normalize("NFC")));
-}
 
 /**
  * Bước 2: POST `/TraCuu` { key, captcha, maSoBiMat } -> trả KHÓA TẢI cho bước 3.
@@ -266,7 +278,7 @@ async function traCuu(captchaKey: string, captchaText: string, maSoBiMat: string
 
   // Ném kèm NGUYÊN VĂN thông báo của NCC — người dùng đọc được lý do thật kể cả khi phân loại trượt.
   const message = r?.message?.trim() || "";
-  const loiCaptcha = laLoiCaptcha(message) || !message;
+  const loiCaptcha = khopCum(message, CAPTCHA_ERR_HINTS) || !message;
   throw new TraCuuGocError(
     "INVALID_CODE",
     message
@@ -304,10 +316,12 @@ async function downloadTempFile(dto: XcyResult, maSoBiMat: string): Promise<File
     },
     code: maSoBiMat,
     ten: TEN,
+    // Đã đổi được `fileToken` ở bước 3 nên mã tra cứu chắc chắn đúng; body rỗng = token hết hạn.
+    maDaXacThuc: true,
   });
 
   // Cổng trả 200 + HTML báo lỗi khi token hết hạn -> soi magic để không giao file rác cho kế toán.
-  if (file.buffer.subarray(0, 5).toString("latin1") !== "%PDF-") {
+  if (!laPdf(file.buffer)) {
     throw new TraCuuGocError("UPSTREAM", `${TEN}: DownloadTempFile không trả PDF cho mã "${maSoBiMat}"`);
   }
   return { ...file, filename: fileName, contentType: "application/pdf" };
@@ -353,10 +367,8 @@ export const cyberlotus: ProviderDownloader = {
   async download({ code }) {
     const budgetMs = retryDeadlineMs();
     const deadline = Date.now() + budgetMs;
-    let lastErr: unknown = new TraCuuGocError(
-      "UPSTREAM",
-      `${TEN}: không tải được hóa đơn trong ${budgetMs / 1000}s retry captcha OCR`,
-    );
+    // `null` khi mọi lượt OCR đều ra rỗng — `loiHetLuotThuLai` lo ca đó, khỏi dựng sẵn lỗi mồi.
+    let lastErr: unknown = null;
 
     for (let attempt = 0; attempt < MAX_CAPTCHA_RETRIES && Date.now() < deadline; attempt++) {
       const challenge = await refreshCaptcha();
@@ -379,7 +391,7 @@ export const cyberlotus: ProviderDownloader = {
       }
     }
 
-    throw lastErr;
+    throw loiHetLuotThuLai(TEN, budgetMs, lastErr);
   },
 };
 

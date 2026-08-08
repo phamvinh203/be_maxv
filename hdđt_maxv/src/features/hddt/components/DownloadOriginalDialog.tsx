@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import Dialog from "@mui/material/Dialog";
 import DialogTitle from "@mui/material/DialogTitle";
 import DialogContent from "@mui/material/DialogContent";
@@ -27,6 +27,8 @@ import {
   type FsDirHandle,
 } from "../../../lib/fileSystemAccess";
 import { getErrorMessage } from "../../../lib/errors";
+import { ApiError } from "../../../lib/http";
+import { runPool } from "../../../lib/pool";
 import { TRA_CUU_NCC, traCuuNcc, rowStr } from "../traCuuNcc";
 import { invoiceFileBase, invoiceKey, invoiceSttMap } from "../invoiceFileName";
 import { getSavedDetails } from "../api/invoiceDetail";
@@ -39,6 +41,42 @@ import type { DisplayRow, InvoiceDirection } from "../types";
  */
 function nccHoTroTai(msttcgp: string): boolean {
   return TRA_CUU_NCC[msttcgp]?.taiTuDong === true;
+}
+
+/**
+ * Số NCC tải SONG SONG cùng lúc.
+ *
+ * Không mở hết số nhóm: NCC nào cần captcha thì BE phải chạy OCR (Tesseract WASM, ngốn CPU) trong một
+ * deadline tính theo ĐỒNG HỒ THẬT. Mở quá nhiều luồng làm các lượt OCR giành CPU nhau -> cùng 30s đó
+ * chạy được ít lượt thử hơn -> tỉ lệ hỏng TĂNG. 3 là mức giữ được phần lớn lợi ích thời gian mà không
+ * bỏ đói OCR.
+ */
+const MAX_NCC_SONG_SONG = 3;
+
+/**
+ * Số lượt QUÉT LẠI các hóa đơn lỗi tạm thời, sau lượt chính.
+ *
+ * Có lượt này vì triệu chứng thực tế: hóa đơn báo lỗi, người dùng bấm tải lại từng cái thì được. Đó là
+ * BE hết thời gian thử captcha chứ không phải hóa đơn có vấn đề — để máy tự quét lại thay vì bắt kế
+ * toán ngồi bấm tay.
+ */
+const SO_LUOT_QUET_LAI = 2;
+
+/**
+ * Lỗi này có ĐÁNG THỬ LẠI không.
+ *
+ * Dựa vào HTTP status mà BE map từ mã lỗi ngữ nghĩa (xem `traCuuGoc.controller.ts`):
+ *   502 UPSTREAM     -> cổng NCC lỗi, hoặc BE hết thời gian thử captcha  -> ĐÁNG thử lại
+ *   422 INVALID_CODE -> mã tra cứu sai/hết hạn                            -> thử lại vô ích
+ *   501 UNSUPPORTED  -> chưa có bộ tải cho NCC                            -> thử lại vô ích
+ * Không phải `ApiError` (lỗi mạng, timeout của `AbortSignal`) -> cũng đáng thử lại.
+ */
+function laLoiTamThoi(e: unknown): boolean {
+  // 501 tuy là 5xx nhưng DỨT KHOÁT: BE chưa có bộ tải cho NCC đó thì quét lại bao nhiêu lượt cũng thế.
+  // Hay gặp khi deploy lệch phiên bản (FE đã bật `taiTuDong`, BE chưa đăng ký provider) — không loại ra
+  // thì mọi hóa đơn của NCC đó bị gọi 3 lần cho một lỗi tất định.
+  if (e instanceof ApiError) return (e.status >= 500 && e.status !== 501) || e.status === 429;
+  return true;
 }
 
 /** Tiến trình tải: tổng số hóa đơn + đã xử lý + số hóa đơn lỗi. */
@@ -144,6 +182,21 @@ export default function DownloadOriginalDialog({
   const [loiCaLuot, setLoiCaLuot] = useState<string | null>(null);
   /** Nhóm đang mở danh sách; `null` = chưa bấm nút nào. */
   const [nhomDangXem, setNhomDangXem] = useState<KetQuaNhom | null>(null);
+  /**
+   * Số hóa đơn còn lại khi người dùng bấm Hủy — `null` nếu lượt chạy hết bình thường.
+   *
+   * Tách khỏi `ketQua`: những hóa đơn chưa tới lượt KHÔNG thuộc nhóm nào cả (chưa gọi BE nên không
+   * phải "lỗi", cũng không phải "bỏ qua" vì chúng vốn đủ điều kiện tải). Gộp vào nhóm nào cũng là nói
+   * sai với kế toán.
+   */
+  const [daHuy, setDaHuy] = useState<number | null>(null);
+  /**
+   * Controller của lượt đang chạy — nút Hủy gọi `abort()`.
+   *
+   * `useRef` chứ không `useState`: vòng lặp tải là một async closure chạy xuyên nhiều lần render, nó
+   * cần đọc controller HIỆN TẠI chứ không phải bản chụp lúc render bắt đầu.
+   */
+  const huyRef = useRef<AbortController | null>(null);
 
   const isPurchase = direction === "purchase";
 
@@ -209,11 +262,14 @@ export default function DownloadOriginalDialog({
    */
   const handleDownload = async () => {
     if (!dir) return;
+    const huy = new AbortController();
+    huyRef.current = huy;
     setDownloading(true);
     setProgress(null);
     setKetQua(null);
     setLoiCaLuot(null);
     setNhomDangXem(null);
+    setDaHuy(null);
     try {
       // Chi tiết đã lưu của cả khoảng — nơi duy nhất có `cttkhac` để rút mã tra cứu (chưa tải chi
       // tiết -> không có mã -> đếm vào `thieuMa`).
@@ -258,7 +314,7 @@ export default function DownloadOriginalDialog({
         }
         // NCC người dùng chủ động bỏ tick -> không tính vào nhóm nào, tránh nhiễu danh sách.
         if (!checked.has(nccMst)) continue;
-        if (ncc.taiTuDong !== true) {
+        if (!nccHoTroTai(nccMst)) {
           boQua.push({ ...item, moTa: "NCC chưa hỗ trợ tải tự động — mở URL tra cứu để tải tay" });
           continue;
         }
@@ -277,33 +333,106 @@ export default function DownloadOriginalDialog({
       }
 
       const total = queue.length;
-      const ok: KetQuaItem[] = [];
-      const loi: KetQuaItem[] = [];
-      setProgress({ total, done: 0, loi: 0 });
 
-      for (const item of queue) {
+      // Kết quả ghi theo ĐÚNG VỊ TRÍ trong hàng đợi rồi mới phân nhóm ở cuối. Chạy song song thì thứ tự
+      // HOÀN THÀNH là ngẫu nhiên; push trực tiếp vào ok/loi sẽ làm danh sách kết quả nhảy loạn so với
+      // thứ tự STT mà người dùng đang thấy ở bảng.
+      type KetQuaMotHd = { item: KetQuaItem; loi: boolean; tamThoi: boolean };
+      const theoViTri = new Array<KetQuaMotHd | undefined>(total);
+
+      // Đếm LẠI từ mảng mỗi lần thay vì giữ biến tăng dần: lượt quét lại GHI ĐÈ kết quả cũ nên biến
+      // tăng dần sẽ cộng trùng, hiện tiến độ vượt quá tổng. `total` cỡ vài chục nên quét cả mảng rẻ.
+      const capNhatTienDo = () => {
+        let done = 0;
+        let loi = 0;
+        for (const r of theoViTri) {
+          if (!r) continue;
+          done++;
+          if (r.loi) loi++;
+        }
+        setProgress({ total, done, loi });
+      };
+      capNhatTienDo();
+
+      const taiMotHoaDon = async (i: number) => {
+        const item = queue[i];
         try {
           const blob = await taiHoaDonGoc({
             msttcgp: item.msttcgp,
             code: item.code,
             sellerMst: item.sellerMst,
+            signal: huy.signal,
           });
           await writeFile(dir, item.moTa, blob);
-          ok.push(item);
+          theoViTri[i] = { item, loi: false, tamThoi: false };
         } catch (e) {
-          // Lỗi 1 hóa đơn (mã sai/hết hạn/NCC lỗi) không dừng cả lượt — giữ message để xem ở nhóm "Lỗi".
-          loi.push({ ...item, moTa: getErrorMessage(e, "Không tải được hóa đơn này.") });
+          // Người dùng bấm Hủy -> KHÔNG ghi kết quả: hóa đơn này chưa tải xong nhưng cũng không phải
+          // "lỗi", để nguyên ô trống rồi báo riêng ở `daHuy`. Ghi thành lỗi là vu cho hóa đơn một
+          // vấn đề nó không có, và lượt sau người dùng sẽ không biết cái nào thật sự hỏng.
+          if (huy.signal.aborted) return;
+          // Lỗi 1 hóa đơn không dừng cả lượt — giữ message cho nhóm "Lỗi", giữ `tamThoi` để biết có
+          // đáng quét lại không.
+          theoViTri[i] = {
+            item: { ...item, moTa: getErrorMessage(e, "Không tải được hóa đơn này.") },
+            loi: true,
+            tamThoi: laLoiTamThoi(e),
+          };
         }
-        setProgress({ total, done: ok.length + loi.length, loi: loi.length });
+        capNhatTienDo();
+      };
+
+      // Lượt chính + các lượt quét lại. Mỗi lượt: gom việc CÒN LẠI theo NCC (mỗi NCC một luồng, trong
+      // nhóm thì TUẦN TỰ), rồi chạy tối đa `MAX_NCC_SONG_SONG` nhóm cùng lúc.
+      //
+      // Vì sao phải tuần tự TRONG một NCC:
+      //  1) Mỗi lượt tải là một phiên captcha trên cổng NCC đó. Bắn song song vào CÙNG một cổng dễ ăn
+      //     rate-limit, trả giá nhiều hơn phần thời gian tiết kiệm được.
+      //  2) Ở BE, mỗi provider có OCR dùng MỘT worker Tesseract singleton và phải `setParameters` ngay
+      //     trước `recognize`. Hai request cùng NCC chạy chồng sẽ giành worker đó và đọc sai lẫn nhau.
+      // Cổng của các NCC KHÁC nhau thì độc lập, nên song song ở đó là lợi ích thuần: một hóa đơn
+      // CyberLotus phải thử captcha 30s không còn chặn cả lô MISA/Viettel phía sau.
+      let canLam = queue.map((_, i) => i);
+      for (let luot = 0; luot <= SO_LUOT_QUET_LAI && canLam.length > 0 && !huy.signal.aborted; luot++) {
+        const nhomTheoNcc = new Map<string, number[]>();
+        for (const i of canLam) {
+          const nhom = nhomTheoNcc.get(queue[i].msttcgp);
+          if (nhom) nhom.push(i);
+          else nhomTheoNcc.set(queue[i].msttcgp, [i]);
+        }
+        await runPool(Array.from(nhomTheoNcc.values()), MAX_NCC_SONG_SONG, async (viTris) => {
+          // Kiểm TRƯỚC MỖI hóa đơn: `abort()` cắt request đang bay, nhưng không tự chặn nhóm bắt đầu
+          // hóa đơn kế. Thiếu dòng này thì bấm Hủy xong vẫn phải chờ hết hàng đợi của nhóm.
+          for (const i of viTris) {
+            if (huy.signal.aborted) return;
+            await taiMotHoaDon(i);
+          }
+        });
+        // Chỉ quét lại ca TẠM THỜI. Mã tra cứu sai (422) / NCC chưa hỗ trợ (501) thì thử lại vô ích.
+        canLam = canLam.filter((i) => theoViTri[i]?.loi === true && theoViTri[i]?.tamThoi === true);
       }
 
+      const ok: KetQuaItem[] = [];
+      const loi: KetQuaItem[] = [];
+      let chuaTai = 0;
+      for (const r of theoViTri) {
+        if (!r) chuaTai++;
+        else (r.loi ? loi : ok).push(r.item);
+      }
       setKetQua({ ok, loi, boQua });
+      // Chỉ báo "đã hủy" khi thật sự còn dở: hủy đúng lúc hóa đơn cuối vừa xong thì coi như chạy hết.
+      setDaHuy(huy.signal.aborted && chuaTai > 0 ? chuaTai : null);
     } catch (e) {
-      setLoiCaLuot(getErrorMessage(e, "Không tải được hóa đơn gốc."));
+      // Hủy khi đang đọc chi tiết (trước cả hàng đợi) -> không phải lỗi, chỉ là dừng sớm.
+      if (huy.signal.aborted) setDaHuy(0);
+      else setLoiCaLuot(getErrorMessage(e, "Không tải được hóa đơn gốc."));
     } finally {
+      huyRef.current = null;
       setDownloading(false);
     }
   };
+
+  /** Nút Hủy khi đang tải: cắt request đang bay + chặn hàng đợi đi tiếp. Phần đã tải xong vẫn giữ. */
+  const handleHuy = () => huyRef.current?.abort();
 
   const tomTat = ketQua ? tomTatKetQua(ketQua) : null;
   const totalInvoices = rows.length;
@@ -315,7 +444,13 @@ export default function DownloadOriginalDialog({
     <Dialog open={open} onClose={downloading ? undefined : onClose} maxWidth="sm" fullWidth>
       <DialogTitle sx={{ display: "flex", alignItems: "center", justifyContent: "space-between", pr: 1 }}>
         Tải hóa đơn gốc
-        <IconButton size="small" onClick={onClose} disabled={downloading} aria-label="Đóng">
+        {/* Đang tải -> X DỪNG lượt thay vì đóng: đóng giữa chừng thì vòng lặp vẫn chạy nền và kết quả
+            không còn chỗ nào hiện ra. Dừng xong bấm lại là đóng được. */}
+        <IconButton
+          size="small"
+          onClick={downloading ? handleHuy : onClose}
+          aria-label={downloading ? "Dừng tải" : "Đóng"}
+        >
           <CloseRounded fontSize="small" />
         </IconButton>
       </DialogTitle>
@@ -475,8 +610,10 @@ export default function DownloadOriginalDialog({
             </Alert>
           ) : ketQua && tomTat ? (
             <Stack spacing={1.5}>
-              <Alert severity={tomTat.severity} sx={{ py: 0.5 }}>
-                {tomTat.text}
+              <Alert severity={daHuy !== null ? "warning" : tomTat.severity} sx={{ py: 0.5 }}>
+                {daHuy !== null
+                  ? `Đã dừng — ${tomTat.text} Còn ${daHuy} hóa đơn chưa tải, bấm “Tải xuống” để chạy lại.`
+                  : tomTat.text}
               </Alert>
 
               {/* 3 nhóm kết quả — bấm để mở/đóng danh sách hóa đơn của nhóm đó. */}
@@ -546,6 +683,11 @@ export default function DownloadOriginalDialog({
                 </Box>
               )}
             </Stack>
+          ) : daHuy !== null ? (
+            // Hủy TRƯỚC khi hàng đợi kịp dựng (còn đang đọc chi tiết) — chưa có `ketQua` để hiện.
+            <Alert severity="warning" sx={{ py: 0.5 }}>
+              Đã dừng trước khi bắt đầu tải. Nhấn “Tải xuống” để chạy lại.
+            </Alert>
           ) : (
             <Typography variant="body2" color="text.secondary">
               Chưa bắt đầu tải. Nhấn “Tải xuống” để bắt đầu.
@@ -555,8 +697,9 @@ export default function DownloadOriginalDialog({
       </DialogContent>
 
       <DialogActions>
-        <Button onClick={onClose} disabled={downloading} sx={{ textTransform: "none" }}>
-          Hủy
+        {/* Đang tải -> nút này DỪNG lượt (không đóng dialog, để còn xem được phần đã tải xong). */}
+        <Button onClick={downloading ? handleHuy : onClose} sx={{ textTransform: "none" }}>
+          {downloading ? "Dừng tải" : "Đóng"}
         </Button>
         <Button
           variant="contained"
