@@ -58,15 +58,15 @@ export class TraCuuGocError extends Error {
 
   /**
    * HINT retry: `true` khi lỗi do nguyên nhân TẠM THỜI có thể khỏi khi thử lại (vd captcha OCR nhầm) —
-   * caller được phép sang session mới thử tiếp. `undefined`/`false` = lỗi DỨT KHOÁT (vd mã tra cứu
-   * sai) — retry chỉ tốn thời gian. Chỉ provider VNPT đặt hint này (nó phân biệt được captcha sai vs
-   * fkey sai); provider khác không cần quan tâm.
+   * caller được phép thử tiếp. Mặc định `false` = lỗi DỨT KHOÁT (vd mã tra cứu sai), retry chỉ tốn
+   * thời gian. Hiện chỉ VNPT đặt (nó phân biệt được captcha sai vs fkey sai); NCC khác bỏ qua.
    */
-  retryable?: boolean;
+  readonly retryable: boolean;
 
-  constructor(code: TraCuuGocErrorCode, message: string) {
+  constructor(code: TraCuuGocErrorCode, message: string, retryable = false) {
     super(message);
     this.name = "TraCuuGocError";
     this.code = code;
+    this.retryable = retryable;
   }
 }
