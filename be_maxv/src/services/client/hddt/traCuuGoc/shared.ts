@@ -30,6 +30,30 @@ export async function fetchUpstream(url: string, init: RequestInit, ten: string)
   }
 }
 
+/**
+ * Tạo debug logger cho 1 NCC — chỉ in khi biến môi trường `envVar` = "1". Mỗi bộ tải reverse-engineer
+ * từ trang NCC đều cần một cái để chẩn đoán khi NCC đổi template/DTO, và trước giờ mỗi file tự chép
+ * lại một bản y hệt.
+ *
+ * Payload không phải string thì `JSON.stringify`; dài quá `maxLen` thì cắt — HTML trang tra cứu hoặc
+ * base64 file của NCC có thể hàng chục KB, log nguyên là ngập terminal.
+ *
+ * Đọc env LÚC GỌI chứ không lúc tạo logger: `server.ts` import `./app` TRƯỚC `./config/env` nên biến
+ * từ `.env.local` chưa chắc đã có ở thời điểm module provider được nạp.
+ */
+export function makeDbg(prefix: string, envVar: string, maxLen = 2000) {
+  return (label: string, payload: unknown): void => {
+    if (process.env[envVar] !== "1") return;
+    const text = typeof payload === "string" ? payload : JSON.stringify(payload);
+    const trimmed =
+      text && text.length > maxLen
+        ? `${text.slice(0, maxLen)}… (+${text.length - maxLen} chars)`
+        : text;
+    // eslint-disable-next-line no-console
+    console.log(`[${prefix}] ${label}:`, trimmed);
+  };
+}
+
 /** Rút `filename` từ header Content-Disposition (vd `attachment; filename=abc.pdf`, có/không nháy). */
 export function filenameFromDisposition(disposition: string | null): string {
   if (!disposition) return "";

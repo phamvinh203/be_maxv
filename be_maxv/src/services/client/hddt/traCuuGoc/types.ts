@@ -16,11 +16,12 @@ export interface FileHoaDonGoc {
 /**
  * Dữ liệu 1 hóa đơn cần để tải file gốc. NCC đơn giản (MISA) chỉ dùng `code`; NCC khác dùng thêm:
  *  - `sellerMst`: MST người bán (nbmst) — Viettel cần cho `supplierTaxCode`/`taxCode`.
- * (Viettel có captcha nhưng BE TỰ giải bên trong provider — xem `vinvoice_viettel.ts` — nên captcha
- *  không phải là input ở đây.)
+ *
+ * Captcha KHÔNG phải input ở đây: NCC nào có captcha (Viettel, VNPT, CyberLotus) đều tự xử lý gọn
+ * bên trong provider của mình, caller không phải biết.
  */
 export interface DownloadRequest {
-  /** Mã tra cứu hóa đơn (MISA = TransactionID; Viettel = reservationCode). */
+  /** Mã tra cứu hóa đơn (MISA = TransactionID; Viettel = reservationCode; CyberLotus = maSoBiMat). */
   code: string;
   /** MST người bán (nbmst). Bắt buộc với NCC cần (Viettel); MISA bỏ qua. */
   sellerMst?: string;
@@ -59,7 +60,8 @@ export class TraCuuGocError extends Error {
   /**
    * HINT retry: `true` khi lỗi do nguyên nhân TẠM THỜI có thể khỏi khi thử lại (vd captcha OCR nhầm) —
    * caller được phép thử tiếp. Mặc định `false` = lỗi DỨT KHOÁT (vd mã tra cứu sai), retry chỉ tốn
-   * thời gian. Hiện chỉ VNPT đặt (nó phân biệt được captcha sai vs fkey sai); NCC khác bỏ qua.
+   * thời gian. Đặt bởi các NCC phân biệt được "captcha đọc nhầm" với "mã tra cứu sai" (VNPT,
+   * CyberLotus); NCC khác bỏ qua.
    */
   readonly retryable: boolean;
 

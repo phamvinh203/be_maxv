@@ -120,6 +120,7 @@ export const TRA_CUU_NCC: Record<string, NccTraCuu> = {
     ten: "Công ty Cổ phần CyberLotus",
     url: "https://tracuuhoadon1.xcyber.vn/#/tracuuhoadon/tracuu",
     maTraCuu: { src: "cttkhac", ttruong: "MaTraCuu" },
+    taiTuDong: true,
   },
   "0108971656": {
     ten: "Công ty Cổ phần My Software",
