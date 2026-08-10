@@ -13,7 +13,7 @@ import CircularProgress from "@mui/material/CircularProgress";
 import InboxRounded from "@mui/icons-material/InboxRounded";
 import InvoicePagination, { DEFAULT_ROWS_PER_PAGE } from "./InvoicePagination";
 import { clampPage } from "../pagination";
-import { detailColumns, invoiceRowFill, renderCell, rowFillSx } from "../templates";
+import { detailColumns, invoiceRowFill, renderCell, rowFillSx, totalsRow } from "../templates";
 import type { DetailRow, InvoiceDirection } from "../types";
 
 /** Khung căn giữa dùng cho trạng thái loading / gợi ý (viền + bo góc như placeholder cũ). */
@@ -102,6 +102,10 @@ export default function InvoiceDetailPanel({ rows, direction, loading, error }: 
             </TableRow>
           </TableHead>
           <TableBody>
+            {/* Hàng tổng đứng NGAY DƯỚI tiêu đề. `rows` (toàn bộ dòng khớp bộ lọc), KHÔNG phải
+                `pagedRows`: đây là tổng của cả bảng nên không đổi khi lật trang — cũng là con số
+                nằm ở sheet Excel. */}
+            {totalsRow(columns, rows)}
             {pagedRows.map((r, i) => {
               const stt = safePage * rowsPerPage + i + 1;
               return (

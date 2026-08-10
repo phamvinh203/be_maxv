@@ -115,6 +115,7 @@ export function overviewDauVao(): InvoiceColumn<DisplayRow>[] {
     },
     {
       key: "tienChuaThue",
+      total: true,
       header: "Tổng tiền chưa thuế",
       width: 18,
       align: "right",
@@ -123,6 +124,7 @@ export function overviewDauVao(): InvoiceColumn<DisplayRow>[] {
     },
     {
       key: "tienThue",
+      total: true,
       header: "Tổng tiền thuế",
       width: 16,
       align: "right",
@@ -147,6 +149,7 @@ export function overviewDauVao(): InvoiceColumn<DisplayRow>[] {
     },
     {
       key: "tongTt",
+      total: true,
       header: "Tổng tiền thanh toán",
       width: 20,
       align: "right",
@@ -275,6 +278,7 @@ export function detailDauVao(): InvoiceColumn<DetailRow>[] {
     { key: "thueSuat", header: "Thuế suất", width: 14, align: "center", value: (r) => r.thueSuat },
     {
       key: "tienChuaThue",
+      total: true,
       header: "Tiền chưa thuế nguyên tệ",
       width: 14,
       align: "right",
@@ -283,6 +287,7 @@ export function detailDauVao(): InvoiceColumn<DetailRow>[] {
     },
     {
       key: "thueDong",
+      total: true,
       header: "Tiền thuế nguyên tệ",
       width: 14,
       align: "right",
@@ -291,6 +296,7 @@ export function detailDauVao(): InvoiceColumn<DetailRow>[] {
     },
     {
       key: "tienSauThueDong",
+      total: true,
       header: "Tiền sau thuế nguyên tệ",
       width: 14,
       align: "right",
@@ -299,6 +305,7 @@ export function detailDauVao(): InvoiceColumn<DetailRow>[] {
     },
     {
       key: "tienChuaThueVnd",
+      total: true,
       header: "Tiền chưa thuế (VND)",
       width: 14,
       align: "right",
@@ -309,6 +316,7 @@ export function detailDauVao(): InvoiceColumn<DetailRow>[] {
       // `?? 0`: nhóm cột thuế/sau thuế luôn hiện số (xem `DetailRow.thueDong`) — `toVnd` chỉ trả
       // `undefined` khi không có số tiền, mà hai field nguồn dưới đây thì luôn có.
       key: "thueVnd",
+      total: true,
       header: "Tiền thuế (VND)",
       width: 14,
       align: "right",
@@ -317,6 +325,7 @@ export function detailDauVao(): InvoiceColumn<DetailRow>[] {
     },
     {
       key: "tienSauThueVnd",
+      total: true,
       header: "Tiền sau thuế (VND)",
       width: 12,
       align: "right",
@@ -349,6 +358,7 @@ export function detailDauVao(): InvoiceColumn<DetailRow>[] {
     },
     {
       key: "tongTt",
+      total: true,
       header: "Tổng tiền thanh toán",
       width: 14,
       align: "right",
@@ -357,6 +367,7 @@ export function detailDauVao(): InvoiceColumn<DetailRow>[] {
     },
     {
       key: "tongTtVnd",
+      total: true,
       header: "Tổng tiền thanh toán (VND)",
       width: 14,
       align: "right",

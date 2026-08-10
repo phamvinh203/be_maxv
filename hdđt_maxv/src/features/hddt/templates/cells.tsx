@@ -4,9 +4,18 @@
  */
 import type { ReactNode } from "react";
 import Box from "@mui/material/Box";
+import TableRow from "@mui/material/TableRow";
+import TableCell from "@mui/material/TableCell";
 import { darken, type SxProps, type Theme } from "@mui/material/styles";
-import { ttTaiLabel } from "../format";
-import { NO_DATA_YET, type ExcelCellStyle } from "./types";
+import { formatMoney, ttTaiLabel } from "../format";
+import {
+  NO_DATA_YET,
+  TOTAL_ROW_LABEL,
+  TOTAL_TEXT_ARGB,
+  tongCotSo,
+  type ExcelCellStyle,
+  type InvoiceColumn,
+} from "./types";
 
 // Hằng ngoài hàm: object `sx` mới mỗi ô sẽ bắt emotion serialize lại cho từng dòng của bảng.
 const TT_TAI_OK_SX = { color: "success.main", fontWeight: 600 };
@@ -36,6 +45,41 @@ const HOVER_DARKEN = 0.08;
 /** ARGB 8 ký tự của exceljs ("FFDDEBF7") -> mã màu CSS ("#DDEBF7"). */
 function argbToCss(argb: string): string {
   return `#${argb.slice(-6)}`;
+}
+
+/**
+ * Hàng TỔNG: chữ đỏ, in đậm, gạch dưới đậm để tách hẳn khỏi vùng dữ liệu bên dưới. Không tô nền —
+ * hàng dữ liệu kế nó có thể đang có màu trạng thái, thêm nền nữa là rối.
+ */
+const TOTAL_ROW_SX: SxProps<Theme> = {
+  "& td": {
+    color: argbToCss(TOTAL_TEXT_ARGB),
+    fontWeight: 700,
+    borderBottom: "2px solid",
+    borderBottomColor: "divider",
+  },
+};
+
+/**
+ * Hàng tổng ĐẦU bảng web (ngay dưới hàng tiêu đề) — cộng các cột có cờ `total` trên TOÀN BỘ `rows`,
+ * tức toàn bộ hóa đơn khớp bộ lọc chứ KHÔNG phải riêng trang đang xem (nơi gọi truyền `rows` đầy đủ,
+ * không phải `pagedRows`). Vì vậy con số giữ nguyên khi lật trang, và khớp đúng hàng tổng của sheet
+ * Excel. Đặt trên đầu để thấy ngay khi mở bảng, không phải cuộn xuống cuối.
+ *
+ * Là HÀM trả `ReactNode` chứ không phải component — cùng thành ngữ với `renderCell`/`ttTaiCell`, và
+ * nhờ vậy file này giữ nguyên vai trò "kho hàm render", không lẫn component (fast-refresh).
+ */
+export function totalsRow<T>(columns: InvoiceColumn<T>[], rows: T[]): ReactNode {
+  const tong = tongCotSo(columns, rows);
+  return (
+    <TableRow sx={TOTAL_ROW_SX}>
+      {columns.map((col, i) => (
+        <TableCell key={col.key} align={col.align}>
+          {i === 0 ? TOTAL_ROW_LABEL : tong.has(col.key) ? formatMoney(tong.get(col.key)) : ""}
+        </TableCell>
+      ))}
+    </TableRow>
+  );
 }
 
 /**

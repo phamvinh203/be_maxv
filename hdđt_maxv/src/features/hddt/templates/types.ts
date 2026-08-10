@@ -98,6 +98,11 @@ export interface InvoiceColumn<T> {
   cell?: (row: T, stt: number) => ReactNode;
   /** Chỉ hiện trên web, không xuất ra file — `fileColumns` lọc bỏ. */
   webOnly?: boolean;
+  /**
+   * Cột được CỘNG ở hàng tổng cuối bảng (xem `tongCotSo`). Chỉ bật cho cột tiền — cột số lượng, tỷ
+   * giá, thuế suất… cộng lại không có nghĩa gì.
+   */
+  total?: boolean;
 }
 
 /** Cột chưa có nguồn dữ liệu (cần API/tính năng riêng, chưa xây) — web hiện tạm "—". */
@@ -152,4 +157,35 @@ export function chiDongDau(row: { isFirstRow?: boolean }, noiDung: string): stri
 /** Bỏ cột chỉ dành cho web — mọi kênh ghi ra file (Excel, CSV) phải đi qua hàm này. */
 export function fileColumns<T>(cols: InvoiceColumn<T>[]): InvoiceColumn<T>[] {
   return cols.filter((c) => !c.webOnly);
+}
+
+/** Nhãn ở ô đầu tiên của hàng tổng. */
+export const TOTAL_ROW_LABEL = "TỔNG CỘNG";
+
+/** Màu chữ hàng tổng — đỏ sẫm, ARGB như mọi màu khác trong file này (web đổi sang mã CSS). */
+export const TOTAL_TEXT_ARGB = "FFC00000";
+
+/**
+ * Cộng các cột có cờ `total` trên TOÀN BỘ `rows` — dùng chung cho hàng tổng của bảng web và của
+ * sheet Excel, nên hai nơi không thể ra số khác nhau.
+ *
+ * Cộng KẾT QUẢ của `value()` chứ không đọc thẳng field, để mọi luật đã cài trong cột tự có hiệu lực.
+ * Quan trọng nhất là nhóm cột cấp HÓA ĐƠN ở bảng Chi tiết ("Tổng tiền thanh toán"…): chúng chỉ trả
+ * số ở dòng hàng ĐẦU của mỗi hóa đơn, các dòng sau trả `undefined` — nhờ vậy tổng ra đúng một lần
+ * mỗi hóa đơn thay vì nhân lên theo số dòng hàng.
+ *
+ * `stt` truyền vào chỉ để đủ chữ ký hàm; không cột tiền nào đọc tới nó.
+ */
+export function tongCotSo<T>(cols: InvoiceColumn<T>[], rows: T[]): Map<string, number> {
+  const tong = new Map<string, number>();
+  for (const col of cols) {
+    if (!col.total) continue;
+    let s = 0;
+    rows.forEach((row, i) => {
+      const v = col.value(row, i + 1);
+      if (typeof v === "number") s += v;
+    });
+    tong.set(col.key, s);
+  }
+  return tong;
 }

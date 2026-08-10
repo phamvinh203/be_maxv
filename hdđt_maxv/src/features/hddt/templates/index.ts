@@ -28,6 +28,9 @@ export function detailColumns(direction: InvoiceDirection): InvoiceColumn<Detail
 
 export { backupColumns } from "./backupColumns";
 export { fileColumns, renderCell, type InvoiceColumn } from "./types";
+/** Hàng tổng cuối bảng: `TotalsRow` cho web, `tongCotSo` cho sheet Excel — cùng một phép cộng. */
+export { totalsRow } from "./cells";
+export { tongCotSo, TOTAL_ROW_LABEL, TOTAL_TEXT_ARGB } from "./types";
 /** Màu hàng theo trạng thái/cảnh báo: `invoiceRowFill` cho ra màu, `rowFillSx` biến nó thành sx của bảng web. */
 export { invoiceRowFill } from "./types";
 export { rowFillSx } from "./cells";

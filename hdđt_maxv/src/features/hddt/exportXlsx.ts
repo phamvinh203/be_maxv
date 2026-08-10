@@ -3,7 +3,16 @@
  * Danh sách cột nằm ở `templates/`, dùng chung với bảng trên web nên hai bên không lệch nhau được.
  */
 import type { Workbook } from "exceljs";
-import { detailColumns, fileColumns, invoiceRowFill, overviewColumns, type InvoiceColumn } from "./templates";
+import {
+  detailColumns,
+  fileColumns,
+  invoiceRowFill,
+  overviewColumns,
+  tongCotSo,
+  TOTAL_ROW_LABEL,
+  TOTAL_TEXT_ARGB,
+  type InvoiceColumn,
+} from "./templates";
 import type { ExcelCellStyle } from "./templates/types";
 import type { DetailRow, DisplayRow, InvoiceDirection } from "./types";
 
@@ -17,8 +26,11 @@ const TEXT_FMT = "@";
 /**
  * BỐ CỤC SHEET — bám theo mẫu Excel mà kế toán đang dùng, đừng đổi lẻ tẻ:
  *  - sheet CÓ khối tiêu đề: dòng 1-2 trống, dòng 3 tên bảng (gộp ô), dòng 4 khoảng ngày (gộp ô),
- *    dòng 5 trống, dòng 6 tiêu đề cột, dữ liệu từ dòng 7;
- *  - sheet KHÔNG có khối tiêu đề: dòng 1 trống, dòng 2 tiêu đề cột, dữ liệu từ dòng 3.
+ *    dòng 5 trống, dòng 6 tiêu đề cột, dòng 7 hàng TỔNG, dữ liệu từ dòng 8;
+ *  - sheet KHÔNG có khối tiêu đề: dòng 1 trống, dòng 2 tiêu đề cột, dòng 3 hàng TỔNG, dữ liệu từ dòng 4.
+ *
+ * Hàng TỔNG đứng NGAY DƯỚI tiêu đề cho khớp bảng web; bảng không có cột nào cần cộng (hoặc không có
+ * dòng nào) thì không chèn hàng đó và dữ liệu lùi lên sát tiêu đề như cũ.
  */
 const BANNER_HEADER_ROW = 6;
 const PLAIN_HEADER_ROW = 2;
@@ -57,8 +69,16 @@ function addStyledSheet<T>(
 ): void {
   const cols = fileColumns(allCols);
   const headerAt = banner ? BANNER_HEADER_ROW : PLAIN_HEADER_ROW;
+
+  // Hàng TỔNG nằm NGAY DƯỚI hàng tiêu đề, đúng như bảng trên web -> dữ liệu lùi xuống 1 dòng.
+  const tong = tongCotSo(cols, rows);
+  const hasTotal = tong.size > 0 && rows.length > 0;
+  const totalAt = headerAt + 1;
+  const firstDataAt = hasTotal ? headerAt + 2 : headerAt + 1;
+
   const ws = wb.addWorksheet(sheetName, {
-    views: [{ state: "frozen", ySplit: headerAt }], // giữ hàng tiêu đề khi cuộn
+    // Đóng băng tới HẾT hàng tổng: cuộn tới đâu vẫn thấy cả tiêu đề lẫn số tổng.
+    views: [{ state: "frozen", ySplit: hasTotal ? totalAt : headerAt }],
   });
 
   // Chỉ đặt độ rộng + định dạng cho CỘT. Không dùng `ws.columns = [{header}]`: cách đó ghi tiêu đề
@@ -101,11 +121,27 @@ function addStyledSheet<T>(
   headerRow.font = { bold: true };
   headerRow.alignment = { vertical: "middle", horizontal: "center", wrapText: true };
 
+  // ---- Hàng TỔNG, NGAY DƯỚI hàng tiêu đề — đúng chỗ nó đứng ở bảng web ----
+  // Ghi TRƯỚC vùng dữ liệu để `firstDataAt` chỉ có một cách hiểu duy nhất (dữ liệu luôn bắt đầu sau
+  // hàng này). Hàng tổng nằm trong vùng đóng băng nên cuộn tới đâu cũng thấy.
+  if (hasTotal) {
+    const totalRow = ws.getRow(totalAt);
+    totalRow.height = ROW_HEIGHT;
+    totalRow.alignment = { vertical: "middle" };
+    cols.forEach((c, i) => {
+      const cell = totalRow.getCell(i + 1);
+      // Nhãn ở ô đầu; các cột không cộng để TRỐNG (ghi 0 vào đây là bịa ra số liệu).
+      if (i === 0) cell.value = TOTAL_ROW_LABEL;
+      else if (tong.has(c.key)) cell.value = tong.get(c.key) ?? null;
+      cell.font = { bold: true, color: { argb: TOTAL_TEXT_ARGB } };
+    });
+  }
+
   // Dữ liệu: mỗi hàng giãn dòng cho dễ đọc. `stt` 1-based — cùng quy ước với bảng trên web.
-  // Ghi theo chỉ số dòng tuyệt đối (không `addRow`) để dữ liệu luôn nằm ngay dưới hàng tiêu đề.
+  // Ghi theo chỉ số dòng tuyệt đối (không `addRow`) để dữ liệu luôn nằm đúng chỗ dưới hàng tổng.
   // Ô không có dữ liệu ghi `null` -> Excel để TRỐNG, không phải 0.
   rows.forEach((row, i) => {
-    const r = ws.getRow(headerAt + 1 + i);
+    const r = ws.getRow(firstDataAt + i);
     // Đặt style của HÀNG trước rồi mới ghi ô: `row.alignment` quét lại các ô đang có và ghi đè
     // style của chúng, nên làm sau sẽ xóa mất màu nền vừa tô ở dưới.
     r.height = ROW_HEIGHT;
@@ -122,9 +158,16 @@ function addStyledSheet<T>(
     });
   });
 
+  // Vùng lọc khai TỪ hàng tiêu đề ĐẾN hàng dữ liệu CUỐI thay vì để Excel tự dò — ít nhất thì nó
+  // dừng đúng ở dòng cuối, không nuốt thêm thứ gì viết bên dưới sau này.
+  //
+  // ĐÁNH ĐỔI ĐÃ BIẾT: hàng tổng nằm GIỮA tiêu đề và dữ liệu nên vẫn lọt vào vùng này (vùng lọc bắt
+  // buộc liền mạch từ hàng tiêu đề, không có cách nào chừa một dòng ở giữa) — bấm sắp xếp bằng mũi
+  // tên lọc sẽ xếp cả hàng tổng theo. Chấp nhận, vì đây là chỗ người dùng muốn nó đứng; muốn tránh
+  // hẳn thì phải đẩy hàng tổng lên TRÊN hàng tiêu đề hoặc xuống dưới cùng, cách một dòng trống.
   ws.autoFilter = {
     from: { row: headerAt, column: 1 },
-    to: { row: headerAt, column: cols.length },
+    to: { row: firstDataAt + Math.max(rows.length - 1, 0), column: cols.length },
   };
 }
 

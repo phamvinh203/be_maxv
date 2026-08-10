@@ -38,7 +38,7 @@ import type { InvoiceDirection, InvoiceFilterValues, InvoiceQuery } from "../typ
 import { toDisplayRow } from "../invoiceRow";
 import { buildReplacedByMap, toDetailRows } from "../detailRow";
 import { invoiceKey, invoiceSttMap } from "../invoiceFileName";
-import { invoiceRowFill, overviewColumns, renderCell, rowFillSx } from "../templates";
+import { invoiceRowFill, overviewColumns, renderCell, rowFillSx, totalsRow } from "../templates";
 import InvoiceFilterPanel from "./InvoiceFilterPanel";
 import InvoiceDetailPanel from "./InvoiceDetailPanel";
 import InvoiceViewDialog from "./InvoiceViewDialog";
@@ -510,7 +510,12 @@ function InvoiceTablePanel({ direction, active }: InvoiceTablePanelProps) {
           </TableHead>
           <TableBody>
             {rows.length > 0 ? (
-              pagedRows.map((r, i) => {
+              <>
+              {/* Hàng tổng đứng NGAY DƯỚI tiêu đề. `rows` (toàn bộ hóa đơn khớp bộ lọc), KHÔNG phải
+                  `pagedRows`: đây là tổng của cả bảng nên không đổi khi lật trang — cũng là con số
+                  nằm ở sheet Excel. */}
+              {totalsRow(columns, rows)}
+              {pagedRows.map((r, i) => {
                 const stt = safePage * rowsPerPage + i + 1;
                 return (
                   // Tô cả hàng theo trạng thái/cảnh báo, cùng quy tắc với bảng Chi tiết và Excel.
@@ -543,7 +548,8 @@ function InvoiceTablePanel({ direction, active }: InvoiceTablePanelProps) {
                     ))}
                   </TableRow>
                 );
-              })
+              })}
+              </>
             ) : (
               <TableRow>
                 <TableCell colSpan={columns.length} sx={{ border: 0, py: 6 }}>
