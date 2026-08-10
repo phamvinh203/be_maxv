@@ -42,7 +42,6 @@
  */
 
 import { describeErrorChain } from "../../../../config/gdt-client";
-import { listZipEntryNames, readZipEntryByExtension } from "../../../../helpers/zip";
 import { docTotNhat, taoBoDocCaptcha } from "./captchaOcr";
 import {
   NAVIGATE_HEADERS,
@@ -52,11 +51,11 @@ import {
   fetchUpstream,
   htmlToText,
   khopCum,
-  laPdf,
   makeDbg,
   makeDeadline,
   mergeSetCookie,
   pdfFromResponse,
+  pdfTuGoi,
 } from "./shared";
 import { FileHoaDonGoc, ProviderDownloader, TraCuuGocError } from "./types";
 
@@ -426,42 +425,10 @@ export async function taiFile(
   // Content-Disposition. `contentType` nó gắn sẵn "application/pdf" — đúng với thứ hàm này trả ra.
   // `maDaXacThuc: true` — đã rút được `invToken` ở bước 2 nên FKey chắc chắn đúng; body rỗng ở đây là
   // lỗi tạm thời của cổng, không phải mã sai.
-  const file = await pdfFromResponse(res, fkey, TEN, true);
-  if (laPdf(file.buffer)) return file;
-
-  const laZip = file.buffer[0] === 0x50 && file.buffer[1] === 0x4b; // "PK"
-  if (!laZip) {
-    // 200 + HTML báo lỗi là ca hay gặp khi token hết hạn; đừng giao file rác cho kế toán.
-    throw new TraCuuGocError(
-      "UPSTREAM",
-      `${TEN} trả file không phải ZIP/PDF cho FKey "${fkey}" (token hết hạn?)`,
-    );
-  }
-
-  let pdf: { name: string; data: Buffer } | null;
-  try {
-    pdf = readZipEntryByExtension(file.buffer, ".pdf");
-  } catch (err) {
-    // Zip hỏng/định dạng lạ -> lỗi hạ tầng, không phải "mã tra cứu sai".
-    throw new TraCuuGocError("UPSTREAM", `${TEN}: không giải nén được ZIP — ${describeErrorChain(err)}`);
-  }
-
-  if (!pdf) {
-    // Liệt kê tên file bên trong để chẩn đoán ngay, khỏi phải tự tải zip về mở tay.
-    const ten = listZipEntryNames(file.buffer).join(", ");
-    throw new TraCuuGocError(
-      "UPSTREAM",
-      `${TEN}: ZIP của FKey "${fkey}" không chứa PDF nào (bên trong: ${ten || "rỗng"})`,
-    );
-  }
-
-  dbg("taiFile lấy PDF khỏi zip", { fkey, pdf: pdf.name, bytes: pdf.data.length });
-  return {
-    buffer: pdf.data,
-    // Tên trong zip có thể kèm đường dẫn -> lấy phần cuối. FE tự đặt tên khác, đây chỉ là gợi ý.
-    filename: pdf.name.split("/").pop() || `${fkey}.pdf`,
-    contentType: "application/pdf",
-  };
+  const goi = await pdfFromResponse(res, fkey, TEN, true);
+  const file = pdfTuGoi(goi, fkey, TEN);
+  dbg("taiFile lấy PDF khỏi gói", { fkey, pdf: file.filename, bytes: file.buffer.length });
+  return file;
 }
 
 // ============================================================

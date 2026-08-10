@@ -4,6 +4,7 @@
  */
 
 import { describeErrorChain } from "../../../../config/gdt-client";
+import { listZipEntryNames, readZipEntryByExtension } from "../../../../helpers/zip";
 import { MST_REGEX } from "../../../../utils/dbName";
 import { FileHoaDonGoc, TraCuuGocError } from "./types";
 
@@ -356,6 +357,45 @@ export async function pdfFromResponse(
   }
   const filename = filenameFromDisposition(res.headers.get("content-disposition")) || `${code}.pdf`;
   return { buffer, filename, contentType: "application/pdf" };
+}
+
+
+export function pdfTuGoi(file: FileHoaDonGoc, code: string, ten: string): FileHoaDonGoc {
+  if (laPdf(file.buffer)) return file;
+
+  const laZip = file.buffer[0] === 0x50 && file.buffer[1] === 0x4b; // "PK"
+  if (!laZip) {
+    throw new TraCuuGocError(
+      "UPSTREAM",
+      `${ten} trả file không phải ZIP/PDF cho mã "${code}" (token/mã hết hạn?)`,
+    );
+  }
+
+  let pdf: { name: string; data: Buffer } | null;
+  try {
+    pdf = readZipEntryByExtension(file.buffer, ".pdf");
+  } catch (err) {
+    // Zip hỏng/định dạng lạ -> lỗi hạ tầng, không phải "mã tra cứu sai".
+    throw new TraCuuGocError(
+      "UPSTREAM",
+      `${ten}: không giải nén được ZIP — ${describeErrorChain(err)}`,
+    );
+  }
+  if (!pdf) {
+    // Liệt kê tên file bên trong để chẩn đoán ngay, khỏi phải tự tải zip về mở tay.
+    const trongGoi = listZipEntryNames(file.buffer).join(", ");
+    throw new TraCuuGocError(
+      "UPSTREAM",
+      `${ten}: ZIP của mã "${code}" không chứa PDF nào (bên trong: ${trongGoi || "rỗng"})`,
+    );
+  }
+
+  return {
+    buffer: pdf.data,
+    // Tên trong zip có thể kèm đường dẫn -> lấy phần cuối. FE tự đặt tên khác, đây chỉ là gợi ý.
+    filename: pdf.name.split("/").pop() || `${code}.pdf`,
+    contentType: "application/pdf",
+  };
 }
 
 /**

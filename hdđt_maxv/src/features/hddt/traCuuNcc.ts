@@ -28,20 +28,13 @@ export interface NccTraCuu {
    *
    * Với NCC đã có bộ tải ở BE thì đây chỉ là ĐƯỜNG LÙI khi chưa gọi được danh mục: domain cổng NCC
    * là thứ BE buộc phải biết chính xác để tải tự động, nên BE mới là nguồn chính. Còn NCC chỉ tra cứu
-   * tay (VININVOICE, VETC, FPT) thì đây là nguồn DUY NHẤT — BE không có provider cho họ.
+   * tay (VININVOICE, FPT) thì đây là nguồn DUY NHẤT — BE không có provider cho họ.
    */
   url: string;
   maTraCuu: MaTraCuuSpec;
 }
 
 
-/**
- * NCC phát hành mà FE biết cách RÚT MÃ TRA CỨU, keyed bằng `msttcgp`.
- *
- * Phần còn lại ở đây (`ten`, `url`) chỉ là đường lùi — với NCC đã có bộ tải, danh mục BE là nguồn
- * chính. Cái KHÔNG thể chuyển sang BE là `maTraCuu`: nó mô tả cách bóc mã ra khỏi payload chi tiết
- * mà chỉ FE mới cầm trong tay.
- */
 export const TRA_CUU_NCC: Record<string, NccTraCuu> = {
   "0100109106": {
     ten: "Tập đoàn Công nghiệp - Viễn thông quân đội",
