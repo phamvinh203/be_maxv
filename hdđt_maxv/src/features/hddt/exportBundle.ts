@@ -348,7 +348,11 @@ export async function exportInvoiceBundle(opts: ExportBundleOptions): Promise<Ex
   const states: TaskState[] = [];
   const htmlDirs: FsDirHandle[] = [];
   for (const { direction, saved, details, views } of perDir) {
-    const overviewRows = (saved.datas ?? []).map((r) => toDisplayRow(r, direction));
+    // Bản đồ ngược "HĐ này bị HĐ nào thay thế/điều chỉnh", dùng cho CẢ HAI sheet. Nguồn là danh sách
+    // `thayThe` BE trả riêng, KHÔNG phải `saved.datas`/`details`: hóa đơn thay thế thường lập ở kỳ
+    // sau hóa đơn gốc nên nó hay nằm ngoài khoảng đang xuất (xem `readReplacements` bên BE).
+    const replacedBy = buildReplacedByMap(saved.thayThe ?? []);
+    const overviewRows = (saved.datas ?? []).map((r) => toDisplayRow(r, direction, replacedBy));
     // NGUỒN DUY NHẤT của số thứ tự cho cả 3 kênh: sheet Tổng quát (vị trí dòng), sheet Chi tiết
     // (tra theo khóa) và tên file ghi ra đĩa. Lệch nhau là cột "Tên file" chỉ tên file không có thật.
     // Cần cho CẢ Excel lẫn tên file từng hóa đơn, nên tính kể cả khi không tick Excel.
@@ -357,8 +361,6 @@ export async function exportInvoiceBundle(opts: ExportBundleOptions): Promise<Ex
     // Excel tổng hợp giờ là lựa chọn RIÊNG (ô tick "Excel tổng hợp"): trước đây luôn ghi kèm, nay chỉ
     // ghi khi người dùng tick — cho phép chỉ tải Excel, hoặc chỉ tải file hóa đơn mà không kèm Excel.
     if (formats.excel) {
-      // Bản đồ ngược "HĐ này bị HĐ nào thay thế/điều chỉnh" — dựng cùng khoảng (xem detailRow.ts).
-      const replacedBy = buildReplacedByMap(details);
       const detailRows = details.flatMap((d) =>
         toDetailRows(d, sttOf.get(detailInvoiceKey(d)) ?? 0, replacedBy),
       );

@@ -32,7 +32,21 @@ import {
 } from "./types";
 
 /**
- * Bảng "Tổng quát" đầu vào — 22 cột trên web, 20 cột trong file Excel.
+ * Nội dung cột "Ghi Chú: Các trường hợp đặc biệt kế toán xem xét kỹ hơn" — cảnh báo TỰ SINH từ chính
+ * dữ liệu hóa đơn (mẫu Excel của kế toán ghi kiểu "Thiếu địa chỉ người mua").
+ *
+ * Dùng CHUNG cho bảng Tổng quát và bảng Chi tiết: hai bảng nói về cùng một hóa đơn nên không được
+ * cảnh báo khác nhau. Không có cảnh báo nào -> `undefined` (web hiện "—", file xuất để ô trống).
+ */
+function ghiChuDacBiet(r: { buyerDiaChi: string; trangThaiHd: string }): string | undefined {
+  const warnings: string[] = [];
+  if (!r.buyerDiaChi) warnings.push("Thiếu địa chỉ người mua");
+  if (r.trangThaiHd === "4") warnings.push("Hóa đơn này không được kê khai");
+  return warnings.length > 0 ? warnings.join(". ") : undefined;
+}
+
+/**
+ * Bảng "Tổng quát" đầu vào — 25 cột trên web, 23 cột trong file Excel.
  * Bên đối tác ở chiều này là NGƯỜI BÁN (nhà cung cấp) — mỗi hóa đơn một nhà cung cấp khác nhau.
  *
  * HAI CỘT ĐẦU LÀ `webOnly` (không ra file Excel) vì chúng là công cụ của màn hình chứ không phải
@@ -89,6 +103,15 @@ export function overviewDauVao(): InvoiceColumn<DisplayRow>[] {
       header: "Tên người mua/Tên người nhận hàng",
       width: 34,
       value: (r) => r.buyerTen,
+    },
+    {
+      // Mỗi dòng ở bảng này là MỘT HÓA ĐƠN, nên chỉ hiện được mặt hàng ĐẦU TIÊN của hóa đơn — hóa
+      // đơn nhiều dòng hàng phải xem bảng "Chi tiết hóa đơn" mới đủ. Hóa đơn chưa tải chi tiết
+      // (nguồn của cột này) để trống.
+      key: "tenHang",
+      header: "Tên hàng hóa, dịch vụ",
+      width: 34,
+      value: (r) => r.tenHang || undefined,
     },
     {
       key: "tienChuaThue",
@@ -162,6 +185,19 @@ export function overviewDauVao(): InvoiceColumn<DisplayRow>[] {
       width: 36,
       value: (r, stt) => invoiceFileBase(stt, r.ngayLap, r.soHd, r.sellerMst),
     },
+    // Hai cột ghi chú khép lại bảng, ĐÚNG THỨ TỰ và cùng nội dung với bảng "Chi tiết hóa đơn".
+    {
+      key: "ghiChuLienQuan",
+      header: "Ghi chú: Hóa đơn thay thế, điều chỉnh, bị thay thế, bị điều chỉnh",
+      width: 30,
+      value: (r) => r.ghiChuLienQuan || undefined,
+    },
+    {
+      key: "ghiChuDacBiet",
+      header: "Ghi Chú: Các trường hợp đặc biệt kế toán xem xét kỹ hơn",
+      width: 30,
+      value: (r) => ghiChuDacBiet(r),
+    },
   ];
 }
 
@@ -174,9 +210,9 @@ export function overviewDauVao(): InvoiceColumn<DisplayRow>[] {
  *  - "…(VND)": chính cột nguyên tệ nhân `tyGia` (hóa đơn VND có tỷ giá 1 nên bằng nhau);
  *  - "Tổng…": của CẢ HÓA ĐƠN, nên lặp y hệt ở mọi dòng hàng — đừng cộng cả cột.
  *
- * CÒN ĐÚNG MỘT CỘT CHƯA CÓ NGUỒN DỮ LIỆU: "Ghi Chú: Các trường hợp đặc biệt kế toán xem xét kỹ
- * hơn" — cột này là CẢNH BÁO TỰ SINH (mẫu Excel ghi kiểu "Thiếu địa chỉ người mua"), phải chốt bộ
- * quy tắc nghiệp vụ trước mới làm được, không phải chỉ map thêm field.
+ * Cột "Ghi Chú: Các trường hợp đặc biệt kế toán xem xét kỹ hơn" không đọc field nào cả — nó là
+ * CẢNH BÁO TỰ SINH, bộ quy tắc nằm ở `ghiChuDacBiet` đầu file (thêm quy tắc thì sửa ở đó, cả hai
+ * bảng cùng đổi theo).
  *
  * Các cột còn lại đều đọc từ payload chi tiết GDT — xem `detailRow.ts` để biết field nguồn. Nhiều
  * cột chỉ có giá trị ở một số loại hóa đơn (vd "Ngày CQT ký số" chỉ hóa đơn CÓ MÃ mới có, "Biển số
@@ -343,16 +379,10 @@ export function detailDauVao(): InvoiceColumn<DetailRow>[] {
       value: (r) => r.ghiChuLienQuan || undefined,
     },
     {
-      // Cột nghiệp vụ do kế toán tự đánh dấu — chưa có chỗ nhập.
       key: "ghiChuDacBiet",
       header: "Ghi Chú: Các trường hợp đặc biệt kế toán xem xét kỹ hơn",
       width: 30,
-      value: (r) => {
-        const warnings: string[] = [];
-        if (!r.buyerDiaChi) warnings.push("Thiếu địa chỉ người mua");
-        if (r.trangThaiHd === "4") warnings.push("Hóa đơn này không được kê khai");
-        return warnings.length > 0 ? warnings.join(". ") : undefined;
-      },
+      value: (r) => ghiChuDacBiet(r),
     },
     { key: "ghiChu1", header: "Ghi chú 1", width: 12, value: (r) => r.ghiChu },
     { key: "hinhThucTt", header: "Hình thức thanh toán", width: 12, value: (r) => r.hinhThucTt },

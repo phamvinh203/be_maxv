@@ -38,7 +38,7 @@ export const TRANG_THAI_HD_FILL: Record<string, ExcelCellStyle> = {
 
 /**
  * Tô cả hàng theo trạng thái hóa đơn; `undefined` = hóa đơn mới/mã lạ -> để hàng nguyên.
- * Dùng cho sheet "Chi tiết" của CẢ HAI chiều (quy tắc giống nhau nên để chung, không nhân đôi).
+ * Quy tắc giống nhau cho cả hai chiều nên để chung, không nhân đôi.
  */
 export function trangThaiHdRowFill(row: { trangThaiHd: string }): ExcelCellStyle | undefined {
   return TRANG_THAI_HD_FILL[row.trangThaiHd];
@@ -49,9 +49,15 @@ export const WARNING_FILL: ExcelCellStyle = { bg: "FFE0E0E0" }; // xám nhạt
 
 /**
  * Tô cả hàng kết hợp: Ưu tiên trạng thái hóa đơn, nếu không có mới dùng warning.
- * Dùng cho sheet "Chi tiết" để tô cảnh báo mà không đè màu trạng thái quan trọng.
+ *
+ * Dùng cho CẢ BỐN chỗ hiển thị hóa đơn — 2 bảng trên web (Tổng quát + Chi tiết, qua `rowFillSx`) và
+ * 2 sheet Excel tương ứng — nên một hóa đơn luôn cùng màu ở mọi nơi. Tham số nhận structural type
+ * (`DisplayRow` lẫn `DetailRow` đều khớp) chứ không buộc một kiểu cụ thể.
  */
-export function detailRowFill(row: { trangThaiHd: string; buyerDiaChi?: string }): ExcelCellStyle | undefined {
+export function invoiceRowFill(row: {
+  trangThaiHd: string;
+  buyerDiaChi?: string;
+}): ExcelCellStyle | undefined {
   // Ưu tiên trạng thái hóa đơn (đỏ/hồng quan trọng hơn)
   const statusFill = TRANG_THAI_HD_FILL[row.trangThaiHd];
   if (statusFill) return statusFill;

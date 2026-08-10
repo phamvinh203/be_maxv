@@ -780,11 +780,177 @@ export interface SavedInvoiceRow {
    * `mapSavedRow`. Dùng cho dialog "Tải hóa đơn gốc" để gom/lọc theo `TRA_CUU_NCC`. Rỗng nếu raw thiếu.
    */
   msttcgp?: string;
+  /**
+   * Tên hàng hóa của DÒNG HÀNG ĐẦU TIÊN trong chi tiết — cột "Tên hàng hóa, dịch vụ" của bảng Tổng
+   * quát (1 dòng = 1 hóa đơn nên chỉ lấy được 1 mặt hàng đại diện). Rỗng khi HĐ chưa tải chi tiết.
+   */
+  tenHang?: string;
+  /** Ký hiệu HĐ GỐC bị thay thế/điều chỉnh — nguồn cột "Ghi chú: Hóa đơn thay thế, điều chỉnh…". */
+  khhdgoc?: string;
+  /** Số HĐ GỐC bị thay thế/điều chỉnh. */
+  shdgoc?: string;
+  /** Ngày lập HĐ GỐC bị thay thế/điều chỉnh. */
+  tdlhdgoc?: string;
+}
+
+/**
+ * 1 hóa đơn THAY THẾ/ĐIỀU CHỈNH (tthai 2/3) kèm khóa trỏ về hóa đơn gốc của nó — xem `readReplacements`.
+ * Tên field giữ NGUYÊN tên GDT để FE đưa thẳng vào `buildReplacedByMap` (dùng chung với payload chi tiết).
+ */
+export interface ReplacementRow {
+  nbmst: string;
+  /** Ký hiệu hóa đơn GỐC mà hóa đơn này thay thế/điều chỉnh. */
+  khhdgoc: string;
+  /** Số hóa đơn GỐC. */
+  shdgoc: string;
+  /** Số của chính hóa đơn thay thế/điều chỉnh này. */
+  shdon: string;
+  /** Ngày lập của chính hóa đơn thay thế/điều chỉnh này. */
+  tdlap: string;
+  tthai: string;
+}
+
+/**
+ * Mọi hóa đơn THAY THẾ/ĐIỀU CHỈNH lập TỪ `tuNgay` TRỞ ĐI — để FE dựng bản đồ ngược "hóa đơn này bị
+ * hóa đơn nào thay thế/điều chỉnh" (`buildReplacedByMap`).
+ *
+ * VÌ SAO KHÔNG BÓ TRONG KHOẢNG ĐANG LỌC: liên kết là MỘT CHIỀU — chỉ hóa đơn thay thế biết hóa đơn
+ * gốc, còn hóa đơn bị thay thế không mang thông tin nào trỏ ngược lại. Mà hóa đơn thay thế thường
+ * lập ở KỲ SAU hóa đơn gốc (đo trên dữ liệu thật: 16/26 cặp khác tháng), nên nếu chỉ dựng bản đồ từ
+ * đúng khoảng đang xem thì lọc theo tháng là cột ghi chú của hóa đơn bị thay thế bỏ trống gần hết.
+ *
+ * Chặn dưới bằng `tuNgay` (dùng index `tdlap`) là an toàn: không thể thay thế một hóa đơn trước khi
+ * nó tồn tại, nên hóa đơn thay thế luôn lập từ ngày của hóa đơn gốc trở đi. KHÔNG áp các bộ lọc còn
+ * lại (trạng thái, MST đối tác, số HĐ…): lọc đi là mất chính mắt xích cần tra — khóa đã có `nbmst`
+ * nên không sợ lẫn giữa các đối tác.
+ *
+ * Đọc `detail` trước, thiếu thì lùi về `raw` (payload danh sách GDT cũng mang nhóm `…goc`) — nhờ vậy
+ * tra được cả khi hóa đơn thay thế CHƯA tải chi tiết. Số hóa đơn tthai 2/3 rất ít so với tổng nên
+ * cả hai cột JSON chỉ bị bung ở vài chục dòng.
+ */
+async function readReplacements(
+  tenantDb: PrismaClient,
+  direction: "purchase" | "sold",
+  tuNgay: string,
+): Promise<ReplacementRow[]> {
+  const table = Prisma.raw(direction === "purchase" ? '"vct60view"' : '"vct50view"');
+  const rows = await tenantDb.$queryRaw<
+    {
+      nbmst: string | null;
+      khhdgoc: string | null;
+      shdgoc: string | null;
+      shdon: string;
+      tdlap: Date;
+      tthai: string | null;
+    }[]
+  >`
+    SELECT nbmst,
+           COALESCE(detail ->> 'khhdgoc', raw ->> 'khhdgoc') AS khhdgoc,
+           COALESCE(detail ->> 'shdgoc',  raw ->> 'shdgoc')  AS shdgoc,
+           shdon, tdlap, tthai
+      FROM ${table}
+     WHERE tthai IN ('2', '3')
+       AND tdlap >= ${new Date(`${tuNgay}T00:00:00`)}
+  `;
+  return rows.flatMap((r) =>
+    // Thiếu khóa gốc thì không tra ngược được -> bỏ, khỏi đẩy rác ra FE.
+    r.khhdgoc && r.shdgoc
+      ? [
+          {
+            nbmst: r.nbmst ?? "",
+            khhdgoc: r.khhdgoc,
+            shdgoc: r.shdgoc,
+            shdon: r.shdon,
+            tdlap: r.tdlap.toISOString(),
+            tthai: r.tthai ?? "",
+          },
+        ]
+      : [],
+  );
+}
+
+/**
+ * Bốn giá trị chỉ nằm trong JSON `detail`, trích sẵn ở DB để bảng Tổng quát dùng — xem `readDetailExtras`.
+ */
+interface SavedDetailExtras {
+  tenHang?: string;
+  khhdgoc?: string;
+  shdgoc?: string;
+  tdlhdgoc?: string;
+}
+
+/**
+ * Số id mỗi lượt `IN (...)`: Postgres chặn ở 65535 tham số/truy vấn, mà danh sách hóa đơn KHÔNG giới
+ * hạn số dòng (công ty bán lẻ có thể vượt mức đó trong một tháng) -> phải chia lô thay vì tin là đủ.
+ */
+const DETAIL_EXTRAS_CHUNK = 2_000;
+
+/**
+ * Đọc 4 field nằm SÂU trong JSON `detail` cho một mẻ hóa đơn: tên hàng dòng đầu + nhóm `…goc`
+ * (hóa đơn gốc bị thay thế/điều chỉnh).
+ *
+ * VÌ SAO RAW SQL: `SAVED_LIST_SELECT` cố ý không kéo cột `detail` (mỗi dòng vài KB, xem chú thích ở
+ * đó). Truy vấn này để Postgres tự bóc đúng 4 chuỗi cần dùng rồi mới trả về, nên dòng ra FE chỉ nặng
+ * thêm ~100 byte thay vì cả payload chi tiết. Prisma không diễn đạt được phép trích JSON trong
+ * `select` nên phải viết tay.
+ *
+ * Hóa đơn chưa tải chi tiết (`detail` null) không có trong kết quả -> nơi gọi để trống các cột đó.
+ */
+async function readDetailExtras(
+  tenantDb: PrismaClient,
+  direction: "purchase" | "sold",
+  ids: string[],
+): Promise<Map<string, SavedDetailExtras>> {
+  const out = new Map<string, SavedDetailExtras>();
+  if (ids.length === 0) return out;
+
+  // Định danh bảng: chuỗi hằng chọn theo `direction`, không có dữ liệu người dùng -> `Prisma.raw` an toàn.
+  const table = Prisma.raw(direction === "purchase" ? '"vct60view"' : '"vct50view"');
+
+  for (let i = 0; i < ids.length; i += DETAIL_EXTRAS_CHUNK) {
+    const chunk = ids.slice(i, i + DETAIL_EXTRAS_CHUNK);
+    const rows = await tenantDb.$queryRaw<
+      {
+        id: string;
+        ten_hang: string | null;
+        khhdgoc: string | null;
+        shdgoc: string | null;
+        tdlhdgoc: string | null;
+      }[]
+    >`
+      SELECT id,
+             CASE WHEN jsonb_typeof(detail -> 'hdhhdvu') = 'array' THEN (
+               -- Dòng hàng ĐẦU TIÊN CÓ TÊN, không phải cứng phần tử [0]: dòng đầu của hóa đơn có
+               -- khi là dòng ghi chú/chiết khấu (tchat 3-4) để trống tên. Cùng danh sách key ứng
+               -- viên với \`toDetailRows\` bên FE ("ten" rồi mới "thang").
+               SELECT NULLIF(COALESCE(it ->> 'ten', it ->> 'thang'), '')
+                 FROM jsonb_array_elements(detail -> 'hdhhdvu') AS it
+                WHERE NULLIF(COALESCE(it ->> 'ten', it ->> 'thang'), '') IS NOT NULL
+                LIMIT 1
+             ) END AS ten_hang,
+             detail ->> 'khhdgoc'  AS khhdgoc,
+             detail ->> 'shdgoc'   AS shdgoc,
+             detail ->> 'tdlhdgoc' AS tdlhdgoc
+        FROM ${table}
+       WHERE id IN (${Prisma.join(chunk)})
+         AND detail IS NOT NULL
+    `;
+    for (const r of rows) {
+      out.set(r.id, {
+        tenHang: r.ten_hang ?? undefined,
+        khhdgoc: r.khhdgoc ?? undefined,
+        shdgoc: r.shdgoc ?? undefined,
+        tdlhdgoc: r.tdlhdgoc ?? undefined,
+      });
+    }
+  }
+  return out;
 }
 
 /** Ép 1 dòng DB (Decimal/Date) về kiểu JSON thuần (number/string) — tránh Decimal serialize thành chuỗi ở FE. */
-function mapSavedRow(row: Record<string, unknown>): SavedInvoiceRow {
+function mapSavedRow(row: Record<string, unknown>, extras?: SavedDetailExtras): SavedInvoiceRow {
   return {
+    ...extras,
     id: toStr(row.id) ?? "",
     khmshdon: toStr(row.khmshdon) ?? "",
     khhdon: toStr(row.khhdon) ?? "",
@@ -853,12 +1019,16 @@ function buildSavedWhere(
  * (trước đây cắt ở 1000 dòng khiến hóa đơn cũ hơn không cách nào xem tới, mà `total` lại
  * báo đúng 1000 như thể đó là tổng). Khối lượng do khoảng ngày người dùng chọn quyết định
  * — đọc bằng `SAVED_LIST_SELECT` (dòng nhẹ) + index `tdlap` nên khoảng rộng vẫn chịu được.
+ *
+ * Kèm HAI truy vấn phụ chạy song song, đều phục vụ các cột mới của bảng Tổng quát mà vẫn không kéo
+ * nguyên cột `detail` về: `readDetailExtras` (tên hàng + nhóm `…goc` của chính các hóa đơn này) và
+ * `readReplacements` (mắt xích tra ngược "bị thay thế bởi hóa đơn nào", vượt ra ngoài khoảng lọc).
  */
 export async function getSavedInvoices(
   tenantDb: PrismaClient,
   direction: "purchase" | "sold",
   query: PurchaseInvoiceQuery | SoldInvoiceQuery,
-): Promise<{ total: number; datas: SavedInvoiceRow[] }> {
+): Promise<{ total: number; datas: SavedInvoiceRow[]; thayThe: ReplacementRow[] }> {
   const where = buildSavedWhere(direction, query);
 
   const rows =
@@ -874,8 +1044,16 @@ export async function getSavedInvoices(
           select: SAVED_LIST_SELECT,
         });
 
-  const datas = (rows as Record<string, unknown>[]).map(mapSavedRow);
-  return { total: datas.length, datas };
+  const list = rows as Record<string, unknown>[];
+  const [extras, thayThe] = await Promise.all([
+    // Chỉ để lấy 4 chuỗi nằm trong JSON `detail` của đúng các hóa đơn vừa đọc.
+    readDetailExtras(tenantDb, direction, list.map((r) => toStr(r.id) ?? "").filter(Boolean)),
+    // Mắt xích tra ngược "bị thay thế/bị điều chỉnh" — CỐ Ý vượt ra ngoài khoảng đang lọc.
+    readReplacements(tenantDb, direction, query.tuNgay),
+  ]);
+
+  const datas = list.map((r) => mapSavedRow(r, extras.get(toStr(r.id) ?? "")));
+  return { total: datas.length, datas, thayThe };
 }
 
 /**

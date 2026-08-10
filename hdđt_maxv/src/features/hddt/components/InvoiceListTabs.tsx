@@ -38,7 +38,7 @@ import type { InvoiceDirection, InvoiceFilterValues, InvoiceQuery } from "../typ
 import { toDisplayRow } from "../invoiceRow";
 import { buildReplacedByMap, toDetailRows } from "../detailRow";
 import { invoiceKey, invoiceSttMap } from "../invoiceFileName";
-import { overviewColumns, renderCell } from "../templates";
+import { invoiceRowFill, overviewColumns, renderCell, rowFillSx } from "../templates";
 import InvoiceFilterPanel from "./InvoiceFilterPanel";
 import InvoiceDetailPanel from "./InvoiceDetailPanel";
 import InvoiceViewDialog from "./InvoiceViewDialog";
@@ -147,9 +147,19 @@ function InvoiceTablePanel({ direction, active }: InvoiceTablePanelProps) {
 
   // Bảng LUÔN hiển thị từ DB (nguồn chuẩn). Trong lúc BE tải chi tiết ngầm, cột "T.thái tải" điền
   // dần nhờ vòng poll invalidate savedQuery.
+  /**
+   * Bản đồ ngược "HĐ này bị HĐ nào thay thế/điều chỉnh" — dựng từ danh sách `thayThe` do BE trả
+   * riêng, KHÔNG phải từ `datas`: hóa đơn thay thế thường lập ở kỳ sau hóa đơn gốc nên nó thường
+   * NẰM NGOÀI khoảng đang lọc (xem `readReplacements`). Dùng chung cho cả bảng Tổng quát lẫn bảng
+   * Chi tiết để hai bảng ghi giống nhau.
+   */
+  const replacedBy = useMemo(
+    () => buildReplacedByMap(savedQuery.data?.thayThe ?? []),
+    [savedQuery.data],
+  );
   const rows = useMemo(
-    () => (savedQuery.data?.datas ?? []).map((r) => toDisplayRow(r, direction)),
-    [savedQuery.data, direction],
+    () => (savedQuery.data?.datas ?? []).map((r) => toDisplayRow(r, direction, replacedBy)),
+    [savedQuery.data, direction, replacedBy],
   );
   // Số thứ tự hóa đơn lấy từ BẢNG TỔNG QUÁT (`rows`), tra theo khóa định danh chứ không theo vị trí:
   // hai bảng là hai truy vấn riêng, cùng sắp theo ngày lập nên thứ tự giữa các hóa đơn CÙNG NGÀY
@@ -157,14 +167,12 @@ function InvoiceTablePanel({ direction, active }: InvoiceTablePanelProps) {
   const detailRows = useMemo(() => {
     const sttOf = invoiceSttMap(rows);
     const details = savedDetailsQuery.data ?? [];
-    // Bản đồ ngược "HĐ này bị HĐ nào thay thế/điều chỉnh" — dựng cùng khoảng (xem detailRow.ts).
-    const replacedBy = buildReplacedByMap(details);
     return details.flatMap((d) => {
       const str = (v: unknown): string => (v == null ? "" : String(v));
       const key = invoiceKey(str(d.khmshdon), str(d.khhdon), str(d.shdon), str(d.nbmst));
       return toDetailRows(d, sttOf.get(key) ?? 0, replacedBy);
     });
-  }, [savedDetailsQuery.data, rows]);
+  }, [savedDetailsQuery.data, rows, replacedBy]);
   // Kẹp trang trong khoảng hợp lệ (refetch nền trả ít dòng hơn -> khỏi kẹt ở trang trống).
   const safePage = clampPage(page, rows.length, rowsPerPage);
   const pagedRows = rows.slice(safePage * rowsPerPage, safePage * rowsPerPage + rowsPerPage);
@@ -505,7 +513,15 @@ function InvoiceTablePanel({ direction, active }: InvoiceTablePanelProps) {
               pagedRows.map((r, i) => {
                 const stt = safePage * rowsPerPage + i + 1;
                 return (
-                  <TableRow key={r.id} hover selected={selectedId === r.id}>
+                  // Tô cả hàng theo trạng thái/cảnh báo, cùng quy tắc với bảng Chi tiết và Excel.
+                  // Hàng ĐANG CHỌN vẫn ưu tiên màu chọn của MUI (`.Mui-selected` đè lên `sx`) — đúng
+                  // ý: lúc đó người dùng cần thấy rõ mình đang chỉ vào hóa đơn nào.
+                  <TableRow
+                    key={r.id}
+                    hover
+                    selected={selectedId === r.id}
+                    sx={rowFillSx(invoiceRowFill(r))}
+                  >
                     {columns.map((col) => (
                       <TableCell key={col.key} align={col.align}>
                         {/* Cột "Chọn" render tại đây vì checkbox cần state selectedId của component;

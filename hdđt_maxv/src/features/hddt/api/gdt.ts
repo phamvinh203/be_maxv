@@ -8,6 +8,7 @@ import type {
   InvoiceResult,
   LoginPayload,
   LoginResult,
+  ReplacementRow,
 } from "../types";
 
 /**
@@ -157,11 +158,15 @@ export async function getSavedInvoices(
   const raw = await apiFetch<{
     total?: number;
     datas?: Array<Record<string, unknown>>;
+    thayThe?: ReplacementRow[];
   }>(`/gdt/invoices/${direction}/saved?${params.toString()}`);
 
   return {
     total: raw.total,
     datas: mapInvoiceDatas(direction, raw.datas),
+    // Đi thẳng, không qua `mapInvoiceDatas`: đây không phải hóa đơn để hiển thị mà là mắt xích tra
+    // ngược "bị thay thế bởi hóa đơn nào" — giữ nguyên tên field GDT cho `buildReplacedByMap`.
+    thayThe: raw.thayThe ?? [],
   };
 }
 

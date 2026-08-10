@@ -83,6 +83,33 @@ export interface InvoiceRaw {
   tgtttbso: number;
   /** Trạng thái tải chi tiết ("OK" | "error") — cột "T. thái tải". */
   tt_tai?: string;
+  /**
+   * Bốn field dưới đây BE trích sẵn từ JSON `detail` (xem `readDetailExtras`) để bảng Tổng quát có
+   * cột "Tên hàng hóa, dịch vụ" và "Ghi chú: Hóa đơn thay thế, điều chỉnh…" mà không phải tải cả
+   * payload chi tiết. Rỗng với hóa đơn chưa tải chi tiết.
+   */
+  tenHang?: string;
+  /** Ký hiệu hóa đơn GỐC bị thay thế/điều chỉnh. */
+  khhdgoc?: string;
+  /** Số hóa đơn GỐC bị thay thế/điều chỉnh. */
+  shdgoc?: string;
+  /** Ngày lập hóa đơn GỐC bị thay thế/điều chỉnh. */
+  tdlhdgoc?: string;
+  [key: string]: unknown;
+}
+
+/**
+ * 1 hóa đơn THAY THẾ/ĐIỀU CHỈNH kèm khóa trỏ về hóa đơn gốc — mắt xích để tra ngược "hóa đơn này bị
+ * hóa đơn nào thay thế". Giữ nguyên tên field GDT để đưa thẳng vào `buildReplacedByMap`, dùng chung
+ * một hàm với payload chi tiết.
+ */
+export interface ReplacementRow {
+  nbmst: string;
+  khhdgoc: string;
+  shdgoc: string;
+  shdon: string;
+  tdlap: string;
+  tthai: string;
   [key: string]: unknown;
 }
 
@@ -90,6 +117,12 @@ export interface InvoiceResult {
   total?: number;
   state?: string;
   datas?: InvoiceRaw[];
+  /**
+   * Hóa đơn thay thế/điều chỉnh lập TỪ `tuNgay` trở đi — CỐ Ý không bó trong khoảng đang lọc, vì
+   * hóa đơn thay thế thường lập ở kỳ sau hóa đơn gốc (xem `readReplacements` bên BE). Chỉ luồng đọc
+   * DB (`/saved`) trả về; luồng tra cứu GDT trực tiếp không có.
+   */
+  thayThe?: ReplacementRow[];
   /** Số hóa đơn vừa được lưu vào vct50view/vct60view — chỉ có ở luồng tra cứu GDT (getInvoices). */
   saved?: number;
   /** true nếu chưa lấy hết (lỗi GDT giữa chừng / chạm trần trang) — luồng "Cập nhật" nên cảnh báo. */
@@ -144,6 +177,17 @@ export interface DisplayRow {
    * dialog "Tải hóa đơn gốc" để gom/lọc theo `TRA_CUU_NCC`. Rỗng nếu raw thiếu field này.
    */
   msttcgp: string;
+  /**
+   * Tên hàng hóa của DÒNG HÀNG ĐẦU TIÊN — một hóa đơn nhiều mặt hàng chỉ hiện được mặt đại diện ở
+   * bảng này (muốn đủ thì xem bảng "Chi tiết hóa đơn"). BE trích sẵn từ JSON `detail`; rỗng khi hóa
+   * đơn chưa tải chi tiết.
+   */
+  tenHang: string;
+  /**
+   * Mô tả hóa đơn thay thế/điều chỉnh — CÙNG nội dung với cột tương ứng của bảng Chi tiết (dùng
+   * chung `tinhGhiChuLienQuan`). Rỗng với hóa đơn mới, hoặc khi chưa tra được hóa đơn thay thế.
+   */
+  ghiChuLienQuan: string;
 }
 
 // ============================================================

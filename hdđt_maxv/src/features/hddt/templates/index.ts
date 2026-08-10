@@ -28,4 +28,6 @@ export function detailColumns(direction: InvoiceDirection): InvoiceColumn<Detail
 
 export { backupColumns } from "./backupColumns";
 export { fileColumns, renderCell, type InvoiceColumn } from "./types";
-export { detailRowFill } from "./types";
+/** Màu hàng theo trạng thái/cảnh báo: `invoiceRowFill` cho ra màu, `rowFillSx` biến nó thành sx của bảng web. */
+export { invoiceRowFill } from "./types";
+export { rowFillSx } from "./cells";

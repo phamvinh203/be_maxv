@@ -113,8 +113,13 @@ function bienSoXe(v: string): string {
  *
  * Payload chi tiết của HĐ BỊ thay thế (tthai=4) / bị điều chỉnh (tthai=5) KHÔNG mang field nào trỏ
  * tới HĐ thay thế (toàn bộ nhóm `…goc` đều null) — liên kết MỘT CHIỀU: chỉ HĐ thay thế (tthai=2) /
- * điều chỉnh (tthai=3) biết HĐ gốc, qua `khhdgoc`/`shdgoc`. Nên phải dựng ở cấp lô (nơi có toàn bộ
- * details của cùng khoảng) rồi truyền vào `toDetailRows`.
+ * điều chỉnh (tthai=3) biết HĐ gốc, qua `khhdgoc`/`shdgoc`. Nên phải dựng ở cấp lô rồi truyền vào
+ * `toDetailRows`/`toDisplayRow`.
+ *
+ * NGUỒN PHẢI VƯỢT RA NGOÀI KHOẢNG ĐANG XEM: HĐ thay thế thường lập ở KỲ SAU HĐ gốc, dựng bản đồ từ
+ * chính lô đang lọc là lọc theo tháng sẽ tra không ra (đo trên dữ liệu thật: 16/26 cặp khác tháng).
+ * Vì vậy nơi gọi truyền vào danh sách `thayThe` do BE trả riêng (`readReplacements`), KHÔNG phải
+ * `datas`/`details` của khoảng.
  *
  * Key: `${nbmst}|${khhdon}|${shdon}` của HĐ GỐC — cùng người bán (chỉ NB tự thay thế HĐ của mình),
  * thêm `nbmst` để khỏi nhầm khi một lô MUA VÀO gom HĐ của nhiều NB khác nhau.
@@ -154,8 +159,11 @@ export function buildReplacedByMap(
  * Bỏ field `gchdgoc` (ghi chú dài của NB, vd "Hóa đơn thay thế cho hóa đơn điện tử mẫu 1 ký hiệu
  * C26TLT số 1796 lập ngày…") — thừa; số + ngày gốc là đủ cho kế toán định danh. Ngày gốc định dạng
  * `dd-MM-yyyy` (dấu `-`) để phân biệt với các mặt phân tách khác. Hóa đơn mới (tthai=1) -> "".
+ *
+ * Export để bảng TỔNG QUÁT dùng lại y hệt (xem `toDisplayRow`): ở đó tham số `detail` là 1 dòng
+ * danh sách đã lưu — cùng bộ field vì BE trích sẵn nhóm `…goc` từ JSON chi tiết.
  */
-function tinhGhiChuLienQuan(
+export function tinhGhiChuLienQuan(
   detail: Record<string, unknown>,
   replacedBy?: ReplacedByMap,
 ): string {

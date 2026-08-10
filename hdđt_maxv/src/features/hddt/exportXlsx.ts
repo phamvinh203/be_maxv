@@ -3,7 +3,7 @@
  * Danh sách cột nằm ở `templates/`, dùng chung với bảng trên web nên hai bên không lệch nhau được.
  */
 import type { Workbook } from "exceljs";
-import { detailColumns, detailRowFill, fileColumns, overviewColumns, type InvoiceColumn } from "./templates";
+import { detailColumns, fileColumns, invoiceRowFill, overviewColumns, type InvoiceColumn } from "./templates";
 import type { ExcelCellStyle } from "./templates/types";
 import type { DetailRow, DisplayRow, InvoiceDirection } from "./types";
 
@@ -36,7 +36,7 @@ interface SheetOptions<T> {
   banner?: SheetBanner;
   /**
    * Tô màu CẢ HÀNG theo dữ liệu của dòng; `undefined` = để hàng nguyên.
-   * Dùng cho sheet Chi tiết: hóa đơn đã bị thay thế/điều chỉnh/hủy được tô nguyên hàng, lướt file
+   * Cả hai sheet đều dùng: hóa đơn đã bị thay thế/điều chỉnh/hủy được tô nguyên hàng, lướt file
    * vài nghìn dòng là thấy ngay. Tô cả hàng chứ không chỉ ô "Trạng thái hóa đơn" — cột đó nằm mãi
    * cột 36, cuộn ngang một chút là khuất, tô mỗi nó thì gần như vô hình.
    */
@@ -176,9 +176,10 @@ export async function buildSummaryWorkbookBuffer(
   const wb = new Workbook();
   addStyledSheet(wb, `Tổng quát ${text}`, overviewColumns(direction), overviewRows, {
     banner: { title: "DANH SÁCH HÓA ĐƠN", subtitle: rangeBannerLine(range) },
+    rowFill: invoiceRowFill,
   });
   addStyledSheet(wb, `Chi tiết ${text}`, detailColumns(direction), detailRows, {
-    rowFill: detailRowFill,
+    rowFill: invoiceRowFill,
   });
   return (await wb.xlsx.writeBuffer()) as ArrayBuffer;
 }

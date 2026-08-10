@@ -29,7 +29,21 @@ import {
 } from "./types";
 
 /**
- * Bảng "Tổng quát" đầu ra — 22 cột trên web, 20 cột trong file Excel.
+ * Nội dung cột "Ghi Chú: Các trường hợp đặc biệt kế toán xem xét kỹ hơn" — cảnh báo TỰ SINH từ chính
+ * dữ liệu hóa đơn (mẫu Excel của kế toán ghi kiểu "Thiếu địa chỉ người mua").
+ *
+ * Dùng CHUNG cho bảng Tổng quát và bảng Chi tiết: hai bảng nói về cùng một hóa đơn nên không được
+ * cảnh báo khác nhau. Không có cảnh báo nào -> `undefined` (web hiện "—", file xuất để ô trống).
+ */
+function ghiChuDacBiet(r: { buyerDiaChi: string; trangThaiHd: string }): string | undefined {
+  const warnings: string[] = [];
+  if (!r.buyerDiaChi) warnings.push("Thiếu địa chỉ người mua");
+  if (r.trangThaiHd === "4") warnings.push("Hóa đơn này không được kê khai");
+  return warnings.length > 0 ? warnings.join(". ") : undefined;
+}
+
+/**
+ * Bảng "Tổng quát" đầu ra — 25 cột trên web, 23 cột trong file Excel.
  * Bên đối tác ở chiều này là NGƯỜI MUA (khách hàng) — bên bán vốn đã là công ty đang chọn nên lặp
  * y hệt ở mọi dòng; vẫn giữ hai cột người bán vì mẫu Excel của kế toán có.
  *
@@ -88,6 +102,15 @@ export function overviewDauRa(): InvoiceColumn<DisplayRow>[] {
       value: (r) => r.buyerTen,
     },
     { key: "buyerDiaChi", header: "Địa chỉ người mua", width: 34, value: (r) => r.buyerDiaChi },
+    {
+      // Mỗi dòng ở bảng này là MỘT HÓA ĐƠN, nên chỉ hiện được mặt hàng ĐẦU TIÊN của hóa đơn — hóa
+      // đơn nhiều dòng hàng phải xem bảng "Chi tiết hóa đơn" mới đủ. Hóa đơn chưa tải chi tiết
+      // (nguồn của cột này) để trống.
+      key: "tenHang",
+      header: "Tên hàng hóa, dịch vụ",
+      width: 34,
+      value: (r) => r.tenHang || undefined,
+    },
     {
       key: "tienChuaThue",
       header: "Tổng tiền chưa thuế",
@@ -159,6 +182,19 @@ export function overviewDauRa(): InvoiceColumn<DisplayRow>[] {
       header: "Tên file xuất hóa đơn (XML/HTML/PDF)",
       width: 36,
       value: (r, stt) => invoiceFileBase(stt, r.ngayLap, r.soHd, r.sellerMst),
+    },
+    // Hai cột ghi chú khép lại bảng, ĐÚNG THỨ TỰ và cùng nội dung với bảng "Chi tiết hóa đơn".
+    {
+      key: "ghiChuLienQuan",
+      header: "Ghi chú: Hóa đơn thay thế, điều chỉnh, bị thay thế, bị điều chỉnh",
+      width: 30,
+      value: (r) => r.ghiChuLienQuan || undefined,
+    },
+    {
+      key: "ghiChuDacBiet",
+      header: "Ghi Chú: Các trường hợp đặc biệt kế toán xem xét kỹ hơn",
+      width: 30,
+      value: (r) => ghiChuDacBiet(r),
     },
   ];
 }
@@ -323,16 +359,10 @@ export function detailDauRa(): InvoiceColumn<DetailRow>[] {
       value: (r) => r.ghiChuLienQuan || undefined,
     },
     {
-      // Cột nghiệp vụ do kế toán tự đánh dấu — chưa có chỗ nhập.
       key: "ghiChuDacBiet",
       header: "Ghi Chú: Các trường hợp đặc biệt kế toán xem xét kỹ hơn",
       width: 30,
-      value: (r) => {
-        const warnings: string[] = [];
-        if (!r.buyerDiaChi) warnings.push("Thiếu địa chỉ người mua");
-        if (r.trangThaiHd === "4") warnings.push("Hóa đơn này không được kê khai ");
-        return warnings.length > 0 ? warnings.join(". ") : undefined;
-      },
+      value: (r) => ghiChuDacBiet(r),
     },
     { key: "ghiChu1", header: "Ghi chú 1", width: 12, value: (r) => r.ghiChu },
     { key: "hinhThucTt", header: "Hình thức thanh toán", width: 12, value: (r) => r.hinhThucTt },

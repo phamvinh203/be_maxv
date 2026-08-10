@@ -1,3 +1,4 @@
+import { tinhGhiChuLienQuan, type ReplacedByMap } from "./detailRow";
 import type { DisplayRow, InvoiceDirection, InvoiceRaw } from "./types";
 
 /** Ép 1 giá trị bất kỳ (field GDT kiểu `unknown`) về string an toàn (null/undefined -> ""). */
@@ -10,8 +11,16 @@ function rowStr(v: unknown): string {
  * bên "mình" lấy từ field gốc còn lại (mua vào -> người mua nmmst/nmten; bán ra -> người bán
  * nbmst/nbten). Lấy trực tiếp từ hàng để hiển thị đúng kể cả khi chưa đăng nhập GDT.
  * Dùng: `InvoiceListTabs` (bảng Tổng quát), `SystemDataTab` (xuất/sao lưu).
+ *
+ * `replacedBy` (dựng bằng `buildReplacedByMap` từ CẢ LÔ đang xem) chỉ cần cho nhánh "hóa đơn này BỊ
+ * thay thế/điều chỉnh" của cột ghi chú — bản thân hóa đơn không mang thông tin đó, phải tra ngược.
+ * Bỏ trống thì cột chỉ mất nhánh ấy, các cột khác không đổi.
  */
-export function toDisplayRow(r: InvoiceRaw, direction: InvoiceDirection): DisplayRow {
+export function toDisplayRow(
+  r: InvoiceRaw,
+  direction: InvoiceDirection,
+  replacedBy?: ReplacedByMap,
+): DisplayRow {
   const isPurchase = direction === "purchase";
   const ownMst = rowStr(isPurchase ? r.nmmst : r.nbmst);
   const ownTen = rowStr(isPurchase ? r.nmten : r.nbten);
@@ -44,5 +53,10 @@ export function toDisplayRow(r: InvoiceRaw, direction: InvoiceDirection): Displa
     ttTai: typeof r.tt_tai === "string" ? r.tt_tai : undefined,
     // MST NCC phát hành (vd Viettel/MISA) — keyed với `TRA_CUU_NCC`; BE trích từ raw trong SAVED_LIST.
     msttcgp: rowStr(r.msttcgp),
+    // Tên mặt hàng đầu tiên + ghi chú thay thế/điều chỉnh: BE đã trích sẵn nhóm field nguồn từ JSON
+    // `detail`, nên tính được ngay tại đây mà không phải tải chi tiết. Dùng CHUNG hàm với bảng Chi
+    // tiết để hai bảng không thể ghi khác nhau về cùng một hóa đơn.
+    tenHang: rowStr(r.tenHang),
+    ghiChuLienQuan: tinhGhiChuLienQuan(r, replacedBy),
   };
 }
