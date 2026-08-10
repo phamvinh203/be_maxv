@@ -105,6 +105,8 @@ export interface ExportProgress {
 export interface ExportBundleOptions {
   /** MST người nhập -> tên folder GỐC. */
   mst: string;
+  /** Tên công ty đang chọn — dòng "Công ty:" đầu sheet Tổng quát. Bỏ trống -> dòng đó để trắng. */
+  tenDonVi?: string;
   /** Khoảng ngày + bộ lọc (loại HĐ) — dùng CHUNG cho cả 2 chiều. */
   query: InvoiceQuery;
   range: ExportRange;
@@ -309,9 +311,12 @@ function noOriginalXmlNote(states: TaskState[], range: ExportRange): string {
  * Bỏ qua + đếm lỗi từng hóa đơn (không kẹt cả lượt). Trả số liệu tổng kết để FE toast.
  */
 export async function exportInvoiceBundle(opts: ExportBundleOptions): Promise<ExportBundleResult> {
-  const { mst, query, range, formats, dir, gdtToken, onProgress } = opts;
+  const { mst, tenDonVi, query, range, formats, dir, gdtToken, onProgress } = opts;
   const directions: InvoiceDirection[] = ["purchase", "sold"];
   const anyFormat = formats.html || formats.xml || formats.pdf;
+  // Hai dòng "MST:" / "Công ty:" đầu sheet Tổng quát. Dựng Ở ĐÂY (một chỗ) để 2 file Excel của lượt
+  // xuất ghi giống nhau; thiếu tên (chưa nạp xong danh sách công ty) thì còn MST vẫn nhận ra đơn vị.
+  const donVi = { mst, tenCongTy: tenDonVi ?? "" };
 
   // Chặn ngay từ đầu thay vì để mọi hóa đơn cùng hỏng ở bước gọi cổng thuế (dialog cũng đã gate,
   // đây là lưới an toàn cho mọi caller khác).
@@ -364,7 +369,13 @@ export async function exportInvoiceBundle(opts: ExportBundleOptions): Promise<Ex
       const detailRows = details.flatMap((d) =>
         toDetailRows(d, sttOf.get(detailInvoiceKey(d)) ?? 0, replacedBy),
       );
-      const buffer = await buildSummaryWorkbookBuffer(overviewRows, detailRows, direction, range);
+      const buffer = await buildSummaryWorkbookBuffer(
+        overviewRows,
+        detailRows,
+        direction,
+        range,
+        donVi,
+      );
       await writeFile(rangeDir, summaryWorkbookFilename(direction, range), buffer);
     }
 

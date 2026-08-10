@@ -19,24 +19,56 @@ import type { DetailRow, DisplayRow, InvoiceDirection } from "./types";
 // Trang trí sheet — không gắn với cột nào nên thuộc về file này, không thuộc template cột.
 const HEADER_FILL = "FFDDE6F2"; // xanh nhạt
 const HEADER_HEIGHT = 40; // đủ cho tiêu đề dài xuống dòng ở các cột hẹp
+/** Chiều cao các hàng KHÔNG có `wrapText` (hàng tổng) — hàng dữ liệu để Excel tự co, xem bên dưới. */
 const ROW_HEIGHT = 20;
+
+/**
+ * Căn ô vùng dữ liệu: NGẮT DÒNG trong ô thay vì để chữ tràn/cụt.
+ *
+ * Không có `wrapText`, ô dài (tên hàng hóa, địa chỉ, hai cột ghi chú, URL tra cứu) chỉ hiện được
+ * phần lọt trong bề rộng cột: tràn sang ô bên nếu ô đó trống, còn không thì CẮT NGANG — nhìn thì
+ * tưởng dữ liệu bị thiếu. Nới rộng cột không phải là cách: bề rộng ở template bám mẫu Excel của kế
+ * toán, mà nới đủ cho địa chỉ dài nhất thì bảng rộng ra vô lý.
+ *
+ * `top` chứ không phải `middle`: hàng cao 4-5 dòng mà căn giữa thì các cột ngắn (số hóa đơn, ngày)
+ * trôi ra giữa khoảng trắng, mắt khó dóng theo hàng.
+ */
+const DATA_ALIGNMENT = { vertical: "top", wrapText: true } as const;
+
+/** Viền mảnh 4 cạnh — dùng cho ô tiêu đề và mọi ô dữ liệu. */
+const CELL_BORDER = {
+  top: { style: "thin" },
+  left: { style: "thin" },
+  bottom: { style: "thin" },
+  right: { style: "thin" },
+} as const;
 /** numFmt "ô chữ" của Excel — áp cho cột có cờ `excelText` (ngày dd/MM/yyyy, mã số). */
 const TEXT_FMT = "@";
 
 /**
  * BỐ CỤC SHEET — bám theo mẫu Excel mà kế toán đang dùng, đừng đổi lẻ tẻ:
- *  - sheet CÓ khối tiêu đề: dòng 1-2 trống, dòng 3 tên bảng (gộp ô), dòng 4 khoảng ngày (gộp ô),
- *    dòng 5 trống, dòng 6 tiêu đề cột, dòng 7 hàng TỔNG, dữ liệu từ dòng 8;
- *  - sheet KHÔNG có khối tiêu đề: dòng 1 trống, dòng 2 tiêu đề cột, dòng 3 hàng TỔNG, dữ liệu từ dòng 4.
+ *  - sheet CÓ khối tiêu đề: dòng 1 "MST:", dòng 2 "Công ty:", dòng 3 tên bảng (gộp ô), dòng 4 khoảng
+ *    ngày (gộp ô), dòng 5 trống, dòng 6 tiêu đề cột, dòng 7 hàng TỔNG, dữ liệu từ dòng 8;
+ *  - sheet KHÔNG có khối tiêu đề: dòng 1 tiêu đề cột, dòng 2 hàng TỔNG, dữ liệu từ dòng 3.
  *
  * Hàng TỔNG đứng NGAY DƯỚI tiêu đề cho khớp bảng web; bảng không có cột nào cần cộng (hoặc không có
  * dòng nào) thì không chèn hàng đó và dữ liệu lùi lên sát tiêu đề như cũ.
  */
 const BANNER_HEADER_ROW = 6;
-const PLAIN_HEADER_ROW = 2;
+/** Không có khối tiêu đề thì vào thẳng hàng tiêu đề cột — không chừa dòng đệm nào ở trên. */
+const PLAIN_HEADER_ROW = 1;
 
 /** Khối tiêu đề đầu sheet (gộp hết bề ngang bảng). Bỏ trống = sheet không có khối này. */
 interface SheetBanner {
+  /**
+   * Dòng 1-2 — công ty sở hữu số hóa đơn, mỗi thứ MỘT DÒNG có nhãn riêng ("MST:", "Công ty:") để
+   * đọc/lọc/copy từng phần được, thay vì một chuỗi gộp. Bỏ trống thì hai dòng đó để trắng.
+   *
+   * Nằm TRONG `banner` (không phải tùy chọn riêng của sheet) vì hai dòng này thuộc khối tiêu đề:
+   * sheet "Chi tiết" không có khối tiêu đề thì cũng không có phần đơn vị — đúng ý muốn, và cách này
+   * khiến không ai lỡ tay bật nó cho sheet không có chỗ đặt.
+   */
+  donVi?: { mst: string; tenCongTy: string };
   /** Dòng 3 — tên bảng, in hoa đậm (vd "DANH SÁCH HÓA ĐƠN"). */
   title: string;
   /** Dòng 4 — khoảng ngày đang xuất. */
@@ -91,16 +123,27 @@ function addStyledSheet<T>(
   });
 
   if (banner) {
-    const lines: [number, string, number][] = [
-      [3, banner.title, 14],
-      [4, banner.subtitle, 11],
+    // Dòng 1-2: đơn vị sở hữu số hóa đơn — file rời khỏi máy vẫn tự nói được nó là của ai. Căn TRÁI
+    // theo lối trình bày quen thuộc của báo cáo kế toán; tên bảng + khoảng ngày bên dưới mới căn giữa.
+    // Ô nào cũng gộp hết bề ngang bảng để tên công ty dài không bị ô bên cạnh cắt ngang.
+    const { donVi } = banner;
+    type Line = [row: number, text: string, size: number, horizontal: "left" | "center"];
+    const lines: Line[] = [
+      [3, banner.title, 14, "center"],
+      [4, banner.subtitle, 11, "center"],
     ];
-    for (const [row, text, size] of lines) {
+    if (donVi) {
+      lines.unshift(
+        [1, `MST: ${donVi.mst}`, 11, "left"],
+        [2, `Công ty: ${donVi.tenCongTy}`, 11, "left"],
+      );
+    }
+    for (const [row, text, size, horizontal] of lines) {
       ws.mergeCells(row, 1, row, cols.length);
       const cell = ws.getCell(row, 1);
       cell.value = text;
       cell.font = { bold: true, size };
-      cell.alignment = { vertical: "middle", horizontal: "center" };
+      cell.alignment = { vertical: "middle", horizontal };
     }
   }
 
@@ -110,12 +153,7 @@ function addStyledSheet<T>(
     const cell = headerRow.getCell(i + 1);
     cell.value = c.header;
     cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: HEADER_FILL } };
-    cell.border = {
-      top: { style: "thin" },
-      left: { style: "thin" },
-      bottom: { style: "thin" },
-      right: { style: "thin" },
-    };
+    cell.border = CELL_BORDER;
   });
   headerRow.height = HEADER_HEIGHT;
   headerRow.font = { bold: true };
@@ -134,22 +172,29 @@ function addStyledSheet<T>(
       if (i === 0) cell.value = TOTAL_ROW_LABEL;
       else if (tong.has(c.key)) cell.value = tong.get(c.key) ?? null;
       cell.font = { bold: true, color: { argb: TOTAL_TEXT_ARGB } };
+      cell.border = CELL_BORDER;
     });
   }
 
-  // Dữ liệu: mỗi hàng giãn dòng cho dễ đọc. `stt` 1-based — cùng quy ước với bảng trên web.
+  // Dữ liệu. `stt` 1-based — cùng quy ước với bảng trên web.
   // Ghi theo chỉ số dòng tuyệt đối (không `addRow`) để dữ liệu luôn nằm đúng chỗ dưới hàng tổng.
   // Ô không có dữ liệu ghi `null` -> Excel để TRỐNG, không phải 0.
+  //
+  // CỐ Ý KHÔNG ĐẶT `r.height`: có `wrapText` mà ghim chiều cao thì Excel bật cờ "chiều cao do người
+  // dùng đặt" và thôi tự co giãn — chữ dài xuống dòng xong bị giấu dưới mép ô, tệ hơn cả lúc chưa
+  // ngắt dòng. Bỏ trống thì Excel tự tính chiều cao vừa đủ số dòng của ô dài nhất.
   rows.forEach((row, i) => {
     const r = ws.getRow(firstDataAt + i);
     // Đặt style của HÀNG trước rồi mới ghi ô: `row.alignment` quét lại các ô đang có và ghi đè
     // style của chúng, nên làm sau sẽ xóa mất màu nền vừa tô ở dưới.
-    r.height = ROW_HEIGHT;
-    r.alignment = { vertical: "middle" };
+    r.alignment = DATA_ALIGNMENT;
     const fill = rowFill?.(row);
     cols.forEach((c, ci) => {
       const cell = r.getCell(ci + 1);
       cell.value = c.value(row, i + 1) ?? null;
+      // Viền từng ô: cột nào ra cột nấy khi cuộn ngang giữa 46 cột, và ranh giới hàng vẫn rõ khi
+      // các hàng cao thấp khác nhau do ngắt dòng.
+      cell.border = CELL_BORDER;
       if (!fill) return;
       // Tô TỪNG Ô của vùng dữ liệu, không đặt `r.fill` cấp hàng: style cấp hàng trong xlsx phủ tới
       // tận cột cuối bảng tính, kéo vệt màu chạy dài khỏi mép bảng.
@@ -204,21 +249,22 @@ function rangeBannerLine(range: ExportRange): string {
  * file (không tải về). Dùng cho nút "Xuất file tổng hợp + hóa đơn" (ghi Excel vào thư mục người dùng
  * chọn qua File System Access, cạnh các file HĐ).
  *
- * Chỉ sheet Tổng quát có khối tiêu đề "DANH SÁCH HÓA ĐƠN" + khoảng ngày — sheet Chi tiết vào thẳng
- * hàng tiêu đề cột, giống mẫu Excel của phần mềm kế toán.
+ * Khối tiêu đề (đơn vị + "DANH SÁCH HÓA ĐƠN" + khoảng ngày) CHỈ có ở sheet Tổng quát — sheet Chi tiết
+ * vào thẳng hàng tiêu đề cột, giống mẫu Excel của phần mềm kế toán.
  */
 export async function buildSummaryWorkbookBuffer(
   overviewRows: DisplayRow[],
   detailRows: DetailRow[],
   direction: InvoiceDirection,
   range: ExportRange,
+  donVi?: { mst: string; tenCongTy: string },
 ): Promise<ArrayBuffer> {
   // Lazy-load exceljs (~1MB) — chỉ tải khi người dùng thực sự bấm Xuất, không nằm trong bundle chính.
   const { Workbook } = await import("exceljs");
   const { text } = DIR_LABEL[direction];
   const wb = new Workbook();
   addStyledSheet(wb, `Tổng quát ${text}`, overviewColumns(direction), overviewRows, {
-    banner: { title: "DANH SÁCH HÓA ĐƠN", subtitle: rangeBannerLine(range) },
+    banner: { donVi, title: "DANH SÁCH HÓA ĐƠN", subtitle: rangeBannerLine(range) },
     rowFill: invoiceRowFill,
   });
   addStyledSheet(wb, `Chi tiết ${text}`, detailColumns(direction), detailRows, {

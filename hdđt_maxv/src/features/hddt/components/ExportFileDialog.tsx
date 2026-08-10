@@ -32,6 +32,7 @@ import {
 } from "../../../lib/fileSystemAccess";
 import { getErrorMessage } from "../../../lib/errors";
 import { useActiveGdtToken } from "../gdtSession/useActiveGdtToken";
+import { useActiveCompany } from "../../auth/useActiveCompanyMst";
 import type { InvoiceQuery } from "../types";
 
 interface Props {
@@ -54,6 +55,8 @@ export default function ExportFileDialog({ open, onClose, defaultRange }: Props)
   // MST công ty đang chọn (tên thư mục xuất + gate) và token GDT của ĐÚNG công ty đó — XML gốc phải
   // xin từ cổng thuế nên cần token; KHÔNG dùng currentGdtMst (xem useActiveGdtToken).
   const { activeMst, token: gdtToken } = useActiveGdtToken();
+  // Tên đơn vị cho dòng "Đơn vị:" đầu file Excel — cùng nguồn tra cứu với `activeMst`.
+  const activeCompany = useActiveCompany();
   const canPick = supportsDirectoryPicker();
   const [loai, setLoai] = useState<"all" | "ctt">("all");
   const [range, setRange] = useState(defaultRange);
@@ -118,6 +121,9 @@ export default function ExportFileDialog({ open, onClose, defaultRange }: Props)
     try {
       const res = await exportInvoiceBundle({
         mst: activeMst,
+        // Cùng bản ghi công ty với `activeMst` -> dòng "Đơn vị:" trong Excel không thể ghép nhầm
+        // MST của công ty này với tên của công ty kia.
+        tenDonVi: activeCompany?.tenDonVi,
         query,
         range: { tuNgay: range.tuNgay, denNgay: range.denNgay },
         formats,
