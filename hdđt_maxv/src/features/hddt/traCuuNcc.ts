@@ -77,7 +77,7 @@ export const TRA_CUU_NCC: Record<string, NccTraCuu> = {
   },
   "0105987432": {
     ten: "Công ty Cổ phần Đầu tư công nghệ và thương mại Softdreams",
-    url: ({ sellerMst }) => `https://${sellerMst.trim()}hd.easyinvoice.vn/Search/Index`,
+    url: ({ sellerMst }) => `https://${sellerMst.trim()}hd.easyinvoice.com.vn/Search/Index`,
     maTraCuu: { src: "ttkhac", ttruong: "Fkey" },
     taiTuDong: true,
   }

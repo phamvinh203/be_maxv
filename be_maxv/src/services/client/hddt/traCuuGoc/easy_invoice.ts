@@ -1,5 +1,5 @@
 /**
- * ===== TẢI HÓA ĐƠN GỐC — SOFTDREAMS / EasyInvoice (easyinvoice.vn) =====
+ * ===== TẢI HÓA ĐƠN GỐC — SOFTDREAMS / EasyInvoice (easyinvoice.com.vn) =====
  *
  * Cổng ASP.NET MVC cổ điển: cookie session + form POST + scrape HTML. Gần giống VNPT nhưng ĐƠN GIẢN
  * HƠN MỘT BẬC — form KHÔNG có `__RequestVerificationToken` (đã kiểm chứng bằng cách đọc HTML
@@ -7,7 +7,7 @@
  * không phải extract token nào cả.
  *
  * ORIGIN THEO MST NGƯỜI BÁN: mỗi công ty phát hành qua Softdreams có portal riêng
- * `https://<nbmst>hd.easyinvoice.vn` (vd `0108787907` -> `0108787907hd.easyinvoice.vn`). Caller phải
+ * `https://<nbmst>hd.easyinvoice.com.vn` (vd `0108787907` -> `0108787907hd.easyinvoice.com.vn`). Caller phải
  * truyền `sellerMst` — xem `buildEasyOrigin`.
  *
  * LUỒNG 3 REQUEST:
@@ -75,14 +75,14 @@ const SEARCH_PAGE_PATH = "/Search/Index";
 const DOWNLOAD_PDF_ATTACH_PATH = "/Invoice/DownloadPdfAndFileAttach";
 
 /**
- * Build origin portal tenant EasyInvoice từ `nbmst` (MST người bán): `https://<nbmst>hd.easyinvoice.vn`.
+ * Build origin portal tenant EasyInvoice từ `nbmst` (MST người bán): `https://<nbmst>hd.easyinvoice.com.vn`.
  *
  * GIỮ NGUYÊN MST kể cả đuôi chi nhánh `-001` — chưa gặp mẫu hóa đơn chi nhánh nào để biết Softdreams
  * tách portal theo chi nhánh (như VNPT) hay dùng chung portal MST mẹ. Đừng tự strip đuôi vì đoán:
  * strip sai thì mọi hóa đơn chi nhánh lặng lẽ tra vào portal của công ty khác.
  */
 export function buildEasyOrigin(nbmst: string): string {
-  return `https://${assertMst(nbmst, TEN)}hd.easyinvoice.vn`;
+  return `https://${assertMst(nbmst, TEN)}hd.easyinvoice.com.vn`;
 }
 
 /** Debug logger — bật bằng `DEBUG_EASYINVOICE=1` khi luồng hỏng (NCC đổi template HTML). */
@@ -133,7 +133,7 @@ const retryDeadlineMs = makeDeadline("EASYINVOICE_RETRY_DEADLINE_MS");
 export interface EasySession {
   /** MST người bán đầy đủ (= nbmst) — để log/debug. */
   nbmst: string;
-  /** Origin `https://<nbmst>hd.easyinvoice.vn`. */
+  /** Origin `https://<nbmst>hd.easyinvoice.com.vn`. */
   origin: string;
   /** Raw Cookie header value (`ASP.NET_SessionId=…`), cập nhật sau mỗi response. */
   cookie: string;
@@ -523,7 +523,7 @@ export const easyInvoice: ProviderDownloader = {
     if (!sellerMst) {
       throw new TraCuuGocError(
         "INVALID_CODE",
-        "Thiếu sellerMst — EasyInvoice build origin portal tenant `<mst>hd.easyinvoice.vn` từ MST này",
+        "Thiếu sellerMst — EasyInvoice build origin portal tenant `<mst>hd.easyinvoice.com.vn` từ MST này",
       );
     }
 

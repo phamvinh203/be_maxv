@@ -120,8 +120,8 @@ export function decodeHtmlEntities(s: string): string {
  * Kiểm `nbmst` trước khi ghép vào URL cổng NCC. Ném `INVALID_CODE` nếu sai định dạng.
  *
  * BẮT BUỘC vì `sellerMst` đi thẳng từ query-string của client vào template string dựng origin
- * (`https://<mst>hd.easyinvoice.vn`, `https://<mst>-tt78.vnpt-invoice.com.vn`). Không kiểm thì
- * `?sellerMst=evil.com/` cho ra `https://evil.com/hd.easyinvoice.vn` — host thật là `evil.com`, và
+ * (`https://<mst>hd.easyinvoice.com.vn`, `https://<mst>-tt78.vnpt-invoice.com.vn`). Không kiểm thì
+ * `?sellerMst=evil.com/` cho ra `https://evil.com/hd.easyinvoice.com.vn` — host thật là `evil.com`, và
  * bytes ở bước tải file được trả NGUYÊN về client. Tức BE thành proxy có sẵn xác thực, và trỏ được
  * vào host nội bộ (`10.0.0.5:8443/`) để dò mạng trong.
  *
