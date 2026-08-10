@@ -132,6 +132,17 @@ export function renderCell<T>(col: InvoiceColumn<T>, row: T, stt: number): React
   return v ?? NO_DATA_YET;
 }
 
+
+export function khongLap(giaTri: string | undefined, ...daHien: (string | undefined)[]): string {
+  const v = giaTri?.trim();
+  if (!v) return NO_DATA_YET;
+  return daHien.some((x) => x?.trim() === v) ? NO_DATA_YET : giaTri!;
+}
+
+export function chiDongDau(row: { isFirstRow?: boolean }, noiDung: string): string {
+  return row.isFirstRow ? noiDung : "";
+}
+
 /** Bỏ cột chỉ dành cho web — mọi kênh ghi ra file (Excel, CSV) phải đi qua hàm này. */
 export function fileColumns<T>(cols: InvoiceColumn<T>[]): InvoiceColumn<T>[] {
   return cols.filter((c) => !c.webOnly);

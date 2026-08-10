@@ -18,7 +18,15 @@ import { invoiceFileBase } from "../invoiceFileName";
 import { tinhChatLabel } from "../invoiceView";
 import type { DetailRow, DisplayRow } from "../types";
 import { ttTaiCell } from "./cells";
-import { MONEY2_FMT, NUM_FMT, RATE_FMT, type InvoiceColumn } from "./types";
+import {
+  MONEY2_FMT,
+  NUM_FMT,
+  NO_DATA_YET,
+  RATE_FMT,
+  chiDongDau,
+  khongLap,
+  type InvoiceColumn,
+} from "./types";
 
 /**
  * Bảng "Tổng quát" đầu ra — 22 cột trên web, 20 cột trong file Excel.
@@ -351,8 +359,20 @@ export function detailDauRa(): InvoiceColumn<DetailRow>[] {
     { key: "bienSoXe", header: "Biển số xe", width: 12, value: (r) => r.bienSoXe },
     { key: "websiteNb", header: "Website người bán", width: 12, value: (r) => r.websiteNb },
     { key: "msttcgp", header: "Nhà cung cấp hóa đơn gốc", width: 20, value: (r) => r.msttcgp },
-    { key: "urlTraCuu", header: "URL tra cứu hóa đơn gốc", width: 30, value: (r) => r.urlTraCuu },
-    { key: "dliu", header: "Mã tra cứu hóa đơn gốc", width: 30, value: (r) => r.dliu },
+    {
+      key: "urlTraCuu",
+      header: "URL tra cứu hóa đơn gốc",
+      width: 30,
+      value: (r) => r.urlTraCuu,
+      cell: (r) => chiDongDau(r, r.urlTraCuu || NO_DATA_YET),
+    },
+    {
+      key: "dliu",
+      header: "Mã tra cứu hóa đơn gốc",
+      width: 30,
+      value: (r) => r.dliu,
+      cell: (r) => chiDongDau(r, khongLap(r.dliu, r.urlTraCuu)),
+    },
     {
       key: "timGoogle",
       header: "Copy dòng này lên google để tìm link tra cứu hóa đơn gốc",
@@ -373,7 +393,15 @@ export function detailDauRa(): InvoiceColumn<DetailRow>[] {
       numFmt: RATE_FMT,
       value: (r) => r.tyGia,
     },
-    { key: "mccqt", header: "MCCQT", width: 12, value: (r) => r.mccqt },
+    {
+      // Trùng "Mã tra cứu hóa đơn gốc"/"URL tra cứu" -> web hiện "—", mã đã có ở cột trước.
+      // Sheet Excel vẫn ghi đủ (`value`): kế toán lọc/đối chiếu theo từng cột.
+      key: "mccqt",
+      header: "MCCQT",
+      width: 12,
+      value: (r) => r.mccqt,
+      cell: (r) => chiDongDau(r, khongLap(r.mccqt, r.urlTraCuu, r.dliu)),
+    },
     {
       // Chỉ hóa đơn CÓ MÃ (`ttxly=5`) mới có khối chữ ký của Cục Thuế -> hóa đơn không mã để trống.
       key: "ngayCqtKy",

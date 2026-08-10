@@ -246,7 +246,9 @@ export function toDetailRows(
   };
 
   const items = Array.isArray(detail.hdhhdvu) ? detail.hdhhdvu : [];
-  if (items.length === 0) return [{ ...header, ...EMPTY_LINE }];
+  // Hóa đơn không có dòng hàng vẫn ra ĐÚNG 1 hàng, và hàng đó là hàng đầu của hóa đơn -> phải bật
+  // `isFirstRow`, nếu không các cột "chỉ hiện ở dòng đầu" (tổng tiền, mã tra cứu) sẽ trống hết.
+  if (items.length === 0) return [{ ...header, ...EMPTY_LINE, isFirstRow: true }];
 
   // Dựng MỘT LẦN cho cả hóa đơn, không dựng lại ở từng dòng hàng.
   const rateByLabel = taxRateByLabel(detail);
