@@ -828,12 +828,20 @@ export interface ReplacementRow {
  * tra được cả khi hóa đơn thay thế CHƯA tải chi tiết. Số hóa đơn tthai 2/3 rất ít so với tổng nên
  * cả hai cột JSON chỉ bị bung ở vài chục dòng.
  */
+/**
+ * Định danh bảng theo chiều, cho các truy vấn RAW. Chuỗi hằng chọn theo `direction`, không có dữ liệu
+ * người dùng -> `Prisma.raw` an toàn. Một chỗ duy nhất để mọi truy vấn raw không chép lại tên view.
+ */
+function savedTable(direction: "purchase" | "sold") {
+  return Prisma.raw(direction === "purchase" ? '"vct60view"' : '"vct50view"');
+}
+
 async function readReplacements(
   tenantDb: PrismaClient,
   direction: "purchase" | "sold",
   tuNgay: string,
 ): Promise<ReplacementRow[]> {
-  const table = Prisma.raw(direction === "purchase" ? '"vct60view"' : '"vct50view"');
+  const table = savedTable(direction);
   const rows = await tenantDb.$queryRaw<
     {
       nbmst: string | null;
@@ -871,13 +879,11 @@ async function readReplacements(
 
 /**
  * Bốn giá trị chỉ nằm trong JSON `detail`, trích sẵn ở DB để bảng Tổng quát dùng — xem `readDetailExtras`.
+ *
+ * `Pick` chứ không khai lại: `mapSavedRow` spread thẳng object này vào `SavedInvoiceRow`, nên hai
+ * danh sách field lệch nhau vẫn biên dịch được — thêm field thứ năm mà quên một bên thì im lặng hỏng.
  */
-interface SavedDetailExtras {
-  tenHang?: string;
-  khhdgoc?: string;
-  shdgoc?: string;
-  tdlhdgoc?: string;
-}
+type SavedDetailExtras = Pick<SavedInvoiceRow, "tenHang" | "khhdgoc" | "shdgoc" | "tdlhdgoc">;
 
 /**
  * Số id mỗi lượt `IN (...)`: Postgres chặn ở 65535 tham số/truy vấn, mà danh sách hóa đơn KHÔNG giới
@@ -904,8 +910,7 @@ async function readDetailExtras(
   const out = new Map<string, SavedDetailExtras>();
   if (ids.length === 0) return out;
 
-  // Định danh bảng: chuỗi hằng chọn theo `direction`, không có dữ liệu người dùng -> `Prisma.raw` an toàn.
-  const table = Prisma.raw(direction === "purchase" ? '"vct60view"' : '"vct50view"');
+  const table = savedTable(direction);
 
   for (let i = 0; i < ids.length; i += DETAIL_EXTRAS_CHUNK) {
     const chunk = ids.slice(i, i + DETAIL_EXTRAS_CHUNK);

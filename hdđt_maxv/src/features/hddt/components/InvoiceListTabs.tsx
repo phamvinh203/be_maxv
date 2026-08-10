@@ -25,6 +25,7 @@ import { useGdtSession } from "../gdtSession/useGdtSession";
 import DialogLoginHddt from "../../../components/dialogLoginHddt";
 import { invoiceKeys, useSavedInvoicesQuery } from "../api/invoiceQueries";
 import { detailKeys, useSavedDetailsQuery } from "../api/invoiceDetailQueries";
+import { useDanhMucTraCuuGocQuery } from "../api/traCuuGocQueries";
 import { startDetailRun, getDetailRunStatus } from "../api/invoiceDetail";
 import {
   getUpdateRunStatus,
@@ -38,7 +39,14 @@ import type { InvoiceDirection, InvoiceFilterValues, InvoiceQuery } from "../typ
 import { toDisplayRow } from "../invoiceRow";
 import { buildReplacedByMap, toDetailRows } from "../detailRow";
 import { invoiceKey, invoiceSttMap } from "../invoiceFileName";
-import { invoiceRowFill, overviewColumns, renderCell, rowFillSx, totalsRow } from "../templates";
+import {
+  invoiceRowFill,
+  overviewColumns,
+  renderCell,
+  rowFillSx,
+  tongCotSo,
+  totalsRow,
+} from "../templates";
 import InvoiceFilterPanel from "./InvoiceFilterPanel";
 import InvoiceDetailPanel from "./InvoiceDetailPanel";
 import InvoiceViewDialog from "./InvoiceViewDialog";
@@ -144,6 +152,9 @@ function InvoiceTablePanel({ direction, active }: InvoiceTablePanelProps) {
     buildQuery(appliedFilters),
     active && resultTab === "chi-tiet",
   );
+  // Danh mục NCC của BE — quyết định URL tra cứu thật (cột "URL tra cứu" của bảng Chi tiết + sheet
+  // Excel). Payload nhỏ, không đụng DB, và dùng chung cache với dialog "Tải hóa đơn gốc".
+  const danhMucNccQuery = useDanhMucTraCuuGocQuery();
 
   // Bảng LUÔN hiển thị từ DB (nguồn chuẩn). Trong lúc BE tải chi tiết ngầm, cột "T.thái tải" điền
   // dần nhờ vòng poll invalidate savedQuery.
@@ -170,9 +181,14 @@ function InvoiceTablePanel({ direction, active }: InvoiceTablePanelProps) {
     return details.flatMap((d) => {
       const str = (v: unknown): string => (v == null ? "" : String(v));
       const key = invoiceKey(str(d.khmshdon), str(d.khhdon), str(d.shdon), str(d.nbmst));
-      return toDetailRows(d, sttOf.get(key) ?? 0, replacedBy);
+      return toDetailRows(d, sttOf.get(key) ?? 0, replacedBy, danhMucNccQuery.data);
     });
-  }, [savedDetailsQuery.data, rows, replacedBy]);
+    // `danhMucNccQuery.data` PHẢI nằm trong deps: danh mục về sau lần render đầu, không tính lại thì
+    // cột "URL tra cứu" kẹt ở URL dự phòng của registry FE cho tới khi có thứ khác kích render.
+  }, [savedDetailsQuery.data, rows, replacedBy, danhMucNccQuery.data]);
+  // Cộng trên TOÀN BỘ `rows` nên phải nhớ kết quả: component render lại theo mỗi tick chọn dòng, mỗi
+  // lần lật trang và mỗi nhịp poll của lượt "Cập nhật"/"Tải chi tiết", chứ không chỉ khi rows đổi.
+  const tong = useMemo(() => tongCotSo(columns, rows), [columns, rows]);
   // Kẹp trang trong khoảng hợp lệ (refetch nền trả ít dòng hơn -> khỏi kẹt ở trang trống).
   const safePage = clampPage(page, rows.length, rowsPerPage);
   const pagedRows = rows.slice(safePage * rowsPerPage, safePage * rowsPerPage + rowsPerPage);
@@ -514,7 +530,7 @@ function InvoiceTablePanel({ direction, active }: InvoiceTablePanelProps) {
               {/* Hàng tổng đứng NGAY DƯỚI tiêu đề. `rows` (toàn bộ hóa đơn khớp bộ lọc), KHÔNG phải
                   `pagedRows`: đây là tổng của cả bảng nên không đổi khi lật trang — cũng là con số
                   nằm ở sheet Excel. */}
-              {totalsRow(columns, rows)}
+              {totalsRow(columns, tong)}
               {pagedRows.map((r, i) => {
                 const stt = safePage * rowsPerPage + i + 1;
                 return (

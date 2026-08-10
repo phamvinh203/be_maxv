@@ -8,6 +8,7 @@
  */
 import { getSavedInvoices } from "./api/gdt";
 import { getSavedDetails, renderInvoicePdf, fetchOriginalInvoiceXml } from "./api/invoiceDetail";
+import { getDanhMucTraCuuGoc } from "./api/traCuuGoc";
 import { toDisplayRow } from "./invoiceRow";
 import { buildReplacedByMap, toDetailRows } from "./detailRow";
 import { toInvoiceView, type InvoiceView } from "./invoiceView";
@@ -330,6 +331,10 @@ export async function exportInvoiceBundle(opts: ExportBundleOptions): Promise<Ex
     create: true,
   });
 
+  // Danh mục NCC — quyết định URL tra cứu thật cho cột "URL tra cứu" của sheet Chi tiết. Đọc SONG
+  // SONG với dữ liệu hóa đơn; hỏng thì `toDetailRows` tự lùi về registry FE nên không chặn cả lượt xuất.
+  const danhMucNcc = getDanhMucTraCuuGoc().catch(() => undefined);
+
   // Đọc dữ liệu 2 chiều (song song) trước để biết tổng số HĐ cho progress.
   const perDir = await Promise.all(
     directions.map(async (direction) => {
@@ -366,8 +371,9 @@ export async function exportInvoiceBundle(opts: ExportBundleOptions): Promise<Ex
     // Excel tổng hợp giờ là lựa chọn RIÊNG (ô tick "Excel tổng hợp"): trước đây luôn ghi kèm, nay chỉ
     // ghi khi người dùng tick — cho phép chỉ tải Excel, hoặc chỉ tải file hóa đơn mà không kèm Excel.
     if (formats.excel) {
+      const nccs = await danhMucNcc;
       const detailRows = details.flatMap((d) =>
-        toDetailRows(d, sttOf.get(detailInvoiceKey(d)) ?? 0, replacedBy),
+        toDetailRows(d, sttOf.get(detailInvoiceKey(d)) ?? 0, replacedBy, nccs),
       );
       const buffer = await buildSummaryWorkbookBuffer(
         overviewRows,

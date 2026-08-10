@@ -96,6 +96,24 @@ export function chiDongDau(row: { isFirstRow?: boolean }, noiDung: string): stri
   return row.isFirstRow ? noiDung : "";
 }
 
+/**
+ * Nội dung cột "Ghi Chú: Các trường hợp đặc biệt kế toán xem xét kỹ hơn" — cảnh báo TỰ SINH từ chính
+ * dữ liệu hóa đơn (mẫu Excel của kế toán ghi kiểu "Thiếu địa chỉ người mua").
+ *
+ * Dùng CHUNG cho cả 4 bảng (Tổng quát + Chi tiết, hai chiều): chúng nói về cùng một hóa đơn nên
+ * không được cảnh báo khác nhau. Để Ở ĐÂY chứ không trong `dauRa`/`dauVao`: bản chép đôi trong hai
+ * file ĐÃ TỪNG lệch nhau một dấu cách ở chuỗi "không được kê khai", và không có gì ngăn nó tái diễn.
+ * Đọc CÙNG hai field với `invoiceRowFill` ngay trên — cùng một luật, một chỗ.
+ *
+ * Không có cảnh báo nào -> `undefined` (web hiện "—", file xuất để ô trống).
+ */
+export function ghiChuDacBiet(r: { buyerDiaChi: string; trangThaiHd: string }): string | undefined {
+  const warnings: string[] = [];
+  if (!r.buyerDiaChi) warnings.push("Thiếu địa chỉ người mua");
+  if (r.trangThaiHd === "4") warnings.push("Hóa đơn này không được kê khai");
+  return warnings.length > 0 ? warnings.join(". ") : undefined;
+}
+
 /** Bỏ cột chỉ dành cho web — mọi kênh ghi ra file (Excel, CSV) phải đi qua hàm này. */
 export function fileColumns<T>(cols: InvoiceColumn<T>[]): InvoiceColumn<T>[] {
   return cols.filter((c) => !c.webOnly);

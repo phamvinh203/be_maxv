@@ -28,23 +28,10 @@ import {
   RATE_FMT,
   TOTAL_COL_WIDTH,
   chiDongDau,
+  ghiChuDacBiet,
   khongLap,
   type InvoiceColumn,
 } from "./types";
-
-/**
- * Nội dung cột "Ghi Chú: Các trường hợp đặc biệt kế toán xem xét kỹ hơn" — cảnh báo TỰ SINH từ chính
- * dữ liệu hóa đơn (mẫu Excel của kế toán ghi kiểu "Thiếu địa chỉ người mua").
- *
- * Dùng CHUNG cho bảng Tổng quát và bảng Chi tiết: hai bảng nói về cùng một hóa đơn nên không được
- * cảnh báo khác nhau. Không có cảnh báo nào -> `undefined` (web hiện "—", file xuất để ô trống).
- */
-function ghiChuDacBiet(r: { buyerDiaChi: string; trangThaiHd: string }): string | undefined {
-  const warnings: string[] = [];
-  if (!r.buyerDiaChi) warnings.push("Thiếu địa chỉ người mua");
-  if (r.trangThaiHd === "4") warnings.push("Hóa đơn này không được kê khai");
-  return warnings.length > 0 ? warnings.join(". ") : undefined;
-}
 
 /**
  * Bảng "Tổng quát" đầu vào — 25 cột trên web, 23 cột trong file Excel.
@@ -215,7 +202,7 @@ export function overviewDauVao(): InvoiceColumn<DisplayRow>[] {
  *  - "Tổng…": của CẢ HÓA ĐƠN, nên lặp y hệt ở mọi dòng hàng — đừng cộng cả cột.
  *
  * Cột "Ghi Chú: Các trường hợp đặc biệt kế toán xem xét kỹ hơn" không đọc field nào cả — nó là
- * CẢNH BÁO TỰ SINH, bộ quy tắc nằm ở `ghiChuDacBiet` đầu file (thêm quy tắc thì sửa ở đó, cả hai
+ * CẢNH BÁO TỰ SINH, bộ quy tắc nằm ở `ghiChuDacBiet` trong `templates/types.ts` (sửa ở đó là cả hai
  * bảng cùng đổi theo).
  *
  * Các cột còn lại đều đọc từ payload chi tiết GDT — xem `detailRow.ts` để biết field nguồn. Nhiều

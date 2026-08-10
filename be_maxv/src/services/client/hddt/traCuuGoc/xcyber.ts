@@ -1,16 +1,13 @@
 
 
-import { createWorker, PSM } from "tesseract.js";
-import type { Worker } from "tesseract.js";
-import sharp from "sharp";
 import { describeErrorChain } from "../../../../config/gdt-client";
+import { taoBoDocCaptcha } from "./captchaOcr";
 import {
-  TESSERACT_QUIET,
+  chayThuLai,
   fetchFileGoc,
   fetchUpstream,
   khopCum,
   laPdf,
-  loiHetLuotThuLai,
   makeDbg,
   makeDeadline,
 } from "./shared";
@@ -19,8 +16,8 @@ import { FileHoaDonGoc, ProviderDownloader, TraCuuGocError } from "./types";
 interface CaptchaChallenge {
   /** Khóa phiên gắn với ĐÚNG ảnh này — `/TraCuu` phải gửi lại kèm text đọc được từ nó. */
   key: string;
-  /** Data URI ảnh (`data:image/png;base64,…`). */
-  image: string;
+  /** Bytes ảnh captcha đã giải base64 (cổng trả data-URI, xem `refreshCaptcha`). */
+  image: Buffer;
 }
 
 
@@ -34,6 +31,8 @@ const CYBERLOTUS_MST = "0105232093";
 const API_ORIGIN = "https://bill1app.xcyber.vn";
 const API_BASE = `${API_ORIGIN}/api/services/hddt/TraCuuHoaDon`;
 const PORTAL_ORIGIN = "https://tracuuhoadon1.xcyber.vn";
+/** Trang tra cứu thủ công trên portal — cùng origin với `referer` mà luồng tự động gửi lên. */
+const PORTAL_TRA_CUU = `${PORTAL_ORIGIN}/#/tracuuhoadon/tracuu`;
 
 
 const API_HEADERS: Record<string, string> = {
@@ -48,89 +47,24 @@ const API_HEADERS: Record<string, string> = {
 const dbg = makeDbg("XCYBER-DBG", "DEBUG_XCYBER", 1500);
 
 
-const CAPTCHA_CHARSET = "0123456789";
-const CAPTCHA_LEN = 5;
-const OCR_WIDTHS = [300, 450, 600, 900] as const;
-const PREPROCESS_THRESHOLDS: (number | undefined)[] = [100, 130, 160, 190, 220, undefined];
-const CAPTCHA_PSMS = [PSM.SINGLE_LINE, PSM.SINGLE_WORD] as const;
 const MAX_CAPTCHA_RETRIES = 10;
 const MAX_CANDIDATES_PER_CAPTCHA = 3;
 
 /** Ngân sách thời gian cho 1 lần tải; override bằng env khi cần chờ lâu hơn. */
 const retryDeadlineMs = makeDeadline("XCYBER_RETRY_DEADLINE_MS");
 
-interface CaptchaRead {
-  text: string;
-  confidence: number;
-}
-
-let workerPromise: Promise<Worker> | null = null;
-
-async function getWorker(): Promise<Worker> {
-  if (!workerPromise) {
-    workerPromise = (async () => {
-      const worker = await createWorker("eng", 1, { logger: () => {} });
-      await worker.setParameters({
-        tessedit_char_whitelist: CAPTCHA_CHARSET,
-        // Chặn Leptonica xả debug ra stdout — xem `TESSERACT_QUIET`.
-        ...TESSERACT_QUIET,
-      });
-      return worker;
-    })();
-  }
-  return workerPromise;
-}
-
-async function preprocessCaptcha(image: Buffer): Promise<Buffer[]> {
-  try {
-    const variants: Buffer[] = [];
-    for (const width of OCR_WIDTHS) {
-      for (const threshold of PREPROCESS_THRESHOLDS) {
-        const pipeline = sharp(image)
-          .resize({ width, kernel: "lanczos3" })
-          .grayscale()
-          .normalize();
-        variants.push(
-          await (threshold === undefined ? pipeline : pipeline.threshold(threshold).median(3))
-            .png()
-            .toBuffer(),
-        );
-      }
-    }
-    return variants;
-  } catch (err) {
-    dbg("preprocessCaptcha lỗi — OCR ảnh gốc", describeErrorChain(err));
-    return [image];
-  }
-}
-
-function captchaImageBuffer(challenge: CaptchaChallenge): Buffer {
-  return Buffer.from(tachBase64(challenge.image), "base64");
-}
-
-async function solveCaptcha(challenge: CaptchaChallenge): Promise<CaptchaRead[]> {
-  const worker = await getWorker();
-  const variants = await preprocessCaptcha(captchaImageBuffer(challenge));
-  const reads: CaptchaRead[] = [];
-
-  for (const psm of CAPTCHA_PSMS) {
-    await worker.setParameters({ tessedit_pageseg_mode: psm });
-    for (const variant of variants) {
-      const { data } = await worker.recognize(variant);
-      const text = (data.text || "").replace(/[^0-9]/g, "");
-      if (text.length === CAPTCHA_LEN) {
-        reads.push({ text, confidence: data.confidence });
-      }
-    }
-  }
-
-  const unique: CaptchaRead[] = [];
-  for (const read of reads.sort((a, b) => b.confidence - a.confidence)) {
-    if (!unique.some((x) => x.text === read.text)) unique.push(read);
-  }
-  dbg("solveCaptcha reads", unique);
-  return unique;
-}
+/**
+ * Captcha CyberLotus là 5 CHỮ SỐ cố định, nhiễu nặng hơn VNPT/EasyInvoice nên phải quét bảng biến thể
+ * rộng hơn (4 cỡ × 6 ngưỡng). Cơ chế đọc ở `captchaOcr.ts`; ở đây chỉ khai tham số.
+ */
+const boDocCaptcha = taoBoDocCaptcha({
+  charset: "0123456789",
+  widths: [300, 450, 600, 900],
+  thresholds: [100, 130, 160, 190, 220, undefined],
+  lenMin: 5,
+  lenMax: 5,
+  dbg,
+});
 
 
 interface AbpEnvelope {
@@ -199,18 +133,12 @@ function asXcyResult(result: unknown): XcyResult | null {
 }
 
 
-function chuanHoaAnhCaptcha(raw: string): string {
-  const base64 = tachBase64(raw);
-  const magic = Buffer.from(base64.slice(0, 16), "base64").subarray(0, 4).toString("hex");
-  const mime = magic.startsWith("89504e47")
-    ? "image/png"
-    : magic.startsWith("ffd8ff")
-      ? "image/jpeg"
-      : "image/png"; // không nhận ra -> PNG (giá trị quan sát được duy nhất tới giờ)
-  return `data:${mime};base64,${base64}`;
-}
-
-/** Bóc phần base64 khỏi data-URI (`data:<mime>;base64,XXX`); chuỗi base64 trần thì trả nguyên. */
+/**
+ * Bóc phần base64 khỏi data-URI (`data:<mime>;base64,XXX`); chuỗi base64 trần thì trả nguyên.
+ *
+ * Mime KHÔNG cần giữ lại: ảnh đi thẳng vào sharp, mà sharp nhận diện định dạng bằng magic bytes của
+ * chính buffer chứ không hỏi mime.
+ */
 function tachBase64(s: string): string {
   const i = s.indexOf(";base64,");
   return i >= 0 ? s.slice(i + ";base64,".length) : s.trim();
@@ -229,7 +157,7 @@ async function refreshCaptcha(): Promise<CaptchaChallenge> {
   if (!key || !image) {
     throw new TraCuuGocError("UPSTREAM", `${TEN} không trả captcha (thiếu key hoặc image)`);
   }
-  return { key, image: chuanHoaAnhCaptcha(image) };
+  return { key, image: Buffer.from(tachBase64(image), "base64") };
 }
 
 // ============================================================
@@ -364,34 +292,40 @@ async function downloadPdf(downloadKey: string, maSoBiMat: string): Promise<File
 export const cyberlotus: ProviderDownloader = {
   mst: CYBERLOTUS_MST,
   ten: TEN,
+  urlTraCuu: PORTAL_TRA_CUU,
   async download({ code }) {
-    const budgetMs = retryDeadlineMs();
-    const deadline = Date.now() + budgetMs;
-    // `null` khi mọi lượt OCR đều ra rỗng — `loiHetLuotThuLai` lo ca đó, khỏi dựng sẵn lỗi mồi.
-    let lastErr: unknown = null;
+    // Vòng ngoài (ngân sách thời gian + trần số lượt + phân loại lỗi) do `chayThuLai` lo; 1 lượt ở
+    // đây = 1 ảnh captcha, thử tối đa `MAX_CANDIDATES_PER_CAPTCHA` ứng viên OCR của ảnh đó.
+    return chayThuLai({
+      ten: TEN,
+      budgetMs: retryDeadlineMs(),
+      maxLuot: MAX_CAPTCHA_RETRIES,
+      async luot(conHan) {
+        const challenge = await refreshCaptcha();
+        const candidates = await boDocCaptcha.doc(challenge.image);
+        // Ứng viên nào cũng sai thì để lỗi cuối thoát ra cho `chayThuLai` ghi nhận (nó đi vào thông
+        // báo "lỗi lượt cuối"), thay vì nuốt mất rồi báo chung chung.
+        let loiCaptcha: unknown = null;
 
-    for (let attempt = 0; attempt < MAX_CAPTCHA_RETRIES && Date.now() < deadline; attempt++) {
-      const challenge = await refreshCaptcha();
-      const candidates = await solveCaptcha(challenge);
-      if (candidates.length === 0) continue;
-
-      for (const candidate of candidates.slice(0, MAX_CANDIDATES_PER_CAPTCHA)) {
-        if (Date.now() >= deadline) break;
-        try {
-          const downloadKey = await traCuu(challenge.key, candidate.text, code);
-          return await downloadPdf(downloadKey, code);
-        } catch (err) {
-          lastErr = err;
-          if (err instanceof TraCuuGocError && err.retryable) {
-            dbg("captcha OCR sai, thử candidate/ảnh tiếp theo", candidate);
-            continue;
+        for (const candidate of candidates.slice(0, MAX_CANDIDATES_PER_CAPTCHA)) {
+          if (!conHan()) break;
+          try {
+            const downloadKey = await traCuu(challenge.key, candidate.text, code);
+            return await downloadPdf(downloadKey, code);
+          } catch (err) {
+            // Thử ứng viên KHÁC trên cùng ảnh trước đã (rẻ hơn hẳn xin ảnh mới) nên bắt ở đây.
+            if (err instanceof TraCuuGocError && err.retryable) {
+              dbg("captcha OCR sai, thử candidate/ảnh tiếp theo", candidate);
+              loiCaptcha = err;
+              continue;
+            }
+            throw err;
           }
-          throw err;
         }
-      }
-    }
-
-    throw loiHetLuotThuLai(TEN, budgetMs, lastErr);
+        if (loiCaptcha) throw loiCaptcha;
+        return null;
+      },
+    });
   },
 };
 

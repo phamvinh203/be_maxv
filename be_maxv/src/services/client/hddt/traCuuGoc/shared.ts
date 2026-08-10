@@ -191,6 +191,47 @@ export function loiHetLuotThuLai(ten: string, budgetMs: number, lastErr: unknown
 }
 
 /**
+ * Vòng THỬ LẠI TRONG NGÂN SÁCH — chính sách retry dùng chung của mọi NCC có captcha.
+ *
+ * Gom ở đây vì phần tinh tế nhất của luồng này không phải bản thân vòng lặp mà là HỢP ĐỒNG quanh nó,
+ * và trước đây mỗi provider tự khẳng định lại hợp đồng đó bằng tay:
+ *  - dừng theo NGÂN SÁCH THỜI GIAN, đồng thời có trần số lượt chống env đặt sai (`maxLuot`);
+ *  - chỉ `TraCuuGocError.retryable` mới đáng thử tiếp; lỗi DỨT KHOÁT (mã tra cứu sai) ném ngay, vì
+ *    lượt mới không làm mã đúng hơn;
+ *  - hết ngân sách thì ném `loiHetLuotThuLai` chứ KHÔNG ném thẳng lỗi lượt cuối — xem docblock hàm đó.
+ *
+ * `luot` trả `null` = "lượt này không đi tới đâu nhưng chưa có lỗi" (OCR đọc hỏng, chưa kịp gọi NCC),
+ * trả giá trị = xong. Nhận `conHan()` để vòng lặp CON bên trong 1 lượt (VNPT thử nhiều ảnh trong cùng
+ * session) cũng dừng được giữa chừng khi sắp hết giờ.
+ */
+export async function chayThuLai<T>(opts: {
+  ten: string;
+  budgetMs: number;
+  maxLuot: number;
+  luot: (conHan: () => boolean) => Promise<T | null>;
+}): Promise<T> {
+  const { ten, budgetMs, maxLuot, luot } = opts;
+  const deadline = Date.now() + budgetMs;
+  const conHan = () => Date.now() < deadline;
+  // `null` khi mọi lượt OCR đều ra rỗng (chưa lượt nào gọi tới NCC) — `loiHetLuotThuLai` lo ca đó,
+  // khỏi dựng sẵn một lỗi mồi chỉ để rồi bọc lại.
+  let lastErr: unknown = null;
+
+  for (let i = 0; i < maxLuot && conHan(); i++) {
+    try {
+      const ketQua = await luot(conHan);
+      if (ketQua !== null) return ketQua;
+    } catch (err) {
+      lastErr = err;
+      if (err instanceof TraCuuGocError && err.retryable) continue;
+      throw err;
+    }
+  }
+
+  throw loiHetLuotThuLai(ten, budgetMs, lastErr);
+}
+
+/**
  * Tham số Tesseract để CHẶN debug xả ra stdout.
  *
  * Tesseract/Leptonica in ra những khối như:
@@ -213,8 +254,7 @@ export function loiHetLuotThuLai(ten: string, budgetMs: number, lastErr: unknown
  * `/dev/null` ở đây là đường dẫn trong FS ẢO của WASM (emscripten MEMFS), KHÔNG phải của OS — nên trên
  * Windows vẫn đúng, không cần đổi sang `NUL`.
  *
- * Spread vào `setParameters` của từng provider có OCR:
- *   await worker.setParameters({ tessedit_char_whitelist: …, ...TESSERACT_QUIET });
+ * Được spread sẵn khi init worker trong `captchaOcr.ts`, provider không phải nhớ tới nó nữa.
  */
 export const TESSERACT_QUIET = { debug_file: "/dev/null" };
 

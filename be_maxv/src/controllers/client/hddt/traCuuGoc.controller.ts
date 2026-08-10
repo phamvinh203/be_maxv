@@ -1,5 +1,9 @@
 import { FastifyReply, FastifyRequest } from "fastify";
-import { taiHoaDonGoc, TraCuuGocError } from "../../../services/client/hddt/traCuuGoc";
+import {
+  danhMucTraCuuGoc,
+  taiHoaDonGoc,
+  TraCuuGocError,
+} from "../../../services/client/hddt/traCuuGoc";
 import type { TraCuuGocErrorCode } from "../../../services/client/hddt/traCuuGoc/types";
 
 /** Map mã lỗi ngữ nghĩa của service -> HTTP status. Layer HTTP nằm ở đây, không rải trong service. */
@@ -8,6 +12,17 @@ const STATUS_BY_CODE: Record<TraCuuGocErrorCode, number> = {
   UPSTREAM: 502,
   UNSUPPORTED: 501,
 };
+
+/**
+ * GET /gdt/tra-cuu-goc/nha-cung-cap → danh mục NCC có bộ tải tự động + URL tra cứu thủ công của từng
+ * NCC. FE đọc cái này thay vì giữ bản sao chép tay của registry BE.
+ *
+ * Không đụng DB và không gọi cổng NCC nào — chỉ đọc registry trong bộ nhớ, nên rẻ và an toàn để FE
+ * gọi mỗi lần mở màn hình.
+ */
+export async function getNhaCungCapTraCuu(_request: FastifyRequest, reply: FastifyReply) {
+  return reply.send(danhMucTraCuuGoc());
+}
 
 interface DownloadOriginalQuery {
   /** MST NCC phát hành (khóa registry `TRA_CUU_NCC`, vd MISA = "0101243150", Viettel = "0100109106"). */

@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import Dialog from "@mui/material/Dialog";
 import DialogTitle from "@mui/material/DialogTitle";
 import DialogContent from "@mui/material/DialogContent";
@@ -32,15 +33,21 @@ import { runPool } from "../../../lib/pool";
 import { TRA_CUU_NCC, traCuuNcc, rowStr } from "../traCuuNcc";
 import { invoiceFileBase, invoiceKey, invoiceSttMap } from "../invoiceFileName";
 import { getSavedDetails } from "../api/invoiceDetail";
-import { taiHoaDonGoc } from "../api/traCuuGoc";
+import { taiHoaDonGoc, type DanhMucTraCuuGoc } from "../api/traCuuGoc";
+import { danhMucTraCuuGocKey, useDanhMucTraCuuGocQuery } from "../api/traCuuGocQueries";
 import type { DisplayRow, InvoiceDirection } from "../types";
 
 /**
- * NCC đã có bộ tải TỰ ĐỘNG ở BE — đọc cờ `taiTuDong` trong registry `TRA_CUU_NCC` (nguồn DUY NHẤT,
- * khỏi giữ danh sách MST song song). Thêm NCC = bật cờ ở registry (FE) + đăng ký bộ tải (BE).
+ * NCC đã có bộ tải TỰ ĐỘNG — hỏi thẳng BE (`danhMucTraCuuGoc`) chứ KHÔNG giữ cờ song song ở FE.
+ *
+ * Trước đây FE có cờ `taiTuDong` riêng, tức cùng một sự thật ("BE đã đăng ký provider chưa") được
+ * khai ở hai repo và phải deploy đúng thứ tự. Lệch phiên bản là FE gọi BE cho NCC chưa có provider,
+ * ăn 501 và báo cho kế toán một lý do sai. Hỏi BE thì lệch không xảy ra được nữa.
+ *
+ * Thêm NCC = đăng ký provider ở BE, FE không phải sửa gì.
  */
-function nccHoTroTai(msttcgp: string): boolean {
-  return TRA_CUU_NCC[msttcgp]?.taiTuDong === true;
+function nccHoTroTai(danhMuc: DanhMucTraCuuGoc | undefined, msttcgp: string): boolean {
+  return danhMuc?.nccs.some((n) => n.msttcgp === msttcgp) ?? false;
 }
 
 /**
@@ -73,8 +80,7 @@ const SO_LUOT_QUET_LAI = 2;
  */
 function laLoiTamThoi(e: unknown): boolean {
   // 501 tuy là 5xx nhưng DỨT KHOÁT: BE chưa có bộ tải cho NCC đó thì quét lại bao nhiêu lượt cũng thế.
-  // Hay gặp khi deploy lệch phiên bản (FE đã bật `taiTuDong`, BE chưa đăng ký provider) — không loại ra
-  // thì mọi hóa đơn của NCC đó bị gọi 3 lần cho một lỗi tất định.
+  // Từ khi `nccHoTroTai` hỏi thẳng BE thì gần như không còn gặp; giữ lại vì phân loại vẫn đúng.
   if (e instanceof ApiError) return (e.status >= 500 && e.status !== 501) || e.status === 429;
   return true;
 }
@@ -198,6 +204,11 @@ export default function DownloadOriginalDialog({
    */
   const huyRef = useRef<AbortController | null>(null);
 
+  // Danh mục NCC của BE — nguồn sự thật cho "NCC nào tải tự động được" và URL tra cứu thật.
+  const danhMucNccQuery = useDanhMucTraCuuGocQuery();
+  const danhMucNcc = danhMucNccQuery.data;
+  const qc = useQueryClient();
+
   const isPurchase = direction === "purchase";
 
   // CHỈ lấy NCC phát hành CÓ trong registry `TRA_CUU_NCC` (Viettel, MISA, VETC, VININVOICE, FPT).
@@ -279,7 +290,7 @@ export default function DownloadOriginalDialog({
       });
       const maByKey = new Map<string, string>();
       for (const d of details) {
-        const r = traCuuNcc(d);
+        const r = traCuuNcc(d, danhMucNcc);
         if (!r?.maTraCuu) continue;
         maByKey.set(
           invoiceKey(rowStr(d.khmshdon), rowStr(d.khhdon), rowStr(d.shdon), rowStr(d.nbmst)),
@@ -314,7 +325,7 @@ export default function DownloadOriginalDialog({
         }
         // NCC người dùng chủ động bỏ tick -> không tính vào nhóm nào, tránh nhiễu danh sách.
         if (!checked.has(nccMst)) continue;
-        if (!nccHoTroTai(nccMst)) {
+        if (!nccHoTroTai(danhMucNcc, nccMst)) {
           boQua.push({ ...item, moTa: "NCC chưa hỗ trợ tải tự động — mở URL tra cứu để tải tay" });
           continue;
         }
@@ -428,6 +439,10 @@ export default function DownloadOriginalDialog({
     } finally {
       huyRef.current = null;
       setDownloading(false);
+      // Lượt tải vừa rồi có thể đã dạy cho BE biết domain thật của vài người bán (NCC nhiều portal —
+      // xem `urlDaDo`). Nạp lại danh mục để cột "URL tra cứu" và sheet Excel dùng đúng domain ngay,
+      // khỏi chờ hết `staleTime`.
+      void qc.invalidateQueries({ queryKey: danhMucTraCuuGocKey });
     }
   };
 
@@ -547,7 +562,7 @@ export default function DownloadOriginalDialog({
                     <Typography component="span" variant="body2" color="text.secondary">
                       ({s.count} hóa đơn)
                     </Typography>
-                    {!nccHoTroTai(s.key) && (
+                    {!nccHoTroTai(danhMucNcc, s.key) && (
                       <Typography component="span" variant="body2" color="warning.main">
                         {" "}
                         — chưa hỗ trợ tải
@@ -708,7 +723,10 @@ export default function DownloadOriginalDialog({
           // KHÔNG chặn khi chưa tick NCC nào: hóa đơn của NCC ngoài registry không hề xuất hiện trong
           // danh sách tick, nên chặn ở đây thì lượt chỉ toàn HĐ loại đó sẽ không bao giờ xem được
           // nhóm "Bỏ qua" (lý do: không có URL tra cứu gốc).
-          disabled={!dir || totalInvoices === 0 || downloading}
+          //
+          // CHỜ danh mục NCC: chưa có nó thì `nccHoTroTai` trả `false` cho tất cả, chạy bây giờ là
+          // xếp nhầm cả lượt vào "NCC chưa hỗ trợ tải tự động".
+          disabled={!dir || totalInvoices === 0 || downloading || !danhMucNcc}
           sx={{ textTransform: "none" }}
         >
           Tải xuống

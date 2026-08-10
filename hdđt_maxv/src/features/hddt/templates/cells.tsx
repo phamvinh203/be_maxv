@@ -12,7 +12,8 @@ import {
   NO_DATA_YET,
   TOTAL_ROW_LABEL,
   TOTAL_TEXT_ARGB,
-  tongCotSo,
+  TRANG_THAI_HD_FILL,
+  WARNING_FILL,
   type ExcelCellStyle,
   type InvoiceColumn,
 } from "./types";
@@ -61,16 +62,18 @@ const TOTAL_ROW_SX: SxProps<Theme> = {
 };
 
 /**
- * Hàng tổng ĐẦU bảng web (ngay dưới hàng tiêu đề) — cộng các cột có cờ `total` trên TOÀN BỘ `rows`,
- * tức toàn bộ hóa đơn khớp bộ lọc chứ KHÔNG phải riêng trang đang xem (nơi gọi truyền `rows` đầy đủ,
- * không phải `pagedRows`). Vì vậy con số giữ nguyên khi lật trang, và khớp đúng hàng tổng của sheet
- * Excel. Đặt trên đầu để thấy ngay khi mở bảng, không phải cuộn xuống cuối.
+ * Hàng tổng ĐẦU bảng web (ngay dưới hàng tiêu đề). Đặt trên đầu để thấy ngay khi mở bảng, không phải
+ * cuộn xuống cuối.
+ *
+ * NHẬN SẴN `tong` (từ `tongCotSo`) chứ không tự cộng: phép cộng chạy qua TOÀN BỘ hàng của bảng — chi
+ * tiết một tháng là hàng chục nghìn dòng × 8 cột tiền — còn component thì render lại theo mọi state
+ * của màn hình (lật trang, tick chọn, mỗi nhịp poll lúc đang tải chi tiết). Nơi gọi bọc `useMemo` để
+ * phép cộng chỉ chạy lại khi `rows`/`columns` thật sự đổi.
  *
  * Là HÀM trả `ReactNode` chứ không phải component — cùng thành ngữ với `renderCell`/`ttTaiCell`, và
  * nhờ vậy file này giữ nguyên vai trò "kho hàm render", không lẫn component (fast-refresh).
  */
-export function totalsRow<T>(columns: InvoiceColumn<T>[], rows: T[]): ReactNode {
-  const tong = tongCotSo(columns, rows);
+export function totalsRow<T>(columns: InvoiceColumn<T>[], tong: Map<string, number>): ReactNode {
   return (
     <TableRow sx={TOTAL_ROW_SX}>
       {columns.map((col, i) => (
@@ -83,33 +86,37 @@ export function totalsRow<T>(columns: InvoiceColumn<T>[], rows: T[]): ReactNode 
 }
 
 /**
- * Cache theo cặp màu: `sx` là object mới mỗi lần gọi thì emotion serialize lại cho TỪNG DÒNG của
- * bảng (hàng nghìn dòng mỗi lần render). Cả bảng chỉ có vài màu nên cache là đủ.
- */
-const rowSxCache = new Map<string, SxProps<Theme>>();
-
-/**
- * `sx` cho `<TableRow>` tô cả hàng trên web, đọc CÙNG bảng màu với file Excel (`ExcelCellStyle` —
- * xem `invoiceRowFill`) nên bảng web và sheet Excel không thể lệch màu nhau.
- * `undefined` = hàng không có màu (hóa đơn mới, không cảnh báo) -> để nguyên nền theo theme.
+ * Dựng `sx` cho một màu nền — đối tượng `sx` mới mỗi ô sẽ bắt emotion serialize lại cho TỪNG DÒNG
+ * của bảng (hàng nghìn dòng mỗi lần render), nên chúng được dựng SẴN một lần ở `SX_THEO_FILL`.
  *
  * Tự đặt lại màu hover: lớp phủ hover mặc định của MUI là màu BÁN TRONG SUỐT ghi đè
  * `background-color`, nên nó hòa với nền giấy phía sau chứ không phải với màu vừa tô — rê chuột vào
  * là hàng mất màu trạng thái.
  */
-export function rowFillSx(fill: ExcelCellStyle | undefined): SxProps<Theme> | undefined {
-  if (!fill) return undefined;
-  const key = `${fill.bg}|${fill.fg ?? ""}`;
-  const cached = rowSxCache.get(key);
-  if (cached) return cached;
-
+function sxTuFill(fill: ExcelCellStyle): SxProps<Theme> {
   const bg = argbToCss(fill.bg);
-  const sx: SxProps<Theme> = {
+  return {
     bgcolor: bg,
     "&:hover": { bgcolor: darken(bg, HOVER_DARKEN) },
     // Màu chữ phải đặt ở Ô: `MuiTableCell` tự khai `color` nên không thừa hưởng từ hàng.
     "& td": { color: fill.fg ? argbToCss(fill.fg) : FILLED_ROW_TEXT },
   };
-  rowSxCache.set(key, sx);
-  return sx;
+}
+
+/**
+ * Toàn bộ màu hàng có thể xảy ra, dựng sẵn lúc nạp module. Khóa bằng CHÍNH đối tượng `ExcelCellStyle`
+ * chứ không phải chuỗi màu: `invoiceRowFill` luôn trả về đúng các tham chiếu trong bảng này, nên tra
+ * theo identity vừa đúng vừa khỏi phải nối chuỗi khóa cho mỗi dòng.
+ */
+const SX_THEO_FILL = new Map<ExcelCellStyle, SxProps<Theme>>(
+  [...Object.values(TRANG_THAI_HD_FILL), WARNING_FILL].map((fill) => [fill, sxTuFill(fill)]),
+);
+
+/**
+ * `sx` cho `<TableRow>` tô cả hàng trên web, đọc CÙNG bảng màu với file Excel (`ExcelCellStyle` —
+ * xem `invoiceRowFill`) nên bảng web và sheet Excel không thể lệch màu nhau.
+ * `undefined` = hàng không có màu (hóa đơn mới, không cảnh báo) -> để nguyên nền theo theme.
+ */
+export function rowFillSx(fill: ExcelCellStyle | undefined): SxProps<Theme> | undefined {
+  return fill && SX_THEO_FILL.get(fill);
 }

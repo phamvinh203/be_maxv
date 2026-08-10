@@ -37,6 +37,29 @@ export interface ProviderDownloader {
   mst: string;
   /** Tên NCC (dùng trong thông báo lỗi). */
   ten: string;
+  /**
+   * `true` khi NCC BẮT BUỘC có `sellerMst` (dựng origin portal tenant, hoặc gửi làm `supplierTaxCode`).
+   * Dispatcher chặn ngay ở `taiHoaDonGoc` nên `download` được phép coi `sellerMst` là đã có.
+   *
+   * KHAI BÁO chứ không tự kiểm trong `download`: ba provider trước đây mỗi cái tự viết một guard với
+   * một câu thông báo khác nhau, và NCC thứ tư quên guard thì lỗi chui xuống tận `assertMst` — hoặc
+   * tệ hơn, dựng ra `https://undefinedhd.easyinvoice.com.vn` rồi mới hỏng.
+   */
+  canSellerMst?: boolean;
+  /**
+   * URL trang tra cứu THỦ CÔNG của NCC — thứ kế toán bấm khi muốn tự vào cổng xem/tải. `{mst}` là chỗ
+   * điền MST người bán (NCC nào có portal riêng theo tenant mới cần).
+   *
+   * Ở ĐÂY chứ không phải bên FE: cổng NCC đổi domain thì thứ hỏng trước tiên là bộ tải tự động trong
+   * chính file này, nên link thủ công phải nằm cạnh nó để sửa một lần. Trước đây chuỗi domain bị chép
+   * sang cả registry FE, và một lần Softdreams đổi domain đã phải sửa 3 file ở 2 tầng.
+   */
+  urlTraCuu: string;
+  /**
+   * NCC phục vụ trên NHIỀU domain mà không có cách suy ra: URL tra cứu ĐÃ DÒ ĐƯỢC, theo MST người bán.
+   * Ghi đè `urlTraCuu` cho đúng những MST có trong map. Chỉ EasyInvoice cần (xem `EASY_DOMAINS`).
+   */
+  urlTraCuuTheoMst?(): Record<string, string>;
   /** Tải file PDF gốc 1 hóa đơn. */
   download(req: DownloadRequest): Promise<FileHoaDonGoc>;
 }

@@ -1,4 +1,34 @@
-import { apiFetchBlob } from "../../../lib/http";
+import { apiFetch, apiFetchBlob } from "../../../lib/http";
+
+/** 1 NCC có bộ tải tự động ở BE. Hình dạng khớp `NhaCungCapTraCuu` bên `traCuuGoc/index.ts`. */
+export interface NhaCungCapTraCuu {
+  /** MST NCC phát hành — khóa ghép với `msttcgp` của hóa đơn. */
+  msttcgp: string;
+  ten: string;
+  /** URL trang tra cứu thủ công; `{mst}` = chỗ điền MST người bán. */
+  urlTraCuu: string;
+}
+
+export interface DanhMucTraCuuGoc {
+  nccs: NhaCungCapTraCuu[];
+  /**
+   * MST người bán -> URL tra cứu ĐÃ DÒ được, ghi đè `urlTraCuu` của NCC tương ứng. Chỉ có với NCC
+   * phục vụ trên nhiều domain (EasyInvoice); BE học được sau mỗi lượt tải thành công nên map này
+   * rỗng cho tới lúc đó và rỗng lại sau khi BE restart. Luôn phải có đường lùi về `urlTraCuu`.
+   */
+  urlDaDo: Record<string, string>;
+}
+
+/**
+ * GET /gdt/tra-cuu-goc/nha-cung-cap → danh mục NCC tải tự động được + URL tra cứu của từng NCC.
+ *
+ * NGUỒN DUY NHẤT cho hai thứ FE từng tự giữ: cờ "NCC này tải tự động được" và chuỗi URL cổng NCC.
+ * Giữ bản sao ở FE nghĩa là mỗi lần deploy lệch phiên bản là FE gọi BE cho NCC chưa đăng ký (501),
+ * hoặc mở link tới domain NCC vừa đổi.
+ */
+export function getDanhMucTraCuuGoc(): Promise<DanhMucTraCuuGoc> {
+  return apiFetch<DanhMucTraCuuGoc>("/gdt/tra-cuu-goc/nha-cung-cap");
+}
 
 export interface TaiHoaDonGocParams {
   /** MST NCC phát hành (khóa registry `TRA_CUU_NCC`, vd MISA = "0101243150", Viettel = "0100109106"). */

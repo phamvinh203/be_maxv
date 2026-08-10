@@ -32,7 +32,10 @@ import {
   deleteSyncLog,
   systemStats,
 } from "../../controllers/client/hddt/gdt.controller";
-import { downloadOriginalInvoice } from "../../controllers/client/hddt/traCuuGoc.controller";
+import {
+  downloadOriginalInvoice,
+  getNhaCungCapTraCuu,
+} from "../../controllers/client/hddt/traCuuGoc.controller";
 
 export default async function (
   fastify: FastifyInstance
@@ -47,6 +50,13 @@ export default async function (
   fastify.get("/credential", {
     preHandler: [fastify.authenticate],
     handler: getGdtCredential,
+  });
+
+  // Danh mục NCC có bộ tải tự động + URL tra cứu thủ công — FE đọc thay vì giữ bản chép tay.
+  // Đăng ký TRƯỚC "/tra-cuu-goc" cho dễ đọc; hai path khác nhau nên thứ tự không ảnh hưởng routing.
+  fastify.get("/tra-cuu-goc/nha-cung-cap", {
+    preHandler: [fastify.authenticate],
+    handler: getNhaCungCapTraCuu,
   });
 
   // Tải FILE PDF GỐC 1 hóa đơn trực tiếp từ trang tra cứu của NCC phát hành (MISA…).

@@ -1,5 +1,6 @@
 import { buildApp } from './app';
 import { env } from './config/env';
+import { dongCaptchaWorkers } from './services/client/hddt/traCuuGoc/captchaOcr';
 
 async function main() {
   const app = await buildApp();
@@ -8,6 +9,9 @@ async function main() {
 
   const shutdown = async () => {
     await app.close(); // kích hoạt onClose của prisma plugin
+    // Worker Tesseract của luồng tải hóa đơn gốc không nằm dưới vòng đời Fastify — phải tự đóng,
+    // nếu không `tsx watch` giữ lại worker của mỗi lần reload.
+    await dongCaptchaWorkers();
     process.exit(0);
   };
   process.on('SIGINT', shutdown);

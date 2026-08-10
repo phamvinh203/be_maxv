@@ -1,5 +1,5 @@
 /**
- * ===== TẢI HÓA ĐƠN GỐC — SOFTDREAMS / EasyInvoice (easyinvoice.com.vn) =====
+ * ===== TẢI HÓA ĐƠN GỐC — SOFTDREAMS / EasyInvoice (easyinvoice.com.vn + easyinvoice.vn) =====
  *
  * Cổng ASP.NET MVC cổ điển: cookie session + form POST + scrape HTML. Gần giống VNPT nhưng ĐƠN GIẢN
  * HƠN MỘT BẬC — form KHÔNG có `__RequestVerificationToken` (đã kiểm chứng bằng cách đọc HTML
@@ -7,8 +7,12 @@
  * không phải extract token nào cả.
  *
  * ORIGIN THEO MST NGƯỜI BÁN: mỗi công ty phát hành qua Softdreams có portal riêng
- * `https://<nbmst>hd.easyinvoice.com.vn` (vd `0108787907` -> `0108787907hd.easyinvoice.com.vn`). Caller phải
- * truyền `sellerMst` — xem `buildEasyOrigin`.
+ * `https://<nbmst>hd.<domain>` (vd `0108787907` -> `0108787907hd.easyinvoice.com.vn`). Caller phải
+ * truyền `sellerMst`.
+ *
+ * ⚠️ DOMAIN CÓ HAI: `easyinvoice.com.vn` (tenant cũ) và `easyinvoice.vn` (sau khi Softdreams đổi
+ * domain, nhưng không dời hết). Dữ liệu hóa đơn không nói tenant nằm ở đâu nên BE tự DÒ ở bước 1 rồi
+ * nhớ theo MST — xem `EASY_DOMAINS` / `layCaptcha`.
  *
  * LUỒNG 3 REQUEST:
  *   1) GET  `/Captcha/Show`  -> ảnh PNG + Set-Cookie `ASP.NET_SessionId`.
@@ -37,21 +41,18 @@
  * "đổi ảnh trong session" như VNPT).
  */
 
-import sharp from "sharp";
-import { createWorker, PSM } from "tesseract.js";
-import type { Worker } from "tesseract.js";
 import { describeErrorChain } from "../../../../config/gdt-client";
 import { listZipEntryNames, readZipEntryByExtension } from "../../../../helpers/zip";
+import { docTotNhat, taoBoDocCaptcha } from "./captchaOcr";
 import {
   NAVIGATE_HEADERS,
-  TESSERACT_QUIET,
   assertMst,
+  chayThuLai,
   decodeHtmlEntities,
   fetchUpstream,
   htmlToText,
   khopCum,
   laPdf,
-  loiHetLuotThuLai,
   makeDbg,
   makeDeadline,
   mergeSetCookie,
@@ -75,46 +76,74 @@ const SEARCH_PAGE_PATH = "/Search/Index";
 const DOWNLOAD_PDF_ATTACH_PATH = "/Invoice/DownloadPdfAndFileAttach";
 
 /**
- * Build origin portal tenant EasyInvoice từ `nbmst` (MST người bán): `https://<nbmst>hd.easyinvoice.com.vn`.
+ * HAI domain portal cùng tồn tại: Softdreams chuyển sang `easyinvoice.vn` nhưng KHÔNG dời hết —
+ * tenant cũ vẫn nằm ở `easyinvoice.com.vn`. Không có dấu hiệu nào trong dữ liệu hóa đơn cho biết
+ * công ty phát hành thuộc domain nào, nên phải DÒ: thử lần lượt, cái nào mint được session thì thắng.
+ *
+ * Thứ tự = thứ tự thử. `.com.vn` đứng trước vì đó là hành vi đang chạy được cho phần lớn tenant.
+ */
+const EASY_DOMAINS = ["easyinvoice.com.vn", "easyinvoice.vn"] as const;
+
+/**
+ * MST -> origin đã dò ra, để chỉ tốn 1 lượt dò cho mỗi công ty phát hành thay vì mỗi hóa đơn (một
+ * lượt "Tải hóa đơn gốc" thường là hàng chục hóa đơn cùng một người bán).
+ *
+ * CHỈ ghi khi `/Captcha/Show` trả về ảnh + `ASP.NET_SessionId` — tức subdomain đó có thật và đang
+ * phục vụ tenant này. Bị xóa khi cả lượt tải thất bại (xem `easyInvoice.download`), nên đoán sai
+ * cũng tự sửa ở lần bấm sau chứ không kẹt tới lúc restart BE.
+ *
+ * Số phần tử bị chặn bởi số NCC-Softdreams mà khách hàng có hóa đơn — vài chục chuỗi, không cần dọn.
+ */
+const originTheoMst = new Map<string, string>();
+
+/** Origin portal của 1 MST trên 1 domain. Nhận cả placeholder `{mst}` để dựng URL mẫu cho FE. */
+function easyOrigin(mst: string, domain: string): string {
+  return `https://${mst}hd.${domain}`;
+}
+
+/** Origin ứng viên cho 1 MST (đã `assertMst`), cái dò được lần trước đứng đầu. */
+function easyOrigins(mst: string): string[] {
+  const tatCa = EASY_DOMAINS.map((domain) => easyOrigin(mst, domain));
+  const daBiet = originTheoMst.get(mst);
+  // Vẫn GIỮ các ứng viên còn lại phía sau chứ không trả mỗi `daBiet`: nếu NCC dời tenant sang domain
+  // kia giữa chừng thì lượt tải tiếp theo tự lần ra, khỏi phải restart BE.
+  return daBiet ? [daBiet, ...tatCa.filter((o) => o !== daBiet)] : tatCa;
+}
+
+/**
+ * Build origin portal tenant EasyInvoice từ `nbmst` (MST người bán): `https://<nbmst>hd.<domain>`.
+ * Trả origin ƯU TIÊN — chưa dò lần nào thì là `.com.vn`; xem `EASY_DOMAINS` và `layCaptcha`.
  *
  * GIỮ NGUYÊN MST kể cả đuôi chi nhánh `-001` — chưa gặp mẫu hóa đơn chi nhánh nào để biết Softdreams
  * tách portal theo chi nhánh (như VNPT) hay dùng chung portal MST mẹ. Đừng tự strip đuôi vì đoán:
  * strip sai thì mọi hóa đơn chi nhánh lặng lẽ tra vào portal của công ty khác.
  */
 export function buildEasyOrigin(nbmst: string): string {
-  return `https://${assertMst(nbmst, TEN)}hd.easyinvoice.com.vn`;
+  return easyOrigins(assertMst(nbmst, TEN))[0];
 }
 
 /** Debug logger — bật bằng `DEBUG_EASYINVOICE=1` khi luồng hỏng (NCC đổi template HTML). */
 const dbg = makeDbg("EASYINVOICE-DBG", "DEBUG_EASYINVOICE");
 
 // ============================================================
-//  OCR CONSTANTS — cùng bộ tham số đã tinh chỉnh cho `vnpt.ts`, chỉnh lại nếu captcha khác kiểu
+//  OCR — tham số riêng của captcha EasyInvoice (cơ chế đọc ở `captchaOcr.ts`)
 // ============================================================
 
-/** Charset whitelist — captcha Softdreams là chữ+số, loại trừ ký tự lạ Tesseract hay hallucinate. */
-const CAPTCHA_CHARSET =
-  "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz";
-
-/** Upscale ~3x trước khi OCR: LSTM đọc chữ to chính xác hơn hẳn chữ cao ~30px của captcha gốc. */
-const OCR_WIDTH = 360;
-
-/**
- * Ngưỡng binarize của từng biến thể OCR trên CÙNG 1 ảnh: có ngưỡng = binarize + median despeckle (cắt
- * đường nhiễu chéo + đốm nhiễu), `undefined` = chỉ grayscale (binarize quá tay làm mất nét chữ mảnh).
- * Chạy cả hai rồi chọn lần đọc confidence cao nhất — mỗi phép hỏng một kiểu nhiễu khác nhau.
- */
-const PREPROCESS_THRESHOLDS: (number | undefined)[] = [180, undefined];
-
-/** Cả 2 PSM chạy trên mỗi biến thể — captcha đôi khi chỉ là 1 "từ" gọn, đôi khi có khoảng hở lẻ. */
-const CAPTCHA_PSMS = [PSM.SINGLE_LINE, PSM.SINGLE_WORD] as const;
-
-/** Ngưỡng confidence tối thiểu — dưới ngưỡng này coi như đọc hỏng, trả `null` để lấy ảnh mới thử lại. */
+/** Ngưỡng confidence tối thiểu — dưới ngưỡng này coi như đọc hỏng, lấy session + ảnh mới thử lại. */
 const MIN_OCR_CONFIDENCE = 35;
 
-/** Captcha thường 4–6 ký tự — lần đọc ngoài khoảng rộng này là dính chữ / mất chữ -> bỏ. */
-const OCR_LEN_MIN = 3;
-const OCR_LEN_MAX = 7;
+/**
+ * Cùng bộ tham số đã tinh chỉnh cho `vnpt.ts` (captcha Softdreams cũng là chữ+số, 4–6 ký tự, nhiễu
+ * tương tự) — chỉnh lại nếu cổng đổi kiểu captcha. Charset trùng VNPT nên hai provider dùng chung
+ * một worker Tesseract, xem `captchaOcr.ts`.
+ */
+const boDocCaptcha = taoBoDocCaptcha({
+  charset: "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz",
+  thresholds: [180, undefined],
+  lenMin: 3,
+  lenMax: 7,
+  dbg,
+});
 
 /**
  * Số lượt thử captcha tối đa — MỖI LƯỢT LÀ 1 SESSION MỚI (ảnh gắn chặt session, xem docblock đầu file)
@@ -133,7 +162,7 @@ const retryDeadlineMs = makeDeadline("EASYINVOICE_RETRY_DEADLINE_MS");
 export interface EasySession {
   /** MST người bán đầy đủ (= nbmst) — để log/debug. */
   nbmst: string;
-  /** Origin `https://<nbmst>hd.easyinvoice.com.vn`. */
+  /** Origin `https://<nbmst>hd.<domain>` ĐÃ DÒ ĐƯỢC — mọi request sau của phiên bám theo đúng cái này. */
   origin: string;
   /** Raw Cookie header value (`ASP.NET_SessionId=…`), cập nhật sau mỗi response. */
   cookie: string;
@@ -151,9 +180,12 @@ export interface EasyCaptcha {
  *
  * Gộp hai việc vì chúng không tách được: ảnh chỉ khớp với session cấp cùng lúc, và session cũng chỉ
  * sinh ra ở đây. Lấy ảnh mới = phải dựng session mới, không có chuyện xin ảnh khác trên session cũ.
+ *
+ * ĐÂY CŨNG LÀ PHÉP DÒ DOMAIN (xem `layCaptcha`): request này là thứ rẻ nhất phân biệt được
+ * `.com.vn` với `.vn`, vì nó thất bại rõ ràng ở mọi kiểu sai — DNS không phân giải, 404, hoặc 200
+ * mà không cấp cookie.
  */
-export async function layCaptcha(sellerMst: string): Promise<EasyCaptcha> {
-  const origin = buildEasyOrigin(sellerMst);
+async function layCaptchaTai(origin: string, sellerMst: string): Promise<EasyCaptcha> {
   const res = await fetchUpstream(
     `${origin}${CAPTCHA_PATH}`,
     {
@@ -185,106 +217,44 @@ export async function layCaptcha(sellerMst: string): Promise<EasyCaptcha> {
   return { session: { nbmst: sellerMst, origin, cookie }, image };
 }
 
-// ============================================================
-//  OCR — preprocess sharp + Tesseract, đa biến thể, confidence gate
-// ============================================================
-
-// Tesseract tạo Worker khá nặng (load WASM + traineddata ~10–15MB lần đầu). Cache 1 worker toàn cục,
-// khởi tạo lazy — các lần solve sau chỉ mất ~50–100ms. Giữ worker sống cả lifetime process.
-let workerPromise: Promise<Worker> | null = null;
-
 /**
- * Lazy-init Tesseract worker duy nhất cho EasyInvoice: load eng + whitelist alphanumeric. PSM KHÔNG
- * đặt ở đây — `solveCaptcha` đổi PSM theo từng biến thể nên đặt lúc init cũng bị ghi đè ngay.
- */
-async function getWorker(): Promise<Worker> {
-  if (!workerPromise) {
-    workerPromise = (async () => {
-      const worker = await createWorker("eng", 1, { logger: () => {} });
-      await worker.setParameters({
-        tessedit_char_whitelist: CAPTCHA_CHARSET,
-        // Chặn Leptonica xả debug ra stdout — xem `TESSERACT_QUIET`.
-        ...TESSERACT_QUIET,
-      });
-      return worker;
-    })();
-  }
-  return workerPromise;
-}
-
-/**
- * Giải phóng worker Tesseract — chỉ gọi khi shutdown process / không dùng EasyInvoice nữa. Tránh leak
- * worker trong test runner hoặc hot-reload (tsx watch).
- */
-export async function shutdownEasyInvoiceWorker(): Promise<void> {
-  if (!workerPromise) return;
-  const worker = await workerPromise;
-  await worker.terminate();
-  workerPromise = null;
-}
-
-/**
- * Preprocess ảnh captcha thành các biến thể PNG để OCR: upscale + grayscale + normalize, biến thể có
- * ngưỡng thì thêm binarize + median despeckle. sharp hỏng (ảnh không phải raster…) -> trả ảnh gốc để
- * OCR vẫn chạy như bản Tesseract thuần.
+ * Bước 1 + DÒ DOMAIN: thử từng origin ứng viên tới khi một cái mint được session, rồi nhớ lại cho MST
+ * đó (`originTheoMst`) nên các hóa đơn sau của cùng người bán không phải dò lại.
  *
- * KHÔNG gộp phần chung (`resize`+`grayscale`+`normalize`) ra chạy một lần rồi threshold trên pixel
- * đó: libvips áp các phép theo THỨ TỰ NỘI BỘ của nó, không theo thứ tự gọi, nên tách ra làm 2 pipeline
- * cho ra pixel KHÁC — đã đo, ảnh vào OCR đổi luôn. Chạy lại resize cho mỗi biến thể là giá phải trả.
+ * `assertMst` gọi Ở NGOÀI vòng lặp: MST sai định dạng là lỗi DỨT KHOÁT của đầu vào, không phải "domain
+ * này không đúng" — để nó rơi vào vòng dò thì lỗi thật bị nuốt và người dùng đọc ra thông báo sai.
+ *
+ * Hỏng hết thì ném lỗi của origin ƯU TIÊN chứ không phải lỗi cuối: đó là domain nhiều khả năng đúng
+ * nhất (đã dò ra trước đó, hoặc `.com.vn` mặc định), nên thông báo của nó mới đáng đưa cho kế toán.
  */
-async function preprocessCaptcha(image: Buffer): Promise<Buffer[]> {
-  try {
-    return await Promise.all(
-      PREPROCESS_THRESHOLDS.map((threshold) => {
-        const pipeline = sharp(image)
-          .resize({ width: OCR_WIDTH, kernel: "lanczos3" })
-          .grayscale()
-          .normalize();
-        return (threshold === undefined ? pipeline : pipeline.threshold(threshold).median(3))
-          .png()
-          .toBuffer();
-      }),
-    );
-  } catch (err) {
-    dbg("preprocessCaptcha lỗi — OCR ảnh gốc", describeErrorChain(err));
-    return [image];
+export async function layCaptcha(sellerMst: string): Promise<EasyCaptcha> {
+  const mst = assertMst(sellerMst, TEN);
+  const origins = easyOrigins(mst);
+  let loiUuTien: unknown = null;
+
+  for (const origin of origins) {
+    try {
+      const captcha = await layCaptchaTai(origin, sellerMst);
+      originTheoMst.set(mst, origin);
+      return captcha;
+    } catch (err) {
+      if (loiUuTien === null) loiUuTien = err;
+      dbg("origin không mint được session, thử domain kế", { origin, loi: describeErrorChain(err) });
+    }
   }
+
+  throw loiUuTien;
 }
 
 /**
- * Giải captcha từ `EasyCaptcha` đã lấy bằng `layCaptcha` — preprocess thành 2 biến thể (binarize cắt
- * nhiễu / chỉ grayscale giữ chi tiết) -> OCR mỗi biến thể với cả 2 PSM -> chọn lần đọc confidence cao
- * nhất trong số các lần đọc có độ dài hợp lý. Trả text CHỮ+SỐ đã sạch, hoặc `null` khi không đọc được.
- *
- * Ba lớp tăng tỉ lệ tự giải (giống `vnpt.ts`): preprocess cắt đường nhiễu, đa biến thể × đa PSM lấy
- * kết quả TỐT NHẤT, gate độ dài + confidence để text rác không tốn 1 POST search vô ích.
+ * Giải captcha từ `EasyCaptcha` đã lấy bằng `layCaptcha`. Trả text CHỮ+SỐ đã sạch, hoặc `null` khi
+ * không đọc được đủ tự tin — xem `captchaOcr.taoBoDocCaptcha` cho cơ chế đa biến thể × đa PSM.
  *
  * `null` CHỨ KHÔNG ném lỗi: ảnh nhiễu quá là chuyện thường, caller chỉ cần lấy session + ảnh mới thử
  * lại. Lỗi THẬT (không GET được ảnh, ảnh 0 byte) vẫn ném `UPSTREAM` từ `layCaptcha`.
  */
 export async function solveCaptcha(captcha: EasyCaptcha): Promise<string | null> {
-  const worker = await getWorker();
-  const variants = await preprocessCaptcha(captcha.image);
-
-  // 4 lần đọc (~400–800ms với worker đã warm) — đắt nhưng đổi lại xác suất đúng tăng đáng kể. PSM ở
-  // vòng NGOÀI để `setParameters` chỉ chạy 1 lần mỗi PSM thay vì trước từng lần đọc.
-  const reads: { text: string; confidence: number }[] = [];
-  for (const psm of CAPTCHA_PSMS) {
-    await worker.setParameters({ tessedit_pageseg_mode: psm });
-    for (const variant of variants) {
-      const { data } = await worker.recognize(variant);
-      // Tesseract có thể dính space/newline/dấu câu — captcha chỉ alphanumeric nên lọc sạch.
-      const text = (data.text || "").replace(/[^A-Za-z0-9]/g, "");
-      if (text.length >= OCR_LEN_MIN && text.length <= OCR_LEN_MAX) {
-        reads.push({ text, confidence: data.confidence });
-      }
-    }
-  }
-
-  const best = reads.sort((a, b) => b.confidence - a.confidence)[0];
-  dbg("solveCaptcha reads", reads);
-  // Confidence gate: đọc ra text dài hợp lý nhưng tự tin quá thấp thì vẫn là đoán bừa -> coi như hỏng.
-  return best && best.confidence >= MIN_OCR_CONFIDENCE ? best.text : null;
+  return docTotNhat(await boDocCaptcha.doc(captcha.image), MIN_OCR_CONFIDENCE);
 }
 
 // ============================================================
@@ -495,10 +465,6 @@ export async function taiFile(
 }
 
 // ============================================================
-//  GHÉP LUỒNG (bước 2 + 3)
-// ============================================================
-
-// ============================================================
 //  PROVIDER — wrapper đầy đủ, tự OCR + retry captcha
 // ============================================================
 
@@ -519,38 +485,40 @@ export async function taiFile(
 export const easyInvoice: ProviderDownloader = {
   mst: EASY_INVOICE_MST,
   ten: TEN,
+  canSellerMst: true,
+  // Mẫu dùng domain MẶC ĐỊNH — đúng cho phần lớn tenant. Tenant đã dò ra domain kia được ghi đè qua
+  // `urlTraCuuTheoMst` bên dưới.
+  urlTraCuu: `${easyOrigin("{mst}", EASY_DOMAINS[0])}${SEARCH_PAGE_PATH}`,
+  urlTraCuuTheoMst: () =>
+    Object.fromEntries(
+      Array.from(originTheoMst, ([mst, origin]) => [mst, `${origin}${SEARCH_PAGE_PATH}`]),
+    ),
   async download({ code, sellerMst }) {
-    if (!sellerMst) {
-      throw new TraCuuGocError(
-        "INVALID_CODE",
-        "Thiếu sellerMst — EasyInvoice build origin portal tenant `<mst>hd.easyinvoice.com.vn` từ MST này",
-      );
+    try {
+      // Ngân sách thời gian, trần số lượt và phân loại lỗi retryable do `chayThuLai` lo; ở đây chỉ
+      // còn đúng NỘI DUNG một lượt.
+      return await chayThuLai({
+        ten: TEN,
+        budgetMs: retryDeadlineMs(),
+        maxLuot: MAX_CAPTCHA_RETRIES,
+        async luot() {
+          // Mỗi lượt là session + ảnh mới hoàn toàn (ảnh gắn session, xem docblock đầu file).
+          const captcha = await layCaptcha(sellerMst!);
+          // OCR hỏng KHÔNG được ném — đây là nhánh hay gặp nhất, session + ảnh mới thử lại thường
+          // qua. Trả `null` để bỏ lượt luôn, chưa tốn POST search.
+          const captchaText = await solveCaptcha(captcha);
+          if (!captchaText) return null;
+          const duongDanTai = await timHoaDon(captcha.session, code, captchaText);
+          return await taiFile(captcha.session, duongDanTai, code);
+        },
+      });
+    } catch (err) {
+      // Quên domain đã dò khi cả lượt hỏng, để lần bấm sau dò lại từ đầu. Cần thiết cho ca xấu nhất
+      // của phép dò: subdomain BÊN KIA vẫn tồn tại và vẫn cấp session (DNS wildcard) nhưng không
+      // phục vụ tenant này — captcha lấy được nên nó bị nhớ, rồi mọi hóa đơn sau đều tra trượt.
+      // Xóa ở đây thì sai lầm đó sống đúng một lượt thay vì tới lúc restart BE.
+      originTheoMst.delete(assertMst(sellerMst!, TEN));
+      throw err;
     }
-
-    const budgetMs = retryDeadlineMs();
-    const deadline = Date.now() + budgetMs;
-    // `null` khi mọi lượt OCR đều ra rỗng (chưa lượt nào tới được POST search) — `loiHetLuotThuLai`
-    // xử lý ca đó, khỏi phải dựng sẵn một lỗi mồi chỉ để rồi bọc lại.
-    let lastErr: unknown = null;
-    for (let i = 0; i < MAX_CAPTCHA_RETRIES && Date.now() < deadline; i++) {
-      // Mỗi lượt là session + ảnh mới hoàn toàn (ảnh gắn session, xem docblock đầu file).
-      const captcha = await layCaptcha(sellerMst);
-      // PHẢI nằm TRONG vòng lặp và KHÔNG được ném khi OCR hỏng — đây là nhánh hay gặp nhất, session +
-      // ảnh mới thử lại thường qua. Đọc hỏng -> bỏ lượt luôn, chưa tốn POST search.
-      const captchaText = await solveCaptcha(captcha);
-      if (!captchaText) continue;
-      try {
-        const duongDanTai = await timHoaDon(captcha.session, code, captchaText);
-        return await taiFile(captcha.session, duongDanTai, code);
-      } catch (err) {
-        lastErr = err;
-        // Chỉ captcha sai mới đáng thử tiếp (session + ảnh mới ở lượt sau). Fkey sai / UPSTREAM / lỗi
-        // khác -> throw ngay, thử tiếp chỉ phí thời gian.
-        if (err instanceof TraCuuGocError && err.retryable) continue;
-        throw err;
-      }
-    }
-
-    throw loiHetLuotThuLai(TEN, budgetMs, lastErr);
   },
 };

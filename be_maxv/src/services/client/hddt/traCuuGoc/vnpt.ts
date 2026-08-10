@@ -30,18 +30,14 @@
  * Upgrade-Insecure-Requests=1 — thiếu server trả lỗi hoặc body rỗng (giống DownloadHandler của MISA).
  */
 
-import { createWorker, PSM } from "tesseract.js";
-import type { Worker } from "tesseract.js";
-import sharp from "sharp";
-import { describeErrorChain } from "../../../../config/gdt-client";
+import { docTotNhat, taoBoDocCaptcha } from "./captchaOcr";
 import {
   NAVIGATE_HEADERS,
-  TESSERACT_QUIET,
   assertMst,
+  chayThuLai,
   fetchUpstream,
   htmlToText,
   khopCum,
-  loiHetLuotThuLai,
   makeDbg,
   makeDeadline,
   mergeSetCookie,
@@ -59,18 +55,22 @@ import { FileHoaDonGoc, ProviderDownloader, TraCuuGocError } from "./types";
  * `https://0900887803-001-tt78.vnpt-invoice.com.vn`). Chi nhánh có portal tenant RIÊNG, không dùng chung
  * portal của MST chính, nên KHÔNG được strip đuôi. Version `tt78` cố định — NCC nâng version thì sửa đây.
  */
+const VPT_DOMAIN = "tt78.vnpt-invoice.com.vn";
+
 export function buildVptOrigin(nbmst: string): string {
-  return `https://${assertMst(nbmst, "VNPT")}-tt78.vnpt-invoice.com.vn`;
+  return `https://${assertMst(nbmst, "VNPT")}-${VPT_DOMAIN}`;
 }
 
 const VPT_SEARCH_PATH = "/HomeNoLogin/SearchByFkey";
 const VPT_CAPTCHA_PATH = "/Captcha/Show";
 const VPT_DOWNLOAD_PATH = "/HomeNoLogin/downloadPDF";
 
-/** Charset whitelist — captcha VNPT là chữ+số, loại trừ ký tự lạ mà Tesseract có thể hallucinate. */
-const CAPTCHA_CHARSET =
-  "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz";
-
+/**
+ * Debug logger — bật bằng `DEBUG_VNPT=1` khi chạy BE. In thông tin từng bước (form token, status, HTML
+ * response, captcha text) để chẩn đoán khi provider fail. Để lại trong code (không xóa) vì hay cần
+ * debug khi NCC đổi template.
+ */
+const dbg = makeDbg("VNPT-DBG", "DEBUG_VNPT");
 
 /** Số lần thử captcha trong MỘT session (mỗi lần GET ảnh mới -> text khác). Mỗi lượt chỉ tốn 1 GET ảnh
  * + OCR ~200–400ms — rẻ hơn nhiều so với init session lại, nên thử dày trong cùng session. */
@@ -88,98 +88,23 @@ const retryDeadlineMs = makeDeadline("VPT_RETRY_DEADLINE_MS");
 const MAX_SESSION_HARD_CAP = 12;
 
 // ============================================================
-//  PREPROCESSING + OCR — sharp pipeline, đa biến thể, confidence gate
+//  OCR — tham số riêng của captcha VNPT (cơ chế đọc ở `captchaOcr.ts`)
 // ============================================================
 
-/** Upscale ~3x trước khi OCR: LSTM đọc chữ to chính xác hơn hẳn chữ cao ~30px của captcha gốc. */
-const OCR_WIDTH = 360;
-
-/**
- * Ngưỡng binarize của từng biến thể OCR trên CÙNG 1 ảnh: có ngưỡng = binarize + median despeckle (cắt
- * đường nhiễu chéo + đốm nhiễu của captcha VNPT), `undefined` = chỉ grayscale (binarize quá tay làm
- * mất nét chữ mảnh). Mỗi phép xử lý hỏng một kiểu nhiễu khác nhau nên chạy cả hai rồi chọn lần đọc
- * confidence cao nhất — xác suất ít nhất 1 biến thể ra text đúng cao hơn hẳn 1 biến thể duy nhất.
- */
-const PREPROCESS_THRESHOLDS: (number | undefined)[] = [180, undefined];
-
-/** Cả 2 PSM chạy trên mỗi biến thể — captcha đôi khi chỉ là 1 "từ" gọn, đôi khi có khoảng hở lẻ. */
-const CAPTCHA_PSMS = [PSM.SINGLE_LINE, PSM.SINGLE_WORD] as const;
-
-/** Ngưỡng confidence tối thiểu — dưới ngưỡng này coi như đọc hỏng, trả `null` để caller lấy ảnh mới
- * thử lại thay vì POST text rác lên VNPT. Tesseract trên ảnh captcha nhiễu thường 40–70%, ngưỡng 35
- * lọc được đọc bừa mà không loại bỏ lần đọc đúng nhưng tự tin thấp. */
+/** Ngưỡng confidence tối thiểu — dưới ngưỡng này coi như đọc hỏng, lấy ảnh mới thay vì POST text rác. */
 const MIN_OCR_CONFIDENCE = 35;
 
-/** Captcha VNPT thường 4–6 ký tự — lần đọc ra ngoài khoảng rộng này là dính chữ / mất chữ -> bỏ. */
-const OCR_LEN_MIN = 3;
-const OCR_LEN_MAX = 7;
-
 /**
- * Preprocess ảnh captcha thành các biến thể PNG để OCR: upscale + grayscale + normalize, biến thể có
- * ngưỡng thì thêm binarize + median despeckle. sharp tự decode PNG/JPEG nên không cần thư viện riêng.
- * sharp hỏng (ảnh không phải raster…) -> trả ảnh gốc để OCR vẫn chạy như bản Tesseract thuần.
- *
- * KHÔNG gộp phần chung (`resize`+`grayscale`+`normalize`) ra chạy một lần rồi threshold trên pixel
- * đó: libvips áp các phép theo THỨ TỰ NỘI BỘ của nó, không theo thứ tự gọi, nên tách ra làm 2 pipeline
- * cho ra pixel KHÁC — đã đo, ảnh vào OCR đổi luôn. Chạy lại resize cho mỗi biến thể là giá phải trả.
+ * Captcha VNPT là chữ+số, thường 4–6 ký tự. Hai biến thể ảnh: binarize cắt đường nhiễu chéo /
+ * chỉ grayscale giữ nét chữ mảnh. Chỉnh bảng này khi VNPT đổi kiểu captcha.
  */
-async function preprocessCaptcha(image: Buffer): Promise<Buffer[]> {
-  try {
-    return await Promise.all(
-      PREPROCESS_THRESHOLDS.map((threshold) => {
-        const pipeline = sharp(image)
-          .resize({ width: OCR_WIDTH, kernel: "lanczos3" })
-          .grayscale()
-          .normalize();
-        return (threshold === undefined ? pipeline : pipeline.threshold(threshold).median(3))
-          .png()
-          .toBuffer();
-      }),
-    );
-  } catch (err) {
-    dbg("preprocessCaptcha lỗi — OCR ảnh gốc", describeErrorChain(err));
-    return [image];
-  }
-}
-
-// ============================================================
-//  TESSERACT WORKER — cache toàn cục, init lazy
-// ============================================================
-
-// Tesseract tạo Worker khá nặng (load WASM + traineddata ~10–15MB lần đầu). Cache 1 worker toàn cục,
-// khởi tạo lazy — các lần solve sau chỉ mất ~50–100ms. Giữ worker sống cả lifetime process.
-let workerPromise: Promise<Worker> | null = null;
-
-/**
- * Lazy-init Tesseract worker duy nhất cho VNPT: load eng + whitelist alphanumeric. PSM KHÔNG đặt ở
- * đây — `solveCaptcha` đổi PSM theo từng biến thể nên đặt lúc init cũng bị ghi đè ngay.
- * Logger bị tắt (mặc định Tesseract spam progress ra stdout).
- */
-async function getWorker(): Promise<Worker> {
-  if (!workerPromise) {
-    workerPromise = (async () => {
-      const worker = await createWorker("eng", 1, { logger: () => {} });
-      await worker.setParameters({
-        tessedit_char_whitelist: CAPTCHA_CHARSET,
-        // Chặn Leptonica xả debug ra stdout — xem `TESSERACT_QUIET`.
-        ...TESSERACT_QUIET,
-      });
-      return worker;
-    })();
-  }
-  return workerPromise;
-}
-
-/**
- * Giải phóng worker Tesseract — chỉ gọi khi shutdown process / không dùng VNPT nữa. Tránh leak worker
- * trong test runner hoặc hot-reload (tsx watch).
- */
-export async function shutdownVptWorker(): Promise<void> {
-  if (!workerPromise) return;
-  const worker = await workerPromise;
-  await worker.terminate();
-  workerPromise = null;
-}
+const boDocCaptcha = taoBoDocCaptcha({
+  charset: "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz",
+  thresholds: [180, undefined],
+  lenMin: 3,
+  lenMax: 7,
+  dbg,
+});
 
 // ============================================================
 //  SESSION + HELPERS — cookie merge, token extraction
@@ -209,16 +134,6 @@ function absorbSetCookie(session: VptSession, res: Response): string {
 }
 
 /**
- * Debug logger — bật bằng `DEBUG_VNPT=1` khi chạy BE. In thông tin từng bước (form token, status, HTML
- * response, captcha text) để chẩn đoán khi provider fail. Để lại trong code (không xóa) vì hay cần
- * debug khi NCC đổi template.
- *
- * Khác bản viết tay trước đây một điểm: payload không phải string giờ được `JSON.stringify` thay vì
- * đưa thẳng cho `console.log` — log ra một dòng thay vì object nhiều dòng, dễ grep hơn.
- */
-const dbg = makeDbg("VNPT-DBG", "DEBUG_VNPT");
-
-/**
  * Extract form anti-forgery token từ HTML trang search. ASP.NET MVC render:
  *   <input name="__RequestVerificationToken" type="hidden" value="..." />
  * Token này khác cookie __RequestVerificationToken — cả hai đều cần khi POST.
@@ -232,14 +147,14 @@ function extractFormToken(html: string): string | null {
 }
 
 /**
- * Extract `checkCode` từ response search: có thể trong Location header (nếu server redirect 303 tới
- * downloadPDF) hoặc trong HTML body (link <a href="/HomeNoLogin/downloadPDF?checkCode=...">).
+ * Extract `checkCode` từ HTML body của trang search (link <a href="/HomeNoLogin/downloadPDF?checkCode=...">).
  * checkCode là base64-like — có thể chứa `/`, `+`, `=` nên regex không restrict charset.
+ *
+ * Ca REDIRECT (Location header) KHÔNG xử lý ở đây mà ngay tại `searchByFkey`: tới lúc gọi hàm này thì
+ * nhánh 3xx đã return/throw xong nên response chắc chắn 2xx, một bản chép regex thứ hai ở đây chỉ là
+ * chỗ để luật trích tách đôi rồi lệch nhau.
  */
-function extractCheckCode(res: Response, html: string): string | null {
-  const loc = res.headers.get("location") || "";
-  const locMatch = /checkCode=([^&\s]+)/i.exec(loc);
-  if (locMatch) return decodeURIComponent(locMatch[1]);
+function extractCheckCode(html: string): string | null {
   const htmlMatch = /downloadPDF\?checkCode=([^"&'\s]+)/i.exec(html);
   return htmlMatch ? decodeURIComponent(htmlMatch[1]) : null;
 }
@@ -330,28 +245,7 @@ export async function fetchCaptchaImage(session: VptSession): Promise<Buffer> {
  */
 export async function solveCaptcha(session: VptSession): Promise<string | null> {
   const image = await fetchCaptchaImage(session);
-  const worker = await getWorker();
-  const variants = await preprocessCaptcha(image);
-
-  // 4 lần đọc (~400–800ms với worker đã warm) — đắt nhưng đổi lại xác suất đúng tăng đáng kể. PSM ở
-  // vòng NGOÀI để `setParameters` chỉ chạy 1 lần mỗi PSM thay vì trước từng lần đọc.
-  const reads: { text: string; confidence: number }[] = [];
-  for (const psm of CAPTCHA_PSMS) {
-    await worker.setParameters({ tessedit_pageseg_mode: psm });
-    for (const variant of variants) {
-      const { data } = await worker.recognize(variant);
-      // Tesseract có thể dính space/newline/dấu câu — captcha VNPT chỉ alphanumeric nên lọc sạch.
-      const text = (data.text || "").replace(/[^A-Za-z0-9]/g, "");
-      if (text.length >= OCR_LEN_MIN && text.length <= OCR_LEN_MAX) {
-        reads.push({ text, confidence: data.confidence });
-      }
-    }
-  }
-
-  const best = reads.sort((a, b) => b.confidence - a.confidence)[0];
-  dbg("solveCaptcha reads", reads);
-  // Confidence gate: đọc ra text dài hợp lý nhưng tự tin quá thấp thì vẫn là đoán bừa -> coi như hỏng.
-  return best && best.confidence >= MIN_OCR_CONFIDENCE ? best.text : null;
+  return docTotNhat(await boDocCaptcha.doc(image), MIN_OCR_CONFIDENCE);
 }
 
 /**
@@ -421,7 +315,7 @@ export async function searchByFkey(
   // 200 -> HTML chứa link downloadPDF (có thể kèm thông báo lỗi nếu captcha sai).
   const html = await res.text();
   dbg("searchByFkey HTML (đầu)", html);
-  const checkCode = extractCheckCode(res, html);
+  const checkCode = extractCheckCode(html);
   dbg("searchByFkey checkCode", checkCode ?? "(không tìm thấy)");
   if (!checkCode) {
     // Phân biệt: captcha sai ("Mã xác thực không chính xác") vs fkey không tồn tại.
@@ -492,50 +386,49 @@ export async function downloadPdf(
 export const vpt: ProviderDownloader = {
   mst: "0100684378",
   ten: "VNPT",
+  canSellerMst: true,
+  // Cùng hằng `VPT_DOMAIN` với `buildVptOrigin` — nâng version portal là sửa một chỗ.
+  urlTraCuu: `https://{mst}-${VPT_DOMAIN}/`,
   async download({ code, sellerMst }) {
-    if (!sellerMst) {
-      throw new TraCuuGocError(
-        "INVALID_CODE",
-        "Thiếu sellerMst — VNPT build origin portal tenant `<mst>-tt78.vnpt-invoice.com.vn` từ MST này",
-      );
-    }
-
-    const budgetMs = retryDeadlineMs();
-    const deadline = Date.now() + budgetMs;
-    // `null` khi mọi lượt OCR đều ra rỗng — `loiHetLuotThuLai` lo ca đó, khỏi dựng sẵn lỗi mồi.
-    let lastErr: unknown = null;
-    let sessions = 0;
-    while (Date.now() < deadline && sessions < MAX_SESSION_HARD_CAP) {
-      sessions++;
-      const session = await initSession(sellerMst);
-      for (let i = 0; i < MAX_CAPTCHA_RETRIES; i++) {
-        // Deadline giữa chừng cũng dừng — không bắt đầu lượt mới khi sắp hết thời gian.
-        if (Date.now() >= deadline) break;
-        // PHẢI nằm TRONG vòng lặp và KHÔNG được ném khi OCR hỏng — đây là nhánh hay gặp nhất, lấy ảnh
-        // mới thử lại thường qua. Đọc hỏng -> bỏ lượt luôn, chưa tốn POST search.
-        const captcha = await solveCaptcha(session);
-        if (!captcha) continue;
-        try {
-          const checkCode = await searchByFkey(session, code, captcha);
-          return await downloadPdf(session, checkCode);
-        } catch (err) {
-          lastErr = err;
-          // Chỉ captcha sai mới đáng thử tiếp (ảnh mới ở vòng trong, session mới ở vòng ngoài).
-          // Fkey sai / UPSTREAM / lỗi khác -> throw ngay, thử tiếp chỉ phí thời gian.
-          if (err instanceof TraCuuGocError && err.retryable) continue;
-          throw err;
+    // Vòng NGOÀI (ngân sách thời gian + trần số session + phân loại lỗi) do `chayThuLai` lo.
+    return chayThuLai({
+      ten: "VNPT",
+      budgetMs: retryDeadlineMs(),
+      maxLuot: MAX_SESSION_HARD_CAP,
+      async luot(conHan) {
+        const session = await initSession(sellerMst!);
+        // Lỗi captcha của lượt cuối trong session: giữ lại để ném ra cho `chayThuLai` ghi nhận (nó
+        // đi vào thông báo "lỗi lượt cuối"), thay vì nuốt mất khi hết 8 ảnh.
+        let loiCaptcha: unknown = null;
+        for (let i = 0; i < MAX_CAPTCHA_RETRIES && conHan(); i++) {
+          // PHẢI nằm TRONG vòng lặp và KHÔNG được ném khi OCR hỏng — đây là nhánh hay gặp nhất, lấy
+          // ảnh mới thử lại thường qua. Đọc hỏng -> bỏ lượt luôn, chưa tốn POST search.
+          const captcha = await solveCaptcha(session);
+          if (!captcha) continue;
+          try {
+            const checkCode = await searchByFkey(session, code, captcha);
+            return await downloadPdf(session, checkCode);
+          } catch (err) {
+            // Ảnh MỚI trong CÙNG session là cách rẻ nhất để sửa captcha đọc nhầm, nên bắt ở đây chứ
+            // không để `chayThuLai` bắt — nó sẽ dựng hẳn session mới cho mỗi lần đọc nhầm.
+            if (err instanceof TraCuuGocError && err.retryable) {
+              loiCaptcha = err;
+              continue;
+            }
+            throw err;
+          }
         }
-      }
-    }
-
-    throw loiHetLuotThuLai("VNPT", budgetMs, lastErr);
+        if (loiCaptcha) throw loiCaptcha;
+        return null;
+      },
+    });
   },
 };
 
 // ============================================================
 //  NOTES
 //  - ACCURACY thấp đi (VNPT đổi kiểu captcha): chạy `DEBUG_VNPT=1`, xem log `solveCaptcha reads` để
-//    biết biến thể nào đọc đúng, rồi chỉnh `PREPROCESS_THRESHOLDS` / `OCR_WIDTH` hoặc thêm biến thể.
+//    biết biến thể nào đọc đúng, rồi chỉnh bảng tham số `boDocCaptcha` (thresholds/widths/psms).
 //  - RETRY nhiều = gửi nhiều request tới VNPT. Bị rate-limit thì GIẢM `VPT_RETRY_DEADLINE_MS` chứ
 //    đừng tăng; xác suất tổng của n lượt là 1-(1-p)^n nên vài lượt đầu đã ăn phần lớn lợi ích.
 //  - PROD: `buildVptOrigin` hardcode version `tt78` — nếu NCC nâng version portal, sửa tại đó.

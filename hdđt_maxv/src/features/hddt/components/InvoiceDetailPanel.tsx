@@ -13,7 +13,14 @@ import CircularProgress from "@mui/material/CircularProgress";
 import InboxRounded from "@mui/icons-material/InboxRounded";
 import InvoicePagination, { DEFAULT_ROWS_PER_PAGE } from "./InvoicePagination";
 import { clampPage } from "../pagination";
-import { detailColumns, invoiceRowFill, renderCell, rowFillSx, totalsRow } from "../templates";
+import {
+  detailColumns,
+  invoiceRowFill,
+  renderCell,
+  rowFillSx,
+  tongCotSo,
+  totalsRow,
+} from "../templates";
 import type { DetailRow, InvoiceDirection } from "../types";
 
 /** Khung căn giữa dùng cho trạng thái loading / gợi ý (viền + bo góc như placeholder cũ). */
@@ -57,6 +64,9 @@ export default function InvoiceDetailPanel({ rows, direction, loading, error }: 
   const [page, setPage] = useState(0);
   const [rowsPerPage, setRowsPerPage] = useState(DEFAULT_ROWS_PER_PAGE);
   const columns = useMemo(() => detailColumns(direction), [direction]);
+  // Cộng trên TOÀN BỘ `rows` (hàng chục nghìn dòng hàng × 8 cột tiền) nên phải nhớ kết quả: bảng này
+  // render lại theo mọi nhịp poll của lượt "Tải chi tiết", chứ không chỉ khi dữ liệu đổi.
+  const tong = useMemo(() => tongCotSo(columns, rows), [columns, rows]);
 
   if (loading) {
     return (
@@ -105,7 +115,7 @@ export default function InvoiceDetailPanel({ rows, direction, loading, error }: 
             {/* Hàng tổng đứng NGAY DƯỚI tiêu đề. `rows` (toàn bộ dòng khớp bộ lọc), KHÔNG phải
                 `pagedRows`: đây là tổng của cả bảng nên không đổi khi lật trang — cũng là con số
                 nằm ở sheet Excel. */}
-            {totalsRow(columns, rows)}
+            {totalsRow(columns, tong)}
             {pagedRows.map((r, i) => {
               const stt = safePage * rowsPerPage + i + 1;
               return (

@@ -56,6 +56,7 @@ async function assertInvoiceExists(code: string): Promise<void> {
 export const msInvoice: ProviderDownloader = {
   mst: "0108971656",
   ten: MS_INVOICE_TEN,
+  urlTraCuu: `${MS_INVOICE_ORIGIN}/#/`,
   async download({ code }) {
     await assertInvoiceExists(code);
 

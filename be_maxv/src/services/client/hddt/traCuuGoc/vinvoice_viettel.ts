@@ -72,15 +72,16 @@ async function solveCaptcha(): Promise<string> {
 export const viettel: ProviderDownloader = {
   mst: "0100109106",
   ten: "Viettel",
+  canSellerMst: true,
+  // Cùng URL với `referer` của bước tải — đây đúng là trang mà luồng tự động đang giả lập.
+  urlTraCuu: VINVOICE_VIETTEL_REFERER,
   async download({ code, sellerMst }) {
-    if (!sellerMst) {
-      throw new TraCuuGocError("INVALID_CODE", "Thiếu MST người bán (supplierTaxCode) cho hóa đơn Viettel");
-    }
     // Captcha "kéo mảnh ghép" của Viettel là TỰ-PHÁT-HÀNH (generate trả sẵn offsetX) nên BE tự giải.
     const token = await solveCaptcha();
 
     const res = await fetchUpstream(
-      `${VINVOICE_VIETTEL_DOWNLOAD_PDF}?taxCode=${encodeURIComponent(sellerMst)}`,
+      // `sellerMst!`: `canSellerMst` ở trên đã bắt dispatcher chặn ca thiếu trước khi vào đây.
+      `${VINVOICE_VIETTEL_DOWNLOAD_PDF}?taxCode=${encodeURIComponent(sellerMst!)}`,
       {
         method: "POST",
         headers: {

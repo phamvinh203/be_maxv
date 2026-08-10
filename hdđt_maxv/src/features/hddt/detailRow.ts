@@ -1,6 +1,7 @@
 import { formatDateVN } from "./dateUtils";
 import { stripFloatNoise } from "./format";
 import { traCuuNcc } from "./traCuuNcc";
+import type { DanhMucTraCuuGoc } from "./api/traCuuGoc";
 import type { DetailRow } from "./types";
 
 /** Ép về string an toàn (null/undefined -> ""). */
@@ -196,13 +197,15 @@ export function toDetailRows(
   detail: Record<string, unknown> | null | undefined,
   stt = 0,
   replacedBy?: ReplacedByMap,
+  danhMucNcc?: DanhMucTraCuuGoc,
 ): DetailRow[] {
   if (!detail) return [];
 
   // Tra cứu hóa đơn gốc theo NCC phát hành (registry keyed bằng `msttcgp`, xem traCuuNcc.ts).
   // Tính 1 lần cho cả hóa đơn: `urlTraCuu` = link trang tra cứu của NCC, `dliu` = mã tra cứu trích
   // đúng field của NCC đó. NCC chưa có trong registry -> cả hai rỗng.
-  const traCuu = traCuuNcc(detail);
+  // `danhMucNcc` (từ BE) quyết định domain cho NCC có nhiều portal; thiếu thì lùi về registry FE.
+  const traCuu = traCuuNcc(detail, danhMucNcc);
 
   // Thông tin hóa đơn — lặp mỗi dòng hàng.
   const header = {

@@ -25,23 +25,10 @@ import {
   RATE_FMT,
   TOTAL_COL_WIDTH,
   chiDongDau,
+  ghiChuDacBiet,
   khongLap,
   type InvoiceColumn,
 } from "./types";
-
-/**
- * Nội dung cột "Ghi Chú: Các trường hợp đặc biệt kế toán xem xét kỹ hơn" — cảnh báo TỰ SINH từ chính
- * dữ liệu hóa đơn (mẫu Excel của kế toán ghi kiểu "Thiếu địa chỉ người mua").
- *
- * Dùng CHUNG cho bảng Tổng quát và bảng Chi tiết: hai bảng nói về cùng một hóa đơn nên không được
- * cảnh báo khác nhau. Không có cảnh báo nào -> `undefined` (web hiện "—", file xuất để ô trống).
- */
-function ghiChuDacBiet(r: { buyerDiaChi: string; trangThaiHd: string }): string | undefined {
-  const warnings: string[] = [];
-  if (!r.buyerDiaChi) warnings.push("Thiếu địa chỉ người mua");
-  if (r.trangThaiHd === "4") warnings.push("Hóa đơn này không được kê khai");
-  return warnings.length > 0 ? warnings.join(". ") : undefined;
-}
 
 /**
  * Bảng "Tổng quát" đầu ra — 25 cột trên web, 23 cột trong file Excel.
