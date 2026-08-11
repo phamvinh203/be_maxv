@@ -3,6 +3,8 @@
  * chỉ khai báo phần KHÁC NHAU (URL, cách lấy token, header, kiểu request). Thêm NCC mới ít lặp code.
  */
 
+import { rootCertificates } from "node:tls";
+import { Agent, type Dispatcher } from "undici";
 import { describeErrorChain } from "../../../../config/gdt-client";
 import { listZipEntryNames, readZipEntryByExtension } from "../../../../helpers/zip";
 import { MST_REGEX } from "../../../../utils/dbName";
@@ -16,11 +18,34 @@ export const BROWSER_UA =
 const TIMEOUT_MS = 30_000;
 
 /**
+ * `init` của `fetchUpstream`. `dispatcher` KHÔNG có trong `RequestInit` chuẩn nhưng `fetch` của Node
+ * đọc nó (fetch của Node chạy trên undici) — cần để vá chuỗi chứng chỉ, xem `dispatcherThemCa`.
+ */
+export type UpstreamInit = RequestInit & { dispatcher?: Dispatcher };
+
+/**
+ * Dispatcher tin thêm MỘT chứng chỉ CA ngoài kho mặc định của Node.
+ *
+ * Dùng khi cổng NCC CẤU HÌNH SAI chuỗi chứng chỉ: gửi kèm một CA trung gian không phải CA đã ký cho
+ * chứng chỉ của chính nó, nên chuỗi bị đứt và Node từ chối bắt tay
+ * (`UNABLE_TO_VERIFY_LEAF_SIGNATURE`). Trình duyệt và curl trên Windows không lộ ra lỗi này vì chúng
+ * tự đi tải CA còn thiếu theo phần mở rộng AIA của chứng chỉ; Node/OpenSSL KHÔNG làm vậy.
+ *
+ * VẪN XÁC MINH ĐẦY ĐỦ, không phải tắt kiểm tra: kho gốc mặc định (`rootCertificates`) được giữ
+ * nguyên và chỉ THÊM đúng CA trung gian còn thiếu — thứ vốn đã chuỗi được về một root công khai.
+ * Tuyệt đối không thay bằng `rejectUnauthorized: false`: BE trả thẳng bytes về cho client nên tắt
+ * xác minh là mở đường cho người đứng giữa tráo nội dung hóa đơn.
+ */
+export function dispatcherThemCa(pem: string): Dispatcher {
+  return new Agent({ connect: { ca: [...rootCertificates, pem] } });
+}
+
+/**
  * `fetch` tới cổng NCC với timeout, tự bọc lỗi mạng/timeout thành `UPSTREAM` (undici giấu lý do thật
  * ở `cause` -> dùng `describeErrorChain`). Trả `Response` thô để nơi gọi tự đọc (binary/JSON). Tự thêm
  * `user-agent` trình duyệt (ghi đè được qua `init.headers`).
  */
-export async function fetchUpstream(url: string, init: RequestInit, ten: string): Promise<Response> {
+export async function fetchUpstream(url: string, init: UpstreamInit, ten: string): Promise<Response> {
   try {
     return await fetch(url, {
       ...init,

@@ -12,6 +12,7 @@ import { misa } from "./misa";
 import { easyInvoice } from "./easy_invoice";
 import { msInvoice } from "./ms_invoice";
 import { vetc } from "./vetc";
+import { vinInvoice } from "./vin_invoice";
 import { viettel } from "./vinvoice_viettel";
 import { vpt } from "./vnpt";
 import { cyberlotus } from "./xcyber";
@@ -26,6 +27,7 @@ const REGISTRY: ProviderDownloader[] = [
   cyberlotus,
   easyInvoice,
   vetc,
+  vinInvoice,
 ];
 
 const BY_MST = new Map(REGISTRY.map((p) => [p.mst, p]));
