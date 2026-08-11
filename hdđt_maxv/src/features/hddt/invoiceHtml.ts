@@ -9,7 +9,7 @@
  * bảng hàng hóa, và ô chữ ký số xanh có dấu kiểm. Giữ tên class gần với bản gốc để đối chiếu dễ.
  */
 import { formatMoney } from "./format";
-import { formatDateTimeVN } from "./dateUtils";
+import { formatDateTimeVN, vnDateParts } from "./dateUtils";
 import { tinhChatLabel, type InvoiceView } from "./invoiceView";
 import { invoiceQrSvg } from "./invoiceQr";
 
@@ -130,16 +130,14 @@ function esc(v: string): string {
 }
 
 /**
- * "Ngày d tháng mm năm yyyy" từ chuỗi ISO. Cắt trực tiếp phần `yyyy-MM-dd` thay vì qua `new Date`:
- * ngày lập là dữ liệu trên CHỨNG TỪ, không được đổi theo múi giờ máy đang mở file.
+ * "Ngày d tháng mm năm yyyy". Dùng chung `vnDateParts` với cột "Ngày lập" của bảng Tổng quát
+ * (`formatDateVN`) — cùng một primitive nên tờ hóa đơn và bảng không thể ghi hai ngày khác nhau.
  * Rỗng/không đúng dạng -> trả nguyên input.
  */
 function invoiceDateLine(iso: string): string {
   if (!iso) return "";
-  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(iso);
-  if (!m) return iso;
-  const [, y, mm, dd] = m;
-  return `Ngày ${Number(dd)} tháng ${mm} năm ${y}`;
+  const p = vnDateParts(iso);
+  return p ? `Ngày ${Number(p.d)} tháng ${p.m} năm ${p.y}` : iso;
 }
 
 /**

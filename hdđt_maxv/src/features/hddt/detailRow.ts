@@ -84,7 +84,9 @@ function taxRateByLabel(detail: Record<string, unknown>): Map<string, number> {
 /**
  * `nbcks` / `cqtcks` của GDT là một CHUỖI JSON mô tả chữ ký số:
  * `{"Subject":"CN=CỤC THUẾ,…","SerialNumber":"…","Issuer":"…","SigningTime":"2026-07-30T09:20:17"}`.
- * Rút `SigningTime` — thời điểm ký, đã là GIỜ ĐỊA PHƯƠNG (khác `nky`/`ncma` trả giờ UTC có hậu tố Z).
+ * Rút `SigningTime` — thời điểm ký, GDT ghi sẵn theo GIỜ ĐỊA PHƯƠNG không hậu tố múi giờ, tức TRÙNG
+ * quy ước mà BE chuẩn hóa cho `nky`/`ncma` (docs/14-hop-dong-api.md). Lưu ý chuỗi này nằm trong JSON
+ * LỒNG nên BE không chạm tới: GDT đổi sang UTC có `Z` là ô "Ngày CQT ký" lệch 1 ngày mà không ai chặn.
  * Không parse được (chuỗi hỏng, field vắng) -> "" để ô đi theo quy ước chung: web "—", file trống.
  */
 function chuKySigningTime(v: unknown): string {

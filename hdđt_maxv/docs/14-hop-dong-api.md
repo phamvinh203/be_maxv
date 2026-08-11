@@ -394,6 +394,12 @@ Các trường chính trong `InvoiceRaw` (giữ nguyên tên GDT):
 
 `tt_tai` là trường do **backend của dự án này** thêm vào, không phải của GDT.
 
+> **Quy ước ngày giờ — mốc trên CHỨNG TỪ.** Ngày của hóa đơn (`tdlap`, `nky` ở danh sách đã lưu; `tdlap` ở bản đồ thay thế; các field ngày trong payload `detail` — danh sách chính xác ở `DETAIL_DATE_FIELDS` trong `gdt.service.ts`) được BE trả dạng `yyyy-MM-ddTHH:mm:ss` theo **giờ Việt Nam, KHÔNG hậu tố múi giờ**.
+>
+> Lý do: GDT trả UTC có hậu tố `Z`, nên chuỗi cắt ra `yyyy-MM-dd` là NGÀY UTC — lệch 1 ngày với mọi hóa đơn lập trước 07:00 giờ VN. Ngày trên chứng từ không được đổi theo múi giờ máy chủ hay máy người xem, nên BE ghim `+07:00` ở cả ba hướng: đọc từ GDT (`toDate`), dựng khoảng lọc (`vnDayStart`/`vnDayEnd`) và trả ra FE (`toVnWallClock`/`normalizeDetailDates`). Cột `detail` trong DB vẫn lưu payload GDT gốc — chuẩn hóa chỉ diễn ra ở biên trả về. Phía FE, `vnDateParts` (`features/hddt/dateUtils.ts`) là nơi duy nhất biết định dạng này; `formatDateVN`, `formatDateIso` và `invoiceDateLine` đều dựng trên nó.
+>
+> **Không áp cho mốc SỰ KIỆN** — `created_at`/`lastSyncAt`/`tu_ngay`/`den_ngay` của lịch sử đồng bộ (`/gdt/sync/history`, `/gdt/stats`) vẫn là ISO có `Z`: đó là thời điểm hệ thống chạy, không phải dữ liệu trên chứng từ, nên hiển thị theo giờ máy người xem là đúng.
+
 #### GET `/gdt/invoices/:direction/saved-details`
 
 ```ts

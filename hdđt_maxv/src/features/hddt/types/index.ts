@@ -63,8 +63,9 @@ export interface InvoiceRaw {
   khmshdon: string;
   khhdon: string;
   shdon: string;
+  /** Thời điểm lập — giờ VN `yyyy-MM-ddTHH:mm:ss`, không hậu tố múi giờ (docs/14-hop-dong-api.md). */
   tdlap: string;
-  /** Ngày ký */
+  /** Ngày ký — cùng quy ước giờ VN không hậu tố như `tdlap`. */
   nky?: string;
   tthai: string;
   ttxly: string;

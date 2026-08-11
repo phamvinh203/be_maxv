@@ -10,11 +10,29 @@ function padDateVN(d: Date): string {
 }
 
 /**
- * Định dạng ngày (chuỗi ISO/date) -> dd/MM/yyyy có đệm 0; rỗng/không hợp lệ trả lại nguyên input.
+ * Cắt phần `yyyy-MM-dd` ở ĐẦU chuỗi, KHÔNG qua `new Date`. Đây là nơi DUY NHẤT trong app biết định
+ * dạng ngày mà BE trả về, nên mọi hàm đọc "ngày trên chứng từ" phải dựng trên nó.
+ *
+ * Vì sao không quy đổi: BE đã chuẩn hóa mọi ngày về GIỜ VIỆT NAM không hậu tố múi giờ (`toVnWallClock`
+ * ở `gdt.service.ts`, xem mục "Quy ước ngày giờ" trong `docs/14-hop-dong-api.md`). Ngày lập/ngày ký là
+ * dữ liệu trên CHỨNG TỪ — cho `new Date` đụng vào là ngày đổi theo múi giờ máy đang xem.
+ * Không khớp dạng -> null (nơi gọi tự lo phần dự phòng).
+ */
+export function vnDateParts(s?: string): { y: string; m: string; d: string } | null {
+  const m = s ? /^(\d{4})-(\d{2})-(\d{2})/.exec(s) : null;
+  return m ? { y: m[1], m: m[2], d: m[3] } : null;
+}
+
+/**
+ * Định dạng ngày -> dd/MM/yyyy có đệm 0; rỗng/không hợp lệ trả lại nguyên input.
  * Dùng: `InvoiceListTabs` (cột Ngày lập/Ngày ký), `SyncInvoiceDialog` (cột Từ/Đến ngày), `exportInvoices`.
+ * Ưu tiên cắt chuỗi (`vnDateParts`) nên KHÔNG phụ thuộc múi giờ trình duyệt; chỉ chuỗi lạ mới rơi
+ * xuống `new Date` — nhánh dự phòng, không phải đường chính.
  */
 export function formatDateVN(s?: string): string {
   if (!s) return "";
+  const p = vnDateParts(s);
+  if (p) return `${p.d}/${p.m}/${p.y}`;
   const d = new Date(s);
   return Number.isNaN(d.getTime()) ? s : padDateVN(d);
 }
@@ -44,13 +62,15 @@ function toDateInput(d: Date): string {
 }
 
 /**
- * Ngày (chuỗi ISO/date) -> yyyy-MM-dd; rỗng/không hợp lệ trả "".
- * Đọc theo giờ ĐỊA PHƯƠNG giống `formatDateVN` — hai hàm phải cùng múi giờ, nếu không cột
+ * Ngày -> yyyy-MM-dd; rỗng/không hợp lệ trả "".
+ * Cùng dựng trên `vnDateParts` như `formatDateVN` — hai hàm BẮT BUỘC cho cùng một ngày, nếu không cột
  * "Ngày lập" và tên file suy từ chính ngày đó sẽ lệch nhau một ngày ở các hóa đơn sát nửa đêm.
  * Dùng: `invoiceFileName.invoiceFileBase`.
  */
 export function formatDateIso(s?: string): string {
   if (!s) return "";
+  const p = vnDateParts(s);
+  if (p) return `${p.y}-${p.m}-${p.d}`;
   const d = new Date(s);
   return Number.isNaN(d.getTime()) ? "" : toDateInput(d);
 }

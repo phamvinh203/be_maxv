@@ -461,22 +461,84 @@ export async function getInvoiceOriginalXmlPaced(
 const toStr = (v: unknown): string | undefined =>
   v === null || v === undefined ? undefined : String(v);
 
-/** Date (từ DB) hoặc chuỗi ISO -> chuỗi ISO; kiểu khác -> undefined. */
-const toIso = (v: unknown): string | undefined =>
-  v instanceof Date ? v.toISOString() : typeof v === "string" && v ? v : undefined;
-
 const toNum = (v: unknown): number | undefined => {
   if (v === null || v === undefined || v === "") return undefined;
   const n = Number(v);
   return Number.isNaN(n) ? undefined : n;
 };
 
+/**
+ * QUY ƯỚC NGÀY GIỜ của module này — phát biểu hợp đồng nằm ở `docs/14-hop-dong-api.md`, mục "Quy ước
+ * ngày giờ"; ở đây chỉ chép lại phần LÝ DO CÀI ĐẶT.
+ *
+ * Một chuỗi `yyyy-MM-dd…` KHÔNG hậu tố múi giờ luôn mang nghĩa GIỜ VIỆT NAM, ở cả ba hướng: lúc đọc
+ * từ GDT (`toDate`), lúc dựng khoảng lọc (`vnDayStart`/`vnDayEnd`) và lúc trả ra FE
+ * (`toVnWallClock`). Trước đây mỗi hướng tự hiểu một kiểu nên cùng một hóa đơn ra hai ngày khác nhau.
+ *
+ * Lệch cố định +07:00 chứ không tra bảng múi giờ: Việt Nam không có DST và giữ UTC+7 từ 1975.
+ */
+const VN_OFFSET_MS = 7 * 60 * 60 * 1000;
+const VN_OFFSET = "+07:00";
+
+/** `yyyy-MM-dd` (GDT đôi khi trả ngày trần) hoặc `yyyy-MM-ddTHH:mm[:ss[.SSS]]`, KHÔNG hậu tố múi giờ. */
+const VN_LOCAL_RE = /^(\d{4}-\d{2}-\d{2})(T\d{2}:\d{2}(?::\d{2}(?:\.\d+)?)?)?$/;
+
+/**
+ * Chuỗi ngày giờ -> instant. Chuỗi KHÔNG mang múi giờ được ghim `+07:00` thay vì để `new Date()` suy
+ * theo giờ máy chủ: ngày lập là dữ liệu trên chứng từ, không được đổi theo nơi chạy tiến trình.
+ * Chuỗi đã mang múi giờ (Z/+07:00) giữ nguyên instant.
+ */
 const toDate = (v: unknown): Date | undefined => {
   if (typeof v !== "string" || !v) return undefined;
-  const d = new Date(v);
+  const m = VN_LOCAL_RE.exec(v);
+  const d = new Date(m ? `${m[1]}${m[2] ?? "T00:00:00"}${VN_OFFSET}` : v);
   return Number.isNaN(d.getTime()) ? undefined : d;
 };
 
+/** Đầu/cuối một ngày `yyyy-MM-dd` theo GIỜ VN — dùng dựng khoảng lọc so với cột `tdlap` (instant). */
+const vnDayStart = (ymd: string): Date => new Date(`${ymd}T00:00:00${VN_OFFSET}`);
+const vnDayEnd = (ymd: string): Date => new Date(`${ymd}T23:59:59.999${VN_OFFSET}`);
+
+/**
+ * Date (từ DB) hoặc chuỗi ngày giờ -> `yyyy-MM-ddTHH:mm:ss` theo GIỜ VIỆT NAM, không hậu tố múi giờ.
+ * Không đọc được thành ngày -> undefined (nơi gọi tự quyết định giữ nguyên input hay bỏ trống).
+ * Idempotent: chuỗi đã ở dạng giờ VN chạy lại vẫn ra chính nó.
+ */
+export function toVnWallClock(v: unknown): string | undefined {
+  const d = v instanceof Date ? v : toDate(v);
+  if (!d || Number.isNaN(d.getTime())) return undefined;
+  // Cộng lệch rồi in theo UTC = in giờ VN. `slice(0, 19)` cắt đúng phần `yyyy-MM-ddTHH:mm:ss`.
+  return new Date(d.getTime() + VN_OFFSET_MS).toISOString().slice(0, 19);
+}
+
+/**
+ * Field ngày giờ trong payload chi tiết GDT mà FE ĐEM ĐI HIỂN THỊ (tờ hóa đơn GTGT, bảng "Chi tiết
+ * hóa đơn", Excel xuất ra) — xem `toInvoiceView`/`toDetailRows` bên FE. Chỉ liệt kê field thật sự
+ * được đọc: chuẩn hóa field không ai dùng chỉ làm payload khác đi mà không ai kiểm chứng được.
+ */
+const DETAIL_DATE_FIELDS = [
+  "tdlap", // ngày lập
+  "nky", // ngày ký
+  "tgian", // ngày ký (tên thay thế)
+  "ntao", // ngày tạo — FE lùi về đây khi thiếu nky
+  "ncma", // ngày CQT cấp mã
+  "tdlhdgoc", // ngày lập hóa đơn gốc (bị thay thế/điều chỉnh)
+] as const;
+
+/**
+ * Chuẩn hóa các field ngày trong payload chi tiết GDT về giờ VN không hậu tố, TRƯỚC KHI trả ra FE.
+ * Cột `detail` trong DB vẫn giữ nguyên payload GDT gốc — đây chỉ là lớp dịch ở biên, nên phải chép
+ * (nông) thay vì sửa tại chỗ object Prisma trả về.
+ */
+export function normalizeDetailDates(detail: Record<string, unknown>): Record<string, unknown> {
+  const out = { ...detail };
+  for (const field of DETAIL_DATE_FIELDS) {
+    const raw = out[field];
+    // Chuỗi không đọc được thành ngày -> giữ nguyên: thà hiện chuỗi lạ còn hơn nuốt mất dữ liệu.
+    if (typeof raw === "string" && raw) out[field] = toVnWallClock(raw) ?? raw;
+  }
+  return out;
+}
 
 const VCT_TEXT_MAX_LEN = {
   mhdon: 128,
@@ -858,7 +920,7 @@ async function readReplacements(
            shdon, tdlap, tthai
       FROM ${table}
      WHERE tthai IN ('2', '3')
-       AND tdlap >= ${new Date(`${tuNgay}T00:00:00`)}
+       AND tdlap >= ${vnDayStart(tuNgay)}
   `;
   return rows.flatMap((r) =>
     // Thiếu khóa gốc thì không tra ngược được -> bỏ, khỏi đẩy rác ra FE.
@@ -869,7 +931,7 @@ async function readReplacements(
             khhdgoc: r.khhdgoc,
             shdgoc: r.shdgoc,
             shdon: r.shdon,
-            tdlap: r.tdlap.toISOString(),
+            tdlap: toVnWallClock(r.tdlap) ?? "",
             tthai: r.tthai ?? "",
           },
         ]
@@ -945,7 +1007,8 @@ async function readDetailExtras(
         tenHang: r.ten_hang ?? undefined,
         khhdgoc: r.khhdgoc ?? undefined,
         shdgoc: r.shdgoc ?? undefined,
-        tdlhdgoc: r.tdlhdgoc ?? undefined,
+        // Không đọc được thành ngày -> giữ chuỗi thô (giống `normalizeDetailDates`).
+        tdlhdgoc: toVnWallClock(r.tdlhdgoc) ?? r.tdlhdgoc ?? undefined,
       });
     }
   }
@@ -960,8 +1023,8 @@ function mapSavedRow(row: Record<string, unknown>, extras?: SavedDetailExtras): 
     khmshdon: toStr(row.khmshdon) ?? "",
     khhdon: toStr(row.khhdon) ?? "",
     shdon: toStr(row.shdon) ?? "",
-    tdlap: toIso(row.tdlap) ?? "",
-    nky: toIso(row.nky),
+    tdlap: toVnWallClock(row.tdlap) ?? "",
+    nky: toVnWallClock(row.nky),
     nbmst: toStr(row.nbmst),
     nbten: toStr(row.nbten),
     nbdchi: toStr(row.nbdchi),
@@ -1003,8 +1066,8 @@ function buildSavedWhere(
     : {};
   return {
     tdlap: {
-      gte: new Date(`${query.tuNgay}T00:00:00`),
-      lte: new Date(`${query.denNgay}T23:59:59.999`),
+      gte: vnDayStart(query.tuNgay),
+      lte: vnDayEnd(query.denNgay),
     },
     ...(query.trangThaiHd ? { tthai: query.trangThaiHd } : {}),
     ...(query.ketQuaHd ? { ttxly: query.ketQuaHd } : {}),
@@ -1116,7 +1179,7 @@ export async function getSavedInvoiceDetails(
 
   return rows.flatMap((r) =>
     r.detail != null && typeof r.detail === "object"
-      ? [r.detail as Record<string, unknown>]
+      ? [normalizeDetailDates(r.detail as Record<string, unknown>)]
       : [],
   );
 }
@@ -1252,8 +1315,8 @@ async function countSavedByRange(
 ): Promise<number> {
   const where = {
     tdlap: {
-      gte: new Date(`${tuNgay}T00:00:00`),
-      lte: new Date(`${denNgay}T23:59:59.999`),
+      gte: vnDayStart(tuNgay),
+      lte: vnDayEnd(denNgay),
     },
   };
   return direction === "purchase"
@@ -2247,7 +2310,14 @@ export async function downloadOneInvoiceDetail(
   if (!row) return { found: false, ok: false, detail: null };
 
   const { detail, error } = await fetchAndStoreDetail(model, token, row);
-  return { found: true, ok: detail !== null, detail, error };
+  // Chuẩn hóa ngày giờ ở BẢN TRẢ RA (DB vẫn giữ payload GDT gốc): hóa đơn vừa tải xong phải hiện
+  // đúng ngày như sau khi nạp lại trang, không thì cùng một hóa đơn hiện hai ngày ở hai thời điểm.
+  return {
+    found: true,
+    ok: detail !== null,
+    detail: detail === null ? null : normalizeDetailDates(detail),
+    error,
+  };
 }
 
 /**
@@ -2272,7 +2342,7 @@ export async function getSavedInvoiceDetailById(
     found: true,
     detail:
       row.detail != null && typeof row.detail === "object"
-        ? (row.detail as Record<string, unknown>)
+        ? normalizeDetailDates(row.detail as Record<string, unknown>)
         : null,
   };
 }
