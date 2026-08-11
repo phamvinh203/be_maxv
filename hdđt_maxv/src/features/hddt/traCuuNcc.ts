@@ -28,13 +28,19 @@ export interface NccTraCuu {
    *
    * Với NCC đã có bộ tải ở BE thì đây chỉ là ĐƯỜNG LÙI khi chưa gọi được danh mục: domain cổng NCC
    * là thứ BE buộc phải biết chính xác để tải tự động, nên BE mới là nguồn chính. Còn NCC chỉ tra cứu
-   * tay (VININVOICE, FPT) thì đây là nguồn DUY NHẤT — BE không có provider cho họ.
+   * tay (hiện chỉ còn FPT) thì đây là nguồn DUY NHẤT — BE không có provider cho họ.
    */
   url: string;
   maTraCuu: MaTraCuuSpec;
 }
 
 
+/**
+ * Registry NCC phát hành, KHÓA LÀ `msttcgp` — phải là MST TRẦN, không khoảng trắng thừa: nơi tra cứu
+ * (`traCuuNcc`, `DownloadOriginalDialog`) đều `.trim()` giá trị lấy từ hóa đơn rồi mới index vào đây,
+ * nên một dấu cách lạc trong khóa làm entry không bao giờ khớp — hóa đơn của NCC đó lặng lẽ bị coi
+ * như NCC chưa có trong danh mục, không báo lỗi gì.
+ */
 export const TRA_CUU_NCC: Record<string, NccTraCuu> = {
   "0100109106": {
     ten: "Tập đoàn Công nghiệp - Viễn thông quân đội",
@@ -81,6 +87,21 @@ export const TRA_CUU_NCC: Record<string, NccTraCuu> = {
     url: "https://{mst}hd.easyinvoice.com.vn/Search/Index",
     maTraCuu: { src: "ttkhac", ttruong: "Fkey" },
   },
+  "0100727825": {
+    ten: "Công ty Cổ phần phần mềm quản lý doanh nghiệp FAST",
+    url: "https://einvoice.fast.com.vn/",
+    maTraCuu: { src: "ttkhac", ttruong: "KeySearch" },
+  },
+  "0106026495": {
+    ten: "Công ty TNHH Hóa đơn điện tử M-INVOICE",
+    url: "https://tracuuhoadon.minvoice.com.vn/tra-cuu-hoa-don",
+    maTraCuu: { src: "cttkhac", ttruong: "Số bảo mật" },
+  },
+  "0101300842": {
+    ten: "Công ty TNHH Phát triển công nghệ Thái Sơn",
+    url: "https://einvoice.mmvietnam.com/tra-cuu-hoa-don",
+    maTraCuu: { src: "ttkhac", ttruong: "Mã TC" },
+  }
 };
 
 export interface TraCuuResult {

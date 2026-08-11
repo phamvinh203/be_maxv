@@ -10,6 +10,8 @@
 
 import { misa } from "./misa";
 import { easyInvoice } from "./easy_invoice";
+import { fast } from "./fast";
+import { minvoice } from "./minvoice";
 import { msInvoice } from "./ms_invoice";
 import { vetc } from "./vetc";
 import { vinInvoice } from "./vin_invoice";
@@ -28,6 +30,8 @@ const REGISTRY: ProviderDownloader[] = [
   easyInvoice,
   vetc,
   vinInvoice,
+  minvoice,
+  fast,
 ];
 
 const BY_MST = new Map(REGISTRY.map((p) => [p.mst, p]));
