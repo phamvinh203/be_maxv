@@ -517,7 +517,8 @@ model vct60view {
   @@index([nmmst])
 }
 
-/// Danh mục phòng ban (dmpb) — thuộc Tổng hợp.
+/// Danh mục phòng ban (dmpb) — thuộc Tổng hợp, dùng CHUNG với HRM.
+/// fe_maxv nhập các cột kế toán (dia_chi, ma_td1…); HRM nhập ten_pb / ma_pb_me / ghi_chu.
 model dmpb {
   ma_pb      String  @id @db.VarChar(24)
   ten_pb     String  @db.VarChar(254)
@@ -526,11 +527,14 @@ model dmpb {
   dien_thoai String? @db.VarChar(32)
   ma_td1     String? @db.VarChar(24) // TK chi phí (dmtk)
   ten_tk     String? @db.VarChar(254) // tên tài khoản
-  ghi_chu    String? @db.VarChar(512)
+  ghi_chu    String? @db.VarChar(512) // HRM hiển thị dưới nhãn "Mô tả"
+  ma_pb_me   String? @db.VarChar(24) // trực thuộc — null = phòng ban gốc (dmpb.ma_pb)
 
   status    String   @default("1") @db.VarChar(1)
   datetime0 DateTime @default(now())
   datetime2 DateTime @default(now())
+
+  @@index([ma_pb_me])
 }
 
 /// Lịch sử đồng bộ hóa đơn từ hệ thống HĐĐT (GDT) — mỗi lần bấm "Đồng bộ" ghi 1 dòng.
@@ -548,4 +552,44 @@ model sync_log {
   created_at DateTime @default(now())
 
   @@index([created_at])
+}
+
+// ============================================================
+//  HRM › DANH MỤC NHÂN SỰ
+//  Phòng ban KHÔNG có bảng riêng — dùng chung dmpb (cột ma_pb_me).
+//  Lát 1 chỉ tạo bảng nhân viên để đếm; màn hình nhân viên ở lát 2.
+// ============================================================
+
+/// Danh mục nhân viên (HRM). Liên kết dmpb qua ma_pb, hrm_chuc_vu qua ma_cv (lát 2).
+model hrm_nhan_vien {
+  ma_nv  String @id @db.VarChar(24)
+  ho_ten String @db.VarChar(254)
+
+  // Thông tin cá nhân
+  so_cccd     String?   @db.VarChar(24) // KHÔNG unique: hồ sơ nhập dần, nhiều NV chưa có CCCD
+  mst_ca_nhan String?   @db.VarChar(24)
+  ngay_sinh   DateTime?
+  gioi_tinh   String?   @db.VarChar(8) // nam | nu | khac
+  dien_thoai  String?   @db.VarChar(32)
+  email       String?   @db.VarChar(254)
+  dia_chi     String?   @db.VarChar(254)
+  ghi_chu     String?   @db.VarChar(512)
+
+  // Công việc & lương
+  ma_pb     String?   @db.VarChar(24) // phòng ban (dmpb)
+  ma_cv     String?   @db.VarChar(24) // chức vụ (hrm_chuc_vu — lát 2)
+  cap_bac   String?   @db.VarChar(64) // chữ tự do, không phải danh mục
+  cong_doan Boolean   @default(false) // trích 1% phí công đoàn trên lương đóng BHXH
+  ngay_vao  DateTime?
+
+  // Tài khoản ngân hàng
+  ngan_hang String? @db.VarChar(128)
+  so_tk     String? @db.VarChar(32)
+  chu_tk    String? @db.VarChar(254)
+
+  status    String   @default("1") @db.VarChar(1) // 1 đang làm, 0 đã nghỉ
+  datetime0 DateTime @default(now())
+  datetime2 DateTime @default(now())
+
+  @@index([ma_pb])
 }

@@ -75,6 +75,14 @@ export default function AppHeader() {
           >
             Hóa đơn và tờ khai
           </Button>
+
+          <Button
+            color="inherit"
+            onClick={() => navigate("/hrm")}
+            sx={{ textTransform: "none", fontWeight: 600 }}
+          >
+            HRM
+          </Button>
           <Button
             color="inherit"
             component="a"

@@ -15,6 +15,27 @@ export default function AppRouter() {
           <Route path="forgot-password" element={<GuestOnlyRoute><ForgotPasswordPage /></GuestOnlyRoute>} />
           <Route index element={<ProtectedRoute><HomePage /></ProtectedRoute>} />
           <Route path="settings" element={<ProtectedRoute><SettingsPage /></ProtectedRoute>} />
+          <Route path="hrm" element={<ProtectedRoute><HrmPage /></ProtectedRoute>}>
+            <Route index element={<Navigate to="dashboard" replace />} />
+            <Route path="dashboard" element={<DashboardPage />} />
+            <Route path="danh-muc" element={<DanhMucPage />}>
+              <Route index element={<Navigate to="phong-ban" replace />} />
+              <Route path="phong-ban" element={<PhongBanPage />} />
+              <Route path="nhan-vien" element={<NhanVienPage />} />
+              <Route path="nguoi-phu-thuoc" element={<NguoiPhuThuocPage />} />
+            </Route>
+            <Route path="cau-hinh" element={<CauHinhPage />}>
+              <Route index element={<Navigate to="thiet-lap-chung" replace />} />
+              <Route path="thiet-lap-chung" element={<ThietLapChungPage />} />
+              <Route path="lich-ngay-le" element={<LichNgayLePage />} />
+            </Route>
+            <Route path="cai-dat-luong" element={<CaiDatLuongPage />} />
+            <Route path="du-lieu-luong" element={<DuLieuLuongPage />}>
+              <Route index element={<Navigate to="cham-cong" replace />} />
+              <Route path="cham-cong" element={<ChamCongPage />} />
+              {/* 7 màn hình còn lại dùng chung DuLieuLuongChuaDungPage */}
+            </Route>
+          </Route>
           {/* Bắt mọi path không khớp, tránh màn hình trắng khi gõ sai URL */}
           <Route path="*" element={<Navigate to="/" replace />} />
         </Route>
@@ -28,10 +49,31 @@ export default function AppRouter() {
 |---|---|---|
 | `/` | `HomePage` | Cần đăng nhập |
 | `/settings` | `SettingsPage` | Cần đăng nhập |
+| `/hrm` | `HrmPage` (layout) → chuyển về `/hrm/dashboard` | Cần đăng nhập |
+| `/hrm/dashboard` | `DashboardPage` | Cần đăng nhập |
+| `/hrm/danh-muc` | `DanhMucPage` (layout) → chuyển về `/hrm/danh-muc/phong-ban` | Cần đăng nhập |
+| `/hrm/danh-muc/phong-ban` | `PhongBanPage` | Cần đăng nhập |
+| `/hrm/danh-muc/nhan-vien` | `NhanVienPage` | Cần đăng nhập |
+| `/hrm/danh-muc/nguoi-phu-thuoc` | `NguoiPhuThuocPage` | Cần đăng nhập |
+| `/hrm/cau-hinh` | `CauHinhPage` (layout) → chuyển về `/hrm/cau-hinh/thiet-lap-chung` | Cần đăng nhập |
+| `/hrm/cau-hinh/thiet-lap-chung` | `ThietLapChungPage` | Cần đăng nhập |
+| `/hrm/cau-hinh/lich-ngay-le` | `LichNgayLePage` | Cần đăng nhập |
+| `/hrm/cai-dat-luong` | `CaiDatLuongPage` (layout) → chuyển về `/hrm/cai-dat-luong/danh-muc-khoan` | Cần đăng nhập |
+| `/hrm/cai-dat-luong/danh-muc-khoan` | `DanhMucKhoanLuongPage` | Cần đăng nhập |
+| `/hrm/cai-dat-luong/set-luong` | `SetLuongPage` | Cần đăng nhập |
+| `/hrm/du-lieu-luong` | `DuLieuLuongPage` (layout) → chuyển về `/hrm/du-lieu-luong/cham-cong` | Cần đăng nhập |
+| `/hrm/du-lieu-luong/cham-cong` | `ChamCongPage` | Cần đăng nhập |
+| `/hrm/du-lieu-luong/<7 màn còn lại>` | `DuLieuLuongChuaDungPage` | Cần đăng nhập |
 | `/login` | `AuthPage` | Chỉ khách |
 | `/register` | `RegisterPage` | Chỉ khách |
 | `/forgot-password` | `ForgotPasswordPage` | Chỉ khách |
 | mọi path khác | → chuyển về `/` | |
+
+**Vì sao HRM dùng route con mà `SettingsPage` thì không** (xem mục 9.7): HRM là một
+**cụm màn hình** chứ không phải một trang nhiều tab. Cần gửi được link tới đúng màn hình,
+F5 phải giữ nguyên vị trí, và thêm màn hình mới (Chấm công, Bảng lương) chỉ việc thêm
+route. Quy ước 9.7 vẫn áp dụng cho **các tab bên trong** dialog hồ sơ nhân viên — chúng
+dùng state cục bộ, không tạo route.
 
 Route bắt-tất-cả chuyển về `/` chứ không hiện trang 404. Với ứng dụng nội bộ, gõ sai URL thì đưa về trang chính hữu ích hơn là báo lỗi. Nếu người dùng chưa đăng nhập, `ProtectedRoute` ở `/` sẽ tiếp tục đẩy họ tới `/login`.
 
