@@ -31,6 +31,9 @@ import BangLuongKyPage from "../pages/hrm/BangLuongKyPage";
 import LuongHoTroPage from "../pages/hrm/LuongHoTroPage";
 import ToKhaiThuePage from "../pages/hrm/ToKhaiThuePage";
 import ToKhaiThueChuaDungPage from "../pages/hrm/ToKhaiThueChuaDungPage";
+import HoSoLuongPage from "../pages/hrm/HoSoLuongPage";
+import HoSoLuongChuaDungPage from "../pages/hrm/HoSoLuongChuaDungPage";
+import { MAN_HINH_HO_SO_LUONG } from "../features/hrm/components/ho_so_luong/tabs";
 import ProtectedRoute from "./ProtectedRoute";
 import ModuleRoute from "./ModuleRoute";
 import FullScreenLoader from "../components/FullScreenLoader";
@@ -152,6 +155,20 @@ export default function AppRouter() {
               <Route path="to-khai-tncn" element={<ToKhaiThueChuaDungPage />} />
               <Route path="to-khai-quyet-toan" element={<ToKhaiThueChuaDungPage />} />
               <Route path="doi-soat-cong-thuc" element={<ToKhaiThueChuaDungPage />} />
+            </Route>
+            {/*
+              Mười bốn màn hình chưa dựng, sinh route thẳng từ bảng tab thay vì
+              liệt kê tay: chép mười bốn dòng gần giống nhau thì kiểu gì cũng có
+              một path gõ sai, mà sai path nghĩa là tab bấm vào ra trang trắng.
+            */}
+            <Route path="ho-so-luong" element={<HoSoLuongPage />}>
+              <Route
+                index
+                element={<Navigate to={MAN_HINH_HO_SO_LUONG[0]!.path} replace />}
+              />
+              {MAN_HINH_HO_SO_LUONG.map((mh) => (
+                <Route key={mh.path} path={mh.path} element={<HoSoLuongChuaDungPage />} />
+              ))}
             </Route>
           </Route>
           {/* Bắt mọi path không khớp, tránh màn hình trắng khi gõ sai URL */}
