@@ -21,6 +21,7 @@ import DuLieuLuongPage from "../pages/hrm/DuLieuLuongPage";
 import ChamCongPage from "../pages/hrm/ChamCongPage";
 import DuLieuLuongChuaDungPage from "../pages/hrm/DuLieuLuongChuaDungPage";
 import ProtectedRoute from "./ProtectedRoute";
+import ModuleRoute from "./ModuleRoute";
 import FullScreenLoader from "../components/FullScreenLoader";
 import { useAuth } from "../features/auth/useAuth";
 import type { ReactNode } from "react";
@@ -89,7 +90,9 @@ export default function AppRouter() {
             path="hrm"
             element={
               <ProtectedRoute>
-                <HrmPage />
+                <ModuleRoute module="hrm">
+                  <HrmPage />
+                </ModuleRoute>
               </ProtectedRoute>
             }
           >

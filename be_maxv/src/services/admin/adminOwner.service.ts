@@ -3,6 +3,7 @@ import { planLimits } from '../shared/limits.service';
 import { NotFoundError } from '../../helpers/errors';
 import { MESSAGES } from '../../constants/messages';
 import type { Prisma } from '../../generated/sys';
+import { moduleCuaGoi } from '../shared/modules.service';
 import type { ListOwnersQuery } from '../../validators/admin.validator';
 
 /** Dung lượng (bytes) của các DB tenant còn tồn tại thật trong PostgreSQL. */
@@ -43,12 +44,14 @@ export async function adminListOwners(query: ListOwnersQuery) {
         subscription: {
           select: {
             status: true,
+            ketThuc: true,
             plan: {
               select: {
                 ma: true,
                 ten: true,
                 soMstToiDa: true,
                 soNguoiToiDa: true,
+                features: true,
               },
             },
           },
@@ -66,6 +69,8 @@ export async function adminListOwners(query: ListOwnersQuery) {
     createdAt: o.createdAt,
     soCongTy: o._count.ownedDonVi,
     soNhanVien: o._count.employees,
+    // Quyền module suy thẳng từ gói — không có cờ riêng theo tài khoản.
+    modules: moduleCuaGoi(o.subscription),
     plan: o.subscription
       ? { ma: o.subscription.plan.ma, ten: o.subscription.plan.ten }
       : null,
@@ -97,6 +102,7 @@ export async function adminGetOwner(id: string) {
               ten: true,
               soMstToiDa: true,
               soNguoiToiDa: true,
+              features: true,
             },
           },
         },
@@ -147,6 +153,7 @@ export async function adminGetOwner(id: string) {
     sdt: owner.sdt,
     status: owner.status,
     createdAt: owner.createdAt,
+    modules: moduleCuaGoi(owner.subscription),
     subscription: owner.subscription,
     gioiHan: planLimits(owner.subscription),
     soCongTy: congTy.length,
@@ -156,3 +163,4 @@ export async function adminGetOwner(id: string) {
     nhanVien: owner.employees,
   };
 }
+

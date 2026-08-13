@@ -17,6 +17,7 @@ import { tableCardSx, tableHeadRowSx } from '@/components/tableStyles';
 import { formatDate, formatLimit } from '@/lib/format';
 import { useOwners } from '@/features/owners/hooks/useOwners';
 import type { ListOwnersParams } from '@/features/owners/types/owner';
+import { MODULE_KEYS, MODULE_META } from '@/features/owners/modules';
 
 interface Props {
   params: ListOwnersParams & { page: number; pageSize: number };
@@ -61,6 +62,11 @@ export function OwnersTable({
               <TableCell>Gói</TableCell>
               <TableCell>MST (dùng / trần)</TableCell>
               <TableCell>Nhân viên (dùng / trần)</TableCell>
+              {MODULE_KEYS.map((k) => (
+                <TableCell key={k} align="center">
+                  {MODULE_META[k].nhanNgan}
+                </TableCell>
+              ))}
               <TableCell>Ngày tạo</TableCell>
             </TableRow>
           </TableHead>
@@ -102,6 +108,16 @@ export function OwnersTable({
                 <TableCell>
                   <Usage used={o.soNhanVien} limit={o.gioiHan.soNguoiToiDa} />
                 </TableCell>
+                {MODULE_KEYS.map((k) => (
+                  <TableCell key={k} align="center">
+                    <Chip
+                      size="small"
+                      label={o.modules[k] ? 'Bật' : 'Tắt'}
+                      color={o.modules[k] ? 'success' : 'default'}
+                      variant={o.modules[k] ? 'filled' : 'outlined'}
+                    />
+                  </TableCell>
+                ))}
                 <TableCell sx={{ color: 'text.secondary' }}>
                   {formatDate(o.createdAt)}
                 </TableCell>
@@ -110,7 +126,7 @@ export function OwnersTable({
             {data.data.length === 0 && (
               <TableRow>
                 <TableCell
-                  colSpan={5}
+                  colSpan={5 + MODULE_KEYS.length}
                   align="center"
                   sx={{ py: 6, color: 'text.secondary' }}
                 >

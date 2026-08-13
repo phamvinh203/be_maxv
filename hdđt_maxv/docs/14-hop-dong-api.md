@@ -105,6 +105,8 @@ interface SessionData {
   companies: AuthCompany[];
   /** Công ty đang active nhúng trong JWT; null nếu chưa xác định rõ. */
   activeDonViId: string | null;
+  /** Module admin đã bật cho tài khoản. Thiếu trường = không có module nào. */
+  modules?: { hrm: boolean };
 }
 
 interface AuthCompany {
@@ -123,6 +125,24 @@ interface AuthCompany {
 Trả cùng `SessionData` như `/auth/login`. Frontend gọi **một lần khi tải trang** để khôi phục phiên.
 
 `401` khi chưa đăng nhập — đây là kết quả bình thường, không phải lỗi cần báo.
+
+**`modules` được backend quy đổi sẵn**, FE chỉ việc đọc — suy luận ở hai nơi thì sớm muộn
+cũng lệch. Luật quy đổi (`be_maxv/src/services/shared/modules.service.ts`):
+
+1. `ADMIN` luôn có tất cả.
+2. `OWNER` và `OWNER_EMPLOYEE` đều quy về **tài khoản (owner)** — nhân viên dùng chung quyền
+   với owner, không có gói và không có cờ riêng.
+3. Quyền đọc từ `SubscriptionPlan.features` của gói tài khoản đang dùng, chỉ tính khi thuê
+   bao còn hiệu lực: `status ∈ {TRIALING, ACTIVE}` **và** (`ketThuc` null **hoặc** chưa qua)
+   — không tin mỗi `status` vì tác vụ đổi sang `EXPIRED` có thể chạy trễ.
+
+**Không có cơ chế bật/tắt riêng theo tài khoản.** Muốn cho một tài khoản dùng module thì đổi
+gói của họ. Hai nguồn quyền song song sẽ biến "vì sao khách này thấy HRM" thành câu hỏi phải
+tra hai chỗ mới trả lời được.
+
+Trường này quyết định **có hiện lối vào** module hay không (nút HRM trên header, guard
+`ModuleRoute` ở route `/hrm`). Nó **không phải hàng rào**: mọi endpoint `/api/v1/hrm/*` khi
+làm thật vẫn phải tự kiểm tra quyền ở backend, nếu không thì gọi thẳng API là qua mặt được.
 
 ### POST `/auth/refresh`
 

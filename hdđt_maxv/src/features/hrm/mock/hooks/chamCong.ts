@@ -69,17 +69,6 @@ export function useDatOChamCong() {
   );
 }
 
-/** Bỏ chỉnh tay của một ô — ô quay về đúng mặc định theo lịch. */
-export function useBoGhiDeO() {
-  const { dispatch } = useHrmStore();
-  return useCallback(
-    (maNv: string, ngay: string) => {
-      dispatch({ type: "chamCong/boGhiDe", khoa: khoaCham(maNv, ngay) });
-    },
-    [dispatch],
-  );
-}
-
 /** Bỏ mọi chỉnh tay của tháng — cả bảng quay về đúng lịch chuẩn. */
 export function useDatLaiChamCong() {
   const { dispatch } = useHrmStore();

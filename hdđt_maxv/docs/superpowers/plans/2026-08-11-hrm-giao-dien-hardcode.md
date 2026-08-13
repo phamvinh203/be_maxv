@@ -120,6 +120,32 @@ Hai điểm nhỏ khác:
   Nghỉ bù · Lễ riêng của công ty. Chọn "Lễ theo âm lịch" thì ô "Lặp lại mọi năm" tự khóa —
   ngày dương của lễ âm đổi mỗi năm, bật cờ đó sẽ sinh lịch sai từ năm sau.
 
+## Quyền truy cập khu HRM
+
+Quyền HRM đến **chỉ từ gói thuê bao**:
+
+- Admin tick module vào gói ở màn "Gói dịch vụ" → ghi vào `SubscriptionPlan.features`
+- Muốn một tài khoản có HRM thì đổi gói của họ — không có bật/tắt riêng theo tài khoản
+- `/auth/me` và `/auth/login` trả `modules: { hrm }` đã quy đổi sẵn
+
+Toàn bộ nằm trong **`maxv2_sys`** — một database duy nhất. Tenant DB (`maxv2_<MST>_app`)
+không chứa gì về quyền, nên không lần nào phải chạy `sync:tenants` cho việc này.
+
+Luật quy đổi có test thuần ở `be_maxv/src/__tests__/moduleQuyen.test.ts` — gói hết hạn, khóa
+lạ trong `features`, và thứ tự ưu tiên của cờ ghi đè.
+
+**Thêm module thứ hai** = thêm một khóa vào `MODULE_KEYS` (`be_maxv/src/constants/modules.ts`,
+`maxv/src/features/owners/modules.ts`, `hdđt_maxv/src/features/auth/types/index.ts`) + một cột
+DB + một dòng `MODULE_META`. Validator, kiểu dữ liệu, cột trên bảng danh sách và công tắc ở
+màn chi tiết đều sinh ra từ mảng đó. Ba app không dùng chung package nên ba mảng `MODULE_KEYS`
+là chỗ duy nhất phải nhớ đồng bộ.
+
+Phía `hdđt_maxv`: nút HRM trên header chỉ hiện khi `modules.hrm`, và route `/hrm` bọc thêm
+`ModuleRoute` để gõ thẳng URL cũng không vào được.
+
+> **Khi nối backend HRM thật, mọi route `/api/v1/hrm/*` phải tự kiểm tra cờ này.** Ẩn nút và
+> guard route đều là chuyện của trình duyệt — gọi thẳng API thì qua mặt được cả hai.
+
 ## Cách thay lớp mock bằng API thật
 
 Toàn bộ dữ liệu giả nằm trong `src/features/hrm/mock/`. Component **không** import trực tiếp

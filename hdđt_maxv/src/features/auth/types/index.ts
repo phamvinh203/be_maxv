@@ -6,6 +6,23 @@ export interface AuthUser {
 }
 
 /**
+ * Module admin bật/tắt cho từng tài khoản. Nhân viên thừa hưởng cờ của owner —
+ * backend đã quy đổi sẵn nên FE chỉ việc đọc.
+ *
+ * Đây là **gợi ý hiển thị**, không phải hàng rào: mọi endpoint của module vẫn
+ * phải tự kiểm tra ở backend.
+ *
+ * Thêm module mới chỉ cần thêm một khóa vào `MODULE_KEYS` — phải khớp với
+ * `MODULE_KEYS` bên `be_maxv/src/constants/modules.ts`; hai app không dùng
+ * chung package nên đây là chỗ duy nhất phải nhớ đồng bộ.
+ */
+export const MODULE_KEYS = ["hrm"] as const;
+
+export type ModuleKey = (typeof MODULE_KEYS)[number];
+
+export type UserModules = Record<ModuleKey, boolean>;
+
+/**
  * Body gửi lên POST /auth/register. Khớp `registerSchema` (zod) bên be_maxv —
  * `xacNhanMatKhau` KHÔNG nằm ở đây vì backend không nhận, đó là validate thuần FE.
  */
@@ -77,6 +94,12 @@ export interface SessionData {
   companies: AuthCompany[];
   /** Công ty đang active nhúng trong JWT; null nếu user có nhiều công ty và chưa xác định rõ. */
   activeDonViId: string | null;
+  /**
+   * Module admin đã bật cho tài khoản. Để tùy chọn vì backend cũ chưa trả
+   * trường này — thiếu thì coi như không có module nào, an toàn hơn là mặc
+   * định cho phép.
+   */
+  modules?: UserModules;
 }
 
 export interface AuthContextValue {
@@ -89,6 +112,8 @@ export interface AuthContextValue {
   companies: AuthCompany[];
   /** Công ty đang active (nhúng trong cookie access token lúc login/switch). */
   currentCompanyId: string | null;
+  /** Module được phép dùng — quyết định có hiện lối vào HRM hay không. */
+  modules: UserModules;
   login: (email: string, password: string) => Promise<void>;
   logout: () => Promise<void>;
   /** Gọi lại GET /companies để đồng bộ sau khi thêm/sửa/xóa công ty. */

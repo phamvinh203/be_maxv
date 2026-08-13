@@ -33,16 +33,15 @@ export async function register(req: FastifyRequest, reply: FastifyReply) {
 
 /** POST /api/v1/auth/login — đăng nhập; access + refresh đặt vào cookie httpOnly, body chỉ trả user/công ty. */
 export async function login(req: FastifyRequest, reply: FastifyReply) {
-  const { user, tokenVersion, companies, activeDonViId } = await loginUser(
-    validateBody(loginSchema, req.body),
-  );
+  const { user, tokenVersion, companies, activeDonViId, modules } =
+    await loginUser(validateBody(loginSchema, req.body));
   await issueTokens(reply, {
     userId: user.id,
     donViId: activeDonViId,
     role: user.role,
     tokenVersion,
   });
-  return sendOk(reply, { user, companies, activeDonViId });
+  return sendOk(reply, { user, companies, activeDonViId, modules });
 }
 
 /**

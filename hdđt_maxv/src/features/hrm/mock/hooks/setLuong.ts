@@ -6,7 +6,6 @@ import { CHUC_VU } from "../../constants";
 import { homNay, nhan } from "../../format";
 import type {
   CauTrucLuong,
-  DongCauTrucLuong,
   SetLuongFilters,
   SetLuongNhanVien,
   SetLuongRow,
@@ -18,12 +17,8 @@ export function useCauTrucLuong(): CauTrucLuong {
 }
 
 /** Tổng của một bản set lương. */
-export function tongLuong(ban: SetLuongNhanVien): number {
+function tongLuong(ban: SetLuongNhanVien): number {
   return Object.values(ban.khoan).reduce((tong, tien) => tong + tien, 0);
-}
-
-export function useSetLuongList(): SetLuongNhanVien[] {
-  return useHrmStore().state.setLuong;
 }
 
 export function useSetLuongCuaNhanVien(maNv: string | null): SetLuongNhanVien | null {
@@ -167,9 +162,4 @@ export function useDuyetLuong() {
     dispatch({ type: "setLuong/duyet", danhSachMaNv: can.map((sl) => sl.ma_nv) });
     return can.length;
   }, [state.setLuong, dispatch]);
-}
-
-/** Mức mặc định của một khoản, lấy từ cấu trúc lương đang áp dụng. */
-export function mucMacDinh(cauTruc: CauTrucLuong, maKhoan: string): number {
-  return cauTruc.dong.find((d: DongCauTrucLuong) => d.ma_khoan === maKhoan)?.so_tien ?? 0;
 }

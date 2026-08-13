@@ -78,7 +78,6 @@ export const env = {
 
   // Dev: DB tenant cố định để build tính năng khi chưa có luồng auth/tenant thật.
   // Chỉ set ở môi trường dev; production để trống.
-  devTenantDb: process.env.DEV_TENANT_DB,
 
   jwtAccessSecret: required('JWT_ACCESS_SECRET'),
   jwtRefreshSecret: required('JWT_REFRESH_SECRET'),

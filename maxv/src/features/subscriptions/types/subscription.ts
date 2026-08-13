@@ -5,6 +5,8 @@ export type SubStatus =
   | 'CANCELED'
   | 'EXPIRED';
 
+import type { UserModules } from '@/features/owners/modules';
+
 export interface Plan {
   id: string;
   ma: string;
@@ -13,7 +15,8 @@ export interface Plan {
   chuKyThang: number;
   soMstToiDa: number | null;
   soNguoiToiDa: number | null;
-  features: unknown;
+  /** Module gói này cấp. Khóa ngoài `MODULE_KEYS` bị backend bỏ qua. */
+  features: Partial<UserModules>;
   isActive: boolean;
   createdAt: string;
 }
@@ -74,6 +77,7 @@ export interface CreatePlanInput {
   soMstToiDa?: number | null;
   soNguoiToiDa?: number | null;
   isActive?: boolean;
+  features?: Partial<UserModules>;
 }
 
 export type UpdatePlanInput = Partial<Omit<CreatePlanInput, 'ma'>>;

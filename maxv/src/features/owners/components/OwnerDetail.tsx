@@ -15,6 +15,7 @@ import { StatusChip } from '@/components/StatusChip';
 import { UserStatusChip } from '@/features/users/components/UserStatusChip';
 import { formatBytes, formatDate, formatLimit } from '@/lib/format';
 import { useOwner } from '@/features/owners/hooks/useOwners';
+import { MODULE_KEYS, MODULE_META } from '@/features/owners/modules';
 
 export function OwnerDetail({ id }: { id: string }): JSX.Element {
   const { data } = useOwner(id);
@@ -53,6 +54,15 @@ export function OwnerDetail({ id }: { id: string }): JSX.Element {
         <StatCard
           label="Gói"
           value={data.subscription?.plan.ten ?? 'Chưa có gói'}
+        />
+        {/* Module là hệ quả của gói, không sửa ở đây — sửa ở màn Gói dịch vụ. */}
+        <StatCard
+          label="Module theo gói"
+          value={
+            MODULE_KEYS.filter((k) => data.modules[k])
+              .map((k) => MODULE_META[k].nhanNgan)
+              .join(', ') || 'Không có'
+          }
         />
       </Stack>
 

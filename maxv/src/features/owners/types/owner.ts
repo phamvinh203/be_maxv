@@ -1,5 +1,6 @@
 import type { TenantStatus } from '@/features/companies/types/company';
 import type { UserStatus } from '@/features/users/types/user';
+import type { UserModules } from '@/features/owners/modules';
 
 /** Giới hạn theo gói. null = không giới hạn. */
 export interface Limits {
@@ -18,6 +19,8 @@ export interface Owner {
   soNhanVien: number;
   plan: { ma: string; ten: string } | null;
   gioiHan: Limits; // trần theo gói
+  /** Module gói của tài khoản cấp — áp cho owner và mọi nhân viên của họ. */
+  modules: UserModules;
 }
 
 /** 1 MST/DB thuộc tài khoản. */
@@ -57,6 +60,7 @@ export interface OwnerDetail {
     plan: { ma: string; ten: string };
   } | null;
   gioiHan: Limits;
+  modules: UserModules;
   soCongTy: number;
   soNhanVien: number;
   tongDbBytes: number;
