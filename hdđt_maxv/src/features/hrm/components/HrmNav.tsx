@@ -8,6 +8,7 @@ import TuneRounded from "@mui/icons-material/TuneRounded";
 import PaymentsRounded from "@mui/icons-material/PaymentsRounded";
 import FactCheckRounded from "@mui/icons-material/FactCheckRounded";
 import SummarizeRounded from "@mui/icons-material/SummarizeRounded";
+import AccountBalanceRounded from "@mui/icons-material/AccountBalanceRounded";
 
 const KHU = [
   { path: "dashboard", label: "Dashboard", icon: <SpaceDashboardRounded /> },
@@ -24,7 +25,7 @@ const KHU = [
     icon: <FactCheckRounded />,
   },
   { path: "bang-luong", label: "Bảng lương", icon: <SummarizeRounded /> },
-  { path: "to-khai-thue", label: "Tờ khai thuế", icon: <FactCheckRounded /> },
+  { path: "to-khai-thue", label: "Tờ khai thuế", icon: <AccountBalanceRounded /> },
   { path: "ho-so-luong", label: "Hồ sơ lương", icon: <FactCheckRounded /> },
 ];
 
