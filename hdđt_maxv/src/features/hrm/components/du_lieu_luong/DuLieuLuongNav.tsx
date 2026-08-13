@@ -27,6 +27,10 @@ export default function DuLieuLuongNav() {
             key={mh.path}
             value={mh.path}
             label={mh.label}
+            icon={<mh.icon fontSize="small" />}
+            iconPosition="start"
+            // `minHeight` giữ nguyên 52 như lúc chưa có icon: mặc định của MUI
+            // với tab có icon là 72, cao hơn hẳn và làm lệch bố cục các khu khác.
             sx={{ textTransform: "none", fontWeight: 600, minHeight: 52 }}
           />
         ))}
