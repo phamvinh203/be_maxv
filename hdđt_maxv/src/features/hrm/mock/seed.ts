@@ -12,15 +12,33 @@
 
 import { ngayLeChuanVN } from "../ngayLeChuan";
 import type {
+  BanBuTruNhanVien,
+  BanChuyenCanNhanVien,
+  BanKpiNhanVien,
+  BanLuongPhanTramNhanVien,
+  BanLuongSanPhamNhanVien,
+  BanTangCaNhanVien,
+  BanThuongNhanVien,
   CaLamViec,
   CauHinhMacDinh,
   CauTrucLuong,
+  ChiTieuKpi,
+  DongBuTru,
+  DongChuyenCan,
+  DongKpi,
+  DongLuongPhanTram,
+  DongLuongSanPham,
+  DongTangCa,
+  DongThuong,
   HopDong,
+  KhoanBuTru,
   KhoanLuong,
+  LoaiChuyenCan,
   NgayLe,
   NguoiPhuThuoc,
   NhanVien,
   PhongBan,
+  SanPham,
   SetLuongNhanVien,
   TaiLieu,
 } from "../types";
@@ -245,6 +263,10 @@ export const KHOAN_LUONG_MAU: KhoanLuong[] = [
   { ma_khoan: "KL15", loai: "luong_thuong", ten_khoan: "Thưởng đột xuất", ghi_chu: "Theo quyết định từng lần", tinh_bhxh: false, chiu_thue_tncn: true, ty_le: 0, status: "1" },
   { ma_khoan: "KL16", loai: "luong_thuong", ten_khoan: "Thưởng", ghi_chu: "Thưởng chung theo kỳ", tinh_bhxh: false, chiu_thue_tncn: true, ty_le: 0, status: "1" },
   { ma_khoan: "KL17", loai: "luong_chuyen_can", ten_khoan: "Chuyên cần", ghi_chu: "Mất khi nghỉ không phép từ 1 ngày", tinh_bhxh: false, chiu_thue_tncn: true, ty_le: 0, status: "1" },
+  // Hai khoản % dưới đây thêm sau nên mã nối tiếp cuối danh sách — đổi chỗ để
+  // xếp cạnh KL12 sẽ làm lệch mã của mọi khoản đứng sau.
+  { ma_khoan: "KL18", loai: "luong_phan_tram", ten_khoan: "Hoa hồng khách hàng mới", ghi_chu: "Chỉ tính hợp đồng đầu tiên của khách", tinh_bhxh: false, chiu_thue_tncn: true, ty_le: 5, status: "1" },
+  { ma_khoan: "KL19", loai: "luong_phan_tram", ten_khoan: "Hoa hồng vượt chỉ tiêu", ghi_chu: "Áp cho phần doanh số vượt mục tiêu quý", tinh_bhxh: false, chiu_thue_tncn: true, ty_le: 2, status: "1" },
 ];
 
 /**
@@ -335,5 +357,351 @@ export const SET_LUONG_MAU: SetLuongNhanVien[] = [
     ma_nv: "NV0007", lan_thiet_lap: 1, hieu_luc_tu: "2026-08-01", hieu_luc_den: "",
     trang_thai: "nhap",
     khoan: { KL01: 24000000, KL02: 4000000, KL04: 800000, KL08: 730000 },
+  },
+];
+
+/**
+ * Danh mục chỉ tiêu KPI — mỗi chỉ tiêu một đơn vị khác nhau để thấy ngay hậu tố
+ * đứng sau ô "Mục tiêu". `KPI06` để trạng thái ngừng: chỉ tiêu ngừng không hiện
+ * ở ô chọn của bảng nhưng bảng cũ đã dùng nó vẫn đọc được tên.
+ */
+export const CHI_TIEU_KPI_MAU: ChiTieuKpi[] = [
+  { ma_kpi: "KPI01", ten_kpi: "Doanh số ký mới", don_vi: "đồng", trong_so_mac_dinh: 40, ghi_chu: "Tính trên hợp đồng đã ký trong kỳ", status: "1" },
+  { ma_kpi: "KPI02", ten_kpi: "Số đơn hàng xử lý", don_vi: "đơn", trong_so_mac_dinh: 20, ghi_chu: "", status: "1" },
+  { ma_kpi: "KPI03", ten_kpi: "Tỷ lệ hồ sơ đúng hạn", don_vi: "%", trong_so_mac_dinh: 15, ghi_chu: "Hồ sơ nộp đúng hạn trên tổng hồ sơ", status: "1" },
+  { ma_kpi: "KPI04", ten_kpi: "Khách hàng mới", don_vi: "khách", trong_so_mac_dinh: 15, ghi_chu: "", status: "1" },
+  { ma_kpi: "KPI05", ten_kpi: "Giờ đào tạo nội bộ", don_vi: "giờ", trong_so_mac_dinh: 10, ghi_chu: "Tính cả giờ dạy và giờ học", status: "1" },
+  { ma_kpi: "KPI06", ten_kpi: "Số lỗi sản phẩm bị trả lại", don_vi: "lỗi", trong_so_mac_dinh: 10, ghi_chu: "Chỉ tiêu của kỳ cũ, đã ngừng dùng", status: "0" },
+];
+
+/**
+ * Bảng KPI đang soạn — mở màn hình lên là có sẵn số để nhìn ra cột "Tỉ lệ HT" và
+ * cách hiệu suất chung được bình quân theo trọng số (tổng trọng số vừa đúng 100).
+ */
+export const MAU_KPI_MAU: DongKpi[] = [
+  { id: "DK001", ma_kpi: "KPI01", trong_so: 40, muc_tieu: 500000000, thuc_thi: 430000000 },
+  { id: "DK002", ma_kpi: "KPI02", trong_so: 20, muc_tieu: 120, thuc_thi: 131 },
+  { id: "DK003", ma_kpi: "KPI03", trong_so: 15, muc_tieu: 95, thuc_thi: 92 },
+  { id: "DK004", ma_kpi: "KPI04", trong_so: 15, muc_tieu: 10, thuc_thi: 7 },
+  { id: "DK005", ma_kpi: "KPI05", trong_so: 10, muc_tieu: 8, thuc_thi: 8 },
+];
+
+/**
+ * KPI đã áp cho 5 trong 11 nhân viên đang làm.
+ *
+ * Cố ý cài sẵn ba mức hiệu suất — `NV0003` vượt chỉ tiêu, `NV0004` gần đạt,
+ * `NV0006` kém xa — để thấy đủ ba màu ở cột "Hiệu suất"; sáu người còn lại chưa
+ * có KPI nên cột đó hiện gạch ngang.
+ */
+export const BAN_KPI_MAU: BanKpiNhanVien[] = [
+  {
+    ma_nv: "NV0003", lan_luong: 3,
+    dong: [
+      { id: "DK101", ma_kpi: "KPI01", trong_so: 50, muc_tieu: 800000000, thuc_thi: 910000000 },
+      { id: "DK102", ma_kpi: "KPI04", trong_so: 30, muc_tieu: 12, thuc_thi: 13 },
+      { id: "DK103", ma_kpi: "KPI05", trong_so: 20, muc_tieu: 8, thuc_thi: 8 },
+    ],
+  },
+  {
+    ma_nv: "NV0004", lan_luong: 2,
+    dong: [
+      { id: "DK111", ma_kpi: "KPI01", trong_so: 40, muc_tieu: 500000000, thuc_thi: 430000000 },
+      { id: "DK112", ma_kpi: "KPI02", trong_so: 20, muc_tieu: 120, thuc_thi: 131 },
+      { id: "DK113", ma_kpi: "KPI03", trong_so: 15, muc_tieu: 95, thuc_thi: 92 },
+      { id: "DK114", ma_kpi: "KPI04", trong_so: 15, muc_tieu: 10, thuc_thi: 7 },
+      { id: "DK115", ma_kpi: "KPI05", trong_so: 10, muc_tieu: 8, thuc_thi: 8 },
+    ],
+  },
+  {
+    ma_nv: "NV0005", lan_luong: 2,
+    dong: [
+      { id: "DK121", ma_kpi: "KPI01", trong_so: 60, muc_tieu: 400000000, thuc_thi: 402000000 },
+      { id: "DK122", ma_kpi: "KPI04", trong_so: 40, muc_tieu: 8, thuc_thi: 8 },
+    ],
+  },
+  {
+    ma_nv: "NV0006", lan_luong: 1,
+    dong: [
+      { id: "DK131", ma_kpi: "KPI01", trong_so: 60, muc_tieu: 400000000, thuc_thi: 180000000 },
+      { id: "DK132", ma_kpi: "KPI04", trong_so: 40, muc_tieu: 8, thuc_thi: 5 },
+    ],
+  },
+  {
+    ma_nv: "NV0007", lan_luong: 1,
+    dong: [
+      { id: "DK141", ma_kpi: "KPI03", trong_so: 60, muc_tieu: 98, thuc_thi: 96 },
+      { id: "DK142", ma_kpi: "KPI05", trong_so: 40, muc_tieu: 12, thuc_thi: 11 },
+    ],
+  },
+];
+
+/**
+ * Bảng thưởng đang soạn — ba khoản thưởng của danh mục (`KL14`–`KL16`), đủ để
+ * thấy cột "Thành tiền" nhân lên theo số người đang chọn.
+ */
+export const MAU_THUONG_MAU: DongThuong[] = [
+  { id: "DT001", ma_khoan: "KL14", so_tien: 2000000 },
+  { id: "DT002", ma_khoan: "KL16", so_tien: 1500000 },
+];
+
+/**
+ * Thưởng đã áp cho 4 trong 11 nhân viên đang làm — các mức khác nhau để cột
+ * "Tiền lương" không phải một dãy số giống hệt; những người còn lại hiện gạch
+ * ngang ở cột đó.
+ */
+export const BAN_THUONG_MAU: BanThuongNhanVien[] = [
+  {
+    ma_nv: "NV0003",
+    dong: [
+      { id: "DT101", ma_khoan: "KL14", so_tien: 3000000 },
+      { id: "DT102", ma_khoan: "KL15", so_tien: 5000000 },
+      { id: "DT103", ma_khoan: "KL16", so_tien: 2000000 },
+    ],
+  },
+  {
+    ma_nv: "NV0004",
+    dong: [
+      { id: "DT111", ma_khoan: "KL14", so_tien: 2000000 },
+      { id: "DT112", ma_khoan: "KL16", so_tien: 1500000 },
+    ],
+  },
+  {
+    ma_nv: "NV0005",
+    dong: [{ id: "DT121", ma_khoan: "KL14", so_tien: 2000000 }],
+  },
+  {
+    ma_nv: "NV0008",
+    dong: [
+      { id: "DT131", ma_khoan: "KL14", so_tien: 2000000 },
+      { id: "DT132", ma_khoan: "KL15", so_tien: 1000000 },
+    ],
+  },
+];
+
+/** Bảng tăng ca đang soạn — hai loại giờ khác hệ số để thấy cột "Quy đổi" lệch nhau. */
+export const MAU_TANG_CA_MAU: DongTangCa[] = [
+  { id: "DO001", loai: "ngay_thuong_ngay", so_gio: 12 },
+  { id: "DO002", loai: "chu_nhat_ngay", so_gio: 8 },
+];
+
+/**
+ * Tăng ca đã áp cho 4 trong 11 nhân viên đang làm.
+ *
+ * Cố ý cài sẵn các mức chạm ngưỡng của Cấu hình mặc định (40h/tháng, cảnh báo
+ * 200h/năm, vượt mức 300h/năm) để thấy đủ ba màu ở hai cột giờ:
+ * - `NV0003` 44h tháng → vượt trần tháng, và 224h năm → chạm cảnh báo năm;
+ * - `NV0006` 314h năm → vượt mức năm;
+ * - `NV0004` và `NV0009` còn trong ngưỡng an toàn.
+ */
+export const BAN_TANG_CA_MAU: BanTangCaNhanVien[] = [
+  {
+    ma_nv: "NV0003",
+    gio_luy_ke_nam: 180,
+    dong: [
+      { id: "DO101", loai: "ngay_thuong_ngay", so_gio: 30 },
+      { id: "DO102", loai: "chu_nhat_ngay", so_gio: 14 },
+    ],
+  },
+  {
+    ma_nv: "NV0004",
+    gio_luy_ke_nam: 60,
+    dong: [{ id: "DO111", loai: "ngay_thuong_ngay", so_gio: 16 }],
+  },
+  {
+    ma_nv: "NV0006",
+    gio_luy_ke_nam: 280,
+    dong: [
+      { id: "DO121", loai: "ngay_thuong_ngay", so_gio: 20 },
+      { id: "DO122", loai: "ngay_thuong_dem", so_gio: 6 },
+      { id: "DO123", loai: "ngay_le_ngay", so_gio: 8 },
+    ],
+  },
+  {
+    ma_nv: "NV0009",
+    gio_luy_ke_nam: 24,
+    dong: [{ id: "DO131", loai: "ngay_thuong_ngay", so_gio: 8 }],
+  },
+];
+
+/**
+ * Danh mục sản phẩm nghiệm thu — mỗi dòng một đơn vị tính khác nhau để thấy hậu
+ * tố sau ô "Số lượng" đổi theo sản phẩm. `SP06` ngừng dùng: sản phẩm ngừng không
+ * hiện ở ô chọn nhưng bảng cũ đã dùng nó vẫn đọc được tên.
+ */
+export const SAN_PHAM_MAU: SanPham[] = [
+  { ma_sp: "SP01", ten_sp: "Áo sơ mi thành phẩm", don_vi: "cái", don_gia: 25000, ghi_chu: "Đã qua KCS", status: "1" },
+  { ma_sp: "SP02", ten_sp: "Quần âu thành phẩm", don_vi: "cái", don_gia: 32000, ghi_chu: "Đã qua KCS", status: "1" },
+  { ma_sp: "SP03", ten_sp: "Kiện hàng đóng gói", don_vi: "kiện", don_gia: 8000, ghi_chu: "", status: "1" },
+  { ma_sp: "SP04", ten_sp: "Đơn giao thành công", don_vi: "đơn", don_gia: 15000, ghi_chu: "Không tính đơn hoàn", status: "1" },
+  { ma_sp: "SP05", ten_sp: "Bán thành phẩm cắt", don_vi: "bộ", don_gia: 12000, ghi_chu: "", status: "1" },
+  { ma_sp: "SP06", ten_sp: "Hàng mẫu chào giá", don_vi: "cái", don_gia: 40000, ghi_chu: "Đơn giá cũ, đã ngừng nghiệm thu", status: "0" },
+];
+
+/** Bảng lương sản phẩm đang soạn — hai dòng đủ để thấy cột "Thành tiền" nhân ra. */
+export const MAU_LUONG_SAN_PHAM_MAU: DongLuongSanPham[] = [
+  { id: "DS001", ma_sp: "SP01", don_gia: 25000, so_luong: 180 },
+  { id: "DS002", ma_sp: "SP03", don_gia: 8000, so_luong: 64 },
+];
+
+/**
+ * Lương sản phẩm đã áp cho 4 trong 11 nhân viên đang làm.
+ *
+ * `NV0006` cố ý giữ đơn giá cũ 22.000 khác bảng giá hiện hành 25.000 — thử được
+ * trường hợp đơn giá chốt theo kỳ, không chạy theo danh mục.
+ */
+export const BAN_LUONG_SAN_PHAM_MAU: BanLuongSanPhamNhanVien[] = [
+  {
+    ma_nv: "NV0005",
+    dong: [
+      { id: "DS101", ma_sp: "SP01", don_gia: 25000, so_luong: 210 },
+      { id: "DS102", ma_sp: "SP02", don_gia: 32000, so_luong: 85 },
+    ],
+  },
+  {
+    ma_nv: "NV0006",
+    dong: [{ id: "DS111", ma_sp: "SP01", don_gia: 22000, so_luong: 195 }],
+  },
+  {
+    ma_nv: "NV0008",
+    dong: [
+      { id: "DS121", ma_sp: "SP03", don_gia: 8000, so_luong: 120 },
+      { id: "DS122", ma_sp: "SP04", don_gia: 15000, so_luong: 76 },
+    ],
+  },
+  {
+    ma_nv: "NV0010",
+    dong: [{ id: "DS131", ma_sp: "SP05", don_gia: 12000, so_luong: 140 }],
+  },
+];
+
+/** Bảng lương phần trăm đang soạn — hai tỷ lệ khác nhau trên hai gốc khác nhau. */
+export const MAU_LUONG_PHAN_TRAM_MAU: DongLuongPhanTram[] = [
+  { id: "DP001", ma_khoan: "KL12", ty_le: 3, so_tien_co_so: 450000000 },
+  { id: "DP002", ma_khoan: "KL18", ty_le: 5, so_tien_co_so: 120000000 },
+];
+
+/**
+ * Lương phần trăm đã áp cho 4 trong 11 nhân viên đang làm — toàn người khối kinh
+ * doanh, đúng nhóm ăn hoa hồng. `NV0006` giữ tỷ lệ 2,5% khác mặc định 3% để thử
+ * trường hợp tỷ lệ chốt theo kỳ, không chạy theo danh mục.
+ */
+export const BAN_LUONG_PHAN_TRAM_MAU: BanLuongPhanTramNhanVien[] = [
+  {
+    ma_nv: "NV0003",
+    dong: [
+      { id: "DP101", ma_khoan: "KL12", ty_le: 3, so_tien_co_so: 910000000 },
+      { id: "DP102", ma_khoan: "KL19", ty_le: 2, so_tien_co_so: 110000000 },
+    ],
+  },
+  {
+    ma_nv: "NV0004",
+    dong: [{ id: "DP111", ma_khoan: "KL12", ty_le: 3, so_tien_co_so: 430000000 }],
+  },
+  {
+    ma_nv: "NV0005",
+    dong: [
+      { id: "DP121", ma_khoan: "KL12", ty_le: 3, so_tien_co_so: 402000000 },
+      { id: "DP122", ma_khoan: "KL18", ty_le: 5, so_tien_co_so: 96000000 },
+    ],
+  },
+  {
+    ma_nv: "NV0006",
+    dong: [{ id: "DP131", ma_khoan: "KL12", ty_le: 2.5, so_tien_co_so: 180000000 }],
+  },
+];
+
+/**
+ * Danh mục lỗi chuyên cần — đủ cả ba cách trừ để thấy cột "Tổng trừ" ra số khác
+ * nhau. `CC06` ngừng dùng: lỗi chỉ nhắc nhở, không cắt tiền nữa.
+ */
+export const LOAI_CHUYEN_CAN_MAU: LoaiChuyenCan[] = [
+  { ma_cc: "CC01", ten_cc: "Đi trễ", cach_tru: "theo_gio", muc_tru: 50000, ghi_chu: "Tính tròn theo giờ đi trễ", status: "1" },
+  { ma_cc: "CC02", ten_cc: "Về sớm", cach_tru: "theo_gio", muc_tru: 50000, ghi_chu: "", status: "1" },
+  { ma_cc: "CC03", ten_cc: "Nghỉ không phép", cach_tru: "mat_toan_bo", muc_tru: 0, ghi_chu: "Nghỉ không phép một ngày là mất chuyên cần cả kỳ", status: "1" },
+  { ma_cc: "CC04", ten_cc: "Nghỉ có phép quá số ngày", cach_tru: "theo_lan", muc_tru: 100000, ghi_chu: "Từ ngày phép thứ ba trong kỳ", status: "1" },
+  { ma_cc: "CC05", ten_cc: "Quên chấm công", cach_tru: "theo_lan", muc_tru: 50000, ghi_chu: "Có đơn giải trình thì không trừ", status: "1" },
+  { ma_cc: "CC06", ten_cc: "Đi trễ dưới 15 phút", cach_tru: "theo_lan", muc_tru: 0, ghi_chu: "Chỉ nhắc nhở, đã ngừng áp dụng", status: "0" },
+];
+
+/** Bảng chuyên cần đang soạn — một lỗi tính theo giờ, một lỗi trừ trọn mức. */
+export const MAU_CHUYEN_CAN_MAU: DongChuyenCan[] = [
+  { id: "DC001", ma_cc: "CC01", so_gio: 1.5, ngay: "2026-08-04" },
+  { id: "DC002", ma_cc: "CC05", so_gio: 0, ngay: "2026-08-11" },
+];
+
+/**
+ * Chuyên cần đã áp cho 4 trong 11 nhân viên đang làm, cài sẵn đủ các trường hợp
+ * của cột "Thành tiền":
+ * - `NV0003` trừ một phần (đi trễ + quên chấm công);
+ * - `NV0004` dính lỗi mất toàn bộ → còn 0 đ;
+ * - `NV0006` bảng **rỗng** — đã chốt kỳ, không vi phạm gì nên nhận đủ;
+ * - `NV0008` chưa set lương nên đơn giá rơi về mức của Cấu trúc lương.
+ */
+export const BAN_CHUYEN_CAN_MAU: BanChuyenCanNhanVien[] = [
+  {
+    ma_nv: "NV0003",
+    dong: [
+      { id: "DC101", ma_cc: "CC01", so_gio: 2.5, ngay: "2026-08-05" },
+      { id: "DC102", ma_cc: "CC05", so_gio: 0, ngay: "2026-08-12" },
+    ],
+  },
+  {
+    ma_nv: "NV0004",
+    dong: [{ id: "DC111", ma_cc: "CC03", so_gio: 8, ngay: "2026-08-07" }],
+  },
+  { ma_nv: "NV0006", dong: [] },
+  {
+    ma_nv: "NV0008",
+    dong: [{ id: "DC131", ma_cc: "CC01", so_gio: 1, ngay: "2026-08-03" }],
+  },
+];
+
+/**
+ * Danh mục khoản ứng - bù trừ — có cả hai chiều để thấy cột "Tổng bị trừ" đảo
+ * dấu được. `BT07` ngừng dùng: công ty đã bỏ khoản trừ đồng phục.
+ */
+export const KHOAN_BU_TRU_MAU: KhoanBuTru[] = [
+  { ma_bt: "BT01", ten_bt: "Tạm ứng lương", chieu: "tru", ghi_chu: "Ứng trong kỳ, trừ vào lương cuối kỳ", status: "1" },
+  { ma_bt: "BT02", ten_bt: "Thu hồi tạm ứng kỳ trước", chieu: "tru", ghi_chu: "Phần ứng còn nợ của kỳ trước", status: "1" },
+  { ma_bt: "BT03", ten_bt: "Trừ tiền cơm", chieu: "tru", ghi_chu: "Theo số suất đã đăng ký", status: "1" },
+  { ma_bt: "BT04", ten_bt: "Phạt vi phạm nội quy", chieu: "tru", ghi_chu: "Theo quyết định xử lý", status: "1" },
+  { ma_bt: "BT05", ten_bt: "Truy lĩnh lương kỳ trước", chieu: "bu", ghi_chu: "Trả bù phần tính thiếu", status: "1" },
+  { ma_bt: "BT06", ten_bt: "Bù chênh lệch bảo hiểm", chieu: "bu", ghi_chu: "Hoàn phần đã trừ thừa", status: "1" },
+  { ma_bt: "BT07", ten_bt: "Trừ tiền đồng phục", chieu: "tru", ghi_chu: "Đã bỏ từ kỳ 07/2026", status: "0" },
+];
+
+/** Bảng ứng - bù trừ đang soạn — hai khoản khấu trừ hay gặp nhất. */
+export const MAU_BU_TRU_MAU: DongBuTru[] = [
+  { id: "DB001", ma_bt: "BT01", so_tien: 2000000 },
+  { id: "DB002", ma_bt: "BT03", so_tien: 300000 },
+];
+
+/**
+ * Ứng - bù trừ đã áp cho 4 trong 11 nhân viên đang làm, cài sẵn đủ ba dấu của
+ * cột "Tổng bị trừ": `NV0003` bị trừ nhiều, `NV0004` trừ có bù một phần,
+ * `NV0005` **được nhận thêm** (chỉ có khoản bù), `NV0009` chỉ bị phạt.
+ */
+export const BAN_BU_TRU_MAU: BanBuTruNhanVien[] = [
+  {
+    ma_nv: "NV0003",
+    dong: [
+      { id: "DB101", ma_bt: "BT01", so_tien: 3000000 },
+      { id: "DB102", ma_bt: "BT03", so_tien: 300000 },
+    ],
+  },
+  {
+    ma_nv: "NV0004",
+    dong: [
+      { id: "DB111", ma_bt: "BT02", so_tien: 1500000 },
+      { id: "DB112", ma_bt: "BT05", so_tien: 800000 },
+    ],
+  },
+  {
+    ma_nv: "NV0005",
+    dong: [{ id: "DB121", ma_bt: "BT06", so_tien: 1200000 }],
+  },
+  {
+    ma_nv: "NV0009",
+    dong: [{ id: "DB131", ma_bt: "BT04", so_tien: 500000 }],
   },
 ];

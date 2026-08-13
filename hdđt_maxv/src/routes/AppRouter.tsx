@@ -19,7 +19,13 @@ import DanhMucKhoanLuongPage from "../pages/hrm/DanhMucKhoanLuongPage";
 import SetLuongPage from "../pages/hrm/SetLuongPage";
 import DuLieuLuongPage from "../pages/hrm/DuLieuLuongPage";
 import ChamCongPage from "../pages/hrm/ChamCongPage";
-import DuLieuLuongChuaDungPage from "../pages/hrm/DuLieuLuongChuaDungPage";
+import TangCaPage from "../pages/hrm/TangCaPage";
+import KpiPage from "../pages/hrm/KpiPage";
+import ThuongPage from "../pages/hrm/ThuongPage";
+import LuongSanPhamPage from "../pages/hrm/LuongSanPhamPage";
+import LuongPhanTramPage from "../pages/hrm/LuongPhanTramPage";
+import LuongChuyenCanPage from "../pages/hrm/LuongChuyenCanPage";
+import UngBuTruPage from "../pages/hrm/UngBuTruPage";
 import ProtectedRoute from "./ProtectedRoute";
 import ModuleRoute from "./ModuleRoute";
 import FullScreenLoader from "../components/FullScreenLoader";
@@ -117,14 +123,13 @@ export default function AppRouter() {
             <Route path="du-lieu-luong" element={<DuLieuLuongPage />}>
               <Route index element={<Navigate to="cham-cong" replace />} />
               <Route path="cham-cong" element={<ChamCongPage />} />
-              {/* Bảy màn hình còn lại chưa có mô tả nội dung — dùng chung chỗ giữ. */}
-              <Route path="tang-ca" element={<DuLieuLuongChuaDungPage />} />
-              <Route path="kpi" element={<DuLieuLuongChuaDungPage />} />
-              <Route path="thuong" element={<DuLieuLuongChuaDungPage />} />
-              <Route path="luong-san-pham" element={<DuLieuLuongChuaDungPage />} />
-              <Route path="luong-phan-tram" element={<DuLieuLuongChuaDungPage />} />
-              <Route path="luong-chuyen-can" element={<DuLieuLuongChuaDungPage />} />
-              <Route path="ung-bu-tru" element={<DuLieuLuongChuaDungPage />} />
+              <Route path="tang-ca" element={<TangCaPage />} />
+              <Route path="kpi" element={<KpiPage />} />
+              <Route path="thuong" element={<ThuongPage />} />
+              <Route path="luong-san-pham" element={<LuongSanPhamPage />} />
+              <Route path="luong-phan-tram" element={<LuongPhanTramPage />} />
+              <Route path="luong-chuyen-can" element={<LuongChuyenCanPage />} />
+              <Route path="ung-bu-tru" element={<UngBuTruPage />} />
             </Route>
           </Route>
           {/* Bắt mọi path không khớp, tránh màn hình trắng khi gõ sai URL */}

@@ -7,6 +7,8 @@
  */
 
 import type {
+  CachTruChuyenCan,
+  ChieuBuTru,
   ChinhSachNgay,
   GioiTinh,
   KieuLuong,
@@ -15,6 +17,8 @@ import type {
   LoaiKhoanLuong,
   LoaiNgayLe,
   LoaiTaiLieu,
+  LoaiTangCa,
+  PhamViApDung,
   PhanLoaiThue,
   TieuThucTinh,
   PhuongPhapNgayCong,
@@ -325,6 +329,90 @@ export const COT_THONG_KE_CONG: LoaiCong[] = [
   "khong_luong",
   "khac",
 ];
+
+/**
+ * Ba phạm vi áp bảng, dùng chung cho các màn hình của khu "Dữ liệu tính lương".
+ *
+ * `moTa` giải thích bảng đang soạn sẽ áp cho ai — một lần bấm "Áp dụng" là ghi
+ * đè bảng của cả danh sách, nên phải nói trước.
+ */
+export const PHAM_VI_AP_DUNG: (LuaChon<PhamViApDung> & { moTa: string })[] = [
+  {
+    value: "nhan_vien",
+    label: "Nhân viên",
+    moTa: "Áp cho những nhân viên đang lọc ra ở danh sách bên dưới.",
+  },
+  {
+    value: "phong_ban",
+    label: "Phòng ban",
+    moTa: "Áp cho toàn bộ nhân viên đang làm của phòng ban đã chọn.",
+  },
+  {
+    value: "toan_cong_ty",
+    label: "Toàn công ty",
+    moTa: "Áp cho toàn bộ nhân viên đang làm — bỏ qua bộ lọc phòng ban và loại HĐ.",
+  },
+];
+
+/**
+ * Sáu loại giờ tăng ca, kèm tên trường hệ số tương ứng ở Cấu hình mặc định.
+ *
+ * `truong` liệt kê thẳng sáu khóa thay vì `keyof CauHinhMacDinh`: kiểu hẹp lại
+ * như vậy thì `cauHinh[truong]` chắc chắn là số, không lỡ trỏ vào `bac_thue`.
+ */
+export interface MoTaLoaiTangCa {
+  value: LoaiTangCa;
+  label: string;
+  truong:
+    | "tc_ngay_thuong_ngay"
+    | "tc_ngay_thuong_dem"
+    | "tc_chu_nhat_ngay"
+    | "tc_chu_nhat_dem"
+    | "tc_ngay_le_ngay"
+    | "tc_ngay_le_dem";
+}
+
+export const LOAI_TANG_CA: MoTaLoaiTangCa[] = [
+  { value: "ngay_thuong_ngay", label: "Ngày thường — ban ngày", truong: "tc_ngay_thuong_ngay" },
+  { value: "ngay_thuong_dem", label: "Ngày thường — ban đêm", truong: "tc_ngay_thuong_dem" },
+  { value: "chu_nhat_ngay", label: "Chủ nhật — ban ngày", truong: "tc_chu_nhat_ngay" },
+  { value: "chu_nhat_dem", label: "Chủ nhật — ban đêm", truong: "tc_chu_nhat_dem" },
+  { value: "ngay_le_ngay", label: "Ngày lễ — ban ngày", truong: "tc_ngay_le_ngay" },
+  { value: "ngay_le_dem", label: "Ngày lễ — ban đêm", truong: "tc_ngay_le_dem" },
+];
+
+export function moTaLoaiTangCa(loai: LoaiTangCa): MoTaLoaiTangCa {
+  // Loại lạ (dữ liệu cũ, hoặc mã gõ tay) vẫn phải render được — rơi về loại đầu.
+  return LOAI_TANG_CA.find((item) => item.value === loai) ?? LOAI_TANG_CA[0]!;
+}
+
+/**
+ * Ba cách trừ chuyên cần.
+ *
+ * `donVi` là hậu tố của ô "Mức trừ" trong dialog quản lý — rỗng nghĩa là loại đó
+ * không dùng tới mức trừ, dialog ẩn luôn ô đi.
+ */
+export const CACH_TRU_CHUYEN_CAN: (LuaChon<CachTruChuyenCan> & { donVi: string })[] = [
+  { value: "theo_gio", label: "Trừ theo giờ", donVi: "₫/giờ" },
+  { value: "theo_lan", label: "Trừ trọn mức mỗi lần", donVi: "₫/lần" },
+  { value: "mat_toan_bo", label: "Mất toàn bộ chuyên cần", donVi: "" },
+];
+
+export function moTaCachTru(cach: CachTruChuyenCan) {
+  // Cách lạ (dữ liệu cũ, hoặc mã gõ tay) vẫn phải render được — rơi về cách đầu.
+  return CACH_TRU_CHUYEN_CAN.find((item) => item.value === cach) ?? CACH_TRU_CHUYEN_CAN[0]!;
+}
+
+/** Hai chiều của khoản ứng - bù trừ, kèm màu dùng ở chip và cột tiền. */
+export const CHIEU_BU_TRU: (LuaChon<ChieuBuTru> & { mau: "error" | "success" })[] = [
+  { value: "tru", label: "Trừ vào lương", mau: "error" },
+  { value: "bu", label: "Bù thêm vào lương", mau: "success" },
+];
+
+export function moTaChieuBuTru(chieu: ChieuBuTru) {
+  // Chiều lạ (dữ liệu cũ, hoặc mã gõ tay) vẫn phải render được — rơi về "trừ".
+  return CHIEU_BU_TRU.find((item) => item.value === chieu) ?? CHIEU_BU_TRU[0]!;
+}
 
 export const LOAI_NGAY_LE: LuaChon<LoaiNgayLe>[] = [
   { value: "le_duong_lich", label: "Lễ theo dương lịch" },
