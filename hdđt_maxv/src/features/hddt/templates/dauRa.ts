@@ -30,22 +30,17 @@ import {
   type InvoiceColumn,
 } from "./types";
 
-/**
- * Bảng "Tổng quát" đầu ra — 25 cột trên web, 23 cột trong file Excel.
- * Bên đối tác ở chiều này là NGƯỜI MUA (khách hàng) — bên bán vốn đã là công ty đang chọn nên lặp
- * y hệt ở mọi dòng; vẫn giữ hai cột người bán vì mẫu Excel của kế toán có.
- *
- * HAI CỘT ĐẦU LÀ `webOnly` (không ra file Excel) vì chúng là công cụ của màn hình chứ không phải
- * dữ liệu hóa đơn — nhờ vậy sheet Excel khớp đúng danh sách cột nghiệp vụ:
- *  - "Chọn": checkbox cần state nên `InvoiceListTabs` tự render; bỏ cột này là mất luôn nút
- *    "Xem hóa đơn" (nút bật/tắt theo dòng đang chọn).
- *  - "T. thái tải": đèn báo tiến độ tải chi tiết, điền dần trong lúc lượt "Cập nhật"/"Tải chi tiết"
- *    chạy nền — người dùng nhìn cột này để biết hóa đơn nào đã có chi tiết.
- */
 export function overviewDauRa(): InvoiceColumn<DisplayRow>[] {
   return [
     { key: "stt", header: "STT", width: 8, value: (_r, stt) => stt },
-    { key: "chon", header: "Chọn", width: 6, align: "center", webOnly: true, value: () => undefined },
+    {
+      key: "chon",
+      header: "Chọn",
+      width: 6,
+      align: "center",
+      webOnly: true,
+      value: () => undefined,
+    },
     {
       key: "ttTai",
       header: "T. thái tải",
@@ -55,9 +50,24 @@ export function overviewDauRa(): InvoiceColumn<DisplayRow>[] {
       value: (r) => ttTaiLabel(r.ttTai),
       cell: (r) => ttTaiCell(r.ttTai),
     },
-    { key: "mauHd", header: "Ký hiệu mẫu số", width: 14, value: (r) => numericText(r.mauHd) },
-    { key: "soSeri", header: "Ký hiệu hóa đơn", width: 16, value: (r) => r.soSeri },
-    { key: "soHd", header: "Số hóa đơn", width: 12, value: (r) => numericText(r.soHd) },
+    {
+      key: "mauHd",
+      header: "Ký hiệu mẫu số",
+      width: 14,
+      value: (r) => numericText(r.mauHd),
+    },
+    {
+      key: "soSeri",
+      header: "Ký hiệu hóa đơn",
+      width: 16,
+      value: (r) => r.soSeri,
+    },
+    {
+      key: "soHd",
+      header: "Số hóa đơn",
+      width: 12,
+      value: (r) => numericText(r.soHd),
+    },
     {
       key: "ngayLap",
       header: "Ngày lập",
@@ -65,18 +75,7 @@ export function overviewDauRa(): InvoiceColumn<DisplayRow>[] {
       excelText: true,
       value: (r) => formatDateVN(r.ngayLap),
     },
-    {
-      key: "sellerMst",
-      header: "MST người bán/MST người xuất hàng",
-      width: 28,
-      value: (r) => r.sellerMst,
-    },
-    {
-      key: "sellerTen",
-      header: "Tên người bán/Tên người xuất hàng",
-      width: 34,
-      value: (r) => r.sellerTen,
-    },
+
     {
       key: "buyerMst",
       header: "MST người mua/MST người nhận hàng",
@@ -89,11 +88,7 @@ export function overviewDauRa(): InvoiceColumn<DisplayRow>[] {
       width: 44,
       value: (r) => r.buyerTen,
     },
-    { key: "buyerDiaChi", header: "Địa chỉ người mua", width: 34, value: (r) => r.buyerDiaChi },
     {
-      // Mỗi dòng ở bảng này là MỘT HÓA ĐƠN, nên chỉ hiện được mặt hàng ĐẦU TIÊN của hóa đơn — hóa
-      // đơn nhiều dòng hàng phải xem bảng "Chi tiết hóa đơn" mới đủ. Hóa đơn chưa tải chi tiết
-      // (nguồn của cột này) để trống.
       key: "tenHang",
       header: "Tên hàng hóa, dịch vụ",
       width: 34,
@@ -151,6 +146,21 @@ export function overviewDauRa(): InvoiceColumn<DisplayRow>[] {
       numFmt: RATE_FMT,
       value: (r) => r.tyGia,
     },
+
+    // Hai cột ghi chú khép lại bảng, ĐÚNG THỨ TỰ và cùng nội dung với bảng "Chi tiết hóa đơn".
+    {
+      key: "ghiChuLienQuan",
+      header:
+        "Ghi chú: Hóa đơn thay thế, điều chỉnh, bị thay thế, bị điều chỉnh",
+      width: 30,
+      value: (r) => r.ghiChuLienQuan || undefined,
+    },
+    {
+      key: "ghiChuDacBiet",
+      header: "Ghi Chú: Các trường hợp đặc biệt kế toán xem xét kỹ hơn",
+      width: 30,
+      value: (r) => ghiChuDacBiet(r),
+    },
     {
       key: "trangThaiHd",
       header: "Trạng thái hóa đơn",
@@ -166,35 +176,40 @@ export function overviewDauRa(): InvoiceColumn<DisplayRow>[] {
       value: (r) => ketQuaKiemTraLabel(r.ketQuaKt),
     },
     {
-      // Tên CHUNG của 3 file (.xml/.html/.pdf) mà nút "Xuất file tổng hợp và hóa đơn" ghi ra —
-      // suy từ chính hàm đặt tên của lượt xuất nên luôn khớp tên file thật trên đĩa.
-      // `stt` truyền vào chính là vị trí dòng trong bảng này — cũng là số mở đầu tên file.
       key: "tenFile",
       header: "Tên file xuất hóa đơn (XML/HTML/PDF)",
       width: 36,
       value: (r, stt) => invoiceFileBase(stt, r.ngayLap, r.soHd, r.sellerMst),
     },
-    // Hai cột ghi chú khép lại bảng, ĐÚNG THỨ TỰ và cùng nội dung với bảng "Chi tiết hóa đơn".
     {
-      key: "ghiChuLienQuan",
-      header: "Ghi chú: Hóa đơn thay thế, điều chỉnh, bị thay thế, bị điều chỉnh",
-      width: 30,
-      value: (r) => r.ghiChuLienQuan || undefined,
-    },
-    {
-      key: "ghiChuDacBiet",
-      header: "Ghi Chú: Các trường hợp đặc biệt kế toán xem xét kỹ hơn",
-      width: 30,
-      value: (r) => ghiChuDacBiet(r),
+      key: "buyerDiaChi",
+      header: "Địa chỉ người mua",
+      width: 34,
+      value: (r) => r.buyerDiaChi,
     },
   ];
 }
 
 export function detailDauRa(): InvoiceColumn<DetailRow>[] {
   return [
-    { key: "mauHd", header: "Mẫu số HD", width: 6, value: (r) => numericText(r.mauHd) },
-    { key: "kyHieu", header: "Ký hiệu hóa đơn", width: 10, value: (r) => r.kyHieu },
-    { key: "soHd", header: "Số hóa đơn", width: 10, value: (r) => numericText(r.soHd) },
+    {
+      key: "mauHd",
+      header: "Mẫu số HD",
+      width: 6,
+      value: (r) => numericText(r.mauHd),
+    },
+    {
+      key: "kyHieu",
+      header: "Ký hiệu hóa đơn",
+      width: 10,
+      value: (r) => r.kyHieu,
+    },
+    {
+      key: "soHd",
+      header: "Số hóa đơn",
+      width: 10,
+      value: (r) => numericText(r.soHd),
+    },
     {
       key: "ngayHd",
       header: "Ngày lập hóa đơn",
@@ -209,14 +224,25 @@ export function detailDauRa(): InvoiceColumn<DetailRow>[] {
       excelText: true,
       value: (r) => formatDateVN(r.ngayKy) || undefined,
     },
-    { key: "sellerTen", header: "Tên người bán", width: 30, value: (r) => r.sellerTen },
-    { key: "sellerMst", header: "MST người bán", width: 16, value: (r) => r.sellerMst },
-    { key: "sellerDiaChi", header: "Địa chỉ người bán", width: 30, value: (r) => r.sellerDiaChi },
-    { key: "buyerTen", header: "Tên người mua", width: 30, value: (r) => r.buyerTen },
-    { key: "buyerMst", header: "MST người mua", width: 16, value: (r) => r.buyerMst },
-    { key: "buyerDiaChi", header: "Địa chỉ người mua", width: 30, value: (r) => r.buyerDiaChi },
+    {
+      key: "buyerMst",
+      header: "MST người mua",
+      width: 16,
+      value: (r) => r.buyerMst,
+    },
+    {
+      key: "buyerTen",
+      header: "Tên người mua",
+      width: 30,
+      value: (r) => r.buyerTen,
+    },
     { key: "maVt", header: "Mã VT", width: 12, value: (r) => r.maVt },
-    { key: "tenHang", header: "Tên hàng hóa, dịch vụ", width: 30, value: (r) => r.tenHang },
+    {
+      key: "tenHang",
+      header: "Tên hàng hóa, dịch vụ",
+      width: 30,
+      value: (r) => r.tenHang,
+    },
     { key: "dvt", header: "Đơn vị tính", width: 12, value: (r) => r.dvt },
     {
       key: "soLuong",
@@ -243,7 +269,13 @@ export function detailDauRa(): InvoiceColumn<DetailRow>[] {
       numFmt: NUM_FMT,
       value: (r) => r.tlCktm,
     },
-    { key: "thueSuat", header: "Thuế suất", width: 14, align: "center", value: (r) => r.thueSuat },
+    {
+      key: "thueSuat",
+      header: "Thuế suất",
+      width: 14,
+      align: "center",
+      value: (r) => r.thueSuat,
+    },
     {
       key: "tienChuaThue",
       total: true,
@@ -342,18 +374,21 @@ export function detailDauRa(): InvoiceColumn<DetailRow>[] {
       numFmt: MONEY2_FMT,
       value: (r) => (r.isFirstRow ? toVnd(r.tongTt, r.tyGia) : undefined),
     },
+
+    { key: "maNt", header: "Đơn vị tiền tệ", width: 12, value: (r) => r.maNt },
     {
-      // Cùng hàm đặt tên với lượt xuất file -> tên ở đây là tên file có thật trên đĩa.
-      // Dùng `r.stt` (số thứ tự HÓA ĐƠN) chứ KHÔNG dùng `stt` truyền vào: ở bảng này `stt` là số
-      // thứ tự DÒNG HÀNG, một hóa đơn nhiều dòng sẽ ra nhiều tên file khác nhau.
-      key: "tenFile",
-      header: "Tên file hóa đơn (XML/HTML/PDF)",
-      width: 30,
-      value: (r) => invoiceFileBase(r.stt, r.ngayHd, r.soHd, r.sellerMst),
+      key: "tyGia",
+      header: "Tỷ giá",
+      width: 12,
+      align: "right",
+      numFmt: RATE_FMT,
+      value: (r) => r.tyGia,
     },
+
     {
       key: "ghiChuLienQuan",
-      header: "Ghi chú: Hóa đơn thay thế, điều chỉnh, bị thay thế, bị điều chỉnh",
+      header:
+        "Ghi chú: Hóa đơn thay thế, điều chỉnh, bị thay thế, bị điều chỉnh",
       width: 30,
       value: (r) => r.ghiChuLienQuan || undefined,
     },
@@ -364,7 +399,12 @@ export function detailDauRa(): InvoiceColumn<DetailRow>[] {
       value: (r) => ghiChuDacBiet(r),
     },
     { key: "ghiChu1", header: "Ghi chú 1", width: 12, value: (r) => r.ghiChu },
-    { key: "hinhThucTt", header: "Hình thức thanh toán", width: 12, value: (r) => r.hinhThucTt },
+    {
+      key: "hinhThucTt",
+      header: "Hình thức thanh toán",
+      width: 12,
+      value: (r) => r.hinhThucTt,
+    },
     {
       key: "tinhChat",
       header: "Tính chất",
@@ -385,9 +425,24 @@ export function detailDauRa(): InvoiceColumn<DetailRow>[] {
       align: "center",
       value: (r) => ketQuaKiemTraLabel(r.ketQuaKt),
     },
-    { key: "bienSoXe", header: "Biển số xe", width: 12, value: (r) => r.bienSoXe },
-    { key: "websiteNb", header: "Website người bán", width: 12, value: (r) => r.websiteNb },
-    { key: "msttcgp", header: "Nhà cung cấp hóa đơn gốc", width: 20, value: (r) => r.msttcgp },
+    {
+      key: "bienSoXe",
+      header: "Biển số xe",
+      width: 12,
+      value: (r) => r.bienSoXe,
+    },
+    {
+      key: "websiteNb",
+      header: "Website người bán",
+      width: 12,
+      value: (r) => r.websiteNb,
+    },
+    {
+      key: "msttcgp",
+      header: "Nhà cung cấp hóa đơn gốc",
+      width: 20,
+      value: (r) => r.msttcgp,
+    },
     {
       key: "urlTraCuu",
       header: "URL tra cứu hóa đơn gốc",
@@ -413,15 +468,7 @@ export function detailDauRa(): InvoiceColumn<DetailRow>[] {
             ? `${r.sellerTen} tra cứu hóa đơn điện tử`
             : undefined,
     },
-    { key: "maNt", header: "Đơn vị tiền tệ", width: 12, value: (r) => r.maNt },
-    {
-      key: "tyGia",
-      header: "Tỷ giá",
-      width: 12,
-      align: "right",
-      numFmt: RATE_FMT,
-      value: (r) => r.tyGia,
-    },
+
     {
       // Trùng "Mã tra cứu hóa đơn gốc"/"URL tra cứu" -> web hiện "—", mã đã có ở cột trước.
       // Sheet Excel vẫn ghi đủ (`value`): kế toán lọc/đối chiếu theo từng cột.
@@ -438,6 +485,19 @@ export function detailDauRa(): InvoiceColumn<DetailRow>[] {
       width: 12,
       excelText: true,
       value: (r) => formatDateVN(r.ngayCqtKy) || undefined,
+    },
+    {
+      key: "buyerDiaChi",
+      header: "Địa chỉ người mua",
+      width: 30,
+      value: (r) => r.buyerDiaChi,
+    },
+
+    {
+      key: "tenFile",
+      header: "Tên file hóa đơn (XML/HTML/PDF)",
+      width: 30,
+      value: (r) => invoiceFileBase(r.stt, r.ngayHd, r.soHd, r.sellerMst),
     },
   ];
 }
