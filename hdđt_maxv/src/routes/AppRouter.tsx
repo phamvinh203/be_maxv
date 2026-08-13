@@ -28,7 +28,7 @@ import LuongChuyenCanPage from "../pages/hrm/LuongChuyenCanPage";
 import UngBuTruPage from "../pages/hrm/UngBuTruPage";
 import BangLuongPage from "../pages/hrm/BangLuongPage";
 import BangLuongKyPage from "../pages/hrm/BangLuongKyPage";
-import BangLuongChuaDungPage from "../pages/hrm/BangLuongChuaDungPage";
+import LuongHoTroPage from "../pages/hrm/LuongHoTroPage";
 import ProtectedRoute from "./ProtectedRoute";
 import ModuleRoute from "./ModuleRoute";
 import FullScreenLoader from "../components/FullScreenLoader";
@@ -137,8 +137,7 @@ export default function AppRouter() {
             <Route path="bang-luong" element={<BangLuongPage />}>
               <Route index element={<Navigate to="bang-luong" replace />} />
               <Route path="bang-luong" element={<BangLuongKyPage />} />
-              {/* Chưa dựng — chỗ giữ đọc mô tả từ `bang_luong/tabs.ts`. */}
-              <Route path="luong-ho-tro" element={<BangLuongChuaDungPage />} />
+              <Route path="luong-ho-tro" element={<LuongHoTroPage />} />
             </Route>
           </Route>
           {/* Bắt mọi path không khớp, tránh màn hình trắng khi gõ sai URL */}

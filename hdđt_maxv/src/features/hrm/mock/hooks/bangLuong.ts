@@ -22,6 +22,7 @@ import { tongTienThuong } from "../../thuong";
 import type {
   BangLuongFilters,
   DongBangLuong,
+  DongLuongHoTro,
   HopDong,
   KhoanLuong,
   LoaiKhoanLuong,
@@ -206,6 +207,108 @@ export function useKyBangLuong(): { nam: number; thang: number; nhan: string } {
     () => ({ nam, thang, nhan: `Tháng ${String(thang).padStart(2, "0")}/${nam}` }),
     [nam, thang],
   );
+}
+
+/** Các khoản hỗ trợ đang dùng — mỗi khoản là một cột của tab "Lương hỗ trợ". */
+export function useKhoanHoTroList(): KhoanLuong[] {
+  const { state } = useHrmStore();
+  return useMemo(
+    () => state.khoanLuong.filter((kl) => kl.loai === "luong_ho_tro" && kl.status === "1"),
+    [state.khoanLuong],
+  );
+}
+
+/**
+ * Bóc tách phần lương hỗ trợ của kỳ hiện tại.
+ *
+ * Quy theo ngày công **đúng cách mà tab Bảng lương quy** (`tieu_thuc` của Cấu
+ * trúc lương): hai tab lệch nhau ở chỗ này thì tổng hỗ trợ ở đây sẽ không khớp
+ * phần hỗ trợ nằm trong cột "Thu nhập" bên kia, mà người dùng chắc chắn sẽ cộng
+ * thử.
+ */
+export function useLuongHoTroRows(
+  filters: BangLuongFilters,
+  nonce: number,
+): DongLuongHoTro[] {
+  const { state } = useHrmStore();
+  const { nam, thang } = thangHienTai();
+  const bangCong = useBangChamCong(nam, thang);
+  const khoanHoTro = useKhoanHoTroList();
+
+  return useMemo(() => {
+    const tenPbTheoMa = new Map(state.phongBan.map((pb) => [pb.ma_pb, pb.ten_pb]));
+    const setLuongTheoNv = new Map(state.setLuong.map((sl) => [sl.ma_nv, sl]));
+    const mucMacDinh = new Map(state.cauTrucLuong.dong.map((d) => [d.ma_khoan, d.so_tien]));
+    const tieuThucTheoKhoan = new Map(
+      state.cauTrucLuong.dong.map((d) => [d.ma_khoan, d.tieu_thuc]),
+    );
+    const congTheoNv = new Map(
+      bangCong.dong.map((d) => [d.nhanVien.ma_nv, d.thongKe.ngayCongThucTe]),
+    );
+
+    const hopDongTheoNv = new Map<string, HopDong[]>();
+    for (const hd of state.hopDong) {
+      const nhom = hopDongTheoNv.get(hd.ma_nv);
+      if (nhom) nhom.push(hd);
+      else hopDongTheoNv.set(hd.ma_nv, [hd]);
+    }
+
+    const moc = homNay();
+    const tuKhoa = filters.q.trim().toLowerCase();
+
+    return state.nhanVien
+      .filter((nv) => nv.status === "1")
+      .map((nv): DongLuongHoTro => {
+        const ban = setLuongTheoNv.get(nv.ma_nv);
+        const khoanCuaNv = ban ? new Map(Object.entries(ban.khoan)) : mucMacDinh;
+        const ngayCong = congTheoNv.get(nv.ma_nv) ?? 0;
+        const tyLeCong =
+          bangCong.ngayCongChuan > 0
+            ? Math.min(ngayCong / bangCong.ngayCongChuan, 1)
+            : 0;
+
+        const khoan: Record<string, number> = {};
+        let tong = 0;
+        let tongMucThang = 0;
+        for (const kl of khoanHoTro) {
+          const muc = khoanCuaNv.get(kl.ma_khoan) ?? 0;
+          const tieuThuc = tieuThucTheoKhoan.get(kl.ma_khoan);
+          const theoCong = tieuThuc === "theo_ngay_cong" || tieuThuc === "theo_gio_cong";
+          const soTien = Math.round(theoCong ? muc * tyLeCong : muc);
+          khoan[kl.ma_khoan] = soTien;
+          tong += soTien;
+          tongMucThang += muc;
+        }
+
+        const hd = hopDongHienHanh(hopDongTheoNv.get(nv.ma_nv) ?? [], moc);
+        return {
+          ma_nv: nv.ma_nv,
+          ho_ten: nv.ho_ten,
+          ten_pb: nv.ma_pb ? (tenPbTheoMa.get(nv.ma_pb) ?? nv.ma_pb) : "",
+          ten_cv: nv.ma_cv ? nhan(CHUC_VU, nv.ma_cv) : "",
+          loai_hd: hd?.loai_hd ?? null,
+          kieu_luong: hd?.kieu_luong ?? null,
+          ngay_cong: ngayCong,
+          ngay_cong_chuan: bangCong.ngayCongChuan,
+          khoan,
+          tong_muc_thang: tongMucThang,
+          tong,
+        };
+      })
+      .filter((row) => {
+        if (filters.ma_pb) {
+          const nv = state.nhanVien.find((item) => item.ma_nv === row.ma_nv);
+          if (nv?.ma_pb !== filters.ma_pb) return false;
+        }
+        if (filters.loai_hd && row.loai_hd !== filters.loai_hd) return false;
+        if (filters.kieu_luong && row.kieu_luong !== filters.kieu_luong) return false;
+        if (!tuKhoa) return true;
+        return [row.ma_nv, row.ho_ten].some((truong) => truong.toLowerCase().includes(tuKhoa));
+      })
+      .sort((a, b) => a.ma_nv.localeCompare(b.ma_nv));
+    // `nonce` cố ý nằm trong deps — xem ghi chú ở `useBangLuongRows`.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [state, bangCong, khoanHoTro, filters, nonce]);
 }
 
 /** Số nhân viên đang làm — mẫu số của dòng "tổng ... nhân viên". */

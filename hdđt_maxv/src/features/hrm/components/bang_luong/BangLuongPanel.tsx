@@ -6,11 +6,7 @@ import Stack from "@mui/material/Stack";
 import Typography from "@mui/material/Typography";
 import TextField from "@mui/material/TextField";
 import MenuItem from "@mui/material/MenuItem";
-import InputAdornment from "@mui/material/InputAdornment";
 import Button from "@mui/material/Button";
-import Divider from "@mui/material/Divider";
-import Chip from "@mui/material/Chip";
-import SearchRounded from "@mui/icons-material/SearchRounded";
 import FileDownloadRounded from "@mui/icons-material/FileDownloadRounded";
 import CalculateRounded from "@mui/icons-material/CalculateRounded";
 import SavingsRounded from "@mui/icons-material/SavingsRounded";
@@ -19,23 +15,15 @@ import ReceiptLongRounded from "@mui/icons-material/ReceiptLongRounded";
 import { alpha } from "@mui/material/styles";
 import { getErrorMessage } from "../../../../lib/errors";
 import { CHE_DO_HIEN_THI, tongBangLuong } from "../../bangLuong";
-import { sapXepCay } from "../../cay";
-import { KIEU_LUONG, LOAI_HD } from "../../constants";
 import { tienVn } from "../../format";
 import {
   useBangLuongRows,
   useKyBangLuong,
   useSoNhanVienDangLam,
 } from "../../mock/hooks/bangLuong";
-import { usePhongBanList } from "../../mock/hooks/phongBan";
-import type {
-  BangLuongFilters,
-  CheDoHienThi,
-  KieuLuong,
-  LoaiHopDong,
-  MucChiTiet,
-} from "../../types";
+import type { BangLuongFilters, CheDoHienThi, MucChiTiet } from "../../types";
 import BangLuongTable from "./BangLuongTable";
+import ThanhLocBangLuong from "./ThanhLocBangLuong";
 import { xuatBangLuongExcel } from "./bangLuongExcel";
 
 const MUC_CHI_TIET: { value: MucChiTiet; label: string }[] = [
@@ -101,7 +89,6 @@ function TheThongKe({ nhan, gia_tri, mau, icon, moTa }: ThongKeProps) {
 export default function BangLuongPanel() {
   const ky = useKyBangLuong();
   const soNhanVien = useSoNhanVienDangLam();
-  const phongBan = usePhongBanList();
 
   const [filters, setFilters] = useState<BangLuongFilters>({
     q: "",
@@ -117,10 +104,6 @@ export default function BangLuongPanel() {
 
   const rows = useBangLuongRows(filters, nonce);
   const tong = useMemo(() => tongBangLuong(rows), [rows]);
-  const cayPhongBan = useMemo(() => sapXepCay(phongBan), [phongBan]);
-
-  const dat = <K extends keyof BangLuongFilters>(khoa: K, giaTri: BangLuongFilters[K]) =>
-    setFilters((cu) => ({ ...cu, [khoa]: giaTri }));
 
   const handleTinhLai = () => {
     setNonce((cu) => cu + 1);
@@ -224,91 +207,12 @@ export default function BangLuongPanel() {
         </Stack>
       </Stack>
 
-      <Paper variant="outlined" sx={{ p: 2 }}>
-        <Stack
-          direction={{ xs: "column", lg: "row" }}
-          spacing={1.5}
-          sx={{ alignItems: { lg: "center" }, justifyContent: "space-between" }}
-        >
-          <Stack direction={{ xs: "column", md: "row" }} spacing={1.5}>
-            <TextField
-              size="small"
-              placeholder="Tìm mã/tên nhân viên"
-              value={filters.q}
-              onChange={(e) => dat("q", e.target.value)}
-              sx={{ width: { xs: "100%", md: 240 } }}
-              slotProps={{
-                input: {
-                  startAdornment: (
-                    <InputAdornment position="start">
-                      <SearchRounded fontSize="small" />
-                    </InputAdornment>
-                  ),
-                },
-              }}
-            />
-            <TextField
-              select
-              size="small"
-              label="Phòng ban"
-              value={filters.ma_pb}
-              onChange={(e) => dat("ma_pb", e.target.value)}
-              sx={{ minWidth: 200 }}
-            >
-              <MenuItem value="">Tất cả phòng ban</MenuItem>
-              <Divider />
-              {cayPhongBan.map((pb) => (
-                <MenuItem key={pb.ma_pb} value={pb.ma_pb}>
-                  {" ".repeat((pb.cap - 1) * 4)}
-                  {pb.ten_pb}
-                </MenuItem>
-              ))}
-            </TextField>
-            <TextField
-              select
-              size="small"
-              label="Hợp đồng"
-              value={filters.loai_hd}
-              onChange={(e) => dat("loai_hd", e.target.value as LoaiHopDong | "")}
-              sx={{ minWidth: 200 }}
-            >
-              <MenuItem value="">Tất cả hợp đồng</MenuItem>
-              {LOAI_HD.map((item) => (
-                <MenuItem key={item.value} value={item.value}>
-                  {item.label}
-                </MenuItem>
-              ))}
-            </TextField>
-            <TextField
-              select
-              size="small"
-              label="Kiểu lương"
-              value={filters.kieu_luong}
-              onChange={(e) => dat("kieu_luong", e.target.value as KieuLuong | "")}
-              sx={{ minWidth: 190 }}
-            >
-              <MenuItem value="">Tất cả kiểu lương</MenuItem>
-              {KIEU_LUONG.map((item) => (
-                <MenuItem key={item.value} value={item.value}>
-                  {item.value}
-                </MenuItem>
-              ))}
-            </TextField>
-          </Stack>
-
-          <Chip
-            size="small"
-            color="primary"
-            variant="outlined"
-            label={
-              rows.length === soNhanVien
-                ? `Tổng ${soNhanVien} nhân viên`
-                : `${rows.length} / tổng ${soNhanVien} nhân viên`
-            }
-            sx={{ fontWeight: 600 }}
-          />
-        </Stack>
-      </Paper>
+      <ThanhLocBangLuong
+        filters={filters}
+        onFilters={setFilters}
+        soHienThi={rows.length}
+        soTong={soNhanVien}
+      />
 
       <BangLuongTable rows={rows} cheDo={cheDo} rutGon={mucChiTiet === "rut_gon"} />
 
