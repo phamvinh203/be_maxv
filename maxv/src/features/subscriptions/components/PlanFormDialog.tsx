@@ -1,16 +1,25 @@
 import { useState, type JSX } from 'react';
 import {
   Alert,
+  Box,
   Button,
+  Checkbox,
   Dialog,
   DialogActions,
   DialogContent,
   DialogTitle,
+  Divider,
   FormControlLabel,
   Stack,
   Switch,
   TextField,
+  Typography,
 } from '@mui/material';
+import {
+  MODULE_KEYS,
+  MODULE_META,
+  type UserModules,
+} from '@/features/owners/modules';
 import {
   useCreatePlan,
   useUpdatePlan,
@@ -43,6 +52,9 @@ export function PlanFormDialog({ open, plan, onClose }: Props): JSX.Element {
     plan?.soNguoiToiDa != null ? String(plan.soNguoiToiDa) : '',
   );
   const [isActive, setIsActive] = useState(plan?.isActive ?? true);
+  const [features, setFeatures] = useState<Partial<UserModules>>(
+    plan?.features ?? {},
+  );
 
   function handleSubmit(): void {
     const soMst = soMstToiDa.trim() === '' ? null : Number(soMstToiDa);
@@ -58,6 +70,7 @@ export function PlanFormDialog({ open, plan, onClose }: Props): JSX.Element {
             soMstToiDa: soMst,
             soNguoiToiDa: soNguoi,
             isActive,
+            features,
           },
         },
         { onSuccess: onClose },
@@ -72,6 +85,7 @@ export function PlanFormDialog({ open, plan, onClose }: Props): JSX.Element {
           soMstToiDa: soMst,
           soNguoiToiDa: soNguoi,
           isActive,
+          features,
         },
         { onSuccess: onClose },
       );
@@ -138,6 +152,40 @@ export function PlanFormDialog({ open, plan, onClose }: Props): JSX.Element {
             }
             label="Đang bán"
           />
+
+          <Divider />
+
+          <Box>
+            <Typography sx={{ fontWeight: 600 }}>Module kèm theo gói</Typography>
+            <Typography sx={{ fontSize: 13, color: 'text.secondary', mb: 1 }}>
+              Tài khoản dùng gói này sẽ thấy các module được tick. Gói dùng thử
+              nên để trống.
+            </Typography>
+            {MODULE_KEYS.map((k) => (
+              <FormControlLabel
+                key={k}
+                control={
+                  <Checkbox
+                    checked={features[k] === true}
+                    onChange={(e) =>
+                      setFeatures((cu) => ({ ...cu, [k]: e.target.checked }))
+                    }
+                  />
+                }
+                label={
+                  <Box>
+                    <Typography sx={{ fontSize: 14 }}>
+                      {MODULE_META[k].nhanNgan}
+                    </Typography>
+                    <Typography sx={{ fontSize: 12, color: 'text.secondary' }}>
+                      {MODULE_META[k].moTa}
+                    </Typography>
+                  </Box>
+                }
+                sx={{ display: 'flex', alignItems: 'flex-start', ml: 0, mb: 1 }}
+              />
+            ))}
+          </Box>
         </Stack>
       </DialogContent>
       <DialogActions>

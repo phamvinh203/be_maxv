@@ -89,7 +89,6 @@ export type HrmAction =
   | { type: "ngayLe/xoa"; id: string }
   | { type: "ngayLe/taoNhanh"; danhSach: NgayLe[] }
   | { type: "chamCong/dat"; khoa: string; o: OChamCong | null }
-  | { type: "chamCong/boGhiDe"; khoa: string }
   | { type: "chamCong/datLaiThang"; tienToThang: string }
   | { type: "cauTrucLuong/luu"; cauTruc: CauTrucLuong }
   | { type: "setLuong/luu"; ban: SetLuongNhanVien }
@@ -286,13 +285,6 @@ export function hrmReducer(state: HrmState, action: HrmAction): HrmState {
 
     case "chamCong/dat":
       return { ...state, chamCong: { ...state.chamCong, [action.khoa]: action.o } };
-
-    case "chamCong/boGhiDe": {
-      // Bỏ hẳn khóa chứ không gán null — ô quay về đúng mặc định theo lịch.
-      const conLai = { ...state.chamCong };
-      delete conLai[action.khoa];
-      return { ...state, chamCong: conLai };
-    }
 
     case "chamCong/datLaiThang": {
       // Xóa mọi ghi đè của tháng đó — ô quay về đúng lịch chuẩn.

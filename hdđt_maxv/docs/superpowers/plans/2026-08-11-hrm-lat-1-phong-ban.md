@@ -8,6 +8,13 @@
 
 **Tech Stack:** Fastify 5 + Prisma 7 + PostgreSQL (DB-per-tenant) · React 19 + MUI v9 + react-router-dom v7 + TanStack Query v5 · test bằng `node:test` chạy qua `tsx`.
 
+> **Trạng thái: TẠM DỪNG.** Dự án đã rẽ sang pha dựng giao diện với dữ liệu hardcode
+> (xem [`2026-08-11-hrm-giao-dien-hardcode.md`](2026-08-11-hrm-giao-dien-hardcode.md)),
+> nên backend HRM chưa được dựng. Task 2 (`be_maxv/src/services/client/hrm/phongBanCay.ts`
+> + `src/__tests__/hrmPhongBanCay.test.ts`) từng được tạo rồi **gỡ bỏ** trong lượt dọn code
+> chết — chúng không được route nào gọi. Khi quay lại kế hoạch này thì làm lại task 2 từ đầu,
+> hoặc khôi phục bằng `git checkout <commit> -- <đường dẫn>`.
+
 ## Global Constraints
 
 - **Tenant schema không dùng Prisma `@relation`.** Liên kết bằng cột chuỗi trần + comment; ràng buộc toàn vẹn viết tay ở service.

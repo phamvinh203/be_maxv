@@ -106,7 +106,7 @@ export function khoaCham(maNv: string, ngay: string): string {
 }
 
 /** Nội dung mặc định của một ô khi người dùng chưa đụng tới, suy từ lịch. */
-export function oMacDinh(ngayCham: NgayCham): OChamCong | null {
+function oMacDinh(ngayCham: NgayCham): OChamCong | null {
   if (ngayCham.tenNgayLe) return { loai: "nghi_le", soGio: 0 };
   if (!ngayCham.laNgayLamViec) return null;
   return { loai: ngayCham.trongSo === 0.5 ? "nua_ngay" : "lam_viec", soGio: 0 };
@@ -136,7 +136,7 @@ export function oCham(
  * Nhập số giờ cụ thể thì quy đổi theo giờ công chuẩn — làm 4/8 giờ là nửa công,
  * không phụ thuộc loại được chọn là "Làm việc" hay "Nửa ngày".
  */
-export function congCuaO(o: OChamCong | null, gioCongChuanNgay: number): number {
+function congCuaO(o: OChamCong | null, gioCongChuanNgay: number): number {
   if (!o) return 0;
   const moTa = moTaLoaiCong(o.loai);
   if (!moTa.tinhCong) return 0;

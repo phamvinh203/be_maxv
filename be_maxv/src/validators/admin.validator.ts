@@ -1,4 +1,13 @@
 import { z } from 'zod';
+import { MODULE_KEYS } from '../constants/modules';
+
+/**
+ * `SubscriptionPlan.features` — bản đồ "gói này cho những module nào".
+ * Chỉ nhận đúng khóa trong `MODULE_KEYS` nên thêm module không phải sửa đây.
+ */
+const featuresSchema = z.object(
+  Object.fromEntries(MODULE_KEYS.map((k) => [k, z.boolean().optional()])),
+) as z.ZodType<Partial<Record<(typeof MODULE_KEYS)[number], boolean>>>;
 
 // :id trên URL (dùng chung cho mọi route admin thao tác 1 công ty)
 export const idParamSchema = z.object({
@@ -43,6 +52,7 @@ export const createPlanSchema = z.object({
   soMstToiDa: z.coerce.number().int().min(1).nullish(), // null = không giới hạn số MST
   soNguoiToiDa: z.coerce.number().int().min(1).nullish(), // null = không giới hạn số nhân viên
   isActive: z.boolean().default(true),
+  features: featuresSchema.default({}),
 });
 
 // Cập nhật: mọi field optional (không sửa `ma` để giữ ổn định khóa nghiệp vụ).
@@ -53,6 +63,7 @@ export const updatePlanSchema = z.object({
   soMstToiDa: z.coerce.number().int().min(1).nullish(),
   soNguoiToiDa: z.coerce.number().int().min(1).nullish(),
   isActive: z.boolean().optional(),
+  features: featuresSchema.optional(),
 });
 
 // ---- Thuê bao (subscription) ----

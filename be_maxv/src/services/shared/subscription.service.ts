@@ -18,6 +18,9 @@ async function ensureTrialPlan(): Promise<SubscriptionPlan> {
       chuKyThang: 0,
       soMstToiDa: 3,
       soNguoiToiDa: 3,
+      // CHỦ Ý: gói dùng thử KHÔNG kèm module nào. Mọi người đăng ký mới đều
+      // rơi vào gói này, bật module ở đây là cả thiên hạ thấy ngay.
+      features: {},
     },
   });
 }

@@ -21,10 +21,6 @@ export const TRANG_THAI_HD_FILL: Record<string, ExcelCellStyle> = {
  * Tô cả hàng theo trạng thái hóa đơn; `undefined` = hóa đơn mới/mã lạ -> để hàng nguyên.
  * Quy tắc giống nhau cho cả hai chiều nên để chung, không nhân đôi.
  */
-export function trangThaiHdRowFill(row: { trangThaiHd: string }): ExcelCellStyle | undefined {
-  return TRANG_THAI_HD_FILL[row.trangThaiHd];
-}
-
 /** Màu xám nhạt cho cảnh báo (thiếu địa chỉ người mua, v.v.) */
 export const WARNING_FILL: ExcelCellStyle = { bg: "FFE0E0E0" }; 
 

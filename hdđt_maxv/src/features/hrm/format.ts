@@ -11,7 +11,7 @@ export function ngayVn(iso: string): string {
 }
 
 /** `2026-08` → `08/2026`. */
-export function thangVn(iso: string): string {
+function thangVn(iso: string): string {
   const phan = iso.split("-");
   if (phan.length !== 2) return "";
   const [nam, thang] = phan;

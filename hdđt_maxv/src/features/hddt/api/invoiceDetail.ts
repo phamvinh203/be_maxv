@@ -2,27 +2,7 @@ import { toast } from "react-toastify";
 import { apiFetch, apiFetchBlob, apiFetchText } from "../../../lib/http";
 import { getErrorMessage } from "../../../lib/errors";
 import { buildInvoiceParams } from "./gdt";
-import type {
-  InvoiceDetailResult,
-  InvoiceDirection,
-  InvoiceQuery,
-} from "../types";
-
-/**
- * POST /gdt/invoices/detail/:id → tải chi tiết 1 hóa đơn đã lưu từ GDT (lưu detail + tt_tai).
- * Dùng cho luồng chạy tiến trình từng hóa đơn (progressive) trong `InvoiceTablePanel`.
- */
-export function fetchOneInvoiceDetail(
-  direction: InvoiceDirection,
-  id: string,
-  gdtToken: string,
-): Promise<InvoiceDetailResult> {
-  return apiFetch<InvoiceDetailResult>(`/gdt/invoices/detail/${encodeURIComponent(id)}`, {
-    method: "POST",
-    headers: { "X-Gdt-Token": gdtToken },
-    body: JSON.stringify({ direction }),
-  });
-}
+import type { InvoiceDirection, InvoiceQuery } from "../types";
 
 /**
  * GET /gdt/invoices/:direction/saved-details → đọc payload chi tiết ĐÃ LƯU (không gọi GDT),

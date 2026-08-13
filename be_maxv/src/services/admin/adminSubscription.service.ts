@@ -40,6 +40,7 @@ export async function adminCreatePlan(input: CreatePlanInput) {
       soMstToiDa: input.soMstToiDa ?? null,
       soNguoiToiDa: input.soNguoiToiDa ?? null,
       isActive: input.isActive,
+      features: input.features,
     },
   });
 }

@@ -14,6 +14,7 @@ import { writeLog } from '../shared/syslog.service';
 import { sendMail } from '../shared/mailer.service';
 import { createTrialSubscription } from '../shared/subscription.service';
 import { listAccessibleCompanies } from '../shared/companyAccess.service';
+import { moduleCuaUser } from '../shared/modules.service';
 import { canAccessDonVi } from '../../helpers/access';
 import {
   ConflictError,
@@ -125,6 +126,7 @@ export async function loginUser(input: LoginInput) {
     tokenVersion: user.tokenVersion,
     companies,
     activeDonViId,
+    modules: await moduleCuaUser(user),
   };
 }
 
@@ -359,5 +361,6 @@ export async function loadUserSession(
     },
     companies,
     activeDonViId,
+    modules: await moduleCuaUser(user),
   };
 }

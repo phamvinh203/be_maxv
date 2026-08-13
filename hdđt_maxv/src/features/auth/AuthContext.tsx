@@ -12,7 +12,16 @@ import {
 import { queryClient } from "../../lib/queryClient";
 import { setSessionExpiredHandler } from "../../lib/http";
 import { AuthContext } from "./context";
-import type { AuthCompany, AuthUser } from "./types";
+import { MODULE_KEYS } from "./types";
+import type { AuthCompany, AuthUser, UserModules } from "./types";
+
+/**
+ * Chưa đăng nhập / chưa biết quyền thì coi như không có module nào.
+ * Dựng từ `MODULE_KEYS` để thêm module không phải sửa hằng số này.
+ */
+const KHONG_CO_MODULE = Object.fromEntries(
+  MODULE_KEYS.map((k) => [k, false]),
+) as UserModules;
 
 /**
  * Access/refresh token nằm ở cookie httpOnly (server quản lý) — client KHÔNG lưu token nữa.
@@ -22,6 +31,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<AuthUser | null>(null);
   const [companies, setCompanies] = useState<AuthCompany[]>([]);
   const [currentCompanyId, setCurrentCompanyId] = useState<string | null>(null);
+  const [modules, setModules] = useState<UserModules>(KHONG_CO_MODULE);
   // true khi đang gọi /auth/me lúc mở app — chưa biết đăng nhập hay chưa (tránh nháy về /login).
   const [hydrating, setHydrating] = useState(true);
 
@@ -34,6 +44,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setUser(data.user);
         setCompanies(data.companies);
         setCurrentCompanyId(data.activeDonViId);
+        setModules(data.modules ?? KHONG_CO_MODULE);
       })
       .catch(() => {
         /* chưa đăng nhập — giữ state rỗng */
@@ -52,6 +63,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setUser(data.user);
     setCompanies(data.companies);
     setCurrentCompanyId(data.activeDonViId);
+    setModules(data.modules ?? KHONG_CO_MODULE);
   }, []);
 
   // Xóa sạch phiên phía client (cache + state). Dùng cho cả logout chủ động lẫn hết phiên bị động.
@@ -60,6 +72,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setUser(null);
     setCompanies([]);
     setCurrentCompanyId(null);
+    setModules(KHONG_CO_MODULE);
   }, []);
 
   const logout = useCallback(async () => {
@@ -105,6 +118,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       hydrating,
       companies,
       currentCompanyId,
+      modules,
       login,
       logout,
       refreshCompanies,
@@ -116,6 +130,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       hydrating,
       companies,
       currentCompanyId,
+      modules,
       login,
       logout,
       refreshCompanies,

@@ -33,7 +33,7 @@ import logoMaxv from "../assets/Logo_Maxv.png";
 const HUONG_DAN_SU_DUNG_URL = "https://youtu.be/sVQpgkOtsyo?si=SIJmznWNTZg5ufVG";
 
 export default function AppHeader() {
-  const { user, logout, companies, currentCompanyId } = useAuth();
+  const { user, logout, companies, currentCompanyId, modules } = useAuth();
   // MST công ty đang chọn — 1 định nghĩa duy nhất (dùng chung với luồng chọn token GDT).
   const currentMst = useActiveCompanyMst();
   const { clearGdtSession, getGdtToken, setGdtToken } = useGdtSession();
@@ -76,12 +76,23 @@ export default function AppHeader() {
             Hóa đơn và tờ khai
           </Button>
 
+          {/* Chỉ hiện khi admin đã bật module HRM cho tài khoản này. */}
+          {modules.hrm && (
+            <Button
+              color="inherit"
+              onClick={() => navigate("/hrm")}
+              sx={{ textTransform: "none", fontWeight: 600 }}
+            >
+              HRM
+            </Button>
+          )}
+
           <Button
             color="inherit"
-            onClick={() => navigate("/hrm")}
+            onClick={() => navigate("/accounting")}
             sx={{ textTransform: "none", fontWeight: 600 }}
           >
-            HRM
+            Kế toán
           </Button>
           <Button
             color="inherit"

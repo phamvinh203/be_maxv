@@ -117,9 +117,6 @@ export const NGAN_HANG_VN: string[] = [
   "BVBank",
 ];
 
-/** Tỷ lệ trích phí công đoàn trên lương đóng BHXH — hiển thị ở chú thích form. */
-export const TY_LE_CONG_DOAN = 0.01;
-
 /**
  * Giá trị riêng của ô lọc phòng ban, nghĩa là "chưa gán phòng ban".
  * Không dùng chuỗi rỗng vì rỗng đã mang nghĩa "tất cả phòng ban".
