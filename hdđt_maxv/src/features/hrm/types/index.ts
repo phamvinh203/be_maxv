@@ -731,12 +731,35 @@ export interface DongBangLuong {
   quy_luong: number;
 }
 
-/** Bộ lọc của bảng lương. */
+/** Bộ lọc của bảng lương. Dùng chung cho cả tab "Lương hỗ trợ". */
 export interface BangLuongFilters {
   q: string;
   ma_pb: string;
   loai_hd: LoaiHopDong | "";
   kieu_luong: KieuLuong | "";
+}
+
+/**
+ * Một dòng của tab "Lương hỗ trợ".
+ *
+ * Đây là **bóc tách** phần hỗ trợ vốn đã nằm trong cột "Thu nhập" của tab Bảng
+ * lương, không phải khoản chi thêm: tab kia cho tổng, tab này cho biết tổng đó
+ * gồm những khoản hỗ trợ nào.
+ */
+export interface DongLuongHoTro {
+  ma_nv: string;
+  ho_ten: string;
+  ten_pb: string;
+  ten_cv: string;
+  loai_hd: LoaiHopDong | null;
+  kieu_luong: KieuLuong | null;
+  ngay_cong: number;
+  ngay_cong_chuan: number;
+  /** Số tiền từng khoản hỗ trợ **sau khi** quy theo ngày công, khóa là `ma_khoan`. */
+  khoan: Record<string, number>;
+  /** Tổng mức tháng, chưa quy theo công — để đối chiếu với `tong`. */
+  tong_muc_thang: number;
+  tong: number;
 }
 
 // ─────────────────────── Cài đặt lương › Set lương ───────────────────────
