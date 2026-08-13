@@ -29,6 +29,8 @@ import UngBuTruPage from "../pages/hrm/UngBuTruPage";
 import BangLuongPage from "../pages/hrm/BangLuongPage";
 import BangLuongKyPage from "../pages/hrm/BangLuongKyPage";
 import LuongHoTroPage from "../pages/hrm/LuongHoTroPage";
+import ToKhaiThuePage from "../pages/hrm/ToKhaiThuePage";
+import ToKhaiThueChuaDungPage from "../pages/hrm/ToKhaiThueChuaDungPage";
 import ProtectedRoute from "./ProtectedRoute";
 import ModuleRoute from "./ModuleRoute";
 import FullScreenLoader from "../components/FullScreenLoader";
@@ -138,6 +140,18 @@ export default function AppRouter() {
               <Route index element={<Navigate to="bang-luong" replace />} />
               <Route path="bang-luong" element={<BangLuongKyPage />} />
               <Route path="luong-ho-tro" element={<LuongHoTroPage />} />
+            </Route>
+            {/* Năm màn hình chưa dựng — dùng chung chỗ giữ, xem `to_khai_thue/tabs.ts`. */}
+            <Route path="to-khai-thue" element={<ToKhaiThuePage />}>
+              <Route index element={<Navigate to="thu-nhap-ngoai-luong" replace />} />
+              <Route
+                path="thu-nhap-ngoai-luong"
+                element={<ToKhaiThueChuaDungPage />}
+              />
+              <Route path="bang-tinh-thue" element={<ToKhaiThueChuaDungPage />} />
+              <Route path="to-khai-tncn" element={<ToKhaiThueChuaDungPage />} />
+              <Route path="to-khai-quyet-toan" element={<ToKhaiThueChuaDungPage />} />
+              <Route path="doi-soat-cong-thuc" element={<ToKhaiThueChuaDungPage />} />
             </Route>
           </Route>
           {/* Bắt mọi path không khớp, tránh màn hình trắng khi gõ sai URL */}
