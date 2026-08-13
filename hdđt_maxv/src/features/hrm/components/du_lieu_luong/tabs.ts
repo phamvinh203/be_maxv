@@ -1,56 +1,43 @@
 /**
  * Tám màn hình con của khu "Dữ liệu tính lương".
  *
- * Để ở file riêng (không nằm trong component) vì cả thanh điều hướng lẫn màn
- * hình chỗ-giữ đều đọc bảng này — thêm hay đổi tên một tab chỉ phải sửa ở đây.
+ * Để ở file riêng (không nằm trong component) vì thêm hay đổi tên một tab chỉ
+ * phải sửa ở đây; thanh điều hướng chỉ việc đọc bảng này ra.
  */
+
+import type { SvgIconComponent } from "@mui/icons-material";
+import EventAvailableRounded from "@mui/icons-material/EventAvailableRounded";
+import MoreTimeRounded from "@mui/icons-material/MoreTimeRounded";
+import TrackChangesRounded from "@mui/icons-material/TrackChangesRounded";
+import CardGiftcardRounded from "@mui/icons-material/CardGiftcardRounded";
+import Inventory2Rounded from "@mui/icons-material/Inventory2Rounded";
+import PercentRounded from "@mui/icons-material/PercentRounded";
+import WorkspacePremiumRounded from "@mui/icons-material/WorkspacePremiumRounded";
+import SwapHorizRounded from "@mui/icons-material/SwapHorizRounded";
 
 export interface ManHinhDuLieuLuong {
   path: string;
   label: string;
-  /** Mô tả ngắn cho màn hình chưa dựng. */
-  moTa: string;
+  /**
+   * Icon đứng trước nhãn tab.
+   *
+   * Giữ **component** chứ không phải phần tử JSX: file này là `.ts` thuần dữ
+   * liệu, và để component thì mỗi chỗ dùng tự chọn cỡ icon của mình.
+   */
+  icon: SvgIconComponent;
 }
 
 export const MAN_HINH_DU_LIEU_LUONG: ManHinhDuLieuLuong[] = [
-  {
-    path: "cham-cong",
-    label: "Chấm công",
-    moTa: "Bảng công theo ngày của từng nhân viên trong tháng.",
-  },
-  {
-    path: "tang-ca",
-    label: "Tăng ca",
-    moTa: "Số giờ tăng ca theo từng loại — ngày thường, chủ nhật, ngày lễ, ban ngày và ban đêm.",
-  },
-  {
-    path: "kpi",
-    label: "KPI",
-    moTa: "Mức hoàn thành chỉ tiêu của từng nhân viên trong kỳ.",
-  },
-  {
-    path: "thuong",
-    label: "Thưởng",
-    moTa: "Các khoản thưởng phát sinh trong kỳ.",
-  },
-  {
-    path: "luong-san-pham",
-    label: "Lương sản phẩm",
-    moTa: "Sản lượng đã nghiệm thu và đơn giá từng loại sản phẩm.",
-  },
-  {
-    path: "luong-phan-tram",
-    label: "Lương phần trăm",
-    moTa: "Doanh số làm gốc và tỷ lệ hoa hồng của từng nhân viên.",
-  },
-  {
-    path: "luong-chuyen-can",
-    label: "Lương chuyên cần",
-    moTa: "Nhân viên đủ điều kiện nhận chuyên cần trong kỳ.",
-  },
+  { path: "cham-cong", label: "Chấm công", icon: EventAvailableRounded },
+  { path: "tang-ca", label: "Tăng ca", icon: MoreTimeRounded },
+  { path: "kpi", label: "KPI", icon: TrackChangesRounded },
+  { path: "thuong", label: "Thưởng", icon: CardGiftcardRounded },
+  { path: "luong-san-pham", label: "Lương sản phẩm", icon: Inventory2Rounded },
+  { path: "luong-phan-tram", label: "Lương phần trăm", icon: PercentRounded },
+  { path: "luong-chuyen-can", label: "Lương chuyên cần", icon: WorkspacePremiumRounded },
   {
     path: "ung-bu-tru",
     label: "Các khoản ứng - bù trừ lương",
-    moTa: "Tạm ứng, thu hồi tạm ứng và các khoản bù trừ khác.",
+    icon: SwapHorizRounded,
   },
 ];
