@@ -667,6 +667,78 @@ export interface BuTruNhanVienRow extends NhanVienKyLuongRow {
   so_dong: number;
 }
 
+// ────────────────────────────── Bảng lương ──────────────────────────────
+
+/** Đơn vị hiển thị số tiền trên bảng — 18 cột tiền để nguyên đồng thì rất khó đọc. */
+export type CheDoHienThi = "dong" | "nghin" | "trieu";
+
+/** Mức chi tiết cột: đủ 18 cột hay chỉ các cột chốt. */
+export type MucChiTiet = "day_du" | "rut_gon";
+
+/**
+ * Một dòng bảng lương của một nhân viên trong kỳ.
+ *
+ * Mọi số ở đây đều **tính ra**, không nhập: nguồn là Set lương, Chấm công và
+ * bảy màn của khu Dữ liệu tính lương. Sửa số ở đây thì kỳ sau tính lại là mất,
+ * nên bảng lương chỉ để xem và xuất.
+ */
+export interface DongBangLuong {
+  ma_nv: string;
+  ho_ten: string;
+  ten_pb: string;
+  ten_cv: string;
+  loai_hd: LoaiHopDong | null;
+  kieu_luong: KieuLuong | null;
+  /** Số người phụ thuộc đang trong kỳ đăng ký giảm trừ. */
+  so_npt: number;
+
+  /** Mức tháng của các khoản cố định (lương/phụ cấp + hỗ trợ) trong Set lương. */
+  luong: number;
+  ngay_cong: number;
+  ngay_cong_chuan: number;
+  gio_tang_ca: number;
+  /** Giờ tăng ca sau khi nhân hệ số — số dùng để nhân đơn giá giờ. */
+  gio_quy_doi: number;
+  tien_tang_ca: number;
+  /** Phần lương cố định sau khi quy theo ngày công thực tế. */
+  luong_theo_ngay: number;
+  luong_san_pham: number;
+  thuong: number;
+  kpi: number;
+  /** Hoa hồng — gộp vào "Thu nhập", không có cột riêng. */
+  luong_phan_tram: number;
+  /** Chuyên cần còn lại sau khi trừ vi phạm — gộp vào "Thu nhập". */
+  chuyen_can: number;
+
+  thu_nhap: number;
+  /** Phần thu nhập chịu thuế TNCN (đã bỏ các khoản miễn thuế). */
+  thu_nhap_chiu_thue: number;
+  /** Gốc đóng bảo hiểm, lấy từ hợp đồng hiện hành. */
+  luong_bhxh: number;
+  /** Bảo hiểm **nhân viên** đóng — khoản bị trừ vào lương. */
+  bao_hiem: number;
+  /** Bảo hiểm **công ty** đóng — không trừ vào lương, chỉ vào quỹ lương. */
+  bao_hiem_ct: number;
+  /** Đoàn phí nhân viên đóng. */
+  cong_doan: number;
+  /** Kinh phí công đoàn công ty nộp — chi phí của công ty. */
+  kpcd_ct: number;
+  /** Dương = bị trừ, âm = được nhận thêm. */
+  bu_tru: number;
+  thue_tncn: number;
+  thuc_linh: number;
+  /** Tổng chi phí công ty bỏ ra cho người này trong kỳ. */
+  quy_luong: number;
+}
+
+/** Bộ lọc của bảng lương. */
+export interface BangLuongFilters {
+  q: string;
+  ma_pb: string;
+  loai_hd: LoaiHopDong | "";
+  kieu_luong: KieuLuong | "";
+}
+
 // ─────────────────────── Cài đặt lương › Set lương ───────────────────────
 
 /** Cách khoản này vào thu nhập chịu thuế TNCN. */

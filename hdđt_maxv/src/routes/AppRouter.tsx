@@ -27,6 +27,7 @@ import LuongPhanTramPage from "../pages/hrm/LuongPhanTramPage";
 import LuongChuyenCanPage from "../pages/hrm/LuongChuyenCanPage";
 import UngBuTruPage from "../pages/hrm/UngBuTruPage";
 import BangLuongPage from "../pages/hrm/BangLuongPage";
+import BangLuongKyPage from "../pages/hrm/BangLuongKyPage";
 import BangLuongChuaDungPage from "../pages/hrm/BangLuongChuaDungPage";
 import ProtectedRoute from "./ProtectedRoute";
 import ModuleRoute from "./ModuleRoute";
@@ -133,10 +134,10 @@ export default function AppRouter() {
               <Route path="luong-chuyen-can" element={<LuongChuyenCanPage />} />
               <Route path="ung-bu-tru" element={<UngBuTruPage />} />
             </Route>
-            {/* Hai màn hình chưa dựng — dùng chung một chỗ giữ, xem `bang_luong/tabs.ts`. */}
             <Route path="bang-luong" element={<BangLuongPage />}>
               <Route index element={<Navigate to="bang-luong" replace />} />
-              <Route path="bang-luong" element={<BangLuongChuaDungPage />} />
+              <Route path="bang-luong" element={<BangLuongKyPage />} />
+              {/* Chưa dựng — chỗ giữ đọc mô tả từ `bang_luong/tabs.ts`. */}
               <Route path="luong-ho-tro" element={<BangLuongChuaDungPage />} />
             </Route>
           </Route>
