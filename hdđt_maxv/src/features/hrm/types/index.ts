@@ -303,6 +303,370 @@ export interface OChamCong {
   soGio: number;
 }
 
+// ──────────────────── Dữ liệu tính lương › dùng chung ────────────────────
+
+/**
+ * Phạm vi áp một bảng (KPI, thưởng…) — quyết định danh sách nhân viên nhận bảng
+ * đang soạn.
+ *
+ * Không lưu vào bản của nhân viên: sau khi áp xong thì mỗi người đều có một bảng
+ * riêng, phạm vi chỉ là cách chọn nhanh "áp cho ai" ở màn hình.
+ */
+export type PhamViApDung = "nhan_vien" | "phong_ban" | "toan_cong_ty";
+
+/** Bộ lọc nhân viên của các màn hình trong khu "Dữ liệu tính lương". */
+export interface LocNhanVienKyLuong {
+  q: string;
+  ma_pb: string;
+  loai_hd: LoaiHopDong | "";
+}
+
+/** Phần dùng chung của một dòng bảng nhân viên trong khu "Dữ liệu tính lương". */
+export interface NhanVienKyLuongRow {
+  ma_nv: string;
+  ho_ten: string;
+  ten_pb: string;
+  loai_hd: LoaiHopDong | null;
+}
+
+// ────────────────────────── Dữ liệu tính lương › KPI ──────────────────────────
+
+/**
+ * Một chỉ tiêu trong danh mục KPI — quản lý ở nút "Quản lý KPI".
+ *
+ * Tách khỏi `DongKpi` vì cùng một chỉ tiêu ("Doanh số ký mới", "Số đơn xử lý")
+ * dùng lại ở nhiều bảng với mục tiêu khác nhau. Cho gõ tên tự do ở từng bảng thì
+ * hai kỳ lương liền nhau sẽ có hai cách viết tên và không đối chiếu được.
+ */
+export interface ChiTieuKpi {
+  ma_kpi: string;
+  ten_kpi: string;
+  /** Đơn vị của mục tiêu: `đồng`, `đơn`, `%`, `giờ`… Hiện sau ô nhập cho đỡ nhầm. */
+  don_vi: string;
+  /** Trọng số gợi ý khi kéo chỉ tiêu này vào bảng; sửa lại được từng bảng. */
+  trong_so_mac_dinh: number;
+  ghi_chu: string;
+  status: TrangThai;
+}
+
+export type ChiTieuKpiFormValues = Omit<ChiTieuKpi, "ma_kpi">;
+
+/** Một dòng của bảng KPI. Tỷ lệ HT tính từ `thuc_thi / muc_tieu`, không lưu. */
+export interface DongKpi {
+  /** Chỉ cần duy nhất trong một bảng — làm `key` và mốc sửa/xóa dòng. */
+  id: string;
+  /** → `ChiTieuKpi.ma_kpi`. Rỗng = dòng vừa thêm, chưa chọn chỉ tiêu. */
+  ma_kpi: string;
+  trong_so: number;
+  muc_tieu: number;
+  thuc_thi: number;
+}
+
+/** Bảng KPI đã áp cho một nhân viên. */
+export interface BanKpiNhanVien {
+  ma_nv: string;
+  /** Tăng thêm một sau mỗi lần áp KPI — cột "Lần lương". */
+  lan_luong: number;
+  dong: DongKpi[];
+}
+
+/** Dòng của bảng nhân viên ở màn KPI, đã tính sẵn hiệu suất. */
+export interface KpiNhanVienRow extends NhanVienKyLuongRow {
+  lan_luong: number;
+  /** Bình quân tỷ lệ HT theo trọng số (%). `null` = chưa áp KPI lần nào. */
+  hieu_suat: number | null;
+  so_chi_tieu: number;
+}
+
+// ───────────────────────── Dữ liệu tính lương › Thưởng ─────────────────────────
+
+/**
+ * Một dòng của bảng thưởng.
+ *
+ * Loại thưởng trỏ về **Danh mục lương & phụ cấp** (`KhoanLuong` loại
+ * `luong_thuong`) chứ không phải một danh mục riêng: các khoản thưởng đã khai ở
+ * Cài đặt lương và cấu trúc lương cũng gọi đúng những mã đó — dựng thêm một danh
+ * mục thứ hai thì bảng lương sẽ có hai nguồn khoản thưởng không khớp nhau.
+ */
+export interface DongThuong {
+  /** Chỉ cần duy nhất trong một bảng — làm `key` và mốc sửa/xóa dòng. */
+  id: string;
+  /** → `KhoanLuong.ma_khoan`. Rỗng = dòng vừa thêm, chưa chọn loại thưởng. */
+  ma_khoan: string;
+  /** Mức thưởng của **một** nhân viên. */
+  so_tien: number;
+}
+
+/** Bảng thưởng đã áp cho một nhân viên. */
+export interface BanThuongNhanVien {
+  ma_nv: string;
+  dong: DongThuong[];
+}
+
+/** Dòng của bảng nhân viên ở màn Thưởng, đã cộng sẵn tổng tiền. */
+export interface ThuongNhanVienRow extends NhanVienKyLuongRow {
+  /** Tổng tiền thưởng đã áp. `null` = chưa áp thưởng lần nào. */
+  tien_thuong: number | null;
+  so_khoan: number;
+}
+
+// ──────────────────────── Dữ liệu tính lương › Tăng ca ────────────────────────
+
+/**
+ * Sáu loại giờ tăng ca.
+ *
+ * Đúng sáu hệ số đã khai ở **Cấu hình mặc định** (`tc_*`) — bảng tăng ca không
+ * tự giữ hệ số riêng, nếu không thì đổi hệ số ở Thiết lập chung sẽ không kéo
+ * theo số giờ quy đổi trên màn hình này.
+ */
+export type LoaiTangCa =
+  | "ngay_thuong_ngay"
+  | "ngay_thuong_dem"
+  | "chu_nhat_ngay"
+  | "chu_nhat_dem"
+  | "ngay_le_ngay"
+  | "ngay_le_dem";
+
+/** Một dòng của bảng tăng ca. Giờ quy đổi tính từ hệ số, không lưu. */
+export interface DongTangCa {
+  /** Chỉ cần duy nhất trong một bảng — làm `key` và mốc sửa/xóa dòng. */
+  id: string;
+  /** Rỗng = dòng vừa thêm, chưa chọn loại tăng ca. */
+  loai: LoaiTangCa | "";
+  so_gio: number;
+}
+
+/** Bảng tăng ca đã áp cho một nhân viên. */
+export interface BanTangCaNhanVien {
+  ma_nv: string;
+  dong: DongTangCa[];
+  /**
+   * Giờ OT của các kỳ **trước** trong năm.
+   *
+   * Giữ riêng khỏi `dong` vì cột "Tổng giờ năm" phải cộng cả các tháng đã chốt,
+   * mà bảng đang áp chỉ là của kỳ này — trộn vào một chỗ thì áp lại kỳ này sẽ
+   * xóa mất lũy kế của cả năm.
+   */
+  gio_luy_ke_nam: number;
+}
+
+/** Dòng của bảng nhân viên ở màn Tăng ca, đã cộng sẵn giờ. */
+export interface TangCaNhanVienRow extends NhanVienKyLuongRow {
+  /** Giờ OT của kỳ này. `null` = chưa áp tăng ca lần nào. */
+  gio_thang: number | null;
+  /** Lũy kế cả năm, đã gồm giờ của kỳ này. */
+  gio_nam: number;
+  /** Giờ quy đổi của kỳ này, sau khi nhân hệ số từng loại. */
+  gio_quy_doi: number;
+}
+
+// ───────────────────── Dữ liệu tính lương › Lương sản phẩm ─────────────────────
+
+/**
+ * Một sản phẩm trong danh mục nghiệm thu — quản lý ở nút "Quản lý sản phẩm".
+ *
+ * Không dùng lại `KhoanLuong` loại `luong_nghiem_thu` như màn Thưởng dùng
+ * `luong_thuong`: khoản lương chỉ có tên và hai cờ thuế, còn ở đây phải có **đơn
+ * vị tính** và **đơn giá** thì mới nhân ra được thành tiền. Hai thứ khác nhau về
+ * dữ liệu nên là hai bảng.
+ */
+export interface SanPham {
+  ma_sp: string;
+  ten_sp: string;
+  /** Đơn vị tính: `cái`, `kiện`, `đơn`, `bộ`… */
+  don_vi: string;
+  /** Đơn giá theo bảng giá công ty; từng kỳ vẫn sửa lại được ở bảng. */
+  don_gia: number;
+  ghi_chu: string;
+  status: TrangThai;
+}
+
+export type SanPhamFormValues = Omit<SanPham, "ma_sp">;
+
+/** Một dòng của bảng lương sản phẩm. Thành tiền = đơn giá × số lượng, không lưu. */
+export interface DongLuongSanPham {
+  /** Chỉ cần duy nhất trong một bảng — làm `key` và mốc sửa/xóa dòng. */
+  id: string;
+  /** → `SanPham.ma_sp`. Rỗng = dòng vừa thêm, chưa chọn sản phẩm. */
+  ma_sp: string;
+  /**
+   * Đơn giá áp cho kỳ này.
+   *
+   * Chép từ danh mục lúc chọn sản phẩm chứ không đọc thẳng danh mục mỗi lần
+   * hiển thị: đổi bảng giá tháng sau mà số tiền đã nghiệm thu của tháng trước
+   * cũng đổi theo thì bảng lương cũ không còn khớp phiếu chi.
+   */
+  don_gia: number;
+  so_luong: number;
+}
+
+/** Bảng lương sản phẩm đã áp cho một nhân viên. */
+export interface BanLuongSanPhamNhanVien {
+  ma_nv: string;
+  dong: DongLuongSanPham[];
+}
+
+/** Dòng của bảng nhân viên ở màn Lương sản phẩm, đã cộng sẵn tổng tiền. */
+export interface LuongSanPhamNhanVienRow extends NhanVienKyLuongRow {
+  /** Tổng thành tiền đã áp. `null` = chưa áp lương sản phẩm lần nào. */
+  tien_luong: number | null;
+  so_dong: number;
+}
+
+// ──────────────────── Dữ liệu tính lương › Lương phần trăm ────────────────────
+
+/**
+ * Một dòng của bảng lương phần trăm.
+ *
+ * Loại % trỏ về **Danh mục lương & phụ cấp** (`KhoanLuong` loại
+ * `luong_phan_tram`) — đúng loại khoản đã có sẵn ô "Tỷ lệ mặc định" ở danh mục,
+ * nên không phải dựng danh mục thứ hai.
+ */
+export interface DongLuongPhanTram {
+  /** Chỉ cần duy nhất trong một bảng — làm `key` và mốc sửa/xóa dòng. */
+  id: string;
+  /** → `KhoanLuong.ma_khoan`. Rỗng = dòng vừa thêm, chưa chọn loại %. */
+  ma_khoan: string;
+  /**
+   * Tỷ lệ áp cho kỳ này (%).
+   *
+   * Chép từ `KhoanLuong.ty_le` lúc chọn loại chứ không đọc thẳng danh mục mỗi
+   * lần hiển thị: đổi tỷ lệ hoa hồng của quý sau mà số tiền đã chốt của quý
+   * trước cũng đổi theo thì bảng lương cũ không còn khớp phiếu chi.
+   */
+  ty_le: number;
+  /** Doanh số / số tiền làm gốc nhân tỷ lệ. */
+  so_tien_co_so: number;
+}
+
+/** Bảng lương phần trăm đã áp cho một nhân viên. */
+export interface BanLuongPhanTramNhanVien {
+  ma_nv: string;
+  dong: DongLuongPhanTram[];
+}
+
+/** Dòng của bảng nhân viên ở màn Lương phần trăm, đã cộng sẵn tổng tiền. */
+export interface LuongPhanTramNhanVienRow extends NhanVienKyLuongRow {
+  /** Tổng thành tiền đã áp. `null` = chưa áp lương phần trăm lần nào. */
+  tien_luong: number | null;
+  so_dong: number;
+}
+
+// ─────────────────── Dữ liệu tính lương › Lương chuyên cần ───────────────────
+
+/** Cách một lỗi chuyên cần cắt vào khoản chuyên cần của nhân viên. */
+export type CachTruChuyenCan =
+  /** Nhân số giờ trễ/nghỉ với mức trừ mỗi giờ. */
+  | "theo_gio"
+  /** Trừ trọn mức, bao nhiêu giờ cũng vậy — quên chấm công, nghỉ có phép… */
+  | "theo_lan"
+  /** Mất trắng khoản chuyên cần của kỳ, không cần biết mức trừ. */
+  | "mat_toan_bo";
+
+/**
+ * Một loại lỗi chuyên cần — quản lý ở nút "Quản lý chuyên cần".
+ *
+ * Không dùng lại `KhoanLuong` loại `luong_chuyen_can`: khoản kia là **số tiền
+ * được hưởng**, còn đây là **lý do bị trừ**. Hai thứ ngược chiều nhau, gom một
+ * bảng thì không phân biệt được cái nào cộng cái nào trừ.
+ */
+export interface LoaiChuyenCan {
+  ma_cc: string;
+  ten_cc: string;
+  cach_tru: CachTruChuyenCan;
+  /** Đồng/giờ với `theo_gio`, đồng/lần với `theo_lan`; `mat_toan_bo` bỏ qua. */
+  muc_tru: number;
+  ghi_chu: string;
+  status: TrangThai;
+}
+
+export type LoaiChuyenCanFormValues = Omit<LoaiChuyenCan, "ma_cc">;
+
+/** Một dòng của bảng chuyên cần — một lần vi phạm. */
+export interface DongChuyenCan {
+  /** Chỉ cần duy nhất trong một bảng — làm `key` và mốc sửa/xóa dòng. */
+  id: string;
+  /** → `LoaiChuyenCan.ma_cc`. Rỗng = dòng vừa thêm, chưa chọn loại. */
+  ma_cc: string;
+  /** Số giờ trễ/nghỉ. Chỉ có nghĩa với `theo_gio`; loại khác vẫn ghi để đối chiếu. */
+  so_gio: number;
+  /** `YYYY-MM-DD` — khớp thẳng `<input type="date">`. */
+  ngay: string;
+}
+
+/**
+ * Bảng chuyên cần đã áp cho một nhân viên.
+ *
+ * `dong` rỗng **khác** với chưa áp: rỗng nghĩa là kỳ này không vi phạm gì và
+ * nhận đủ chuyên cần, còn chưa áp là chưa ai chốt bảng cho người đó.
+ */
+export interface BanChuyenCanNhanVien {
+  ma_nv: string;
+  dong: DongChuyenCan[];
+}
+
+/** Dòng của bảng nhân viên ở màn Lương chuyên cần. */
+export interface ChuyenCanNhanVienRow extends NhanVienKyLuongRow {
+  /** Mức chuyên cần được hưởng, lấy từ Set lương (hoặc Cấu trúc lương công ty). */
+  don_gia: number;
+  /** Tổng tiền bị trừ trong kỳ. `null` = chưa áp bảng chuyên cần. */
+  tong_tru: number | null;
+  /** `don_gia − tong_tru`, không xuống dưới 0. `null` = chưa áp. */
+  thanh_tien: number | null;
+  so_dong: number;
+}
+
+// ──────────────── Dữ liệu tính lương › Các khoản ứng - bù trừ ────────────────
+
+/** Khoản này cắt vào lương hay cộng thêm vào lương. */
+export type ChieuBuTru =
+  /** Khấu trừ: tạm ứng, thu hồi tạm ứng, phạt… */
+  | "tru"
+  /** Bù thêm: truy lĩnh kỳ trước, bù chênh lệch bảo hiểm… */
+  | "bu";
+
+/**
+ * Một khoản ứng / bù trừ — quản lý ở nút "Quản lý khoản bù trừ".
+ *
+ * `chieu` là thứ khiến bảng này không gộp được vào Danh mục lương & phụ cấp:
+ * khoản lương luôn cộng vào thu nhập, còn ở đây phần lớn là trừ ra. Trộn chung
+ * thì bảng lương không biết dấu của từng khoản.
+ */
+export interface KhoanBuTru {
+  ma_bt: string;
+  ten_bt: string;
+  chieu: ChieuBuTru;
+  ghi_chu: string;
+  status: TrangThai;
+}
+
+export type KhoanBuTruFormValues = Omit<KhoanBuTru, "ma_bt">;
+
+/** Một dòng của bảng ứng - bù trừ. `so_tien` luôn dương, dấu nằm ở `chieu`. */
+export interface DongBuTru {
+  /** Chỉ cần duy nhất trong một bảng — làm `key` và mốc sửa/xóa dòng. */
+  id: string;
+  /** → `KhoanBuTru.ma_bt`. Rỗng = dòng vừa thêm, chưa chọn khoản. */
+  ma_bt: string;
+  so_tien: number;
+}
+
+/** Bảng ứng - bù trừ đã áp cho một nhân viên. */
+export interface BanBuTruNhanVien {
+  ma_nv: string;
+  dong: DongBuTru[];
+}
+
+/** Dòng của bảng nhân viên ở màn Các khoản ứng - bù trừ. */
+export interface BuTruNhanVienRow extends NhanVienKyLuongRow {
+  /**
+   * Tổng khấu trừ trừ đi tổng bù. Dương = bị trừ, **âm** = được nhận thêm.
+   * `null` = chưa áp bảng bù trừ.
+   */
+  tong_bi_tru: number | null;
+  so_dong: number;
+}
+
 // ─────────────────────── Cài đặt lương › Set lương ───────────────────────
 
 /** Cách khoản này vào thu nhập chịu thuế TNCN. */

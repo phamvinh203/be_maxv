@@ -10,12 +10,16 @@
 import { moTaLoaiKhoan } from "./constants";
 import type {
   CaLamViecFormValues,
+  ChiTieuKpiFormValues,
   HopDongFormValues,
+  KhoanBuTruFormValues,
   KhoanLuongFormValues,
+  LoaiChuyenCanFormValues,
   LoaiKhoanLuong,
   NgayLeFormValues,
   NguoiPhuThuocFormValues,
   NhanVien,
+  SanPhamFormValues,
   TaiLieuFormValues,
 } from "./types";
 
@@ -88,6 +92,49 @@ export function khoanLuongRong(loai: LoaiKhoanLuong): KhoanLuongFormValues {
     tinh_bhxh: moTa.macDinhBhxh,
     chiu_thue_tncn: moTa.macDinhTncn,
     ty_le: 0,
+    status: "1",
+  };
+}
+
+/** Khoản bù trừ rỗng — mặc định chiều "trừ", phần lớn khoản ở màn này là khấu trừ. */
+export function khoanBuTruRong(): KhoanBuTruFormValues {
+  return {
+    ten_bt: "",
+    chieu: "tru",
+    ghi_chu: "",
+    status: "1",
+  };
+}
+
+/** Loại lỗi chuyên cần rỗng — mặc định trừ theo giờ, cách hay gặp nhất. */
+export function loaiChuyenCanRong(): LoaiChuyenCanFormValues {
+  return {
+    ten_cc: "",
+    cach_tru: "theo_gio",
+    muc_tru: 0,
+    ghi_chu: "",
+    status: "1",
+  };
+}
+
+/** Sản phẩm rỗng của danh mục nghiệm thu. */
+export function sanPhamRong(): SanPhamFormValues {
+  return {
+    ten_sp: "",
+    don_vi: "",
+    don_gia: 0,
+    ghi_chu: "",
+    status: "1",
+  };
+}
+
+/** Chỉ tiêu KPI rỗng. Trọng số 10 để bảng có sẵn số, không phải gõ từ 0. */
+export function chiTieuKpiRong(): ChiTieuKpiFormValues {
+  return {
+    ten_kpi: "",
+    don_vi: "",
+    trong_so_mac_dinh: 10,
+    ghi_chu: "",
     status: "1",
   };
 }

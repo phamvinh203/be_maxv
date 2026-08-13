@@ -12,29 +12,65 @@
 
 import { createContext, type Dispatch } from "react";
 import type {
+  BanBuTruNhanVien,
+  BanChuyenCanNhanVien,
+  BanKpiNhanVien,
+  BanLuongPhanTramNhanVien,
+  BanLuongSanPhamNhanVien,
+  BanTangCaNhanVien,
+  BanThuongNhanVien,
   CaLamViec,
   CauHinhMacDinh,
   CauTrucLuong,
+  ChiTieuKpi,
+  DongBuTru,
+  DongChuyenCan,
+  DongKpi,
+  DongLuongPhanTram,
+  DongLuongSanPham,
+  DongTangCa,
+  DongThuong,
   HopDong,
+  KhoanBuTru,
   KhoanLuong,
+  LoaiChuyenCan,
   NgayLe,
   NguoiPhuThuoc,
   NhanVien,
   OChamCong,
   PhongBan,
+  SanPham,
   SetLuongNhanVien,
   TaiLieu,
 } from "../types";
 import {
+  BAN_BU_TRU_MAU,
+  BAN_CHUYEN_CAN_MAU,
+  BAN_KPI_MAU,
+  BAN_LUONG_PHAN_TRAM_MAU,
+  BAN_LUONG_SAN_PHAM_MAU,
+  BAN_TANG_CA_MAU,
+  BAN_THUONG_MAU,
   CA_LAM_VIEC_MAU,
   CAU_HINH_MAU,
   CAU_TRUC_LUONG_MAU,
+  CHI_TIEU_KPI_MAU,
   HOP_DONG_MAU,
+  KHOAN_BU_TRU_MAU,
   KHOAN_LUONG_MAU,
+  LOAI_CHUYEN_CAN_MAU,
+  MAU_BU_TRU_MAU,
+  MAU_CHUYEN_CAN_MAU,
+  MAU_KPI_MAU,
+  MAU_LUONG_PHAN_TRAM_MAU,
+  MAU_LUONG_SAN_PHAM_MAU,
+  MAU_TANG_CA_MAU,
+  MAU_THUONG_MAU,
   NGAY_LE_MAU,
   NGUOI_PHU_THUOC_MAU,
   NHAN_VIEN_MAU,
   PHONG_BAN_MAU,
+  SAN_PHAM_MAU,
   SET_LUONG_MAU,
   TAI_LIEU_MAU,
 } from "./seed";
@@ -57,6 +93,48 @@ export interface HrmState {
   chamCong: Record<string, OChamCong | null>;
   cauTrucLuong: CauTrucLuong;
   setLuong: SetLuongNhanVien[];
+  /** Danh mục chỉ tiêu KPI — nguồn của ô chọn "Chỉ tiêu" ở bảng KPI. */
+  chiTieuKpi: ChiTieuKpi[];
+  /**
+   * Bảng KPI đang soạn, dùng chung cho cả ba phạm vi.
+   *
+   * Một bản duy nhất chứ không phải một bản cho mỗi phạm vi: người dùng soạn
+   * xong một bảng rồi mới quyết định áp cho ai, đổi phạm vi mà bảng đang soạn
+   * biến mất là mất công gõ lại.
+   */
+  mauKpi: DongKpi[];
+  /** KPI đã áp cho từng nhân viên — nguồn của cột "Hiệu suất". */
+  banKpi: BanKpiNhanVien[];
+  /** Bảng thưởng đang soạn — xem ghi chú ở `mauKpi`, cách làm giống hệt. */
+  mauThuong: DongThuong[];
+  /** Thưởng đã áp cho từng nhân viên — nguồn của cột "Tiền lương". */
+  banThuong: BanThuongNhanVien[];
+  /** Bảng tăng ca đang soạn — xem ghi chú ở `mauKpi`, cách làm giống hệt. */
+  mauTangCa: DongTangCa[];
+  /** Tăng ca đã áp cho từng nhân viên — nguồn của ba cột giờ. */
+  banTangCa: BanTangCaNhanVien[];
+  /** Danh mục sản phẩm nghiệm thu — nguồn của ô chọn "Sản phẩm". */
+  sanPham: SanPham[];
+  /** Bảng lương sản phẩm đang soạn — xem ghi chú ở `mauKpi`. */
+  mauLuongSanPham: DongLuongSanPham[];
+  /** Lương sản phẩm đã áp cho từng nhân viên — nguồn của cột "Tiền lương". */
+  banLuongSanPham: BanLuongSanPhamNhanVien[];
+  /** Bảng lương phần trăm đang soạn — xem ghi chú ở `mauKpi`. */
+  mauLuongPhanTram: DongLuongPhanTram[];
+  /** Lương phần trăm đã áp cho từng nhân viên — nguồn của cột "Tiền lương". */
+  banLuongPhanTram: BanLuongPhanTramNhanVien[];
+  /** Danh mục lỗi chuyên cần — nguồn của ô chọn "Loại chuyên cần". */
+  loaiChuyenCan: LoaiChuyenCan[];
+  /** Bảng chuyên cần đang soạn — xem ghi chú ở `mauKpi`. */
+  mauChuyenCan: DongChuyenCan[];
+  /** Chuyên cần đã áp cho từng nhân viên — nguồn của cột "Tổng trừ". */
+  banChuyenCan: BanChuyenCanNhanVien[];
+  /** Danh mục khoản ứng - bù trừ — nguồn của ô chọn "Khoản bù trừ". */
+  khoanBuTru: KhoanBuTru[];
+  /** Bảng ứng - bù trừ đang soạn — xem ghi chú ở `mauKpi`. */
+  mauBuTru: DongBuTru[];
+  /** Ứng - bù trừ đã áp cho từng nhân viên — nguồn của cột "Tổng bị trừ". */
+  banBuTru: BanBuTruNhanVien[];
 }
 
 export type HrmAction =
@@ -93,7 +171,40 @@ export type HrmAction =
   | { type: "cauTrucLuong/luu"; cauTruc: CauTrucLuong }
   | { type: "setLuong/luu"; ban: SetLuongNhanVien }
   | { type: "setLuong/xoa"; maNv: string }
-  | { type: "setLuong/duyet"; danhSachMaNv: string[] };
+  | { type: "setLuong/duyet"; danhSachMaNv: string[] }
+  | { type: "chiTieuKpi/them"; chiTieu: ChiTieuKpi }
+  | { type: "chiTieuKpi/sua"; chiTieu: ChiTieuKpi }
+  | { type: "chiTieuKpi/xoa"; maKpi: string }
+  | { type: "kpi/luuMau"; dong: DongKpi[] }
+  | { type: "kpi/apDung"; danhSachMaNv: string[]; dong: DongKpi[] }
+  | { type: "kpi/xoaBan"; maNv: string }
+  | { type: "thuong/luuMau"; dong: DongThuong[] }
+  | { type: "thuong/apDung"; danhSachMaNv: string[]; dong: DongThuong[] }
+  | { type: "thuong/xoaBan"; maNv: string }
+  | { type: "tangCa/luuMau"; dong: DongTangCa[] }
+  | { type: "tangCa/apDung"; danhSachMaNv: string[]; dong: DongTangCa[] }
+  | { type: "tangCa/xoaBan"; maNv: string }
+  | { type: "sanPham/them"; sanPham: SanPham }
+  | { type: "sanPham/sua"; sanPham: SanPham }
+  | { type: "sanPham/xoa"; maSp: string }
+  | { type: "luongSanPham/luuMau"; dong: DongLuongSanPham[] }
+  | { type: "luongSanPham/apDung"; danhSachMaNv: string[]; dong: DongLuongSanPham[] }
+  | { type: "luongSanPham/xoaBan"; maNv: string }
+  | { type: "luongPhanTram/luuMau"; dong: DongLuongPhanTram[] }
+  | { type: "luongPhanTram/apDung"; danhSachMaNv: string[]; dong: DongLuongPhanTram[] }
+  | { type: "luongPhanTram/xoaBan"; maNv: string }
+  | { type: "loaiChuyenCan/them"; loai: LoaiChuyenCan }
+  | { type: "loaiChuyenCan/sua"; loai: LoaiChuyenCan }
+  | { type: "loaiChuyenCan/xoa"; maCc: string }
+  | { type: "chuyenCan/luuMau"; dong: DongChuyenCan[] }
+  | { type: "chuyenCan/apDung"; danhSachMaNv: string[]; dong: DongChuyenCan[] }
+  | { type: "chuyenCan/xoaBan"; maNv: string }
+  | { type: "khoanBuTru/them"; khoan: KhoanBuTru }
+  | { type: "khoanBuTru/sua"; khoan: KhoanBuTru }
+  | { type: "khoanBuTru/xoa"; maBt: string }
+  | { type: "buTru/luuMau"; dong: DongBuTru[] }
+  | { type: "buTru/apDung"; danhSachMaNv: string[]; dong: DongBuTru[] }
+  | { type: "buTru/xoaBan"; maNv: string };
 
 export const trangThaiBanDau: HrmState = {
   phongBan: PHONG_BAN_MAU,
@@ -109,6 +220,24 @@ export const trangThaiBanDau: HrmState = {
   chamCong: {},
   cauTrucLuong: CAU_TRUC_LUONG_MAU,
   setLuong: SET_LUONG_MAU,
+  chiTieuKpi: CHI_TIEU_KPI_MAU,
+  mauKpi: MAU_KPI_MAU,
+  banKpi: BAN_KPI_MAU,
+  mauThuong: MAU_THUONG_MAU,
+  banThuong: BAN_THUONG_MAU,
+  mauTangCa: MAU_TANG_CA_MAU,
+  banTangCa: BAN_TANG_CA_MAU,
+  sanPham: SAN_PHAM_MAU,
+  mauLuongSanPham: MAU_LUONG_SAN_PHAM_MAU,
+  banLuongSanPham: BAN_LUONG_SAN_PHAM_MAU,
+  mauLuongPhanTram: MAU_LUONG_PHAN_TRAM_MAU,
+  banLuongPhanTram: BAN_LUONG_PHAN_TRAM_MAU,
+  loaiChuyenCan: LOAI_CHUYEN_CAN_MAU,
+  mauChuyenCan: MAU_CHUYEN_CAN_MAU,
+  banChuyenCan: BAN_CHUYEN_CAN_MAU,
+  khoanBuTru: KHOAN_BU_TRU_MAU,
+  mauBuTru: MAU_BU_TRU_MAU,
+  banBuTru: BAN_BU_TRU_MAU,
 };
 
 /** Thay phần tử cùng khóa, giữ nguyên thứ tự. */
@@ -320,6 +449,264 @@ export function hrmReducer(state: HrmState, action: HrmAction): HrmState {
         ),
       };
     }
+
+    case "chiTieuKpi/them":
+      return { ...state, chiTieuKpi: [...state.chiTieuKpi, action.chiTieu] };
+
+    case "chiTieuKpi/sua":
+      return {
+        ...state,
+        chiTieuKpi: thayTheo(
+          state.chiTieuKpi,
+          (ct) => ct.ma_kpi === action.chiTieu.ma_kpi,
+          action.chiTieu,
+        ),
+      };
+
+    case "chiTieuKpi/xoa":
+      return {
+        ...state,
+        chiTieuKpi: state.chiTieuKpi.filter((ct) => ct.ma_kpi !== action.maKpi),
+      };
+
+    case "kpi/luuMau":
+      return { ...state, mauKpi: action.dong };
+
+    case "kpi/apDung": {
+      // Ghi đè bảng của người đã có và thêm bản mới cho người chưa có, trong
+      // **một** lần ghi — tách ra sẽ có lúc danh sách hiện nửa cũ nửa mới.
+      const can = new Set(action.danhSachMaNv);
+      const daCo = new Set(state.banKpi.map((ban) => ban.ma_nv));
+      return {
+        ...state,
+        banKpi: [
+          ...state.banKpi.map((ban) =>
+            can.has(ban.ma_nv)
+              ? { ...ban, lan_luong: ban.lan_luong + 1, dong: action.dong }
+              : ban,
+          ),
+          ...action.danhSachMaNv
+            .filter((maNv) => !daCo.has(maNv))
+            .map((maNv) => ({ ma_nv: maNv, lan_luong: 1, dong: action.dong })),
+        ],
+      };
+    }
+
+    case "kpi/xoaBan":
+      return { ...state, banKpi: state.banKpi.filter((ban) => ban.ma_nv !== action.maNv) };
+
+    case "thuong/luuMau":
+      return { ...state, mauThuong: action.dong };
+
+    case "thuong/apDung": {
+      // Cùng cách ghi với `kpi/apDung`: ghi đè người đã có và thêm người chưa
+      // có trong một lần, để danh sách không bao giờ hiện nửa cũ nửa mới.
+      const can = new Set(action.danhSachMaNv);
+      const daCo = new Set(state.banThuong.map((ban) => ban.ma_nv));
+      return {
+        ...state,
+        banThuong: [
+          ...state.banThuong.map((ban) =>
+            can.has(ban.ma_nv) ? { ...ban, dong: action.dong } : ban,
+          ),
+          ...action.danhSachMaNv
+            .filter((maNv) => !daCo.has(maNv))
+            .map((maNv) => ({ ma_nv: maNv, dong: action.dong })),
+        ],
+      };
+    }
+
+    case "thuong/xoaBan":
+      return {
+        ...state,
+        banThuong: state.banThuong.filter((ban) => ban.ma_nv !== action.maNv),
+      };
+
+    case "tangCa/luuMau":
+      return { ...state, mauTangCa: action.dong };
+
+    case "tangCa/apDung": {
+      // Giữ nguyên `gio_luy_ke_nam` của người đã có: đó là giờ của các kỳ trước,
+      // áp lại kỳ này không được xóa lũy kế cả năm.
+      const can = new Set(action.danhSachMaNv);
+      const daCo = new Set(state.banTangCa.map((ban) => ban.ma_nv));
+      return {
+        ...state,
+        banTangCa: [
+          ...state.banTangCa.map((ban) =>
+            can.has(ban.ma_nv) ? { ...ban, dong: action.dong } : ban,
+          ),
+          ...action.danhSachMaNv
+            .filter((maNv) => !daCo.has(maNv))
+            .map((maNv) => ({ ma_nv: maNv, dong: action.dong, gio_luy_ke_nam: 0 })),
+        ],
+      };
+    }
+
+    case "tangCa/xoaBan":
+      return {
+        ...state,
+        banTangCa: state.banTangCa.filter((ban) => ban.ma_nv !== action.maNv),
+      };
+
+    case "sanPham/them":
+      return { ...state, sanPham: [...state.sanPham, action.sanPham] };
+
+    case "sanPham/sua":
+      return {
+        ...state,
+        sanPham: thayTheo(
+          state.sanPham,
+          (sp) => sp.ma_sp === action.sanPham.ma_sp,
+          action.sanPham,
+        ),
+      };
+
+    case "sanPham/xoa":
+      return { ...state, sanPham: state.sanPham.filter((sp) => sp.ma_sp !== action.maSp) };
+
+    case "luongSanPham/luuMau":
+      return { ...state, mauLuongSanPham: action.dong };
+
+    case "luongSanPham/apDung": {
+      // Cùng cách ghi với `kpi/apDung`: ghi đè người đã có và thêm người chưa
+      // có trong một lần, để danh sách không bao giờ hiện nửa cũ nửa mới.
+      const can = new Set(action.danhSachMaNv);
+      const daCo = new Set(state.banLuongSanPham.map((ban) => ban.ma_nv));
+      return {
+        ...state,
+        banLuongSanPham: [
+          ...state.banLuongSanPham.map((ban) =>
+            can.has(ban.ma_nv) ? { ...ban, dong: action.dong } : ban,
+          ),
+          ...action.danhSachMaNv
+            .filter((maNv) => !daCo.has(maNv))
+            .map((maNv) => ({ ma_nv: maNv, dong: action.dong })),
+        ],
+      };
+    }
+
+    case "luongSanPham/xoaBan":
+      return {
+        ...state,
+        banLuongSanPham: state.banLuongSanPham.filter((ban) => ban.ma_nv !== action.maNv),
+      };
+
+    case "luongPhanTram/luuMau":
+      return { ...state, mauLuongPhanTram: action.dong };
+
+    case "luongPhanTram/apDung": {
+      // Cùng cách ghi với `kpi/apDung`: ghi đè người đã có và thêm người chưa
+      // có trong một lần, để danh sách không bao giờ hiện nửa cũ nửa mới.
+      const can = new Set(action.danhSachMaNv);
+      const daCo = new Set(state.banLuongPhanTram.map((ban) => ban.ma_nv));
+      return {
+        ...state,
+        banLuongPhanTram: [
+          ...state.banLuongPhanTram.map((ban) =>
+            can.has(ban.ma_nv) ? { ...ban, dong: action.dong } : ban,
+          ),
+          ...action.danhSachMaNv
+            .filter((maNv) => !daCo.has(maNv))
+            .map((maNv) => ({ ma_nv: maNv, dong: action.dong })),
+        ],
+      };
+    }
+
+    case "luongPhanTram/xoaBan":
+      return {
+        ...state,
+        banLuongPhanTram: state.banLuongPhanTram.filter((ban) => ban.ma_nv !== action.maNv),
+      };
+
+    case "loaiChuyenCan/them":
+      return { ...state, loaiChuyenCan: [...state.loaiChuyenCan, action.loai] };
+
+    case "loaiChuyenCan/sua":
+      return {
+        ...state,
+        loaiChuyenCan: thayTheo(
+          state.loaiChuyenCan,
+          (cc) => cc.ma_cc === action.loai.ma_cc,
+          action.loai,
+        ),
+      };
+
+    case "loaiChuyenCan/xoa":
+      return {
+        ...state,
+        loaiChuyenCan: state.loaiChuyenCan.filter((cc) => cc.ma_cc !== action.maCc),
+      };
+
+    case "chuyenCan/luuMau":
+      return { ...state, mauChuyenCan: action.dong };
+
+    case "chuyenCan/apDung": {
+      // Cùng cách ghi với `kpi/apDung`: ghi đè người đã có và thêm người chưa
+      // có trong một lần, để danh sách không bao giờ hiện nửa cũ nửa mới.
+      const can = new Set(action.danhSachMaNv);
+      const daCo = new Set(state.banChuyenCan.map((ban) => ban.ma_nv));
+      return {
+        ...state,
+        banChuyenCan: [
+          ...state.banChuyenCan.map((ban) =>
+            can.has(ban.ma_nv) ? { ...ban, dong: action.dong } : ban,
+          ),
+          ...action.danhSachMaNv
+            .filter((maNv) => !daCo.has(maNv))
+            .map((maNv) => ({ ma_nv: maNv, dong: action.dong })),
+        ],
+      };
+    }
+
+    case "chuyenCan/xoaBan":
+      return {
+        ...state,
+        banChuyenCan: state.banChuyenCan.filter((ban) => ban.ma_nv !== action.maNv),
+      };
+
+    case "khoanBuTru/them":
+      return { ...state, khoanBuTru: [...state.khoanBuTru, action.khoan] };
+
+    case "khoanBuTru/sua":
+      return {
+        ...state,
+        khoanBuTru: thayTheo(
+          state.khoanBuTru,
+          (bt) => bt.ma_bt === action.khoan.ma_bt,
+          action.khoan,
+        ),
+      };
+
+    case "khoanBuTru/xoa":
+      return {
+        ...state,
+        khoanBuTru: state.khoanBuTru.filter((bt) => bt.ma_bt !== action.maBt),
+      };
+
+    case "buTru/luuMau":
+      return { ...state, mauBuTru: action.dong };
+
+    case "buTru/apDung": {
+      // Cùng cách ghi với `kpi/apDung`: ghi đè người đã có và thêm người chưa
+      // có trong một lần, để danh sách không bao giờ hiện nửa cũ nửa mới.
+      const can = new Set(action.danhSachMaNv);
+      const daCo = new Set(state.banBuTru.map((ban) => ban.ma_nv));
+      return {
+        ...state,
+        banBuTru: [
+          ...state.banBuTru.map((ban) =>
+            can.has(ban.ma_nv) ? { ...ban, dong: action.dong } : ban,
+          ),
+          ...action.danhSachMaNv
+            .filter((maNv) => !daCo.has(maNv))
+            .map((maNv) => ({ ma_nv: maNv, dong: action.dong })),
+        ],
+      };
+    }
+
+    case "buTru/xoaBan":
+      return { ...state, banBuTru: state.banBuTru.filter((ban) => ban.ma_nv !== action.maNv) };
 
     default:
       return state;
