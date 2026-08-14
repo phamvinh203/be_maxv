@@ -1,6 +1,11 @@
 import { useQuery } from "@tanstack/react-query";
 import { useAuth } from "../../auth/useAuth";
-import { getDetailComplete, getSavedDetails, getSavedInvoiceDetailById } from "./invoiceDetail";
+import {
+  getDetailComplete,
+  getRelatedInvoices,
+  getSavedDetails,
+  getSavedInvoiceDetailById,
+} from "./invoiceDetail";
 import type { InvoiceDirection, InvoiceQuery } from "../types";
 
 // Gắn `companyId` vì chi tiết nằm ở DB riêng từng tenant (đổi công ty đổi key -> fetch đúng).
@@ -14,6 +19,9 @@ export const detailKeys = {
   /** Key chi tiết ĐÃ LƯU của 1 hóa đơn theo id (nút "Xem hóa đơn"). */
   byId: (companyId: string | null, direction: InvoiceDirection, id: string) =>
     ["savedDetail", companyId, direction, id] as const,
+  /** Key chuỗi hóa đơn liên quan của 1 hóa đơn (dialog "Hóa đơn liên quan"). */
+  lienQuan: (companyId: string | null, direction: InvoiceDirection, id: string) =>
+    ["hoaDonLienQuan", companyId, direction, id] as const,
   /** Key đếm HĐ hoàn thành chi tiết trong khoảng (gate nút Xuất tổng hợp). */
   complete: (companyId: string | null, direction: InvoiceDirection, query: InvoiceQuery) =>
     ["detailComplete", companyId, direction, query] as const,
@@ -74,5 +82,25 @@ export function useSavedInvoiceDetailByIdQuery(
     queryFn: () => getSavedInvoiceDetailById(direction, id as string),
     enabled: enabled && isAuthenticated && !!currentCompanyId && !!id,
     staleTime: 5 * 60 * 1000,
+  });
+}
+
+/**
+ * Chuỗi hóa đơn thay thế/điều chỉnh liên quan tới 1 hóa đơn — nguồn cho `HoaDonLienQuanDialog`.
+ * `enabled` chỉ bật khi dialog mở & có id. Không gọi GDT — đọc DB.
+ *
+ * KHÔNG đặt `staleTime`: chuỗi đổi khi kế toán vừa tải về hóa đơn thay thế mới, mà payload chỉ vài
+ * dòng nên đọc lại mỗi lần mở dialog là rẻ hơn nhiều so với việc hiện một chuỗi đã cũ.
+ */
+export function useRelatedInvoicesQuery(
+  direction: InvoiceDirection,
+  id: string | null,
+  enabled: boolean,
+) {
+  const { isAuthenticated, currentCompanyId } = useAuth();
+  return useQuery({
+    queryKey: detailKeys.lienQuan(currentCompanyId, direction, id ?? ""),
+    queryFn: () => getRelatedInvoices(direction, id as string),
+    enabled: enabled && isAuthenticated && !!currentCompanyId && !!id,
   });
 }

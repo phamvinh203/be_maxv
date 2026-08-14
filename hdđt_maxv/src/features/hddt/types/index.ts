@@ -189,6 +189,11 @@ export interface DisplayRow {
    * chung `tinhGhiChuLienQuan`). Rỗng với hóa đơn mới, hoặc khi chưa tra được hóa đơn thay thế.
    */
   ghiChuLienQuan: string;
+  /**
+   * Ngày lập của hóa đơn liên quan nói trên, tách khỏi `ghiChuLienQuan` để lọc/sắp xếp được theo
+   * ngày (`dd-MM-yyyy`). Rỗng khi không có hóa đơn liên quan.
+   */
+  ngayLienQuan: string;
 }
 
 // ============================================================
@@ -251,6 +256,8 @@ export interface DetailRow {
   bienSoXe: string;
   /** Mô tả hóa đơn gốc bị thay thế/điều chỉnh (dựng từ nhóm field `…goc`); rỗng với hóa đơn mới. */
   ghiChuLienQuan: string;
+  /** Ngày lập của hóa đơn liên quan nói trên (`dd-MM-yyyy`); rỗng với hóa đơn mới. */
+  ngayLienQuan: string;
   maNt: string;
   tyGia?: number;
   tongTienHang?: number;

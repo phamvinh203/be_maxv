@@ -30,25 +30,12 @@ import {
 import { getErrorMessage } from "../../../lib/errors";
 import { ApiError } from "../../../lib/http";
 import { runPool } from "../../../lib/pool";
-import { TRA_CUU_NCC, traCuuNcc, rowStr } from "../traCuuNcc";
+import { TRA_CUU_NCC, nccHoTroTai, traCuuNcc, rowStr } from "../traCuuNcc";
 import { invoiceFileBase, invoiceKey, invoiceSttMap } from "../invoiceFileName";
 import { getSavedDetails } from "../api/invoiceDetail";
-import { taiHoaDonGoc, type DanhMucTraCuuGoc } from "../api/traCuuGoc";
+import { taiHoaDonGoc } from "../api/traCuuGoc";
 import { danhMucTraCuuGocKey, useDanhMucTraCuuGocQuery } from "../api/traCuuGocQueries";
 import type { DisplayRow, InvoiceDirection } from "../types";
-
-/**
- * NCC đã có bộ tải TỰ ĐỘNG — hỏi thẳng BE (`danhMucTraCuuGoc`) chứ KHÔNG giữ cờ song song ở FE.
- *
- * Trước đây FE có cờ `taiTuDong` riêng, tức cùng một sự thật ("BE đã đăng ký provider chưa") được
- * khai ở hai repo và phải deploy đúng thứ tự. Lệch phiên bản là FE gọi BE cho NCC chưa có provider,
- * ăn 501 và báo cho kế toán một lý do sai. Hỏi BE thì lệch không xảy ra được nữa.
- *
- * Thêm NCC = đăng ký provider ở BE, FE không phải sửa gì.
- */
-function nccHoTroTai(danhMuc: DanhMucTraCuuGoc | undefined, msttcgp: string): boolean {
-  return danhMuc?.nccs.some((n) => n.msttcgp === msttcgp) ?? false;
-}
 
 /**
  * Số NCC tải SONG SONG cùng lúc.

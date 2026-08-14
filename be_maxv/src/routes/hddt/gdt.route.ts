@@ -14,6 +14,7 @@ import {
   renderInvoicePdf,
   exportInvoiceXml,
   savedInvoiceDetailById,
+  relatedInvoiceChain,
   downloadOneInvoiceDetail,
   startPurchaseDetailRun,
   startSoldDetailRun,
@@ -129,6 +130,13 @@ export default async function (
   fastify.get("/invoices/:direction/saved-detail/:id", {
     preHandler: [fastify.authenticate],
     handler: savedInvoiceDetailById,
+  });
+
+  // Chuỗi hóa đơn thay thế/điều chỉnh liên quan tới 1 hóa đơn (dialog "Hóa đơn liên quan") — đọc DB,
+  // không cần X-Gdt-Token. CỐ Ý không nhận khoảng ngày: hóa đơn thay thế hay nằm ngoài khoảng lọc.
+  fastify.get("/invoices/:direction/lien-quan/:id", {
+    preHandler: [fastify.authenticate],
+    handler: relatedInvoiceChain,
   });
 
   // Tải chi tiết 1 hóa đơn theo id (nút "Cập nhật"/"Tải chi tiết" lặp từng hóa đơn); direction ở body.

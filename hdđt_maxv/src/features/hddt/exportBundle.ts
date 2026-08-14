@@ -64,8 +64,11 @@ function detailInvoiceKey(detail: Record<string, unknown>): string {
  * `assets` phải là ảnh nhúng base64: Chromium nhận HTML qua `setContent`, không có thư mục gốc nào
  * để phân giải đường dẫn ảnh tương đối -> nền và dấu chữ ký sẽ mất nếu trỏ đường dẫn thường.
  * `body` là thân tờ hóa đơn đã dựng, dùng lại từ bước ghi .html (xem `processTask`).
+ *
+ * Export để `taiMotHoaDon` (cột "Tải file" ở bảng Tổng quát) đi cùng đường: PDF tải lẻ một hóa đơn
+ * và PDF trong thư mục xuất theo lô phải là cùng một tài liệu.
  */
-async function invoiceToPdfBlob(
+export async function invoiceToPdfBlob(
   view: InvoiceView,
   assets: InvoiceAssets,
   body: string,

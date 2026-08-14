@@ -140,6 +140,15 @@ export function overviewDauVao(): InvoiceColumn<DisplayRow>[] {
       value: (r) => r.ghiChuLienQuan || undefined,
     },
     {
+      // Đúng cái ngày đang nằm trong cột ghi chú ngay bên trái — đứng riêng để lọc/sắp xếp được.
+      // `excelText`: giữ nguyên `dd-MM-yyyy`, không cho Excel diễn giải thành số ngày tháng.
+      key: "ngayLienQuan",
+      header: "Ngày hóa đơn bị điều chỉnh, thay thế",
+      width: 16,
+      excelText: true,
+      value: (r) => r.ngayLienQuan || undefined,
+    },
+    {
       key: "ghiChuDacBiet",
       header: "Ghi Chú: Các trường hợp đặc biệt kế toán xem xét kỹ hơn",
       width: 30,
@@ -166,6 +175,44 @@ export function overviewDauVao(): InvoiceColumn<DisplayRow>[] {
       value: (r) => r.sellerDiaChi,
     },
 
+
+
+    {
+      // CỤM CỘT THAO TÁC theo hàng, xếp liền trước "Tên file xuất hóa đơn" — cột cuối cụm cho biết
+      // các nút trên nó sinh ra file tên gì. Cùng kiểu với cột "Chọn": template chỉ khai chỗ đứng,
+      // nút bấm do `InvoiceListTabs` render vì cần state của bảng. `webOnly` — nút không có nghĩa
+      // trong file Excel.
+      key: "lienQuan",
+      header: "Hóa đơn liên quan",
+      width: 16,
+      align: "center",
+      webOnly: true,
+      value: () => undefined,
+    },
+    {
+      key: "xemHoaDon",
+      header: "Xem hóa đơn",
+      width: 12,
+      align: "center",
+      webOnly: true,
+      value: () => undefined,
+    },
+    {
+      key: "taiFile",
+      header: "Tải file",
+      width: 10,
+      align: "center",
+      webOnly: true,
+      value: () => undefined,
+    },
+    {
+      key: "taiGoc",
+      header: "Tải hóa đơn gốc",
+      width: 14,
+      align: "center",
+      webOnly: true,
+      value: () => undefined,
+    },
     {
       key: "tenFile",
       header: "Tên file xuất hóa đơn (XML/HTML/PDF)",
@@ -373,6 +420,15 @@ export function detailDauVao(): InvoiceColumn<DetailRow>[] {
         "Ghi chú: Hóa đơn thay thế, điều chỉnh, bị thay thế, bị điều chỉnh",
       width: 30,
       value: (r) => r.ghiChuLienQuan || undefined,
+    },
+    {
+      // Đúng cái ngày đang nằm trong cột ghi chú ngay bên trái — đứng riêng để lọc/sắp xếp được.
+      // `excelText`: giữ nguyên `dd-MM-yyyy`, không cho Excel diễn giải thành số ngày tháng.
+      key: "ngayLienQuan",
+      header: "Ngày hóa đơn bị điều chỉnh, thay thế",
+      width: 16,
+      excelText: true,
+      value: (r) => r.ngayLienQuan || undefined,
     },
 
     {
