@@ -186,9 +186,17 @@ export function overviewDauRa(): InvoiceColumn<DisplayRow>[] {
     },
     {
       // CỤM CỘT THAO TÁC theo hàng, xếp liền trước "Tên file xuất hóa đơn" — cột cuối cụm cho biết
-      // ba nút trên nó sinh ra file tên gì. Cùng kiểu với cột "Chọn": template chỉ khai chỗ đứng,
+      // các nút trên nó sinh ra file tên gì. Cùng kiểu với cột "Chọn": template chỉ khai chỗ đứng,
       // nút bấm do `InvoiceListTabs` render vì cần state của bảng. `webOnly` — nút không có nghĩa
       // trong file Excel.
+      key: "lienQuan",
+      header: "Hóa đơn liên quan",
+      width: 16,
+      align: "center",
+      webOnly: true,
+      value: () => undefined,
+    },
+    {
       key: "xemHoaDon",
       header: "Xem hóa đơn",
       width: 12,

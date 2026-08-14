@@ -500,6 +500,42 @@ export async function savedInvoiceDetailById(
   }
 }
 
+/**
+ * GET /gdt/invoices/:direction/lien-quan/:id — CHUỖI hóa đơn thay thế/điều chỉnh liên quan tới 1 hóa
+ * đơn (gồm chính nó), cho dialog "Hóa đơn liên quan" ở bảng Tổng quát. Chỉ cần JWT app
+ * (resolveTenantDb), KHÔNG cần token GDT (đọc DB). 404 nếu id không có trong dữ liệu đã lưu.
+ */
+export async function relatedInvoiceChain(
+  request: FastifyRequest<{ Params: { direction: string; id: string } }>,
+  reply: FastifyReply
+) {
+  const { direction, id } = request.params;
+  if (direction !== "purchase" && direction !== "sold") {
+    return reply.status(400).send({ message: "Tham số direction không hợp lệ" });
+  }
+  if (!id) {
+    return reply.status(400).send({ message: "Thiếu id hóa đơn" });
+  }
+
+  // Ngoài try/catch: lỗi quyền/tenant (403/404) trả đúng mã qua error-handler chung.
+  const tenantDb = await resolveTenantDb(request);
+
+  try {
+    const result = await GDTService.getRelatedInvoiceChain(tenantDb, direction, id);
+    if (!result.found) {
+      return reply.status(404).send({
+        message: "Không tìm thấy hóa đơn trong dữ liệu đã lưu",
+      });
+    }
+    return reply.send(result);
+  } catch (err) {
+    request.log.error(err);
+    return reply.status(500).send({
+      message: err instanceof Error ? err.message : "Không đọc được hóa đơn liên quan",
+    });
+  }
+}
+
 export async function soldInvoices(
   request: FastifyRequest<{ Querystring: SoldInvoiceQuery }>,
   reply: FastifyReply

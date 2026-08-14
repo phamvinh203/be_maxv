@@ -2347,6 +2347,179 @@ export async function getSavedInvoiceDetailById(
   };
 }
 
+/** 1 mắt xích trong chuỗi thay thế/điều chỉnh — đúng bộ field dialog "Hóa đơn liên quan" của FE cần. */
+export interface RelatedInvoiceRow {
+  id: string;
+  khhdon: string;
+  shdon: string;
+  tdlap: string;
+  tthai: string;
+  ttxly: string;
+}
+
+/** Mắt xích kèm khóa để đi tiếp trong chuỗi — ba field cuối KHÔNG trả ra FE. */
+interface ChainNode extends RelatedInvoiceRow {
+  nbmst: string;
+  /** Ký hiệu hóa đơn GỐC mà node này thay thế/điều chỉnh (rỗng nếu node là hóa đơn mới). */
+  khhdgoc: string;
+  /** Số hóa đơn GỐC. */
+  shdgoc: string;
+}
+
+/**
+ * Trần số mắt xích duyệt trong một chuỗi.
+ *
+ * Chuỗi thật dài lắm vài đời, nhưng dữ liệu bẩn (hai hóa đơn khai nhau làm gốc của nhau) sẽ thành
+ * vòng vô hạn. `Set` id đã ghé chặn được vòng khép kín, con số này chặn nốt ca xoắn ốc — mỗi bước là
+ * một truy vấn nên để chạy tự do là treo request.
+ */
+const MAX_CHAIN_NODES = 20;
+
+/**
+ * Cột đọc cho mỗi mắt xích. Nhóm `…goc` nằm trong JSON: đọc `detail` trước, thiếu thì lùi về `raw`
+ * (payload danh sách GDT cũng mang nhóm này) — nhờ vậy đi được chuỗi cả khi hóa đơn CHƯA tải chi
+ * tiết. Cùng cách đọc với `readReplacements`, sửa một chỗ thì sửa cả hai.
+ */
+const CHAIN_COLS = Prisma.sql`
+  id, khhdon, shdon, tdlap, tthai, ttxly, nbmst,
+  COALESCE(detail ->> 'khhdgoc', raw ->> 'khhdgoc') AS khhdgoc,
+  COALESCE(detail ->> 'shdgoc',  raw ->> 'shdgoc')  AS shdgoc
+`;
+
+interface ChainRawRow {
+  id: string;
+  khhdon: string | null;
+  shdon: string | null;
+  tdlap: Date | null;
+  tthai: string | null;
+  ttxly: string | null;
+  nbmst: string | null;
+  khhdgoc: string | null;
+  shdgoc: string | null;
+}
+
+function toChainNode(r: ChainRawRow | undefined): ChainNode | null {
+  if (!r) return null;
+  return {
+    id: r.id,
+    khhdon: r.khhdon ?? "",
+    shdon: r.shdon ?? "",
+    tdlap: toVnWallClock(r.tdlap) ?? "",
+    tthai: r.tthai ?? "",
+    ttxly: r.ttxly ?? "",
+    nbmst: r.nbmst ?? "",
+    khhdgoc: r.khhdgoc ?? "",
+    shdgoc: r.shdgoc ?? "",
+  };
+}
+
+/** Mắt xích theo id (điểm xuất phát của chuỗi). */
+async function chainNodeById(
+  tenantDb: PrismaClient,
+  direction: "purchase" | "sold",
+  id: string,
+): Promise<ChainNode | null> {
+  const rows = await tenantDb.$queryRaw<ChainRawRow[]>`
+    SELECT ${CHAIN_COLS} FROM ${savedTable(direction)} WHERE id = ${id} LIMIT 1
+  `;
+  return toChainNode(rows[0]);
+}
+
+/** Hóa đơn GỐC mà node đang xét thay thế/điều chỉnh — tra thẳng bằng khóa unique của cổng thuế. */
+async function chainNodeGoc(
+  tenantDb: PrismaClient,
+  direction: "purchase" | "sold",
+  node: ChainNode,
+): Promise<ChainNode | null> {
+  const rows = await tenantDb.$queryRaw<ChainRawRow[]>`
+    SELECT ${CHAIN_COLS} FROM ${savedTable(direction)}
+     WHERE nbmst = ${node.nbmst} AND khhdon = ${node.khhdgoc} AND shdon = ${node.shdgoc}
+     LIMIT 1
+  `;
+  return toChainNode(rows[0]);
+}
+
+/**
+ * Hóa đơn THAY THẾ/ĐIỀU CHỈNH node đang xét — chiều ngược lại, phải quét theo nhóm `…goc` vì hóa đơn
+ * bị thay thế không mang thông tin nào trỏ tới kẻ thay thế nó (xem `readReplacements`).
+ *
+ * KHÔNG bó khoảng ngày: hóa đơn thay thế thường lập ở kỳ sau hóa đơn gốc.
+ */
+async function chainNodeThayThe(
+  tenantDb: PrismaClient,
+  direction: "purchase" | "sold",
+  node: ChainNode,
+): Promise<ChainNode | null> {
+  const rows = await tenantDb.$queryRaw<ChainRawRow[]>`
+    SELECT ${CHAIN_COLS} FROM ${savedTable(direction)}
+     WHERE tthai IN ('2', '3')
+       AND nbmst = ${node.nbmst}
+       AND COALESCE(detail ->> 'khhdgoc', raw ->> 'khhdgoc') = ${node.khhdon}
+       AND COALESCE(detail ->> 'shdgoc',  raw ->> 'shdgoc')  = ${node.shdon}
+     LIMIT 1
+  `;
+  return toChainNode(rows[0]);
+}
+
+/**
+ * CHUỖI hóa đơn liên quan của 1 hóa đơn: bản thân nó + mọi hóa đơn thay thế/điều chỉnh đứng trước và
+ * sau nó, dò cho tới hết cả hai đầu. Cho dialog "Hóa đơn liên quan" ở bảng Tổng quát.
+ *
+ * ĐỌC DB, không gọi GDT, và CỐ Ý không nhận khoảng ngày: hóa đơn thay thế hay nằm ngoài khoảng người
+ * dùng đang lọc, bó lại là dialog rỗng đúng lúc cần nhất.
+ *
+ * Mỗi bước một truy vấn nhỏ (LIMIT 1) — chuỗi thực tế 2-3 đời nên tổng vài query, và chỉ chạy khi
+ * người dùng mở dialog chứ không đi kèm mọi lượt tìm kiếm.
+ *
+ * `found=false` nếu id không có trong dữ liệu đã lưu. Hóa đơn không liên quan ai -> `chain` đúng 1
+ * phần tử là chính nó (FE tự nói "không có hóa đơn liên quan").
+ */
+export async function getRelatedInvoiceChain(
+  tenantDb: PrismaClient,
+  direction: "purchase" | "sold",
+  id: string,
+): Promise<{ found: boolean; chain: RelatedInvoiceRow[] }> {
+  const start = await chainNodeById(tenantDb, direction, id);
+  if (!start) return { found: false, chain: [] };
+
+  const daGhe = new Set<string>([start.id]);
+  const chuoi: ChainNode[] = [start];
+
+  // Đi LÙI: node -> hóa đơn nó thay thế -> hóa đơn kia lại thay thế ai…
+  let cur: ChainNode | null = start;
+  while (cur && cur.khhdgoc && cur.shdgoc && chuoi.length < MAX_CHAIN_NODES) {
+    const truoc: ChainNode | null = await chainNodeGoc(tenantDb, direction, cur);
+    if (!truoc || daGhe.has(truoc.id)) break;
+    daGhe.add(truoc.id);
+    chuoi.push(truoc);
+    cur = truoc;
+  }
+
+  // Đi TỚI: node -> hóa đơn thay thế nó -> kẻ thay thế kẻ đó…
+  cur = start;
+  while (cur && chuoi.length < MAX_CHAIN_NODES) {
+    const sau: ChainNode | null = await chainNodeThayThe(tenantDb, direction, cur);
+    if (!sau || daGhe.has(sau.id)) break;
+    daGhe.add(sau.id);
+    chuoi.push(sau);
+    cur = sau;
+  }
+
+  // Mới nhất trước — cùng chiều sắp xếp với bảng Tổng quát (`tdlap desc`), khỏi lệch cảm giác.
+  chuoi.sort((a, b) => b.tdlap.localeCompare(a.tdlap));
+  return {
+    found: true,
+    chain: chuoi.map((n) => ({
+      id: n.id,
+      khhdon: n.khhdon,
+      shdon: n.shdon,
+      tdlap: n.tdlap,
+      tthai: n.tthai,
+      ttxly: n.ttxly,
+    })),
+  };
+}
+
 /**
  * Đánh dấu `tt_tai="error"` cho 1 hóa đơn đã lưu — KHÔNG gọi GDT. Dùng khi FE tải chi tiết bị lỗi
  * ở tầng HTTP (500/timeout/mất mạng) nên `fetchAndStoreDetail` chưa kịp đánh dấu; ghi bền để cột

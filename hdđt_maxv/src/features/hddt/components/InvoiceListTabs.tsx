@@ -30,6 +30,7 @@ import InboxRounded from "@mui/icons-material/InboxRounded";
 import FileDownloadRounded from "@mui/icons-material/FileDownloadRounded";
 import CloudDownloadRounded from "@mui/icons-material/CloudDownloadRounded";
 import VisibilityRounded from "@mui/icons-material/VisibilityRounded";
+import AccountTreeRounded from "@mui/icons-material/AccountTreeRounded";
 import { useActiveGdtToken } from "../gdtSession/useActiveGdtToken";
 import { useGdtSession } from "../gdtSession/useGdtSession";
 import DialogLoginHddt from "../../../components/dialogLoginHddt";
@@ -67,6 +68,7 @@ import {
 import InvoiceFilterPanel from "./InvoiceFilterPanel";
 import InvoiceDetailPanel from "./InvoiceDetailPanel";
 import InvoiceViewDialog from "./InvoiceViewDialog";
+import HoaDonLienQuanDialog from "./HoaDonLienQuanDialog";
 import ExportFileDialog from "./ExportFileDialog";
 import DownloadOriginalDialog from "./DownloadOriginalDialog";
 import InvoicePagination, { DEFAULT_ROWS_PER_PAGE } from "./InvoicePagination";
@@ -133,6 +135,12 @@ function InvoiceTablePanel({ direction, active }: InvoiceTablePanelProps) {
   const [viewOpen, setViewOpen] = useState(false);
   /** Hóa đơn + loại file đang tải ở cụm cột thao tác; null = không có lượt nào chạy. */
   const [dangTai, setDangTai] = useState<{ id: string; loai: "file" | "goc" } | null>(null);
+  /**
+   * Hóa đơn đang mở dialog "Hóa đơn liên quan". Tách khỏi `selectedId` vì hai thứ chỉ vào hai hóa
+   * đơn khác nhau được: bấm "Xem hóa đơn" TRONG dialog sẽ đổi `selectedId` sang một tờ khác trong
+   * chuỗi, mà dialog chuỗi vẫn phải đứng nguyên ở tờ ban đầu.
+   */
+  const [lienQuanId, setLienQuanId] = useState<string | null>(null);
   // Dialog "Tải hóa đơn gốc" (theo chiều): mở bằng nút "Tải hóa đơn gốc" trong từng tab.
   const [downloadOriginalOpen, setDownloadOriginalOpen] = useState(false);
   /** Mở form đăng nhập Thuế điện tử khi thao tác cần token mà công ty đang chọn chưa đăng nhập. */
@@ -231,6 +239,7 @@ function InvoiceTablePanel({ direction, active }: InvoiceTablePanelProps) {
     prevCompanyRef.current = currentCompanyId;
     if (selectedId !== null) setSelectedId(null);
     if (viewOpen) setViewOpen(false);
+    if (lienQuanId !== null) setLienQuanId(null);
   }
 
   /** Nạp lại DANH SÁCH đã lưu (bảng Tổng quát) — dùng trong lúc poll khi có hóa đơn vừa tải xong. */
@@ -516,6 +525,29 @@ function InvoiceTablePanel({ direction, active }: InvoiceTablePanelProps) {
     );
 
     switch (colKey) {
+      case "lienQuan": {
+        // Chỉ hóa đơn thuộc quan hệ thay thế/điều chỉnh (tthai 2-5) mới có chuỗi để xem. Xét theo
+        // `tthai` chứ không theo cột ghi chú: ghi chú của nhánh "bị thay thế" dựng từ bản đồ ngược ở
+        // FE, tra trượt là trống — trong khi BE vẫn dò ra chuỗi vì nó tra thẳng DB.
+        const coChuoi = ["2", "3", "4", "5"].includes(r.trangThaiHd);
+        return (
+          <Tooltip
+            title={coChuoi ? "Xem hóa đơn liên quan" : "Hóa đơn không thay thế/điều chỉnh hóa đơn nào"}
+          >
+            <span>
+              <IconButton
+                size="small"
+                sx={{ p: 0.25 }}
+                disabled={!coChuoi}
+                onClick={() => setLienQuanId(r.id)}
+                aria-label={`Hóa đơn liên quan của ${r.soHd}`}
+              >
+                <AccountTreeRounded fontSize="small" />
+              </IconButton>
+            </span>
+          </Tooltip>
+        );
+      }
       case "chon":
         return (
           <Checkbox
@@ -723,6 +755,19 @@ function InvoiceTablePanel({ direction, active }: InvoiceTablePanelProps) {
       )}
       </>
       )}
+
+      {/* Đứng TRƯỚC InvoiceViewDialog để tờ hóa đơn mở từ trong nó nằm chồng lên trên, và đóng tờ
+          hóa đơn thì quay lại đúng chuỗi đang xem thay vì về thẳng bảng. */}
+      <HoaDonLienQuanDialog
+        open={lienQuanId !== null}
+        onClose={() => setLienQuanId(null)}
+        direction={direction}
+        id={lienQuanId}
+        onXemHoaDon={(id) => {
+          setSelectedId(id);
+          setViewOpen(true);
+        }}
+      />
 
       <InvoiceViewDialog
         open={viewOpen}

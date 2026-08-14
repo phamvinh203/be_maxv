@@ -42,6 +42,36 @@ export function getSavedInvoiceDetailById(
   );
 }
 
+/** 1 mắt xích trong chuỗi thay thế/điều chỉnh — 1 dòng của dialog "Hóa đơn liên quan". */
+export interface RelatedInvoiceRow {
+  /** id trong DB — để nút "Xem hóa đơn" của dialog mở đúng tờ này. */
+  id: string;
+  /** Ký hiệu hóa đơn (`khhdon`). */
+  khhdon: string;
+  shdon: string;
+  /** Ngày lập, giờ VN `yyyy-MM-ddTHH:mm:ss` như `tdlap` ở mọi nơi khác. */
+  tdlap: string;
+  tthai: string;
+  ttxly: string;
+}
+
+/**
+ * GET /gdt/invoices/:direction/lien-quan/:id → CHUỖI hóa đơn thay thế/điều chỉnh liên quan tới 1 hóa
+ * đơn, GỒM CẢ chính nó, sắp mới nhất trước. Đọc DB, không cần token GDT.
+ *
+ * BE dò cả hai đầu chuỗi và KHÔNG bó khoảng ngày — hóa đơn thay thế thường lập ở kỳ sau hóa đơn gốc
+ * nên bó lại là mất đúng mắt xích cần xem. Hóa đơn không liên quan ai -> `chain` đúng 1 phần tử.
+ * 404 (apiFetch ném lỗi) nếu id không có trong DB. Dùng: `useRelatedInvoicesQuery`.
+ */
+export function getRelatedInvoices(
+  direction: InvoiceDirection,
+  id: string,
+): Promise<{ found: boolean; chain: RelatedInvoiceRow[] }> {
+  return apiFetch<{ found: boolean; chain: RelatedInvoiceRow[] }>(
+    `/gdt/invoices/${direction}/lien-quan/${encodeURIComponent(id)}`,
+  );
+}
+
 /** Số HĐ + số HĐ CHƯA có chi tiết trong khoảng — gate cho nút "Xuất file tổng hợp + hóa đơn". */
 export interface DetailCompleteStatus {
   total: number;
