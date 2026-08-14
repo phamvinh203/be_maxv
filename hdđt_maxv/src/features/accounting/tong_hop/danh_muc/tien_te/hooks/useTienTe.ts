@@ -10,17 +10,21 @@ import {
   updateTienTe,
 } from '@/features/accounting/tong_hop/danh_muc/tien_te/api/tienTeApi';
 import type { TienTeForm } from '@/features/accounting/tong_hop/danh_muc/tien_te/types';
+import { useAuth } from '@/features/auth/useAuth';
 
 export const tienTeKeys = {
   all: ['tien-te'] as const,
-  list: ['tien-te', 'list'] as const,
+  // Gắn companyId — mọi API đều theo tenant qua cookie, không tự đổi khi đổi công ty.
+  list: (companyId: string | null) => ['tien-te', companyId, 'list'] as const,
 };
 
 export function useTienTeList() {
+  const { isAuthenticated, currentCompanyId } = useAuth();
   return useQuery({
-    queryKey: tienTeKeys.list,
+    queryKey: tienTeKeys.list(currentCompanyId),
     queryFn: () => listTienTe(),
     placeholderData: (prev) => prev,
+    enabled: isAuthenticated && !!currentCompanyId,
   });
 }
 

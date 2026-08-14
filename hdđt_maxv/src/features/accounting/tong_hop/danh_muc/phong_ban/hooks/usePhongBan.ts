@@ -10,18 +10,21 @@ import {
   updatePhongBan,
 } from '@/features/accounting/tong_hop/danh_muc/phong_ban/api/phongBanApi';
 import type { PhongBanForm } from '@/features/accounting/tong_hop/danh_muc/phong_ban/types';
+import { useAuth } from '@/features/auth/useAuth';
 
 export const phongBanKeys = {
   all: ['phong-ban'] as const,
-  list: ['phong-ban', 'list'] as const,
+  // Gắn companyId — mọi API đều theo tenant qua cookie, không tự đổi khi đổi công ty.
+  list: (companyId: string | null) => ['phong-ban', companyId, 'list'] as const,
 };
 
 export function usePhongBanList(options?: { enabled?: boolean }) {
+  const { isAuthenticated, currentCompanyId } = useAuth();
   return useQuery({
-    queryKey: phongBanKeys.list,
+    queryKey: phongBanKeys.list(currentCompanyId),
     queryFn: () => listPhongBan(),
     placeholderData: (prev) => prev,
-    enabled: options?.enabled ?? true,
+    enabled: (options?.enabled ?? true) && isAuthenticated && !!currentCompanyId,
   });
 }
 

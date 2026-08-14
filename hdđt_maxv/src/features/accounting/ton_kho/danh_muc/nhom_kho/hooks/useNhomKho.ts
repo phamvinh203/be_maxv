@@ -11,17 +11,21 @@ import {
 } from '@/features/accounting/ton_kho/danh_muc/nhom_kho/api/nhomKhoApi';
 import type { NhomKhoForm } from '@/features/accounting/ton_kho/danh_muc/nhom_kho/types';
 import { khoKeys } from '@/features/accounting/ton_kho/danh_muc/kho/hooks/useKho';
+import { useAuth } from '@/features/auth/useAuth';
 
 export const nhomKhoKeys = {
   all: ['nhom-kho'] as const,
-  list: ['nhom-kho', 'list'] as const,
+  // Gắn companyId — mọi API đều theo tenant qua cookie, không tự đổi khi đổi công ty.
+  list: (companyId: string | null) => ['nhom-kho', companyId, 'list'] as const,
 };
 
 export function useNhomKhoList() {
+  const { isAuthenticated, currentCompanyId } = useAuth();
   return useQuery({
-    queryKey: nhomKhoKeys.list,
+    queryKey: nhomKhoKeys.list(currentCompanyId),
     queryFn: () => listNhomKho(),
     placeholderData: (prev) => prev,
+    enabled: isAuthenticated && !!currentCompanyId,
   });
 }
 

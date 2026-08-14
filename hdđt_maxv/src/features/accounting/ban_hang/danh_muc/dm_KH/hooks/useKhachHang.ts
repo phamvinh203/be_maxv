@@ -10,18 +10,21 @@ import {
   updateKhachHang,
 } from '@/features/accounting/ban_hang/danh_muc/dm_KH/api/khachHangApi';
 import type { KhachHangForm } from '@/features/accounting/ban_hang/danh_muc/dm_KH/types';
+import { useAuth } from '@/features/auth/useAuth';
 
 export const khachHangKeys = {
   all: ['khach-hang'] as const,
-  list: ['khach-hang', 'list'] as const,
+  // Gắn companyId — mọi API đều theo tenant qua cookie, không tự đổi khi đổi công ty.
+  list: (companyId: string | null) => ['khach-hang', companyId, 'list'] as const,
 };
 
 export function useKhachHangList(options?: { enabled?: boolean }) {
+  const { isAuthenticated, currentCompanyId } = useAuth();
   return useQuery({
-    queryKey: khachHangKeys.list,
+    queryKey: khachHangKeys.list(currentCompanyId),
     queryFn: () => listKhachHang(),
     placeholderData: (prev) => prev,
-    enabled: options?.enabled ?? true,
+    enabled: (options?.enabled ?? true) && isAuthenticated && !!currentCompanyId,
   });
 }
 

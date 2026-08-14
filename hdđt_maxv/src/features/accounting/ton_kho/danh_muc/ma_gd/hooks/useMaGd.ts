@@ -10,17 +10,21 @@ import {
   updateMaGd,
 } from '@/features/accounting/ton_kho/danh_muc/ma_gd/api/maGdApi';
 import type { MaGdForm } from '@/features/accounting/ton_kho/danh_muc/ma_gd/types';
+import { useAuth } from '@/features/auth/useAuth';
 
 export const maGdKeys = {
   all: ['ma-gd'] as const,
-  list: ['ma-gd', 'list'] as const,
+  // Gắn companyId — mọi API đều theo tenant qua cookie, không tự đổi khi đổi công ty.
+  list: (companyId: string | null) => ['ma-gd', companyId, 'list'] as const,
 };
 
 export function useMaGdList() {
+  const { isAuthenticated, currentCompanyId } = useAuth();
   return useQuery({
-    queryKey: maGdKeys.list,
+    queryKey: maGdKeys.list(currentCompanyId),
     queryFn: () => listMaGd(),
     placeholderData: (prev) => prev,
+    enabled: isAuthenticated && !!currentCompanyId,
   });
 }
 

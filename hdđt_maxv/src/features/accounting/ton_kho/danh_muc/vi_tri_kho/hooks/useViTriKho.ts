@@ -10,17 +10,21 @@ import {
   updateViTri,
 } from '@/features/accounting/ton_kho/danh_muc/vi_tri_kho/api/viTriKhoApi';
 import type { ViTriForm } from '@/features/accounting/ton_kho/danh_muc/vi_tri_kho/types';
+import { useAuth } from '@/features/auth/useAuth';
 
 export const viTriKeys = {
   all: ['vi-tri-kho'] as const,
-  list: ['vi-tri-kho', 'list'] as const,
+  // Gắn companyId — mọi API đều theo tenant qua cookie, không tự đổi khi đổi công ty.
+  list: (companyId: string | null) => ['vi-tri-kho', companyId, 'list'] as const,
 };
 
 export function useViTriList() {
+  const { isAuthenticated, currentCompanyId } = useAuth();
   return useQuery({
-    queryKey: viTriKeys.list,
+    queryKey: viTriKeys.list(currentCompanyId),
     queryFn: () => listViTri(),
     placeholderData: (prev) => prev,
+    enabled: isAuthenticated && !!currentCompanyId,
   });
 }
 

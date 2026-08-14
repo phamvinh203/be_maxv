@@ -11,27 +11,33 @@ import {
   updateHoaDon,
 } from '@/features/accounting/ban_hang/chung_tu/hoa_don_ban_hang/api/hoaDonBanHangApi';
 import type { HoaDonPayload } from '@/features/accounting/ban_hang/chung_tu/hoa_don_ban_hang/types';
+import { useAuth } from '@/features/auth/useAuth';
 
+// Mọi key đều gắn companyId — API theo tenant qua cookie, không tự đổi khi đổi công ty.
 export const hoaDonKeys = {
   all: ['hoa-don-ban-hang'] as const,
-  list: ['hoa-don-ban-hang', 'list'] as const,
-  chiTiet: (sttRec: string) => ['hoa-don-ban-hang', 'chi-tiet', sttRec] as const,
+  list: (companyId: string | null) => ['hoa-don-ban-hang', companyId, 'list'] as const,
+  chiTiet: (companyId: string | null, sttRec: string) =>
+    ['hoa-don-ban-hang', companyId, 'chi-tiet', sttRec] as const,
 };
 
 export function useHoaDonList() {
+  const { isAuthenticated, currentCompanyId } = useAuth();
   return useQuery({
-    queryKey: hoaDonKeys.list,
+    queryKey: hoaDonKeys.list(currentCompanyId),
     queryFn: () => listHoaDon(),
     placeholderData: (prev) => prev,
+    enabled: isAuthenticated && !!currentCompanyId,
   });
 }
 
 /** Nạp chi tiết dòng của 1 hóa đơn (chỉ khi có sttRec). */
 export function useChiTiet(sttRec: string | null) {
+  const { isAuthenticated, currentCompanyId } = useAuth();
   return useQuery({
-    queryKey: hoaDonKeys.chiTiet(sttRec ?? ''),
+    queryKey: hoaDonKeys.chiTiet(currentCompanyId, sttRec ?? ''),
     queryFn: () => getChiTiet(sttRec as string),
-    enabled: !!sttRec,
+    enabled: isAuthenticated && !!currentCompanyId && !!sttRec,
   });
 }
 
