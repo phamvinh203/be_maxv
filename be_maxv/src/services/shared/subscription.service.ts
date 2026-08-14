@@ -13,7 +13,7 @@ async function ensureTrialPlan(): Promise<SubscriptionPlan> {
     update: {},
     create: {
       ma: 'TRIAL',
-      ten: 'Dùng thử',
+      ten: 'Miễn phí',
       gia: 0,
       chuKyThang: 0,
       soMstToiDa: 3,

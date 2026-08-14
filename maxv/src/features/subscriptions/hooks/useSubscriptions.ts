@@ -8,6 +8,7 @@ import {
   listPlans,
   createPlan,
   updatePlan,
+  deletePlan,
   listSubscriptions,
   changePlan,
   cancelSubscription,
@@ -85,5 +86,13 @@ export function useUpdatePlan() {
       // tên/giá gói đổi -> làm mới luôn danh sách thuê bao (đang join plan)
       void qc.invalidateQueries({ queryKey: subKeys.all });
     },
+  });
+}
+
+export function useDeletePlan() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => deletePlan(id),
+    onSuccess: () => qc.invalidateQueries({ queryKey: planKeys.all }),
   });
 }

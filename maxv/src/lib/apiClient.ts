@@ -34,6 +34,8 @@ function makeApi(instance: AxiosInstance) {
       instance.post<ApiResponse<T>>(url, body, config).then((r) => r.data.data),
     patch: <T>(url: string, body?: unknown, config?: AxiosRequestConfig) =>
       instance.patch<ApiResponse<T>>(url, body, config).then((r) => r.data.data),
+    delete: <T>(url: string, config?: AxiosRequestConfig) =>
+      instance.delete<ApiResponse<T>>(url, config).then((r) => r.data.data),
   };
 }
 

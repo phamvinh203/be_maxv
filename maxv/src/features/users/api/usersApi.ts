@@ -1,6 +1,11 @@
 import { api } from '@/lib/apiClient';
 import type { Paginated } from '@/types/api';
-import type { AdminUser, ListUsersParams, Role } from '@/features/users/types/user';
+import type {
+  AdminUser,
+  DeleteUserResult,
+  ListUsersParams,
+  Role,
+} from '@/features/users/types/user';
 
 export function listUsers(
   params: ListUsersParams,
@@ -22,4 +27,17 @@ export function changeUserRole(id: string, role: Role): Promise<AdminUser> {
 
 export function resetUserPassword(id: string): Promise<{ password: string }> {
   return api.post<{ password: string }>(`/admin/users/${id}/reset-password`);
+}
+
+/**
+ * Xóa VĨNH VIỄN tài khoản — backend DROP luôn DB tenant của mọi MST họ sở hữu.
+ * `email` là email của chính user đó, admin phải gõ lại để xác nhận.
+ */
+export function deleteUser(
+  id: string,
+  email: string,
+): Promise<DeleteUserResult> {
+  return api.delete<DeleteUserResult>(`/admin/users/${id}`, {
+    data: { email },
+  });
 }

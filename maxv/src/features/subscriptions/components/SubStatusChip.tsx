@@ -6,7 +6,7 @@ const MAP: Record<
   SubStatus,
   { label: string; color: 'info' | 'success' | 'warning' | 'error' | 'default' }
 > = {
-  TRIALING: { label: 'Dùng thử', color: 'info' },
+  TRIALING: { label: 'Miễn phí', color: 'info' },
   ACTIVE: { label: 'Đang hoạt động', color: 'success' },
   PAST_DUE: { label: 'Quá hạn', color: 'warning' },
   CANCELED: { label: 'Đã hủy', color: 'default' },

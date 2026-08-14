@@ -58,11 +58,17 @@ export const MESSAGES = {
     CANNOT_CHANGE_OWN_ROLE: 'Không thể đổi vai trò của chính bạn',
     CANNOT_CHANGE_ADMIN:
       'Không thể đổi vai trò tài khoản quản trị hệ thống (thực hiện qua DB)',
+    CANNOT_DELETE_SELF: 'Không thể xóa chính tài khoản của bạn',
+    CANNOT_DELETE_ADMIN:
+      'Không thể xóa tài khoản quản trị hệ thống (thực hiện qua DB)',
+    EMAIL_MISMATCH: 'Email xác nhận không khớp',
   },
 
   SUBSCRIPTION: {
     PLAN_NOT_FOUND: 'Gói dịch vụ không tồn tại',
     PLAN_CODE_TAKEN: 'Mã gói đã tồn tại',
+    PLAN_IN_USE:
+      'Gói đang hoặc đã được sử dụng nên không xóa được, vui lòng chuyển sang Ngừng bán',
     SUB_NOT_FOUND: 'Thuê bao không tồn tại',
     SAME_PLAN: 'Thuê bao đang dùng đúng gói này',
     ALREADY_CANCELED: 'Thuê bao đã bị hủy',

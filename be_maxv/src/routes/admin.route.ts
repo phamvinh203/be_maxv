@@ -15,6 +15,7 @@ import {
   listPlans,
   createPlan,
   updatePlan,
+  deletePlan,
   listSubscriptions,
   changePlan,
   cancelSubscription,
@@ -26,6 +27,7 @@ import {
   deactivateUser,
   changeUserRole,
   resetUserPassword,
+  deleteUser,
 } from '../controllers/admin/adminUser.controller';
 import {
   listInvites,
@@ -66,6 +68,7 @@ export async function adminRoutes(app: FastifyInstance) {
   app.get('/plans', listPlans);
   app.post('/plans', createPlan);
   app.patch('/plans/:id', updatePlan);
+  app.delete('/plans/:id', deletePlan);
 
   // Thuê bao
   app.get('/subscriptions', listSubscriptions);
@@ -79,6 +82,8 @@ export async function adminRoutes(app: FastifyInstance) {
   app.post('/users/:id/deactivate', deactivateUser);
   app.patch('/users/:id/role', changeUserRole);
   app.post('/users/:id/reset-password', resetUserPassword);
+  // Xóa VĨNH VIỄN tài khoản — DROP luôn DB tenant của mọi MST họ sở hữu (xem adminDeleteUser).
+  app.delete('/users/:id', deleteUser);
 
   // Lời mời nhân viên (invite_requests)
   app.get('/companies/invites', listInvites);

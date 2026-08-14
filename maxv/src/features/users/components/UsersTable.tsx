@@ -17,6 +17,7 @@ import LockRoundedIcon from '@mui/icons-material/LockRounded';
 import LockOpenRoundedIcon from '@mui/icons-material/LockOpenRounded';
 import BadgeRoundedIcon from '@mui/icons-material/BadgeRounded';
 import KeyRoundedIcon from '@mui/icons-material/KeyRounded';
+import DeleteForeverRoundedIcon from '@mui/icons-material/DeleteForeverRounded';
 import { UserStatusChip } from './UserStatusChip';
 import { tableCardSx, tableHeadRowSx } from '@/components/tableStyles';
 import { formatDate } from '@/lib/format';
@@ -33,6 +34,7 @@ interface Props {
   onToggleActive: (user: AdminUser) => void;
   onChangeRole: (user: AdminUser) => void;
   onResetPassword: (user: AdminUser) => void;
+  onDelete: (user: AdminUser) => void;
 }
 
 export function UsersTable({
@@ -46,6 +48,7 @@ export function UsersTable({
   onToggleActive,
   onChangeRole,
   onResetPassword,
+  onDelete,
 }: Props): JSX.Element {
   return (
     <Paper elevation={0} sx={tableCardSx}>
@@ -149,6 +152,17 @@ export function UsersTable({
                         onClick={() => onResetPassword(u)}
                       >
                         Đặt lại MK
+                      </Button>
+                      {/* Chặn sẵn 2 trường hợp backend cũng từ chối (409): tự xóa
+                          mình, và xóa tài khoản quản trị. */}
+                      <Button
+                        size="small"
+                        color="error"
+                        startIcon={<DeleteForeverRoundedIcon />}
+                        disabled={self || u.role === 'ADMIN'}
+                        onClick={() => onDelete(u)}
+                      >
+                        Xóa
                       </Button>
                     </Stack>
                   </TableCell>

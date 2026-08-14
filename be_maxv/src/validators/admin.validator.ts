@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { MODULE_KEYS } from '../constants/modules';
+import { emailRule } from './auth.validator';
 
 /**
  * `SubscriptionPlan.features` — bản đồ "gói này cho những module nào".
@@ -98,6 +99,11 @@ export const listUsersQuerySchema = z.object({
 
 export const changeRoleSchema = z.object({ role: z.enum(ASSIGNABLE_ROLES) });
 
+// DELETE /admin/users/:id — bắt gõ lại email để xác nhận xóa vĩnh viễn (xem adminDeleteUser:
+// xóa OWNER kéo theo DROP DATABASE mọi MST của họ). `emailRule` chuẩn hóa trim + lowercase ở
+// ĐÂY là điểm duy nhất — service chỉ so bằng, không tự chuẩn hóa lại.
+export const deleteUserSchema = z.object({ email: emailRule });
+
 // ---- Tài khoản (owner-centric) ----
 // GET /admin/owners?q=&page=&pageSize=
 export const listOwnersQuerySchema = z.object({
@@ -123,6 +129,7 @@ export type ListInvitesQuery = z.infer<typeof listInvitesQuerySchema>;
 export type RejectInviteInput = z.infer<typeof rejectInviteSchema>;
 export type ListUsersQuery = z.infer<typeof listUsersQuerySchema>;
 export type ChangeRoleInput = z.infer<typeof changeRoleSchema>;
+export type DeleteUserInput = z.infer<typeof deleteUserSchema>;
 export type ListOwnersQuery = z.infer<typeof listOwnersQuerySchema>;
 export type ListCompaniesQuery = z.infer<typeof listCompaniesQuerySchema>;
 export type ListLogsQuery = z.infer<typeof listLogsQuerySchema>;

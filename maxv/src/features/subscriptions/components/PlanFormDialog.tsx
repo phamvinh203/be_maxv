@@ -124,7 +124,7 @@ export function PlanFormDialog({ open, plan, onClose }: Props): JSX.Element {
             type="number"
             value={chuKyThang}
             onChange={(e) => setChuKyThang(e.target.value)}
-            helperText="0 = gói dùng thử"
+            helperText="0 = gói miễn phí"
             fullWidth
           />
           <TextField
@@ -158,7 +158,7 @@ export function PlanFormDialog({ open, plan, onClose }: Props): JSX.Element {
           <Box>
             <Typography sx={{ fontWeight: 600 }}>Module kèm theo gói</Typography>
             <Typography sx={{ fontSize: 13, color: 'text.secondary', mb: 1 }}>
-              Tài khoản dùng gói này sẽ thấy các module được tick. Gói dùng thử
+              Tài khoản dùng gói này sẽ thấy các module được tick. Gói miễn phí
               nên để trống.
             </Typography>
             {MODULE_KEYS.map((k) => (

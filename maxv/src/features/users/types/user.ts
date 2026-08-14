@@ -18,7 +18,14 @@ export interface AdminUser {
   ownerId: string | null; // nhân viên -> chủ tài khoản; owner/admin = null
   createdAt: string;
   owner: OwnerRef | null; // chủ tài khoản (nếu là nhân viên)
-  _count: { ownedDonVi: number; donViAccess: number };
+  _count: { ownedDonVi: number; donViAccess: number; employees: number };
+}
+
+/** Kết quả xóa vĩnh viễn 1 tài khoản — số bản ghi bị cascade kéo theo. */
+export interface DeleteUserResult {
+  id: string;
+  soDonViDaXoa: number;
+  soNhanVienDaXoa: number;
 }
 
 export interface ListUsersParams {

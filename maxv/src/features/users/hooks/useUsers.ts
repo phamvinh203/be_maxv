@@ -9,7 +9,12 @@ import {
   deactivateUser,
   changeUserRole,
   resetUserPassword,
+  deleteUser,
 } from '@/features/users/api/usersApi';
+import { companyKeys } from '@/features/companies/hooks/useCompanies';
+import { ownerKeys } from '@/features/owners/hooks/useOwners';
+import { inviteKeys } from '@/features/invites/hooks/useInvites';
+import { subKeys } from '@/features/subscriptions/hooks/useSubscriptions';
 import type { ListUsersParams, Role } from '@/features/users/types/user';
 
 export const userKeys = {
@@ -49,4 +54,27 @@ export function useChangeUserRole() {
 // Reset mật khẩu không đổi danh sách -> không cần invalidate; trả password 1 lần.
 export function useResetPassword() {
   return useMutation({ mutationFn: (id: string) => resetUserPassword(id) });
+}
+
+/**
+ * Xóa 1 user kéo theo cascade cả nhân viên, công ty, thuê bao và lời mời của họ, nên
+ * phải làm mới mọi danh sách đang hiển thị các thực thể đó — chỉ invalidate 'users'
+ * thì admin chuyển sang tab khác sẽ thấy bản ghi đã chết.
+ */
+export function useDeleteUser() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (v: { id: string; email: string }) => deleteUser(v.id, v.email),
+    onSuccess: () => {
+      for (const key of [
+        userKeys.all,
+        companyKeys.all,
+        ownerKeys.all,
+        subKeys.all,
+        inviteKeys.all,
+      ]) {
+        void qc.invalidateQueries({ queryKey: key });
+      }
+    },
+  });
 }

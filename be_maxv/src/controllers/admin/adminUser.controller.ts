@@ -3,12 +3,14 @@ import {
   idParamSchema,
   listUsersQuerySchema,
   changeRoleSchema,
+  deleteUserSchema,
 } from '../../validators/admin.validator';
 import {
   adminListUsers,
   adminSetUserActive,
   adminChangeUserRole,
   adminResetPassword,
+  adminDeleteUser,
 } from '../../services/admin/adminUser.service';
 import {
   validateBody,
@@ -49,4 +51,11 @@ export async function resetUserPassword(
 ) {
   const { id } = validateParams(idParamSchema, req.params);
   return sendOk(reply, await adminResetPassword(id, req.user.userId));
+}
+
+/** DELETE /api/v1/admin/users/:id — body { email } xác nhận (xem adminDeleteUser). */
+export async function deleteUser(req: FastifyRequest, reply: FastifyReply) {
+  const { id } = validateParams(idParamSchema, req.params);
+  const { email } = validateBody(deleteUserSchema, req.body);
+  return sendOk(reply, await adminDeleteUser(id, email, req.user.userId));
 }

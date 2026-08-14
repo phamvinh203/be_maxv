@@ -14,16 +14,19 @@ import {
 } from '@mui/material';
 import AddRoundedIcon from '@mui/icons-material/AddRounded';
 import EditRoundedIcon from '@mui/icons-material/EditRounded';
+import DeleteOutlineRoundedIcon from '@mui/icons-material/DeleteOutlineRounded';
 import { usePlans } from '@/features/subscriptions/hooks/useSubscriptions';
 import { tableCardSx, tableHeadRowSx } from '@/components/tableStyles';
 import { formatVnd } from '@/lib/format';
 import { PlanFormDialog } from './PlanFormDialog';
+import { DeletePlanDialog } from './DeletePlanDialog';
 import type { Plan } from '@/features/subscriptions/types/subscription';
 
 export function PlansPanel(): JSX.Element {
   const { data: plans } = usePlans();
   const [formOpen, setFormOpen] = useState(false);
   const [editing, setEditing] = useState<Plan | null>(null);
+  const [deleting, setDeleting] = useState<Plan | null>(null);
 
   function openCreate(): void {
     setEditing(null);
@@ -71,7 +74,7 @@ export function PlansPanel(): JSX.Element {
                 <TableCell>{p.ten}</TableCell>
                 <TableCell>{formatVnd(p.gia)}</TableCell>
                 <TableCell>
-                  {p.chuKyThang > 0 ? `${p.chuKyThang} tháng` : 'Dùng thử'}
+                  {p.chuKyThang > 0 ? `${p.chuKyThang} tháng` : 'Miễn phí'}
                 </TableCell>
                 <TableCell>
                   {p.soMstToiDa ?? (
@@ -96,13 +99,27 @@ export function PlansPanel(): JSX.Element {
                   />
                 </TableCell>
                 <TableCell align="right">
-                  <Button
-                    size="small"
-                    startIcon={<EditRoundedIcon />}
-                    onClick={() => openEdit(p)}
+                  <Stack
+                    direction="row"
+                    spacing={0.5}
+                    sx={{ justifyContent: 'flex-end' }}
                   >
-                    Sửa
-                  </Button>
+                    <Button
+                      size="small"
+                      startIcon={<EditRoundedIcon />}
+                      onClick={() => openEdit(p)}
+                    >
+                      Sửa
+                    </Button>
+                    <Button
+                      size="small"
+                      color="error"
+                      startIcon={<DeleteOutlineRoundedIcon />}
+                      onClick={() => setDeleting(p)}
+                    >
+                      Xóa
+                    </Button>
+                  </Stack>
                 </TableCell>
               </TableRow>
             ))}
@@ -116,6 +133,14 @@ export function PlansPanel(): JSX.Element {
           open
           plan={editing}
           onClose={() => setFormOpen(false)}
+        />
+      )}
+
+      {deleting && (
+        <DeletePlanDialog
+          key={deleting.id}
+          plan={deleting}
+          onClose={() => setDeleting(null)}
         />
       )}
     </Stack>
