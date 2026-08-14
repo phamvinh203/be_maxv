@@ -11,6 +11,7 @@ import { useAuth } from '@/features/auth/hooks/useAuth';
 import { UsersTable } from '@/features/users/components/UsersTable';
 import { ChangeRoleDialog } from '@/features/users/components/ChangeRoleDialog';
 import { ResetPasswordDialog } from '@/features/users/components/ResetPasswordDialog';
+import { DeleteUserDialog } from '@/features/users/components/DeleteUserDialog';
 import {
   useUsers,
   useSetUserActive,
@@ -51,6 +52,7 @@ function UsersSection({
   const meId = useAuth().user?.id;
   const [roleUser, setRoleUser] = useState<AdminUser | null>(null);
   const [resetPw, setResetPw] = useState<string | null>(null);
+  const [deleteUser, setDeleteUser] = useState<AdminUser | null>(null);
 
   function handleToggle(u: AdminUser): void {
     if (u.isActive && !window.confirm(`Khóa tài khoản "${u.hoTen}"?`)) return;
@@ -75,6 +77,7 @@ function UsersSection({
         onToggleActive={handleToggle}
         onChangeRole={setRoleUser}
         onResetPassword={handleReset}
+        onDelete={setDeleteUser}
       />
       {roleUser && (
         <ChangeRoleDialog
@@ -87,6 +90,13 @@ function UsersSection({
         <ResetPasswordDialog
           password={resetPw}
           onClose={() => setResetPw(null)}
+        />
+      )}
+      {deleteUser && (
+        <DeleteUserDialog
+          key={deleteUser.id}
+          user={deleteUser}
+          onClose={() => setDeleteUser(null)}
         />
       )}
     </>
