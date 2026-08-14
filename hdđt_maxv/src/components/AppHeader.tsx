@@ -87,13 +87,16 @@ export default function AppHeader() {
             </Button>
           )}
 
-          <Button
-            color="inherit"
-            onClick={() => navigate("/accounting")}
-            sx={{ textTransform: "none", fontWeight: 600 }}
-          >
-            Kế toán
-          </Button>
+          {/* Chỉ hiện khi admin đã bật module Kế toán cho tài khoản này. */}
+          {modules.accounting && (
+            <Button
+              color="inherit"
+              onClick={() => navigate("/accounting")}
+              sx={{ textTransform: "none", fontWeight: 600 }}
+            >
+              Kế toán
+            </Button>
+          )}
           <Button
             color="inherit"
             component="a"

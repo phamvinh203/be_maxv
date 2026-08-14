@@ -8,6 +8,9 @@
     "allowArbitraryExtensions": true,
     "skipLibCheck": true,
 
+    /* Path alias: @/ -> src/ (module Kế toán port từ fe_maxv) */
+    "paths": { "@/*": ["./src/*"] },
+
     /* Bundler mode */
     "moduleResolution": "bundler",
     "allowImportingTsExtensions": true,

@@ -19,4 +19,12 @@ export default defineConfig([
       globals: globals.browser,
     },
   },
+  {
+    // File cấu hình module Kế toán (data + icon SVG inline) — không phải
+    // component module nên tắt rule fast-refresh ở đây (giống fe_maxv gốc).
+    files: ['src/features/accounting/_shared/config/**/*.tsx'],
+    rules: {
+      'react-refresh/only-export-components': 'off',
+    },
+  },
 ])

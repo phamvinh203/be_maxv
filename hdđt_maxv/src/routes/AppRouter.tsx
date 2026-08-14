@@ -5,7 +5,21 @@ import RegisterPage from "../pages/RegisterPage";
 import ForgotPasswordPage from "../pages/ForgotPasswordPage";
 import HomePage from "../pages/HomePage";
 import SettingsPage from "../pages/settings/SettingsPage";
-import AccountingPage from "../pages/accounting/AccountingPage";
+import AccountingModulesPage from "../pages/accounting/ModulesPage";
+import { defaultModulePath as defaultAccountingPath } from "../features/accounting/_shared/config";
+import KeToanDanhMucKHPage from "../pages/accounting/ban_hang/DanhMucKHPage";
+import KeToanHoaDonBanHangPage from "../pages/accounting/ban_hang/HoaDonBanHangPage";
+import KeToanPhongBanPage from "../pages/accounting/tong_hop/PhongBanPage";
+import KeToanTaiKhoanPage from "../pages/accounting/tong_hop/TaiKhoanPage";
+import KeToanTienTePage from "../pages/accounting/tong_hop/TienTePage";
+import KeToanDvtPage from "../pages/accounting/ton_kho/DvtPage";
+import KeToanHangHoaPage from "../pages/accounting/ton_kho/HangHoaPage";
+import KeToanKhoPage from "../pages/accounting/ton_kho/KhoPage";
+import KeToanLoaiVtPage from "../pages/accounting/ton_kho/LoaiVtPage";
+import KeToanMaGdPage from "../pages/accounting/ton_kho/MaGdPage";
+import KeToanNhomKhoPage from "../pages/accounting/ton_kho/NhomKhoPage";
+import KeToanPhanNhomPage from "../pages/accounting/ton_kho/PhanNhomPage";
+import KeToanViTriKhoPage from "../pages/accounting/ton_kho/ViTriKhoPage";
 import HrmPage from "../pages/hrm/HrmPage";
 import DashboardPage from "../pages/hrm/DashboardPage";
 import DanhMucPage from "../pages/hrm/DanhMucPage";
@@ -39,7 +53,28 @@ import ProtectedRoute from "./ProtectedRoute";
 import ModuleRoute from "./ModuleRoute";
 import FullScreenLoader from "../components/FullScreenLoader";
 import { useAuth } from "../features/auth/useAuth";
-import type { ReactNode } from "react";
+import type { ComponentType, ReactNode } from "react";
+
+/**
+ * Trang danh mục/chứng từ Kế toán đã dựng — path khớp đúng `path` khai báo
+ * trong `_shared/config/*.tsx` (bỏ dấu `/` đầu). Sinh route từ bảng thay vì
+ * chép tay từng khối gần giống nhau, cùng cách khu HRM làm với `ho-so-luong`.
+ */
+const ACCOUNTING_BUILT_ROUTES: { path: string; Page: ComponentType }[] = [
+  { path: "ban-hang/dm/khach-hang", Page: KeToanDanhMucKHPage },
+  { path: "ban-hang/chung_tu/hoa-don-ban-hang", Page: KeToanHoaDonBanHangPage },
+  { path: "tong_hop/danh_muc/phong-ban", Page: KeToanPhongBanPage },
+  { path: "tong_hop/danh_muc/tai-khoan", Page: KeToanTaiKhoanPage },
+  { path: "tong_hop/danh_muc/tien-te", Page: KeToanTienTePage },
+  { path: "ton_kho/danh_muc/hang_hoa", Page: KeToanHangHoaPage },
+  { path: "ton_kho/danh_muc/dvt", Page: KeToanDvtPage },
+  { path: "ton_kho/danh_muc/kho", Page: KeToanKhoPage },
+  { path: "ton_kho/danh_muc/nhom_kho", Page: KeToanNhomKhoPage },
+  { path: "ton_kho/danh_muc/vi_tri_kho", Page: KeToanViTriKhoPage },
+  { path: "ton_kho/danh_muc/ma_gd", Page: KeToanMaGdPage },
+  { path: "ton_kho/danh_muc/loai_vt", Page: KeToanLoaiVtPage },
+  { path: "ton_kho/danh_muc/phan_nhom", Page: KeToanPhanNhomPage },
+];
 
 /** Route chỉ dành cho khách (login/register) — đã đăng nhập thì tự chuyển về trang chính. */
 function GuestOnlyRoute({ children }: { children: ReactNode }) {
@@ -100,7 +135,33 @@ export default function AppRouter() {
             path="accounting"
             element={
               <ProtectedRoute>
-                <AccountingPage />
+                <ModuleRoute module="accounting">
+                  <Navigate to={defaultAccountingPath()} replace />
+                </ModuleRoute>
+              </ProtectedRoute>
+            }
+          />
+          {/* Trang danh mục/chứng từ đã dựng (khai báo trước :moduleSlug để khớp path sâu hơn) */}
+          {ACCOUNTING_BUILT_ROUTES.map(({ path, Page }) => (
+            <Route
+              key={path}
+              path={`accounting/${path}`}
+              element={
+                <ProtectedRoute>
+                  <ModuleRoute module="accounting">
+                    <Page />
+                  </ModuleRoute>
+                </ProtectedRoute>
+              }
+            />
+          ))}
+          <Route
+            path="accounting/:moduleSlug"
+            element={
+              <ProtectedRoute>
+                <ModuleRoute module="accounting">
+                  <AccountingModulesPage />
+                </ModuleRoute>
               </ProtectedRoute>
             }
           />
