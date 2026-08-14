@@ -5,6 +5,7 @@ import RegisterPage from "../pages/RegisterPage";
 import ForgotPasswordPage from "../pages/ForgotPasswordPage";
 import HomePage from "../pages/HomePage";
 import SettingsPage from "../pages/settings/SettingsPage";
+import AccountingPage from "../pages/accounting/AccountingPage";
 import HrmPage from "../pages/hrm/HrmPage";
 import DashboardPage from "../pages/hrm/DashboardPage";
 import DanhMucPage from "../pages/hrm/DanhMucPage";
@@ -95,6 +96,14 @@ export default function AppRouter() {
               </ProtectedRoute>
             }
           />
+          <Route
+            path="accounting"
+            element={
+              <ProtectedRoute>
+                <AccountingPage />
+              </ProtectedRoute>
+            }
+          />
 
           {/*
             Khu HRM dùng route con thay vì tab state như SettingsPage: đây là
@@ -119,13 +128,19 @@ export default function AppRouter() {
               <Route path="nguoi-phu-thuoc" element={<NguoiPhuThuocPage />} />
             </Route>
             <Route path="cau-hinh" element={<CauHinhPage />}>
-              <Route index element={<Navigate to="thiet-lap-chung" replace />} />
+              <Route
+                index
+                element={<Navigate to="thiet-lap-chung" replace />}
+              />
               <Route path="thiet-lap-chung" element={<ThietLapChungPage />} />
               <Route path="lich-ngay-le" element={<LichNgayLePage />} />
             </Route>
             <Route path="cai-dat-luong" element={<CaiDatLuongPage />}>
               <Route index element={<Navigate to="danh-muc-khoan" replace />} />
-              <Route path="danh-muc-khoan" element={<DanhMucKhoanLuongPage />} />
+              <Route
+                path="danh-muc-khoan"
+                element={<DanhMucKhoanLuongPage />}
+              />
               <Route path="set-luong" element={<SetLuongPage />} />
             </Route>
             <Route path="du-lieu-luong" element={<DuLieuLuongPage />}>
@@ -146,15 +161,27 @@ export default function AppRouter() {
             </Route>
             {/* Năm màn hình chưa dựng — dùng chung chỗ giữ, xem `to_khai_thue/tabs.ts`. */}
             <Route path="to-khai-thue" element={<ToKhaiThuePage />}>
-              <Route index element={<Navigate to="thu-nhap-ngoai-luong" replace />} />
+              <Route
+                index
+                element={<Navigate to="thu-nhap-ngoai-luong" replace />}
+              />
               <Route
                 path="thu-nhap-ngoai-luong"
                 element={<ToKhaiThueChuaDungPage />}
               />
-              <Route path="bang-tinh-thue" element={<ToKhaiThueChuaDungPage />} />
+              <Route
+                path="bang-tinh-thue"
+                element={<ToKhaiThueChuaDungPage />}
+              />
               <Route path="to-khai-tncn" element={<ToKhaiThueChuaDungPage />} />
-              <Route path="to-khai-quyet-toan" element={<ToKhaiThueChuaDungPage />} />
-              <Route path="doi-soat-cong-thuc" element={<ToKhaiThueChuaDungPage />} />
+              <Route
+                path="to-khai-quyet-toan"
+                element={<ToKhaiThueChuaDungPage />}
+              />
+              <Route
+                path="doi-soat-cong-thuc"
+                element={<ToKhaiThueChuaDungPage />}
+              />
             </Route>
             {/*
               Mười bốn màn hình chưa dựng, sinh route thẳng từ bảng tab thay vì
@@ -164,10 +191,16 @@ export default function AppRouter() {
             <Route path="ho-so-luong" element={<HoSoLuongPage />}>
               <Route
                 index
-                element={<Navigate to={MAN_HINH_HO_SO_LUONG[0]!.path} replace />}
+                element={
+                  <Navigate to={MAN_HINH_HO_SO_LUONG[0]!.path} replace />
+                }
               />
               {MAN_HINH_HO_SO_LUONG.map((mh) => (
-                <Route key={mh.path} path={mh.path} element={<HoSoLuongChuaDungPage />} />
+                <Route
+                  key={mh.path}
+                  path={mh.path}
+                  element={<HoSoLuongChuaDungPage />}
+                />
               ))}
             </Route>
           </Route>
