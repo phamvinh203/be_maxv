@@ -170,28 +170,55 @@ export function tinhGhiChuLienQuan(
   detail: Record<string, unknown>,
   replacedBy?: ReplacedByMap,
 ): string {
+  const lq = hoaDonLienQuan(detail, replacedBy);
+  if (!lq) return "";
+  return [lq.moTa, lq.soHd, lq.ngayFmt ? `ngày ${lq.ngayFmt}` : ""]
+    .filter(Boolean)
+    .join(" ");
+}
+
+/**
+ * Nội dung cột "Ngày hóa đơn bị điều chỉnh, thay thế" — TÁCH RIÊNG đúng cái ngày đang nằm trong
+ * cột ghi chú bên cạnh, để kế toán lọc/sắp xếp được theo ngày thay vì đọc chuỗi.
+ *
+ * Lấy ngày ở CẢ HAI hướng liên kết, nên với hóa đơn tthai=4/5 giá trị là ngày của hóa đơn ĐI thay
+ * thế/điều chỉnh (đọc kèm cột ghi chú là rõ hướng). Không có hóa đơn liên quan -> "".
+ */
+export function tinhNgayLienQuan(
+  detail: Record<string, unknown>,
+  replacedBy?: ReplacedByMap,
+): string {
+  return hoaDonLienQuan(detail, replacedBy)?.ngayFmt ?? "";
+}
+
+/**
+ * Hóa đơn liên quan của `detail` — nguồn CHUNG cho hai hàm trên, để cột ghi chú và cột ngày không
+ * thể ghi lệch nhau về cùng một hóa đơn. `null` = không nằm trong quan hệ thay thế/điều chỉnh nào
+ * (hóa đơn mới tthai=1), hoặc thiếu dữ liệu để định danh hóa đơn kia.
+ */
+function hoaDonLienQuan(
+  detail: Record<string, unknown>,
+  replacedBy?: ReplacedByMap,
+): { moTa: string; soHd: string; ngayFmt: string } | null {
+  // `dd/MM/yyyy` -> `dd-MM-yyyy`: dấu `-` để phân biệt với các mặt phân tách khác.
+  const fmt = (ngay: string) =>
+    ngay ? formatDateVN(ngay).replace(/\//g, "-") : "";
   const tthai = s(detail.tthai);
   if (tthai === "2" || tthai === "3") {
     const soHd = s(detail.shdgoc);
     const ngay = s(detail.tdlhdgoc);
-    if (!soHd && !ngay) return "";
+    if (!soHd && !ngay) return null;
     const dongTu = tthai === "3" ? "Điều chỉnh" : "Thay thế";
-    const ngayFmt = ngay ? formatDateVN(ngay).replace(/\//g, "-") : "";
-    return [`${dongTu} cho hóa đơn`, soHd, ngayFmt ? `ngày ${ngayFmt}` : ""]
-      .filter(Boolean)
-      .join(" ");
+    return { moTa: `${dongTu} cho hóa đơn`, soHd, ngayFmt: fmt(ngay) };
   }
   if (tthai === "4" || tthai === "5") {
     const key = `${s(detail.nbmst)}|${s(detail.khhdon)}|${s(detail.shdon)}`;
     const r = replacedBy?.get(key);
-    if (!r) return "";
+    if (!r) return null;
     const dongTu = tthai === "5" ? "Bị điều chỉnh" : "Bị thay thế";
-    const ngayFmt = r.ngay ? formatDateVN(r.ngay).replace(/\//g, "-") : "";
-    return [`${dongTu} bởi hóa đơn`, r.soHd, ngayFmt ? `ngày ${ngayFmt}` : ""]
-      .filter(Boolean)
-      .join(" ");
+    return { moTa: `${dongTu} bởi hóa đơn`, soHd: r.soHd, ngayFmt: fmt(r.ngay) };
   }
-  return "";
+  return null;
 }
 
 
@@ -240,6 +267,7 @@ export function toDetailRows(
     // `nmtnmua` = họ tên người mua hàng; hóa đơn xăng dầu/vận tải ghi biển số xe vào đây.
     bienSoXe: bienSoXe(s(detail.nmtnmua)),
     ghiChuLienQuan: tinhGhiChuLienQuan(detail, replacedBy),
+    ngayLienQuan: tinhNgayLienQuan(detail, replacedBy),
     maNt: s(detail.dvtte),
     tyGia: num(detail.tgia),
     tongTienHang: num(detail.tgtcthue),

@@ -50,7 +50,7 @@ export interface TaiHoaDonGocParams {
  * dùng chọn. BE trả 422 nếu mã sai, 501 nếu NCC chưa hỗ trợ — `apiFetchBlob` ném `ApiError` kèm
  * message để nơi gọi đếm lỗi từng hóa đơn.
  *
- * Dùng: `DownloadOriginalDialog` (nút "Tải xuống").
+ * Dùng: `DownloadOriginalDialog` (nút "Tải xuống") và `taiMotHoaDon` (cột "Tải hóa đơn gốc").
  */
 export function taiHoaDonGoc({
   msttcgp,
@@ -65,9 +65,10 @@ export function taiHoaDonGoc({
   // để lại một luồng mồ côi giành worker OCR với request kế tiếp. Nâng `*_RETRY_DEADLINE_MS` ở BE thì
   // phải nâng cả con số này.
   //
-  // `AbortSignal.any` cần Chrome 116+. Chấp nhận được: dialog gọi hàm này chỉ chạy khi có File System
-  // Access API (`showDirectoryPicker`), tức đã là Chromium, và `AbortSignal.timeout` ngay dưới cũng
-  // đã đòi Chrome 103+.
+  // `AbortSignal.any` cần Chrome 116+, và CHỈ chạy khi nơi gọi truyền `signal` — đó là dialog tải
+  // theo lô (nút Hủy), vốn đã đòi File System Access API để chọn thư mục nên chắc chắn là Chromium.
+  // Cột "Tải hóa đơn gốc" tải lẻ 1 hóa đơn không có nút Hủy, không truyền `signal`, nên chỉ đụng
+  // `AbortSignal.timeout` (Chrome 103+ / Firefox 100+ / Safari 16+).
   const timeout = AbortSignal.timeout(60_000);
   return apiFetchBlob(`/gdt/tra-cuu-goc?${params.toString()}`, {
     signal: signal ? AbortSignal.any([signal, timeout]) : timeout,

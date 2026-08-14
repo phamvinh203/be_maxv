@@ -1,4 +1,11 @@
-import { useEffect, useMemo, useRef, useState, type SyntheticEvent } from "react";
+import {
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode,
+  type SyntheticEvent,
+} from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import Box from "@mui/material/Box";
 import Tabs from "@mui/material/Tabs";
@@ -7,6 +14,8 @@ import Paper from "@mui/material/Paper";
 import Stack from "@mui/material/Stack";
 import Button from "@mui/material/Button";
 import Checkbox from "@mui/material/Checkbox";
+import IconButton from "@mui/material/IconButton";
+import Tooltip from "@mui/material/Tooltip";
 import Table from "@mui/material/Table";
 import TableHead from "@mui/material/TableHead";
 import TableBody from "@mui/material/TableBody";
@@ -15,6 +24,7 @@ import TableCell from "@mui/material/TableCell";
 import TableContainer from "@mui/material/TableContainer";
 import Typography from "@mui/material/Typography";
 import Alert from "@mui/material/Alert";
+import CircularProgress from "@mui/material/CircularProgress";
 import InboxRounded from "@mui/icons-material/InboxRounded";
 // import DescriptionRounded from "@mui/icons-material/DescriptionRounded";
 import FileDownloadRounded from "@mui/icons-material/FileDownloadRounded";
@@ -35,7 +45,14 @@ import {
 } from "../api/updateRun";
 import { useAuth } from "../../auth/useAuth";
 import { toast } from "react-toastify";
-import type { InvoiceDirection, InvoiceFilterValues, InvoiceQuery } from "../types";
+import type {
+  DisplayRow,
+  InvoiceDirection,
+  InvoiceFilterValues,
+  InvoiceQuery,
+} from "../types";
+import { nccHoTroTai } from "../traCuuNcc";
+import { taiPdfGoc, taiPdfHoaDon } from "../taiMotHoaDon";
 import { toDisplayRow } from "../invoiceRow";
 import { buildReplacedByMap, toDetailRows } from "../detailRow";
 import { invoiceKey, invoiceSttMap } from "../invoiceFileName";
@@ -114,6 +131,8 @@ function InvoiceTablePanel({ direction, active }: InvoiceTablePanelProps) {
   // Hóa đơn đang chọn (checkbox cột "Chọn") để bật nút "Xem hóa đơn"; null = chưa chọn.
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [viewOpen, setViewOpen] = useState(false);
+  /** Hóa đơn + loại file đang tải ở cụm cột thao tác; null = không có lượt nào chạy. */
+  const [dangTai, setDangTai] = useState<{ id: string; loai: "file" | "goc" } | null>(null);
   // Dialog "Tải hóa đơn gốc" (theo chiều): mở bằng nút "Tải hóa đơn gốc" trong từng tab.
   const [downloadOriginalOpen, setDownloadOriginalOpen] = useState(false);
   /** Mở form đăng nhập Thuế điện tử khi thao tác cần token mà công ty đang chọn chưa đăng nhập. */
@@ -427,6 +446,129 @@ function InvoiceTablePanel({ direction, active }: InvoiceTablePanelProps) {
     void pollDetailRun(gdtToken, buildQuery(appliedFilters), runIdRef.current);
   };
 
+  /**
+   * Tải file của MỘT hóa đơn về thư mục Tải xuống. Cả hai loại đều phải đọc chi tiết đã lưu nên có
+   * độ trễ vài giây (PDF còn chờ backend render) — khóa đúng nút vừa bấm và báo bằng toast, đừng để
+   * người dùng tưởng bấm hụt rồi bấm lại thành hai lượt tải.
+   */
+  const handleTaiMotHoaDon = async (loai: "file" | "goc", r: DisplayRow, stt: number) => {
+    setDangTai({ id: r.id, loai });
+    const laGoc = loai === "goc";
+    const toastId = toast.loading(
+      laGoc ? `Đang tải hóa đơn gốc ${r.soHd}…` : `Đang tạo PDF hóa đơn ${r.soHd}…`,
+    );
+    try {
+      if (laGoc) {
+        await taiPdfGoc({ direction, row: r, stt, danhMucNcc: danhMucNccQuery.data });
+      } else {
+        await taiPdfHoaDon({ direction, row: r, stt });
+      }
+      toast.update(toastId, {
+        render: `Đã tải hóa đơn ${r.soHd}${laGoc ? " (bản gốc)" : ""}.`,
+        type: "success",
+        isLoading: false,
+        autoClose: 4000,
+      });
+    } catch (e) {
+      toast.update(toastId, {
+        render: getErrorMessage(e, "Không tải được file hóa đơn."),
+        type: "error",
+        isLoading: false,
+        autoClose: 8000,
+      });
+    } finally {
+      setDangTai(null);
+    }
+  };
+
+  /**
+   * Nội dung ô của CỤM CỘT THAO TÁC — những cột `webOnly` mà template chỉ khai chỗ đứng, còn nút bấm
+   * phải nằm ở đây vì cần state của bảng. `undefined` = cột dữ liệu thường, để `renderCell` lo.
+   */
+  const oThaoTac = (colKey: string, r: DisplayRow, stt: number): ReactNode | undefined => {
+    const dangChay = dangTai?.id === r.id;
+    // Nút tải nào cũng khóa khi hàng này đang có lượt chạy: hai lượt trên cùng một hóa đơn chỉ tổ
+    // tải trùng file, mà lượt sau còn phải xếp hàng sau lượt trước ở backend.
+    const nutTai = (
+      loai: "file" | "goc",
+      nhan: string,
+      Icon: typeof FileDownloadRounded,
+      chan?: string,
+    ) => (
+      // `span` bọc ngoài: Tooltip cần một phần tử NHẬN được sự kiện chuột, mà nút disabled thì không.
+      <Tooltip title={chan ?? nhan}>
+        <span>
+          <IconButton
+            size="small"
+            sx={{ p: 0.25 }}
+            disabled={!!chan || dangChay}
+            onClick={() => void handleTaiMotHoaDon(loai, r, stt)}
+            aria-label={`${nhan} ${r.soHd}`}
+          >
+            {dangChay && dangTai?.loai === loai ? (
+              <CircularProgress size={16} />
+            ) : (
+              <Icon fontSize="small" />
+            )}
+          </IconButton>
+        </span>
+      </Tooltip>
+    );
+
+    switch (colKey) {
+      case "chon":
+        return (
+          <Checkbox
+            size="small"
+            sx={{ p: 0 }}
+            checked={selectedId === r.id}
+            onChange={(e) => setSelectedId(e.target.checked ? r.id : null)}
+            slotProps={{ input: { "aria-label": `Chọn hóa đơn ${r.soHd}` } }}
+          />
+        );
+      case "xemHoaDon":
+        // Mở thẳng hóa đơn của ĐÚNG hàng này, khỏi phải cuộn ngược lên nút ở đầu bảng. Vẫn đi qua
+        // `selectedId` (nguồn duy nhất của dialog) nên checkbox cùng hàng tự tích theo — bảng không
+        // bao giờ chỉ vào hai hóa đơn khác nhau.
+        return (
+          <Tooltip title="Xem hóa đơn">
+            <IconButton
+              size="small"
+              sx={{ p: 0.25 }}
+              onClick={() => {
+                setSelectedId(r.id);
+                setViewOpen(true);
+              }}
+              aria-label={`Xem hóa đơn ${r.soHd}`}
+            >
+              <VisibilityRounded fontSize="small" />
+            </IconButton>
+          </Tooltip>
+        );
+      case "taiFile":
+        return nutTai("file", "Tải PDF hóa đơn", FileDownloadRounded);
+      case "taiGoc":
+        // Chặn TRƯỚC khi bấm khi biết chắc là không tải được: NCC phát hành không có bộ tải tự động
+        // ở backend thì lượt nào cũng trả 501. Nói lý do trong tooltip thay vì để người dùng bấm rồi
+        // ăn một toast lỗi. Chưa có danh mục NCC (query đang bay) -> cũng khóa, vì lúc đó
+        // `nccHoTroTai` trả `false` cho tất cả và sẽ báo sai lý do.
+        return nutTai(
+          "goc",
+          "Tải hóa đơn gốc",
+          CloudDownloadRounded,
+          !danhMucNccQuery.data
+            ? "Đang tải danh mục nhà cung cấp…"
+            : !r.msttcgp
+              ? "Hóa đơn thiếu MST nhà cung cấp phát hành — không tra được bản gốc"
+              : !nccHoTroTai(danhMucNccQuery.data, r.msttcgp)
+                ? "Nhà cung cấp phát hành chưa hỗ trợ tải tự động"
+                : undefined,
+        );
+      default:
+        return undefined;
+    }
+  };
+
   return (
     <Box sx={{ pt: 2.5 }}>
       <InvoiceFilterPanel
@@ -545,21 +687,7 @@ function InvoiceTablePanel({ direction, active }: InvoiceTablePanelProps) {
                   >
                     {columns.map((col) => (
                       <TableCell key={col.key} align={col.align}>
-                        {/* Cột "Chọn" render tại đây vì checkbox cần state selectedId của component;
-                            template chỉ khai chỗ đứng của cột (webOnly). */}
-                        {col.key === "chon" ? (
-                          <Checkbox
-                            size="small"
-                            sx={{ p: 0 }}
-                            checked={selectedId === r.id}
-                            onChange={(e) =>
-                              setSelectedId(e.target.checked ? r.id : null)
-                            }
-                            slotProps={{ input: { "aria-label": `Chọn hóa đơn ${r.soHd}` } }}
-                          />
-                        ) : (
-                          renderCell(col, r, stt)
-                        )}
+                        {oThaoTac(col.key, r, stt) ?? renderCell(col, r, stt)}
                       </TableCell>
                     ))}
                   </TableRow>

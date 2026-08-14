@@ -1,4 +1,8 @@
-import { tinhGhiChuLienQuan, type ReplacedByMap } from "./detailRow";
+import {
+  tinhGhiChuLienQuan,
+  tinhNgayLienQuan,
+  type ReplacedByMap,
+} from "./detailRow";
 import type { DisplayRow, InvoiceDirection, InvoiceRaw } from "./types";
 
 /** Ép 1 giá trị bất kỳ (field GDT kiểu `unknown`) về string an toàn (null/undefined -> ""). */
@@ -58,5 +62,6 @@ export function toDisplayRow(
     // tiết để hai bảng không thể ghi khác nhau về cùng một hóa đơn.
     tenHang: rowStr(r.tenHang),
     ghiChuLienQuan: tinhGhiChuLienQuan(r, replacedBy),
+    ngayLienQuan: tinhNgayLienQuan(r, replacedBy),
   };
 }
