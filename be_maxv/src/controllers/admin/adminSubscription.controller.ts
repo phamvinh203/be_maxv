@@ -10,6 +10,7 @@ import {
   adminListPlans,
   adminCreatePlan,
   adminUpdatePlan,
+  adminDeletePlan,
   adminListSubscriptions,
   adminChangePlan,
   adminCancelSubscription,
@@ -43,6 +44,12 @@ export async function updatePlan(req: FastifyRequest, reply: FastifyReply) {
     validateBody(updatePlanSchema, req.body),
   );
   return sendOk(reply, data);
+}
+
+/** DELETE /api/v1/admin/plans/:id */
+export async function deletePlan(req: FastifyRequest, reply: FastifyReply) {
+  const { id } = validateParams(idParamSchema, req.params);
+  return sendOk(reply, await adminDeletePlan(id, req.user.userId));
 }
 
 // ---- Thuê bao ----

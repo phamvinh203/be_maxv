@@ -24,7 +24,7 @@ import type {
 
 const STATUS_OPTIONS: { value: SubStatus | ''; label: string }[] = [
   { value: '', label: 'Tất cả' },
-  { value: 'TRIALING', label: 'Dùng thử' },
+  { value: 'TRIALING', label: 'Miễn phí' },
   { value: 'ACTIVE', label: 'Đang hoạt động' },
   { value: 'PAST_DUE', label: 'Quá hạn' },
   { value: 'CANCELED', label: 'Đã hủy' },

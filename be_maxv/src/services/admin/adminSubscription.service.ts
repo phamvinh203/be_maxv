@@ -2,7 +2,7 @@ import { sysPrisma } from '../../config/db.sys';
 import { writeLog } from '../shared/syslog.service';
 import { ConflictError, NotFoundError } from '../../helpers/errors';
 import { MESSAGES } from '../../constants/messages';
-import type { Prisma } from '../../generated/sys';
+import { Prisma } from '../../generated/sys';
 import type {
   CreatePlanInput,
   UpdatePlanInput,
@@ -53,6 +53,55 @@ export async function adminUpdatePlan(id: string, input: UpdatePlanInput) {
   // Prisma bỏ qua field `undefined` và áp dụng `null` literal -> truyền thẳng input
   // (zod đã strip key lạ; soNguoiToiDa null = xóa giới hạn là chủ đích).
   return sysPrisma.subscriptionPlan.update({ where: { id }, data: input });
+}
+
+/**
+ * Luật xóa gói: còn BẤT KỲ tham chiếu nào (thuê bao hiện hành hoặc lịch sử) thì
+ * không xóa cứng — chỉ được ngừng bán. Tách khỏi phần đụng Prisma để test riêng.
+ */
+export function assertPlanDeletable(counts: {
+  subscriptions: number;
+  histories: number;
+}): void {
+  if (counts.subscriptions > 0 || counts.histories > 0) {
+    throw new ConflictError(MESSAGES.SUBSCRIPTION.PLAN_IN_USE);
+  }
+}
+
+/**
+ * DELETE /admin/plans/:id — chỉ xóa cứng gói CHƯA từng được dùng.
+ * FK từ subscription/history về plan là Restrict (mặc định), nên gói đã có thuê bao
+ * hoặc đã nằm trong lịch sử sẽ bị DB chặn: chặn sớm ở đây để trả 409 kèm hướng dẫn
+ * (chuyển isActive=false) thay vì để Prisma ném lỗi thô.
+ */
+export async function adminDeletePlan(id: string, adminId: string) {
+  const plan = await sysPrisma.subscriptionPlan.findUnique({
+    where: { id },
+    include: { _count: { select: { subscriptions: true, histories: true } } },
+  });
+  if (!plan) throw new NotFoundError(MESSAGES.SUBSCRIPTION.PLAN_NOT_FOUND);
+  assertPlanDeletable(plan._count);
+
+  try {
+    await sysPrisma.subscriptionPlan.delete({ where: { id } });
+  } catch (err) {
+    // Kẽ hở giữa lúc đếm và lúc xóa: có thuê bao vừa trỏ vào gói này -> FK chặn.
+    // Ánh xạ về đúng 409 như trên thay vì để rơi xuống 500.
+    if (
+      err instanceof Prisma.PrismaClientKnownRequestError &&
+      err.code === 'P2003'
+    ) {
+      throw new ConflictError(MESSAGES.SUBSCRIPTION.PLAN_IN_USE);
+    }
+    throw err;
+  }
+
+  await writeLog({
+    hanhDong: 'DELETE_PLAN',
+    userId: adminId,
+    chiTiet: { planId: id, planMa: plan.ma, planTen: plan.ten },
+  });
+  return { id };
 }
 
 // ============ THUÊ BAO (subscription) ============

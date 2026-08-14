@@ -19,6 +19,10 @@ export function createPlan(input: CreatePlanInput): Promise<Plan> {
 export function updatePlan(id: string, input: UpdatePlanInput): Promise<Plan> {
   return api.patch<Plan>(`/admin/plans/${id}`, input);
 }
+/** Chỉ xóa được gói chưa từng dùng; gói đã có thuê bao/lịch sử -> backend trả 409. */
+export function deletePlan(id: string): Promise<{ id: string }> {
+  return api.delete<{ id: string }>(`/admin/plans/${id}`);
+}
 
 // ---- Thuê bao ----
 export function listSubscriptions(

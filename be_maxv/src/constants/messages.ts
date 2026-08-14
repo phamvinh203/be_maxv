@@ -63,6 +63,8 @@ export const MESSAGES = {
   SUBSCRIPTION: {
     PLAN_NOT_FOUND: 'Gói dịch vụ không tồn tại',
     PLAN_CODE_TAKEN: 'Mã gói đã tồn tại',
+    PLAN_IN_USE:
+      'Gói đang hoặc đã được sử dụng nên không xóa được, vui lòng chuyển sang Ngừng bán',
     SUB_NOT_FOUND: 'Thuê bao không tồn tại',
     SAME_PLAN: 'Thuê bao đang dùng đúng gói này',
     ALREADY_CANCELED: 'Thuê bao đã bị hủy',

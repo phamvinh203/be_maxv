@@ -15,6 +15,7 @@ import {
   listPlans,
   createPlan,
   updatePlan,
+  deletePlan,
   listSubscriptions,
   changePlan,
   cancelSubscription,
@@ -66,6 +67,7 @@ export async function adminRoutes(app: FastifyInstance) {
   app.get('/plans', listPlans);
   app.post('/plans', createPlan);
   app.patch('/plans/:id', updatePlan);
+  app.delete('/plans/:id', deletePlan);
 
   // Thuê bao
   app.get('/subscriptions', listSubscriptions);
