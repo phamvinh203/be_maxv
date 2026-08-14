@@ -135,7 +135,9 @@ export default function AppRouter() {
             path="accounting"
             element={
               <ProtectedRoute>
-                <Navigate to={defaultAccountingPath()} replace />
+                <ModuleRoute module="accounting">
+                  <Navigate to={defaultAccountingPath()} replace />
+                </ModuleRoute>
               </ProtectedRoute>
             }
           />
@@ -146,7 +148,9 @@ export default function AppRouter() {
               path={`accounting/${path}`}
               element={
                 <ProtectedRoute>
-                  <Page />
+                  <ModuleRoute module="accounting">
+                    <Page />
+                  </ModuleRoute>
                 </ProtectedRoute>
               }
             />
@@ -155,7 +159,9 @@ export default function AppRouter() {
             path="accounting/:moduleSlug"
             element={
               <ProtectedRoute>
-                <AccountingModulesPage />
+                <ModuleRoute module="accounting">
+                  <AccountingModulesPage />
+                </ModuleRoute>
               </ProtectedRoute>
             }
           />

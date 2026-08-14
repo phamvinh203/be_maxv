@@ -43,37 +43,50 @@ test('goiConHieuLuc', () => {
 });
 
 test('moduleCuaGoi — chỉ nhận đúng khóa và đúng giá trị true', () => {
-  assert.deepEqual(moduleCuaGoi(null, BAY_GIO), { hrm: false }, 'không có gói');
-  assert.deepEqual(moduleCuaGoi(goi('ACTIVE', null, {}), BAY_GIO), { hrm: false }, 'features rỗng');
+  assert.deepEqual(moduleCuaGoi(null, BAY_GIO), { hrm: false, accounting: false }, 'không có gói');
+  assert.deepEqual(
+    moduleCuaGoi(goi('ACTIVE', null, {}), BAY_GIO),
+    { hrm: false, accounting: false },
+    'features rỗng',
+  );
   assert.deepEqual(
     moduleCuaGoi(goi('ACTIVE', null, { hrm: true }), BAY_GIO),
-    { hrm: true },
+    { hrm: true, accounting: false },
     'gói có HRM',
   );
   assert.deepEqual(
+    moduleCuaGoi(goi('ACTIVE', null, { hrm: true, accounting: true }), BAY_GIO),
+    { hrm: true, accounting: true },
+    'gói có cả HRM lẫn Kế toán',
+  );
+  assert.deepEqual(
     moduleCuaGoi(goi('ACTIVE', null, { hrm: false }), BAY_GIO),
-    { hrm: false },
+    { hrm: false, accounting: false },
     'false thì không cấp',
   );
   assert.deepEqual(
     moduleCuaGoi(goi('ACTIVE', null, { hrm: 'true' }), BAY_GIO),
-    { hrm: false },
+    { hrm: false, accounting: false },
     'chuỗi "true" không phải true',
   );
   assert.deepEqual(
     moduleCuaGoi(goi('ACTIVE', null, { khoaLa: true }), BAY_GIO),
-    { hrm: false },
+    { hrm: false, accounting: false },
     'khóa ngoài MODULE_KEYS bị bỏ qua',
   );
 
   // features là Json nên có thể là bất cứ thứ gì — không được ném lỗi.
   for (const rac of [null, [], 'chuoi', 42]) {
-    assert.deepEqual(moduleCuaGoi(goi('ACTIVE', null, rac), BAY_GIO), { hrm: false }, `features = ${JSON.stringify(rac)}`);
+    assert.deepEqual(
+      moduleCuaGoi(goi('ACTIVE', null, rac), BAY_GIO),
+      { hrm: false, accounting: false },
+      `features = ${JSON.stringify(rac)}`,
+    );
   }
 
   assert.deepEqual(
     moduleCuaGoi(goi('ACTIVE', HOM_QUA, { hrm: true }), BAY_GIO),
-    { hrm: false },
+    { hrm: false, accounting: false },
     'gói hết hạn thì không cấp dù features có',
   );
 });
