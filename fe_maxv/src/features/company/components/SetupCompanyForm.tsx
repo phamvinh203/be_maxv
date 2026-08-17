@@ -7,7 +7,8 @@ import { getApiError } from '@/lib/apiClient';
 import { defaultModulePath } from '@/config/modules';
 import type { RegisterCompanyResponse } from '@/features/company/types/company';
 
-const MST_REGEX = /^[0-9]{10}(-[0-9]{3})?$/;
+/** 10 số (doanh nghiệp) kèm đuôi chi nhánh `-XXX` tùy chọn, hoặc 12 số (hộ kinh doanh cá thể). */
+const MST_REGEX = /^([0-9]{10}(-[0-9]{3})?|[0-9]{12})$/;
 const PHONE_REGEX = /^[0-9]{9,11}$/;
 
 type Field = 'tenCongTy' | 'maSoThue' | 'diaChi' | 'sdt' | 'loaiHinhKinhDoanh';
@@ -68,7 +69,8 @@ export function SetupCompanyForm({
   function validate(): Partial<Record<Field, string>> {
     const e: Partial<Record<Field, string>> = {};
     if (!form.tenCongTy.trim()) e.tenCongTy = 'Vui lòng nhập tên công ty';
-    if (!MST_REGEX.test(form.maSoThue.trim())) e.maSoThue = 'Mã số thuế không hợp lệ (10 số, có thể kèm -XXX chi nhánh)';
+    if (!MST_REGEX.test(form.maSoThue.trim()))
+      e.maSoThue = 'Mã số thuế không hợp lệ (10 số, có thể kèm -XXX chi nhánh; hoặc 12 số với hộ kinh doanh)';
     if (!form.diaChi.trim()) e.diaChi = 'Vui lòng nhập địa chỉ';
     if (form.sdt && !PHONE_REGEX.test(form.sdt.trim())) e.sdt = 'Số điện thoại không hợp lệ (9-11 số)';
     return e;
