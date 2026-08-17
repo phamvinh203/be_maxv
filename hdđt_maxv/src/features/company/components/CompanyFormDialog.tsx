@@ -85,7 +85,16 @@ export default function CompanyFormDialog({
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setTenCongTy(taxPayer.name);
     setDiaChi(taxPayer.address);
+    // `orgType` chính là loại hình ("Hộ kinh doanh cá thể", "Doanh nghiệp / Đơn vị sự nghiệp
+    // công lập"), điền sẵn để người dùng khỏi gõ tay; vẫn sửa được.
+    setLoaiHinhKinhDoanh(taxPayer.orgType);
   }, [taxPayer]);
+
+  /** Cảnh báo mềm: MST tra được nhưng không còn hoạt động thì vẫn cho lưu, chỉ nhắc. */
+  const inactiveWarning =
+    taxPayer && !taxPayer.status.includes("đang hoạt động")
+      ? `Tình trạng theo cơ quan thuế: ${taxPayer.status}.`
+      : "";
 
   const handleSubmit = () => {
     setError("");
@@ -143,7 +152,8 @@ export default function CompanyFormDialog({
             helperText={
               isEdit
                 ? "Mã số thuế không thể thay đổi sau khi tạo."
-                : lookupError || "Nhập mã số thuế 10 số để tự động điền tên và địa chỉ."
+                : lookupError ||
+                  "Nhập MST 10 số (doanh nghiệp) hoặc 12 số (hộ kinh doanh) để tự động điền thông tin."
             }
             slotProps={{
               input: {
@@ -185,6 +195,7 @@ export default function CompanyFormDialog({
             fullWidth
           />
 
+          {inactiveWarning && <Alert severity="warning">{inactiveWarning}</Alert>}
           {error && <Alert severity="error">{error}</Alert>}
         </Stack>
       </DialogContent>

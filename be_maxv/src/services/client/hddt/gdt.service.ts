@@ -55,29 +55,79 @@ export async function getCaptcha() {
   return captcha;
 }
 
+/** Sai tài khoản/mật khẩu — KHÔNG nhắc tới captcha để người dùng khỏi đi kiểm tra nhầm chỗ. */
+const LOGIN_INVALID_CREDENTIALS_MESSAGE = "Sai tên đăng nhập hoặc mật khẩu. Vui lòng kiểm tra lại.";
+/** Sai captcha — KHÔNG nhắc tới tài khoản/mật khẩu, cùng lý do trên. */
+const LOGIN_INVALID_CAPTCHA_MESSAGE = "Mã captcha không đúng. Vui lòng nhập lại.";
+/** Dùng khi không dò được GDT chê captcha hay tài khoản/mật khẩu (lỗi HTTP không có chi tiết). */
+const LOGIN_FAILED_MESSAGE = "Đăng nhập thất bại — sai tài khoản, mật khẩu hoặc mã captcha. Vui lòng thử lại.";
+
+/**
+ * Đoán GDT đang chê CAPTCHA hay TÀI KHOẢN/MẬT KHẨU từ nội dung message/chi tiết lỗi mà GDT trả về,
+ * để 2 lỗi hiện ra 2 câu KHÁC NHAU thay vì gộp chung — người dùng biết ngay cần sửa ô nào thay vì
+ * đoán mò cả 3 ô. Dò không dấu + không phân biệt hoa/thường cho chắc (GDT có thể viết hoa toàn bộ).
+ * Không nhận diện được (message rỗng, hoặc câu lạ không có từ khóa nào) -> `null`, caller tự quyết
+ * câu chung `LOGIN_FAILED_MESSAGE`.
+ */
+function classifyLoginFailureMessage(raw: string | undefined): string | null {
+  if (!raw) return null;
+  const sig = noDiacritics(raw);
+  if (sig.includes("captcha") || (sig.includes("xac") && (sig.includes("nhan") || sig.includes("thuc")))) {
+    return LOGIN_INVALID_CAPTCHA_MESSAGE;
+  }
+  if (
+    sig.includes("mat khau") ||
+    sig.includes("tai khoan") ||
+    sig.includes("ten dang nhap") ||
+    sig.includes("username") ||
+    sig.includes("password")
+  ) {
+    return LOGIN_INVALID_CREDENTIALS_MESSAGE;
+  }
+  return null;
+}
+
 /**
  * Đăng nhập HĐĐT (MST + mật khẩu + captcha).
  * Body khớp API GDT: username / password / cvalue / ckey.
  */
 export async function login(body: LoginRequest) {
-  const result = await gdtFetch<LoginResponse>(
-    "/security-taxpayer/authenticate",
-    {
-      method: "POST",
-      cookieKey: body.key, // gửi cookie của session đã tạo captcha
-      body: JSON.stringify({
-        username: body.mst,
-        password: body.password,
-        cvalue: body.captcha,
-        ckey: body.key,
-      }),
+  let result: LoginResponse;
+  try {
+    result = await gdtFetch<LoginResponse>(
+      "/security-taxpayer/authenticate",
+      {
+        method: "POST",
+        cookieKey: body.key, // gửi cookie của session đã tạo captcha
+        body: JSON.stringify({
+          username: body.mst,
+          password: body.password,
+          cvalue: body.captcha,
+          ckey: body.key,
+        }),
+      }
+    );
+  } catch (err) {
+    clearCookies(body.key);
+    // GDT thường trả 200 kèm `message` khi sai thông tin (xử lý ở nhánh !result.token bên dưới),
+    // nhưng đôi lúc trả thẳng HTTP lỗi (400/401/403…) — `gdtFetch` ném `GdtHttpError` với message kỹ
+    // thuật thô ("GDT API Error: 401 Unauthorized ..."), có thể vẫn kèm chi tiết gốc của GDT trong
+    // `detail`. Không để lộ chuỗi kỹ thuật cho người dùng: thử dò xem GDT chê captcha hay tài
+    // khoản/mật khẩu để hiện ĐÚNG câu đó; không dò được thì mới dùng câu chung. Lỗi KHÔNG phải "auth"
+    // (mạng/timeout/GDT quá tải) thì không phải do người dùng gõ sai — giữ nguyên message gốc.
+    if (classifyGdtError(err) === "auth") {
+      const raw = err instanceof Error ? err.message : undefined;
+      throw new Error(classifyLoginFailureMessage(raw) ?? LOGIN_FAILED_MESSAGE);
     }
-  );
+    throw new Error(err instanceof Error && err.message ? err.message : LOGIN_FAILED_MESSAGE);
+  }
 
-  // GDT trả 200 kèm `message` (không có token) khi sai captcha/thông tin
+  // GDT trả 200 kèm `message` (không có token) khi sai captcha/thông tin — GDT tự phân biệt rõ 2
+  // trường hợp trong câu chữ của họ, nên ưu tiên forward nguyên văn; chỉ khi GDT không kèm message
+  // (rỗng) mới cần câu chung.
   if (!result.token) {
     clearCookies(body.key);
-    throw new Error(result.message ?? "Đăng nhập thất bại");
+    throw new Error(result.message || LOGIN_FAILED_MESSAGE);
   }
 
   // giữ session cookie cho các API sau login, re-key sang token
@@ -432,6 +482,14 @@ export async function getInvoiceOriginalXmlPaced(
       const leftMs = deadline - Date.now();
       // Backoff 1s→2s→4s, trần 8s: thử lại quá sớm thì rơi đúng vào cửa sổ GDT đang chặn.
       const backoff = Math.min(8_000, 1000 * 2 ** (attempt - 1));
+
+      if (kind === "transient" && attempt >= GDT_OVERLOAD_RETRY_THRESHOLD) {
+        console.error(
+          `[DEBUG-XML] Hóa đơn ${label} DỪNG — chạm ngưỡng ${GDT_OVERLOAD_RETRY_THRESHOLD} lần thử ` +
+            `liên tiếp lỗi TẠM THỜI, coi là GDT quá tải. Lỗi gốc: ${msg}`,
+        );
+        throw new Error(GDT_OVERLOAD_MESSAGE);
+      }
 
       if (kind === "transient" && leftMs > backoff) {
         // GDT quá tải/chặn -> giãn nhịp làn xml (làn detail của luồng đồng bộ không bị vạ lây).
@@ -2589,6 +2647,17 @@ const engineSleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
 const FAST_5XX_PERMANENT_MS = 500;
 
 /**
+ * Số lần thử LIÊN TIẾP tối đa với lỗi "transient" (429/5xx chậm/mạng chập) trước khi coi là GDT đang
+ * quá tải thật sự, thay vì cứ lặng lẽ retry tới hết ngân sách thời gian (10 phút — người dùng chỉ
+ * thấy app "treo" không rõ vì sao). Tới lần thứ 12 thì dừng và báo thẳng để người dùng dễ xác định lỗi.
+ */
+const GDT_OVERLOAD_RETRY_THRESHOLD = 12;
+
+/** Thông báo hiển thị cho người dùng khi chạm ngưỡng `GDT_OVERLOAD_RETRY_THRESHOLD`. */
+const GDT_OVERLOAD_MESSAGE =
+  "Lỗi quá tải phía Thuế điện tử (GDT) — đã thử lại nhiều lần không thành công. Vui lòng thử lại sau ít phút.";
+
+/**
  * Phân loại lỗi GDT theo MÃ STATUS (không match chuỗi trong body — tránh nhận nhầm khi body chứa
  * "timeout"/"network"). `gdtFetch` ném `GdtHttpError` (có `status` + `elapsedMs`) khi GDT trả lỗi;
  * lỗi mạng/timeout/socket-bị-cắt là Error thường, phân loại qua `errorSignature` (có lần `cause`).
@@ -2784,6 +2853,14 @@ async function fetchListPagePaced(
       // Backoff 1s→2s→4s…, trần 15s. Trần 5s cũ quá ngắn so với cửa sổ chặn của GDT: thử lại quá
       // sớm thì lại bị nuốt tiếp.
       const backoff = Math.min(15_000, 1000 * 2 ** (attempt - 1));
+
+      if (kind === "transient" && attempt >= GDT_OVERLOAD_RETRY_THRESHOLD) {
+        console.error(
+          `[DEBUG-LIST] TRANG ${direction} DỪNG — chạm ngưỡng ${GDT_OVERLOAD_RETRY_THRESHOLD} lần ` +
+            `thử liên tiếp lỗi TẠM THỜI, coi là GDT quá tải. Lỗi gốc: ${msg}`,
+        );
+        throw new Error(GDT_OVERLOAD_MESSAGE);
+      }
 
       if (kind === "transient" && leftMs > backoff && !isCancelled?.()) {
         pacerReportRateLimited(tenantKey, "list");
