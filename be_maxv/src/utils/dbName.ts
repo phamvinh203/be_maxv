@@ -1,7 +1,8 @@
 import { env } from '../config/env';
 import { MESSAGES } from '../constants/messages';
 
-export const MST_REGEX = /^[0-9]{10}(-[0-9]{3})?$/;
+/** 10 số (doanh nghiệp) kèm đuôi chi nhánh `-XXX` tùy chọn, hoặc 12 số (hộ kinh doanh cá thể). */
+export const MST_REGEX = /^([0-9]{10}(-[0-9]{3})?|[0-9]{12})$/;
 
 function normalize(mst: string): string {
   return mst.trim().replace(/-/g, '_');
