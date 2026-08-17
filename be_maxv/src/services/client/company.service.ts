@@ -105,7 +105,10 @@ export async function updateCompanyInfo(
     .update({
       // Không thao tác được công ty đã ARCHIVED — khớp accessibleDonViWhere ở helpers/access.ts.
       where: { id, ownerId, status: { not: 'ARCHIVED' } },
-      data: { ...rest, ...(tenCongTy !== undefined && { tenDonVi: tenCongTy }) },
+      data: {
+        ...rest,
+        ...(tenCongTy !== undefined && { tenDonVi: tenCongTy }),
+      },
     })
     .catch(() => {
       throw new NotFoundError(MESSAGES.COMPANY.NOT_FOUND);
