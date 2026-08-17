@@ -113,7 +113,7 @@ export function resetPasswordOtpEmail(input: {
 /**
  * Email báo cho admin hệ thống có lời mời nhân viên mới đang chờ duyệt.
  * Gửi tới nhiều admin cùng lúc — caller truyền mảng địa chỉ vào `to`.
- * Dùng: `notifyAdminsOfNewInvite` (services/client/company.service.ts).
+ * Dùng: `notifyAdminsOfNewInvite` (services/client/accounting/company.service.ts).
  */
 export function newInviteNoticeEmail(input: {
   ownerHoTen: string;

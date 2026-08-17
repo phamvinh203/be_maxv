@@ -1,21 +1,21 @@
 import type { FastifyInstance } from 'fastify';
 import { authRoutes } from './auth.route';
 import { companyRoutes } from './company.route';
-import { adminRoutes } from './admin.route';
-import { tonKhoRoutes } from './tonKho/hangHoa.route';
-import { dvtRoutes } from './tonKho/dvt.route';
-import { phanNhomRoutes } from './tonKho/phanNhom.route';
-import { maGdRoutes } from './tonKho/maGd.route';
-import { khoRoutes } from './tonKho/kho.route';
-import { nhomKhoRoutes } from './tonKho/nhomKho.route';
-import { viTriKhoRoutes } from './tonKho/viTriKho.route';
-import { loaiVtRoutes } from './tonKho/loaiVt.route';
-import { thueRoutes } from './tonKho/thue.route';
-import { tienTeRoutes } from './tongHop/tienTe.route';
-import { taiKhoanRoutes } from './tongHop/taiKhoan.route';
-import { phongBanRoutes } from './tongHop/phongBan.route';
-import { khachHangRoutes } from './banHang/khachHang.route';
-import { hoaDonBanHangRoutes } from './banHang/hoaDonBanHang.route';
+import { adminRoutes } from './admin/admin.route';
+import { tonKhoRoutes } from './accounting/tonKho/hangHoa.route';
+import { dvtRoutes } from './accounting/tonKho/dvt.route';
+import { phanNhomRoutes } from './accounting/tonKho/phanNhom.route';
+import { maGdRoutes } from './accounting/tonKho/maGd.route';
+import { khoRoutes } from './accounting/tonKho/kho.route';
+import { nhomKhoRoutes } from './accounting/tonKho/nhomKho.route';
+import { viTriKhoRoutes } from './accounting/tonKho/viTriKho.route';
+import { loaiVtRoutes } from './accounting/tonKho/loaiVt.route';
+import { thueRoutes } from './accounting/tonKho/thue.route';
+import { tienTeRoutes } from './accounting/tongHop/tienTe.route';
+import { taiKhoanRoutes } from './accounting/tongHop/taiKhoan.route';
+import { phongBanRoutes } from './accounting/tongHop/phongBan.route';
+import { khachHangRoutes } from './accounting/banHang/khachHang.route';
+import { hoaDonBanHangRoutes } from './accounting/banHang/hoaDonBanHang.route';
 import gdtRoutes from './hddt/gdt.route';
 
 export async function registerRoutes(app: FastifyInstance) {

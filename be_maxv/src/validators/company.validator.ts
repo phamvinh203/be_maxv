@@ -3,7 +3,6 @@ import { MST_REGEX } from '../utils/dbName';
 import { MESSAGES } from '../constants/messages';
 import { emailRule } from './auth.validator';
 
-
 // Bước 2: đăng ký công ty (tạo maxv_<mst>_app). ownerId lấy từ JWT, không nhận từ body.
 export const registerCompanySchema = z.object({
   tenCongTy: z.string().min(1),
@@ -50,4 +49,3 @@ export type SetEmployeeAccessInput = z.infer<typeof setEmployeeAccessSchema>;
 export type RegisterCompanyInput = z.infer<typeof registerCompanySchema>;
 export type UpdateCompanyInput = z.infer<typeof updateCompanySchema>;
 export type DeleteCompanyInput = z.infer<typeof deleteCompanySchema>;
-
