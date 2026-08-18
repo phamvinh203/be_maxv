@@ -11,6 +11,7 @@ import { useAuth } from "../features/auth/useAuth";
 import Button from "@mui/material/Button";
 import SyncRounded from "@mui/icons-material/SyncRounded";
 
+/** Khu Hóa đơn điện tử (`/hoa-don-dien-tu`) — `/` redirect sang đây. */
 export default function HomePage() {
   const [syncOpen, setSyncOpen] = useState(false);
 
@@ -31,16 +32,15 @@ export default function HomePage() {
           <Typography variant="h6" sx={{ fontWeight: 700 }}>
             Hóa đơn điện tử
           </Typography>
-          <Stack direction="row" sx={{ justifyContent: "flex-end", mb: 1.5 }}>
-            <Button
-              variant="contained"
-              startIcon={<SyncRounded />}
-              sx={{ textTransform: "none", whiteSpace: "nowrap" }}
-              onClick={() => setSyncOpen(true)}
-            >
-              Đồng bộ từ Thuế
-            </Button>
-          </Stack>
+
+          <Button
+            variant="contained"
+            startIcon={<SyncRounded />}
+            sx={{ textTransform: "none", whiteSpace: "nowrap" }}
+            onClick={() => setSyncOpen(true)}
+          >
+            Đồng bộ từ Thuế
+          </Button>
         </Stack>
 
         <InvoiceListTabs />

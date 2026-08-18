@@ -5,6 +5,7 @@ import RegisterPage from "../pages/RegisterPage";
 import ForgotPasswordPage from "../pages/ForgotPasswordPage";
 import HomePage from "../pages/HomePage";
 import SettingsPage from "../pages/settings/SettingsPage";
+import DvcPage from "../pages/dich_vu_cong/DvcPage";
 import AccountingModulesPage from "../pages/accounting/ModulesPage";
 import { defaultModulePath as defaultAccountingPath } from "../features/accounting/_shared/config";
 import KeToanDanhMucKHPage from "../pages/accounting/ban_hang/DanhMucKHPage";
@@ -115,11 +116,25 @@ export default function AppRouter() {
               </GuestOnlyRoute>
             }
           />
+          {/* Giữ `/` làm lối vào — mọi chỗ Navigate to="/" sẵn có vẫn chạy. */}
+          <Route index element={<Navigate to="/hoa-don-dien-tu" replace />} />
           <Route
-            index
+            path="hoa-don-dien-tu"
             element={
               <ProtectedRoute>
                 <HomePage />
+              </ProtectedRoute>
+            }
+          />
+          {/*
+            Dịch vụ công mở cho mọi tài khoản đã đăng nhập — nút trên header
+            không gắn cờ module nên ở đây cũng không bọc ModuleRoute.
+          */}
+          <Route
+            path="dich-vu-cong"
+            element={
+              <ProtectedRoute>
+                <DvcPage />
               </ProtectedRoute>
             }
           />
