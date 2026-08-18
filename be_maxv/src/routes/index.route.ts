@@ -17,6 +17,7 @@ import { phongBanRoutes } from './accounting/tongHop/phongBan.route';
 import { khachHangRoutes } from './accounting/banHang/khachHang.route';
 import { hoaDonBanHangRoutes } from './accounting/banHang/hoaDonBanHang.route';
 import gdtRoutes from './hddt/gdt.route';
+import gdtDvcRoutes from './dich_vu_cong/gdt-dvc.route';
 
 export async function registerRoutes(app: FastifyInstance) {
   await app.register(authRoutes, { prefix: '/api/v1/auth' });
@@ -43,4 +44,7 @@ export async function registerRoutes(app: FastifyInstance) {
 
   // hóa đơn điện tử
   await app.register(gdtRoutes, { prefix: '/api/v1/gdt' });
+
+  // dịch vụ công (proxy cổng dichvucong.gdt.gov.vn)
+  await app.register(gdtDvcRoutes, { prefix: '/api/v1/dvc' });
 }

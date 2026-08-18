@@ -73,7 +73,7 @@ const PSM_MAC_DINH = [PSM.SINGLE_LINE, PSM.SINGLE_WORD] as const;
  */
 const workers = new Map<string, Promise<Worker>>();
 
-function layWorker(charset: string): Promise<Worker> {
+export function layWorker(charset: string): Promise<Worker> {
   let worker = workers.get(charset);
   if (!worker) {
     worker = (async () => {
