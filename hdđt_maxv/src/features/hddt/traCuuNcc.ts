@@ -101,6 +101,11 @@ export const TRA_CUU_NCC: Record<string, NccTraCuu> = {
     ten: "Công ty TNHH Phát triển công nghệ Thái Sơn",
     url: "https://einvoice.mmvietnam.com/tra-cuu-hoa-don",
     maTraCuu: { src: "ttkhac", ttruong: "Mã TC" },
+  },
+  "0106713804":{
+    ten: "Công ty Cổ phần dịch vụ T-VAN HILO",
+    url: "https://tracuuhddt78.hilo.com.vn/Invoice/search",
+    maTraCuu: { src: "cttkhac", ttruong: "Fkey" },
   }
 };
 
