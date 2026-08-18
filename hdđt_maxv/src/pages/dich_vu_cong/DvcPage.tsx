@@ -6,13 +6,14 @@ import Tabs from "@mui/material/Tabs";
 import Tab from "@mui/material/Tab";
 import Typography from "@mui/material/Typography";
 import FileDownloadRounded from "@mui/icons-material/FileDownloadRounded";
-import { toast } from "react-toastify";
 
 import AppHeader from "../../components/AppHeader";
+import DialogLoginDVC from "../../components/dich_vu_cong/dialogLoginDVC";
 import BoLocHoSo from "../../features/dich_vu_cong/components/BoLocHoSo";
 import BangHoSo from "../../features/dich_vu_cong/components/BangHoSo";
 import XuatFileDvcDialog from "../../features/dich_vu_cong/components/XuatFileDvcDialog";
 import { TAB_DVC } from "../../features/dich_vu_cong/config";
+import { useActiveCompanyMst } from "../../features/auth/useActiveCompanyMst";
 
 /**
  * Khu Dịch vụ công (`/dich-vu-cong`) — ba loại hồ sơ chia theo tab.
@@ -23,6 +24,10 @@ import { TAB_DVC } from "../../features/dich_vu_cong/config";
 export default function DvcPage() {
   const [tab, setTab] = useState(TAB_DVC[0]!.value);
   const [xuatOpen, setXuatOpen] = useState(false);
+  const [loginOpen, setLoginOpen] = useState(false);
+  const activeMst = useActiveCompanyMst();
+  // Tài khoản cổng Dịch vụ công là "<MST>-ql", khác cổng HĐĐT đăng nhập bằng MST trơ.
+  const tenDangNhapDvc = activeMst ? `${activeMst}-ql` : undefined;
 
   // Bảng có đúng ba dòng cố định nên tab nào cũng tra ra — không cần nhánh dự phòng.
   const dangMo = TAB_DVC.find((muc) => muc.value === tab)!;
@@ -30,12 +35,12 @@ export default function DvcPage() {
   const doiTab = (_e: SyntheticEvent, value: string) => setTab(value);
 
   /**
-   * Chưa gọi được API: `be_maxv/src/services/client/dich_vu_cong/gdt-dvc.service.ts`
-   * còn rỗng. Báo một câu thay vì để nút bấm không ra gì — nút im lặng thì
-   * người dùng tưởng phần mềm hỏng chứ không đoán được là chưa làm xong.
+   * Tra cứu cần phiên đăng nhập cổng Dịch vụ công, mà phiên đó chưa có: backend
+   * `gdt-dvc.service.ts` còn rỗng. Nên nút Tìm kiếm mở thẳng dialog đăng nhập —
+   * đó là bước người dùng phải làm trước khi tra được gì.
    */
   const timKiem = () => {
-    toast.info(`${dangMo.label}: chức năng tra cứu đang được phát triển.`);
+    setLoginOpen(true);
   };
 
   return (
@@ -100,6 +105,12 @@ export default function DvcPage() {
       </Box>
 
       <XuatFileDvcDialog open={xuatOpen} onClose={() => setXuatOpen(false)} />
+
+      <DialogLoginDVC
+        open={loginOpen}
+        onClose={() => setLoginOpen(false)}
+        initialUsername={tenDangNhapDvc}
+      />
     </>
   );
 }
