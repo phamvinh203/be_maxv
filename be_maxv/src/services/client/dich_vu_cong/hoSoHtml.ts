@@ -91,3 +91,48 @@ const LOI_CAPTCHA_CUMS = ["Mã xác nhận không chính xác", "Mã xác thực
 export function laLoiCaptcha(text: string): boolean {
   return LOI_CAPTCHA_CUMS.some((cum) => text.includes(cum));
 }
+
+/**
+ * Một dòng trong "Danh sách thông báo" của trang chi tiết hồ sơ.
+ *
+ * CHỈ có đúng 3 trường này trong HTML thật (đối chiếu mẫu ngày 2026-08-19) — cổng KHÔNG có cột
+ * "Số thông báo" hay "Người gửi" như suy đoán ban đầu, nên không bịa thêm field rỗng.
+ */
+export interface ThongBaoDaBoc {
+  /** Nội dung/tiêu đề thông báo (vd "V/v: Tiếp nhận hồ sơ thuế điện tử TT19"). */
+  tieuDe: string;
+  /** Giờ + ngày gửi, dạng thô cổng trả (vd "06:58 29/07/2026") — không parse thành Date, cổng
+   * không ghi rõ định dạng giờ 12/24h hay múi giờ, tự suy diễn dễ sai. */
+  ngayGui: string;
+  /** `idTbao` — truyền vào `taiThongBao`/`downloadthongbao` để tải file thông báo này. */
+  idTbao: string;
+}
+
+/**
+ * Mỗi thông báo là một khối lặp trong modal `#modalThongBao` của trang chi tiết hồ sơ:
+ *   <div class="fw-bold">TIÊU ĐỀ</div>
+ *   <div>NGÀY GIỜ</div>
+ *   ...
+ *   <a ... onclick="downloadThongBao(this); return false;" data-id="ID">Tải xuống</a>
+ *
+ * Không phải bảng `<table>` nên không dùng lại `parseBangHoSo` được — bám vào
+ * `onclick="downloadThongBao(...)"` để định vị đúng khối (chuỗi này không xuất hiện ở đâu khác
+ * trên trang) thay vì cố khoanh vùng `#modalThongBao` bằng regex (div lồng nhau, không có điểm
+ * kết thúc rõ ràng để quét an toàn).
+ */
+const THONG_BAO_RE =
+  /<div class="fw-bold">([\s\S]*?)<\/div>\s*<div>([\s\S]*?)<\/div>[\s\S]*?onclick="downloadThongBao\(this\);\s*return false;"[\s\S]*?data-id="(\d+)"/g;
+
+/** Bóc "Danh sách thông báo" từ HTML trang chi tiết hồ sơ (`layChiTietHoSoHtml`). Rỗng nếu hồ
+ * sơ chưa có thông báo nào — bình thường, không phải lỗi. */
+export function parseDanhSachThongBao(html: string): ThongBaoDaBoc[] {
+  const out: ThongBaoDaBoc[] = [];
+  for (const m of html.matchAll(THONG_BAO_RE)) {
+    out.push({
+      tieuDe: htmlToText(m[1] ?? ""),
+      ngayGui: htmlToText(m[2] ?? ""),
+      idTbao: m[3] ?? "",
+    });
+  }
+  return out;
+}

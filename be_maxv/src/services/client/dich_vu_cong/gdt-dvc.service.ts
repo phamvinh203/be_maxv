@@ -3,7 +3,13 @@ import { describeErrorChain } from "../../../config/gdt-client";
 import { readZipEntryByExtension } from "../../../helpers/zip";
 import { filenameFromDisposition } from "../hddt/traCuuGoc/shared";
 import { docDvcCaptcha } from "./captcha-ocr";
-import { laLoiCaptcha, parseBangHoSo, type BangHoSoDaBoc } from "./hoSoHtml";
+import {
+  laLoiCaptcha,
+  parseBangHoSo,
+  parseDanhSachThongBao,
+  type BangHoSoDaBoc,
+  type ThongBaoDaBoc,
+} from "./hoSoHtml";
 
 /**
  * Proxy cổng Dịch vụ công thuế (https://dichvucong.gdt.gov.vn/tthc).
@@ -545,6 +551,34 @@ function docGoiTepJson(bodyBytes: Buffer): DvcBocTep | null {
 }
 
 /**
+ * Đọc một `Response` tải file của cổng thành `DvcTepTaiVe` — dùng chung cho `taiXmlHoSo` và
+ * `taiThongBao`: cả hai endpoint (`downloadhoso`/`downloadthongbao`) cùng dạng response
+ * JSON-bọc-base64 (`docGoiTepJson`) hoặc bytes thô kèm header content-type/content-disposition,
+ * chỉ khác đuôi/tên file mặc định khi cổng không gửi header.
+ */
+async function docTepTuResponse(
+  response: Response,
+  tenFileMacDinh: string,
+  contentTypeMacDinh = "application/octet-stream",
+): Promise<DvcTepTaiVe> {
+  const bodyBytes = Buffer.from(await response.arrayBuffer());
+  let bytes: Buffer = bodyBytes;
+  let contentType =
+    response.headers.get("content-type")?.split(";")[0]?.trim() || contentTypeMacDinh;
+  const tenTuHeader = filenameFromDisposition(response.headers.get("content-disposition"));
+  let fileName = tenTuHeader || tenFileMacDinh;
+
+  const goiTep = docGoiTepJson(bodyBytes);
+  if (goiTep?.content) {
+    bytes = Buffer.from(goiTep.content, "base64");
+    contentType = goiTep.fileType || contentType;
+    fileName = goiTep.fileName || fileName;
+  }
+
+  return { bytes, contentType, fileName };
+}
+
+/**
  * Tải file XML của một hồ sơ (`POST /tthc/tchs/downloadhoso`) — cột "Tải file".
  *
  * KHÔNG phải trang `/tchs/files/detail/{maHoSo}` (đó là trang xem chi tiết, trả HTML) — đây
@@ -567,35 +601,25 @@ export async function taiXmlHoSo(key: string, maHoSo: string): Promise<DvcTepTai
     body: JSON.stringify({ maHoSo }),
   });
 
-  const bodyBytes = Buffer.from(await response.arrayBuffer());
-  let bytes: Buffer = bodyBytes;
-  let contentType =
-    response.headers.get("content-type")?.split(";")[0]?.trim() || "application/octet-stream";
-  const tenTuHeader = filenameFromDisposition(response.headers.get("content-disposition"));
-  let fileName = tenTuHeader || `${maHoSo}.xml`;
-
-  const goiTep = docGoiTepJson(bodyBytes);
-  if (goiTep?.content) {
-    bytes = Buffer.from(goiTep.content, "base64");
-    contentType = goiTep.fileType || contentType;
-    fileName = goiTep.fileName || fileName;
-  }
+  const tep = await docTepTuResponse(response, `${maHoSo}.xml`);
 
   // Cổng nén sẵn tờ khai vào ZIP — bóc ra để trả thẳng XML, người dùng khỏi tự giải nén.
   // `readZipEntryByExtension` ném lỗi nếu `bytes` không phải ZIP hợp lệ — bắt lại vì không phải
   // lúc nào response cũng là ZIP (header/`fileType` cổng gửi không đáng tin hoàn toàn).
   try {
-    const xml = readZipEntryByExtension(bytes, ".xml");
+    const xml = readZipEntryByExtension(tep.bytes, ".xml");
     if (xml) {
-      bytes = xml.data;
-      contentType = "application/xml";
-      fileName = xml.name.split("/").pop() || fileName;
+      return {
+        bytes: xml.data,
+        contentType: "application/xml",
+        fileName: xml.name.split("/").pop() || tep.fileName,
+      };
     }
   } catch {
-    // Không phải ZIP hợp lệ -> dùng nguyên `bytes` đã có.
+    // Không phải ZIP hợp lệ -> dùng nguyên `tep` đã có.
   }
 
-  return { bytes, contentType, fileName };
+  return tep;
 }
 
 /**
@@ -627,4 +651,69 @@ export async function layTaiLieuDinhKem(key: string, maHoSo: string): Promise<un
   });
 
   return response.json();
+}
+
+/**
+ * Tải file của một thông báo (`POST /tthc/tchs/downloadthongbao`) — cột "Thông báo", tham số
+ * `idTbao` lấy từ dòng đang bấm trong danh sách thông báo (xem `layChiTietHoSoHtml`).
+ *
+ * `loaiTBao` cổng đòi trong body nhưng luôn rỗng ở hai request thật đã đối chiếu (danh sách
+ * thông báo bóc được — `ThongBaoDaBoc` — không có trường này để truyền lên) nên hardcode thay
+ * vì nhận tham số không ai từng truyền giá trị khác rỗng.
+ */
+export async function taiThongBao(key: string, maHoSo: string, idTbao: string): Promise<DvcTepTaiVe> {
+  sweepExpiredSessions();
+  const session = getSession(key);
+  if (!session) throw new Error(SESSION_EXPIRED_MESSAGE);
+
+  const response = await dvcSend("/tchs/downloadthongbao", session, {
+    method: "POST",
+    headers: {
+      Accept: "*/*",
+      "Content-Type": "application/json",
+      "X-Requested-With": "XMLHttpRequest",
+      Referer: chiTietHoSoUrl(maHoSo),
+      [session.csrfHeader]: session.csrfToken,
+    },
+    // `idTbao` dài tới 17 chữ số, VƯỢT `Number.MAX_SAFE_INTEGER` (2^53 ~ 16 chữ số) — từng ép
+    // `Number(idTbao)` ở đây và làm tròn sai chữ số cuối (vd ...687 -> ...688) khiến cổng nhận
+    // nhầm ID và báo "Tải file thất bại." (đối chiếu request thật của cổng: chấp nhận idTbao
+    // dạng CHUỖI). Gửi thẳng chuỗi, không ép số, để giữ nguyên từng chữ số.
+    body: JSON.stringify({ idTbao, loaiTBao: "" }),
+  });
+
+  return docTepTuResponse(response, `thong-bao-${idTbao}.xml`, "application/xml");
+}
+
+/**
+ * Trang chi tiết hồ sơ (`GET /tchs/files/detail/{maHoSo}`) — chứa "Danh sách thông báo" dưới
+ * dạng HTML. Cổng vốn chỉ dùng URL này làm Referer cho `taiXmlHoSo`/`layTaiLieuDinhKem`/
+ * `taiThongBao` (`chiTietHoSoUrl`) — hàm này lần đầu THỰC SỰ tải trang đó về.
+ */
+async function layChiTietHoSoHtml(key: string, maHoSo: string): Promise<string> {
+  sweepExpiredSessions();
+  const session = getSession(key);
+  if (!session) throw new Error(SESSION_EXPIRED_MESSAGE);
+
+  const response = await dvcSend(
+    `/tchs/files/detail/${encodeURIComponent(maHoSo)}?loai=`,
+    session,
+    {
+      headers: {
+        Accept:
+          "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8",
+        Referer: `${DVC_BASE_URL}/tchs`,
+      },
+    },
+  );
+
+  return response.text();
+}
+
+/**
+ * Danh sách thông báo của một hồ sơ (bóc từ modal `#modalThongBao` trong trang chi tiết hồ sơ,
+ * xem `parseDanhSachThongBao`) — cột "Thông báo".
+ */
+export async function layDanhSachThongBao(key: string, maHoSo: string): Promise<ThongBaoDaBoc[]> {
+  return parseDanhSachThongBao(await layChiTietHoSoHtml(key, maHoSo));
 }

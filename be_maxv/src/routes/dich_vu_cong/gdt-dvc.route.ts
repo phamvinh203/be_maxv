@@ -1,9 +1,11 @@
 import { FastifyInstance } from "fastify";
 import {
   captcha,
+  danhSachThongBao,
   login,
   taiFileHoSo,
   taiLieuDinhKem,
+  taiThongBao,
   tchsCaptcha,
   traCuuHoSo,
 } from "../../controllers/client/dich_vu_cong/gdt-dvc.controller";
@@ -39,6 +41,16 @@ export default async function (fastify: FastifyInstance) {
   fastify.get("/ho-so/tai-lieu-dkem", {
     preHandler: [fastify.authenticate],
     handler: taiLieuDinhKem,
+  });
+
+  fastify.get("/ho-so/thong-bao", {
+    preHandler: [fastify.authenticate],
+    handler: danhSachThongBao,
+  });
+
+  fastify.get("/ho-so/thong-bao/file", {
+    preHandler: [fastify.authenticate],
+    handler: taiThongBao,
   });
 
   fastify.post("/login", {

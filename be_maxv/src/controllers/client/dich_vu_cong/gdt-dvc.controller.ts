@@ -184,3 +184,63 @@ export async function taiLieuDinhKem(
     });
   }
 }
+
+type DvcThongBaoQuery = DvcHoSoQuery & { idTbao?: string };
+
+/**
+ * GET /dvc/ho-so/thong-bao/file — tải file của một thông báo theo `idTbao` (cột "Thông báo").
+ *
+ * Trả nguyên bytes + content-type cổng gửi (xem `DvcService.taiThongBao`), cùng quy ước với
+ * `taiFileHoSo` — đây là tệp tải xuống, không phải dữ liệu để FE parse.
+ */
+export async function taiThongBao(
+  request: FastifyRequest<{ Querystring: DvcThongBaoQuery }>,
+  reply: FastifyReply,
+) {
+  const q = request.query;
+  if (!q?.key || !q?.maHoSo || !q?.idTbao) {
+    return reply.status(400).send({ message: "Thiếu khóa phiên, mã hồ sơ hoặc mã thông báo." });
+  }
+
+  try {
+    const tep = await DvcService.taiThongBao(q.key, q.maHoSo, q.idTbao);
+    return reply
+      .header(
+        "Content-Disposition",
+        `attachment; filename*=UTF-8''${encodeURIComponent(tep.fileName)}`,
+      )
+      .type(tep.contentType)
+      .send(tep.bytes);
+  } catch (err) {
+    request.log.error(err);
+    return reply.status(400).send({
+      message: DvcService.toUserMessage(err, "Tải file thông báo thất bại."),
+    });
+  }
+}
+
+/**
+ * GET /dvc/ho-so/thong-bao — danh sách thông báo của một hồ sơ (cột "Thông báo").
+ *
+ * Trả mảng đã bóc sẵn (xem `DvcService.layDanhSachThongBao`/`ThongBaoDaBoc`) — cùng quy ước
+ * với `traCuuHoSo`: BE bóc HTML, controller không đẩy markup thô ra FE.
+ */
+export async function danhSachThongBao(
+  request: FastifyRequest<{ Querystring: DvcHoSoQuery }>,
+  reply: FastifyReply,
+) {
+  const q = request.query;
+  if (!q?.key || !q?.maHoSo) {
+    return reply.status(400).send({ message: "Thiếu khóa phiên hoặc mã hồ sơ." });
+  }
+
+  try {
+    const ds = await DvcService.layDanhSachThongBao(q.key, q.maHoSo);
+    return reply.send(ds);
+  } catch (err) {
+    request.log.error(err);
+    return reply.status(400).send({
+      message: DvcService.toUserMessage(err, "Không lấy được danh sách thông báo."),
+    });
+  }
+}
