@@ -1,5 +1,7 @@
 import { randomUUID } from "crypto";
 import { describeErrorChain } from "../../../config/gdt-client";
+import { readZipEntryByExtension } from "../../../helpers/zip";
+import { filenameFromDisposition } from "../hddt/traCuuGoc/shared";
 import { docDvcCaptcha } from "./captcha-ocr";
 
 /**
@@ -504,4 +506,125 @@ export async function traCuuHoSo(q: DvcTraCuuHoSoQuery): Promise<string> {
   }
 
   throw lastError || new Error("Tra cứu hồ sơ thất bại do không giải được mã captcha hợp lệ.");
+}
+
+/** Referer XHR của trang chi tiết hồ sơ — cả `downloadhoso` lẫn `data-tai-lieu-dkem` đều gọi từ đây. */
+function chiTietHoSoUrl(maHoSo: string): string {
+  return `${DVC_BASE_URL}/tchs/files/detail/${encodeURIComponent(maHoSo)}?loai=`;
+}
+
+export interface DvcTepTaiVe {
+  bytes: Buffer;
+  contentType: string;
+  fileName: string;
+}
+
+interface DvcBocTep {
+  fileName?: string;
+  fileType?: string;
+  /** Nội dung file, mã hóa base64. */
+  content?: string;
+}
+
+/**
+ * `downloadhoso` không trả bytes thô mà bọc trong JSON `{fileName, fileType, content}` với
+ * `content` là base64 — dò bằng cách THỬ parse JSON (không tin content-type cổng gửi) thay vì
+ * giả định luôn là bytes thô. Không phải dạng này (JSON không có `content` string, hoặc parse
+ * lỗi) thì trả `null` để caller dùng thẳng `bodyBytes`.
+ */
+function docGoiTepJson(bodyBytes: Buffer): DvcBocTep | null {
+  try {
+    const parsed: unknown = JSON.parse(bodyBytes.toString("utf8"));
+    if (parsed && typeof parsed === "object" && typeof (parsed as DvcBocTep).content === "string") {
+      return parsed as DvcBocTep;
+    }
+  } catch {
+    // Không phải JSON -> đúng là bytes thô, không phải lỗi.
+  }
+  return null;
+}
+
+/**
+ * Tải file XML của một hồ sơ (`POST /tthc/tchs/downloadhoso`) — cột "Tải file".
+ *
+ * KHÔNG phải trang `/tchs/files/detail/{maHoSo}` (đó là trang xem chi tiết, trả HTML) — đây
+ * mới là request XHR thật sự trả file, trang kia gọi nó khi người dùng bấm nút tải trên đó.
+ */
+export async function taiXmlHoSo(key: string, maHoSo: string): Promise<DvcTepTaiVe> {
+  sweepExpiredSessions();
+  const session = getSession(key);
+  if (!session) throw new Error(SESSION_EXPIRED_MESSAGE);
+
+  const response = await dvcSend("/tchs/downloadhoso", session, {
+    method: "POST",
+    headers: {
+      Accept: "*/*",
+      "Content-Type": "application/json",
+      "X-Requested-With": "XMLHttpRequest",
+      Referer: chiTietHoSoUrl(maHoSo),
+      [session.csrfHeader]: session.csrfToken,
+    },
+    body: JSON.stringify({ maHoSo }),
+  });
+
+  const bodyBytes = Buffer.from(await response.arrayBuffer());
+  let bytes: Buffer = bodyBytes;
+  let contentType =
+    response.headers.get("content-type")?.split(";")[0]?.trim() || "application/octet-stream";
+  const tenTuHeader = filenameFromDisposition(response.headers.get("content-disposition"));
+  let fileName = tenTuHeader || `${maHoSo}.xml`;
+
+  const goiTep = docGoiTepJson(bodyBytes);
+  if (goiTep?.content) {
+    bytes = Buffer.from(goiTep.content, "base64");
+    contentType = goiTep.fileType || contentType;
+    fileName = goiTep.fileName || fileName;
+  }
+
+  // Cổng nén sẵn tờ khai vào ZIP — bóc ra để trả thẳng XML, người dùng khỏi tự giải nén.
+  // `readZipEntryByExtension` ném lỗi nếu `bytes` không phải ZIP hợp lệ — bắt lại vì không phải
+  // lúc nào response cũng là ZIP (header/`fileType` cổng gửi không đáng tin hoàn toàn).
+  try {
+    const xml = readZipEntryByExtension(bytes, ".xml");
+    if (xml) {
+      bytes = xml.data;
+      contentType = "application/xml";
+      fileName = xml.name.split("/").pop() || fileName;
+    }
+  } catch {
+    // Không phải ZIP hợp lệ -> dùng nguyên `bytes` đã có.
+  }
+
+  return { bytes, contentType, fileName };
+}
+
+/**
+ * Danh sách tài liệu đính kèm của một hồ sơ (`POST /tthc/tchs/data-tai-lieu-dkem`) — cột
+ * "Tệp đính kèm".
+ *
+ * Body dùng đúng khóa `maHso` (KHÔNG phải `maHoSo` như `downloadhoso`) — hai endpoint của
+ * cổng đặt tên tham số khác nhau, giữ nguyên chứ không "sửa lỗi chính tả" kẻo cổng không
+ * nhận ra tham số và trả rỗng/lỗi.
+ *
+ * Trả JSON THÔ: hình dạng thật của cổng chưa xác nhận (chưa có mẫu response), nên để nguyên
+ * cho caller tự đọc thay vì đoán và ép kiểu sai — xem `TaiLieuDinhKemDialog` bên FE.
+ */
+export async function layTaiLieuDinhKem(key: string, maHoSo: string): Promise<unknown> {
+  sweepExpiredSessions();
+  const session = getSession(key);
+  if (!session) throw new Error(SESSION_EXPIRED_MESSAGE);
+
+  const response = await dvcSend("/tchs/data-tai-lieu-dkem", session, {
+    method: "POST",
+    headers: {
+      Accept: "*/*",
+      "Content-Type": "application/json",
+      "X-Requested-With": "XMLHttpRequest",
+      Referer: chiTietHoSoUrl(maHoSo),
+      [session.csrfHeader]: session.csrfToken,
+    },
+    body: JSON.stringify({ maHso: maHoSo }),
+  });
+
+  return response.json();
 }
