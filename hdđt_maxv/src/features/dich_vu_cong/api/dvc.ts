@@ -40,6 +40,16 @@ export async function getDvcCaptcha(): Promise<DvcCaptchaInfo> {
 }
 
 /**
+ * GET /api/v1/dvc/tchs/captcha?key=... → `{ key, image, answer }`.
+ *
+ * Lấy ảnh captcha và tự động giải OCR cho form tra cứu hồ sơ (/tthc/getCaptcha)
+ * bằng phiên đã đăng nhập qua `key`.
+ */
+export async function getDvcTchsCaptcha(key: string): Promise<DvcCaptchaInfo> {
+  return apiFetch<DvcCaptchaInfo>(`/dvc/tchs/captcha?key=${encodeURIComponent(key)}`);
+}
+
+/**
  * POST /api/v1/dvc/login → `{ key, data }`.
  *
  * Khác `loginGdt` bên HĐĐT: hàm này KHÔNG tự kết luận đăng nhập thành công hay thất bại.
@@ -53,4 +63,40 @@ export async function loginDvc(body: DvcLoginPayload): Promise<DvcLoginResult> {
     method: "POST",
     body: JSON.stringify(body),
   });
+}
+
+/** Bảng kết quả tra cứu, đã được BE bóc từ mảnh HTML của cổng. */
+export interface DvcBangHoSo {
+  /** Tiêu đề cột theo đúng thứ tự cổng trả về; rỗng khi không có kết quả nào. */
+  headers: string[];
+  /** Mỗi dòng là mảng ô, khớp thứ tự `headers`. */
+  rows: string[][];
+}
+
+export interface DvcTraCuuHoSoParams {
+  /** Khóa phiên đã đăng nhập. */
+  key: string;
+  /** `yyyy-mm-dd`; BE tự đổi sang dạng cổng nhận. */
+  tuNgay?: string;
+  denNgay?: string;
+  /** Captcha của trang tra cứu (tùy chọn: BE tự động OCR ngầm nếu bỏ trống). */
+  captcha?: string;
+  maHoSo?: string;
+  maToKhai?: string;
+  maTTHC?: string;
+  maNghiepVu?: string;
+}
+
+/**
+ * GET /api/v1/dvc/ho-so → `{ headers, rows }`.
+ *
+ * Trả cột ĐỘNG theo đúng cổng trả về, không ép vào bộ cột khai sẵn trong `config.ts`: cổng
+ * đổi hay thêm cột thì bảng hiện theo, khỏi phải sửa code và khỏi lệch dữ liệu sang nhầm ô.
+ */
+export async function traCuuHoSoDvc(params: DvcTraCuuHoSoParams): Promise<DvcBangHoSo> {
+  const qs = new URLSearchParams();
+  for (const [k, v] of Object.entries(params)) {
+    if (v) qs.set(k, v);
+  }
+  return apiFetch<DvcBangHoSo>(`/dvc/ho-so?${qs.toString()}`);
 }

@@ -6,14 +6,17 @@ import Tabs from "@mui/material/Tabs";
 import Tab from "@mui/material/Tab";
 import Typography from "@mui/material/Typography";
 import FileDownloadRounded from "@mui/icons-material/FileDownloadRounded";
+import { toast } from "react-toastify";
 
 import AppHeader from "../../components/AppHeader";
 import DialogLoginDVC from "../../components/dich_vu_cong/dialogLoginDVC";
-import BoLocHoSo from "../../features/dich_vu_cong/components/BoLocHoSo";
+import BoLocHoSo, { type BoLocHoSoValues } from "../../features/dich_vu_cong/components/BoLocHoSo";
 import BangHoSo from "../../features/dich_vu_cong/components/BangHoSo";
 import XuatFileDvcDialog from "../../features/dich_vu_cong/components/XuatFileDvcDialog";
 import { TAB_DVC } from "../../features/dich_vu_cong/config";
 import { useActiveCompanyMst } from "../../features/auth/useActiveCompanyMst";
+import { traCuuHoSoDvc, type DvcBangHoSo } from "../../features/dich_vu_cong/api/dvc";
+import { getErrorMessage } from "../../lib/errors";
 
 /**
  * Khu Dịch vụ công (`/dich-vu-cong`) — ba loại hồ sơ chia theo tab.
@@ -25,6 +28,11 @@ export default function DvcPage() {
   const [tab, setTab] = useState(TAB_DVC[0]!.value);
   const [xuatOpen, setXuatOpen] = useState(false);
   const [loginOpen, setLoginOpen] = useState(false);
+  const [dvcKey, setDvcKey] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [bangData, setBangData] = useState<DvcBangHoSo>({ headers: [], rows: [] });
+  const [pendingFilter, setPendingFilter] = useState<BoLocHoSoValues | null>(null);
+
   const activeMst = useActiveCompanyMst();
   // Tài khoản cổng Dịch vụ công là "<MST>-ql", khác cổng HĐĐT đăng nhập bằng MST trơ.
   const tenDangNhapDvc = activeMst ? `${activeMst}-ql` : undefined;
@@ -35,12 +43,55 @@ export default function DvcPage() {
   const doiTab = (_e: SyntheticEvent, value: string) => setTab(value);
 
   /**
-   * Tra cứu cần phiên đăng nhập cổng Dịch vụ công, mà phiên đó chưa có: backend
-   * `gdt-dvc.service.ts` còn rỗng. Nên nút Tìm kiếm mở thẳng dialog đăng nhập —
-   * đó là bước người dùng phải làm trước khi tra được gì.
+   * Gọi API tra cứu hồ sơ chạy ngầm: Backend tự động lấy captcha & OCR ngầm
+   * mà không cần người dùng nhập mã.
    */
-  const timKiem = () => {
-    setLoginOpen(true);
+  const thucHienTraCuu = async (key: string, filterValues: BoLocHoSoValues) => {
+    setLoading(true);
+    try {
+      const res = await traCuuHoSoDvc({
+        key,
+        tuNgay: filterValues.tuNgay,
+        denNgay: filterValues.denNgay,
+        maHoSo: filterValues.hoSo,
+        maToKhai: filterValues.loaiHoSo,
+      });
+      setBangData(res);
+      if (res.rows.length === 0) {
+        toast.info("Không tìm thấy hồ sơ nào khớp với điều kiện tìm kiếm.");
+      } else {
+        toast.success(`Tìm thấy ${res.rows.length} hồ sơ.`);
+      }
+    } catch (err) {
+      toast.error(getErrorMessage(err, "Tra cứu hồ sơ thất bại."));
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  /**
+   * Nhấn "Tìm kiếm":
+   * - Nếu chưa đăng nhập DVC: Mở modal đăng nhập (captcha login tự động OCR điền sẵn).
+   * - Nếu đã có phiên: Tự động chạy tra cứu ngầm mà không hiện captcha.
+   */
+  const handleSearch = (values: BoLocHoSoValues) => {
+    if (!dvcKey) {
+      setPendingFilter(values);
+      setLoginOpen(true);
+      return;
+    }
+    void thucHienTraCuu(dvcKey, values);
+  };
+
+  /**
+   * Đăng nhập thành công -> Chỉ lưu key phiên và đóng dialog.
+   * Không tự động tra cứu — người dùng phải bấm lại "Tìm kiếm".
+   */
+  const handleLoginSuccess = (key: string) => {
+    setDvcKey(key);
+    setLoginOpen(false);
+    setPendingFilter(null);
+    toast.success("Đăng nhập cổng Dịch vụ công thành công.");
   };
 
   return (
@@ -98,10 +149,16 @@ export default function DvcPage() {
         <BoLocHoSo
           tieuDe={dangMo.tieuDeBoLoc}
           nhan={dangMo.nhanBoLoc}
-          onSearch={timKiem}
+          loading={loading}
+          onSearch={handleSearch}
+          onReset={() => setBangData({ headers: [], rows: [] })}
         />
 
-        <BangHoSo cot={dangMo.cotBang} />
+        <BangHoSo
+          cot={dangMo.cotBang}
+          headers={bangData.headers.length > 0 ? bangData.headers : undefined}
+          rows={bangData.rows}
+        />
       </Box>
 
       <XuatFileDvcDialog open={xuatOpen} onClose={() => setXuatOpen(false)} />
@@ -110,6 +167,7 @@ export default function DvcPage() {
         open={loginOpen}
         onClose={() => setLoginOpen(false)}
         initialUsername={tenDangNhapDvc}
+        onLoginSuccess={handleLoginSuccess}
       />
     </>
   );

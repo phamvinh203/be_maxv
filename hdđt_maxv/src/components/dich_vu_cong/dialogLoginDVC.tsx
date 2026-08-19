@@ -39,9 +39,25 @@ interface Props {
  * cả ở đây lẫn trong `gdt-dvc.service.ts`.
  */
 function messageCuaCong(data: unknown): string | null {
-  if (data && typeof data === "object" && "message" in data) {
-    const msg = (data as { message?: unknown }).message;
-    if (typeof msg === "string" && msg.trim()) return msg;
+  if (data && typeof data === "object") {
+    const obj = data as Record<string, unknown>;
+    const status = String(obj.status ?? obj.code ?? "");
+    const msg =
+      (typeof obj.desc === "string" && obj.desc.trim()) ||
+      (typeof obj.message === "string" && obj.message.trim()) ||
+      (typeof obj.error === "string" && obj.error.trim()) ||
+      null;
+
+    const isSuccess =
+      status === "0" ||
+      status === "200" ||
+      status.toUpperCase() === "SUCCESS" ||
+      status.toUpperCase() === "OK" ||
+      obj.success === true;
+
+    if (!isSuccess || status === "999" || obj.status === "FAIL" || obj.status === "ERROR") {
+      return msg || "Đăng nhập cổng Dịch vụ công không thành công.";
+    }
   }
   if (typeof data === "string" && data.trim()) return data.trim();
   return null;
