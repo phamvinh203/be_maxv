@@ -1,8 +1,13 @@
 import { FastifyInstance } from "fastify";
-import { captcha, login } from "../../controllers/client/dich_vu_cong/gdt-dvc.controller";
+import {
+  captcha,
+  login,
+  tchsCaptcha,
+  traCuuHoSo,
+} from "../../controllers/client/dich_vu_cong/gdt-dvc.controller";
 
 /**
- * Proxy cổng Dịch vụ công thuế. Cả hai route đều yêu cầu JWT app.
+ * Proxy cổng Dịch vụ công thuế. Cả các route đều yêu cầu JWT app.
  *
  * Khác `/gdt/captcha` (để mở): endpoint này mở phiên tới một cổng của cơ quan thuế, để mở
  * là biến BE của mình thành trạm trung chuyển ẩn danh cho bất kỳ ai. Dialog đăng nhập DVC
@@ -12,6 +17,16 @@ export default async function (fastify: FastifyInstance) {
   fastify.get("/captcha", {
     preHandler: [fastify.authenticate],
     handler: captcha,
+  });
+
+  fastify.get("/tchs/captcha", {
+    preHandler: [fastify.authenticate],
+    handler: tchsCaptcha,
+  });
+
+  fastify.get("/ho-so", {
+    preHandler: [fastify.authenticate],
+    handler: traCuuHoSo,
   });
 
   fastify.post("/login", {
