@@ -1,4 +1,4 @@
-import { apiFetch } from "../../../lib/http";
+import { apiFetch, apiFetchBlob } from "../../../lib/http";
 
 /** Ảnh captcha + khóa phiên do BE mở với cổng Dịch vụ công. */
 export interface DvcCaptchaInfo {
@@ -37,16 +37,6 @@ export interface DvcLoginResult {
  */
 export async function getDvcCaptcha(): Promise<DvcCaptchaInfo> {
   return apiFetch<DvcCaptchaInfo>("/dvc/captcha");
-}
-
-/**
- * GET /api/v1/dvc/tchs/captcha?key=... → `{ key, image, answer }`.
- *
- * Lấy ảnh captcha và tự động giải OCR cho form tra cứu hồ sơ (/tthc/getCaptcha)
- * bằng phiên đã đăng nhập qua `key`.
- */
-export async function getDvcTchsCaptcha(key: string): Promise<DvcCaptchaInfo> {
-  return apiFetch<DvcCaptchaInfo>(`/dvc/tchs/captcha?key=${encodeURIComponent(key)}`);
 }
 
 /**
@@ -99,4 +89,74 @@ export async function traCuuHoSoDvc(params: DvcTraCuuHoSoParams): Promise<DvcBan
     if (v) qs.set(k, v);
   }
   return apiFetch<DvcBangHoSo>(`/dvc/ho-so?${qs.toString()}`);
+}
+
+export interface DvcHoSoParams {
+  /** Khóa phiên đã đăng nhập. */
+  key: string;
+  /** Mã hồ sơ — cột "Mã giao dịch" của bảng kết quả (giá trị thật là "Mã hồ sơ" bên cổng). */
+  maHoSo: string;
+}
+
+/**
+ * GET /api/v1/dvc/ho-so/file → tải file XML của một hồ sơ, qua BE proxy (cổng không mở
+ * CORS). Trả `Blob` để FE tự lưu xuống máy.
+ *
+ * Dùng: `taiFileHoSo` (cột "Tải file").
+ */
+export function taiFileHoSoDvc({ key, maHoSo }: DvcHoSoParams): Promise<Blob> {
+  const qs = new URLSearchParams({ key, maHoSo });
+  return apiFetchBlob(`/dvc/ho-so/file?${qs.toString()}`);
+}
+
+/**
+ * GET /api/v1/dvc/ho-so/tai-lieu-dkem → danh sách tài liệu đính kèm của một hồ sơ.
+ *
+ * Trả JSON THÔ — hình dạng thật của cổng chưa xác nhận (chưa có mẫu response), BE không ép
+ * kiểu nên FE cũng để `unknown`, xem `TaiLieuDinhKemDialog` (tự dò cột từ khóa JSON).
+ *
+ * Dùng: `TaiLieuDinhKemDialog` (cột "Tệp đính kèm").
+ */
+export function layTaiLieuDinhKemDvc({ key, maHoSo }: DvcHoSoParams): Promise<unknown> {
+  const qs = new URLSearchParams({ key, maHoSo });
+  return apiFetch<unknown>(`/dvc/ho-so/tai-lieu-dkem?${qs.toString()}`);
+}
+
+/**
+ * Một dòng "Danh sách thông báo" của một hồ sơ — BE đã bóc từ HTML trang chi tiết
+ * (đối chiếu mẫu ngày 2026-08-19). Cổng KHÔNG có "Số thông báo"/"Người gửi" nên chỉ có
+ * đúng 3 trường, khác đặc tả 6 cột ban đầu.
+ */
+export interface DvcThongBao {
+  /** Nội dung/tiêu đề thông báo. */
+  tieuDe: string;
+  /** Giờ + ngày gửi, dạng thô cổng trả — không parse thành Date (cổng không ghi rõ múi giờ). */
+  ngayGui: string;
+  /** Truyền vào `taiThongBaoDvc` để tải file thông báo này. */
+  idTbao: string;
+}
+
+/**
+ * GET /api/v1/dvc/ho-so/thong-bao → danh sách thông báo của một hồ sơ.
+ *
+ * Dùng: `ThongBaoDialog` (cột "Thông báo").
+ */
+export function layDanhSachThongBaoDvc({ key, maHoSo }: DvcHoSoParams): Promise<DvcThongBao[]> {
+  const qs = new URLSearchParams({ key, maHoSo });
+  return apiFetch<DvcThongBao[]>(`/dvc/ho-so/thong-bao?${qs.toString()}`);
+}
+
+export interface DvcThongBaoFileParams extends DvcHoSoParams {
+  idTbao: string;
+}
+
+/**
+ * GET /api/v1/dvc/ho-so/thong-bao/file → tải file của một thông báo, qua BE proxy. Trả
+ * `Blob` để FE tự lưu xuống máy, cùng quy ước với `taiFileHoSoDvc`.
+ *
+ * Dùng: `taiThongBao` (nút tải trong `ThongBaoDialog`).
+ */
+export function taiThongBaoDvc({ key, maHoSo, idTbao }: DvcThongBaoFileParams): Promise<Blob> {
+  const qs = new URLSearchParams({ key, maHoSo, idTbao });
+  return apiFetchBlob(`/dvc/ho-so/thong-bao/file?${qs.toString()}`);
 }

@@ -15,6 +15,7 @@ import AddRounded from "@mui/icons-material/AddRounded";
 import SearchRounded from "@mui/icons-material/SearchRounded";
 import RestartAltRounded from "@mui/icons-material/RestartAltRounded";
 import type { NhanBoLoc } from "../config";
+import { currentMonthRange } from "../../hddt/dateUtils";
 
 /**
  * Giá trị bộ lọc tra cứu hồ sơ đã nộp.
@@ -34,15 +35,22 @@ export interface BoLocHoSoValues {
   denNgay: string;
 }
 
-const BO_LOC_RONG: BoLocHoSoValues = {
-  maGiaoDich: "",
-  loaiHoSo: "",
-  hoSo: "",
-  noiNop: "",
-  kyTinhThue: "",
-  tuNgay: "",
-  denNgay: "",
-};
+/**
+ * Bộ lọc mặc định — tháng hiện tại (từ ngày 1 -> hôm nay), dùng chung
+ * `currentMonthRange` với Bộ lọc hóa đơn mua vào/mua ra để ba nơi luôn khớp nhau.
+ */
+function taoBoLocMacDinh(): BoLocHoSoValues {
+  const { tuNgay, denNgay } = currentMonthRange();
+  return {
+    maGiaoDich: "",
+    loaiHoSo: "",
+    hoSo: "",
+    noiNop: "",
+    kyTinhThue: "",
+    tuNgay,
+    denNgay,
+  };
+}
 
 interface Props {
   /** Tiêu đề bộ lọc — mỗi tab lọc một loại hồ sơ nên chữ khác nhau. */
@@ -72,7 +80,7 @@ export default function BoLocHoSo({
   tieuDe,
   nhan,
   loading = false,
-  initialValues = BO_LOC_RONG,
+  initialValues = taoBoLocMacDinh(),
   onSearch,
   onReset,
 }: Props) {

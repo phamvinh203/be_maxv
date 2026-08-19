@@ -17,9 +17,9 @@ import Refresh from "@mui/icons-material/Refresh";
 import Visibility from "@mui/icons-material/Visibility";
 import VisibilityOff from "@mui/icons-material/VisibilityOff";
 
-import { getDvcCaptcha, loginDvc } from "../../features/dich_vu_cong/api/dvc";
-import { getErrorMessage } from "../../lib/errors";
-import logoThueNhaNuoc from "../../assets/logo_thue_nha_nuoc.jpg";
+import { getDvcCaptcha, loginDvc } from "../api/dvc";
+import { getErrorMessage } from "../../../lib/errors";
+import logoThueNhaNuoc from "../../../assets/logo_thue_nha_nuoc.jpg";
 
 interface Props {
   open: boolean;
@@ -85,7 +85,6 @@ export default function DialogLoginDVC({
   const [error, setError] = useState("");
   // Đã điền sẵn tên đăng nhập thì con trỏ nhảy thẳng xuống ô mật khẩu.
   const daCoTenDangNhap = !!initialUsername;
-  const [thanhCong, setThanhCong] = useState(false);
 
   // Mỗi lần mở dialog là một phiên captcha mới (staleTime 0 -> tự fetch khi `enabled` bật).
   // Khóa gắn id riêng từng instance để hai dialog mở cùng lúc không đè phiên của nhau.
@@ -131,7 +130,6 @@ export default function DialogLoginDVC({
     setUsername(initialUsername ?? "");
     setPassword("");
     setError("");
-    setThanhCong(false);
   }, [open, initialUsername]);
 
   // TỰ ĐIỀN MÃ CAPTCHA: mỗi khi backend trả về kết quả OCR (`captcha.answer`),
@@ -146,7 +144,6 @@ export default function DialogLoginDVC({
     e.preventDefault();
     if (submitting) return;
     setError("");
-    setThanhCong(false);
 
     if (!username || !password || !captchaInput || !captcha?.key) {
       setError("Vui lòng nhập đầy đủ thông tin.");
@@ -175,7 +172,9 @@ export default function DialogLoginDVC({
             return;
           }
 
-          setThanhCong(true);
+          // Không hiện Alert "thành công" ở đây: `onLoginSuccess` khiến trang cha đóng dialog
+          // này NGAY trong cùng tick (xem `DvcPage.handleLoginSuccess`), nên Alert không kịp
+          // vẽ ra màn hình — trang cha đã tự báo bằng toast rồi.
           onLoginSuccess?.(res.key);
         },
         onError: (err) => {
@@ -345,11 +344,6 @@ export default function DialogLoginDVC({
           {displayError && (
             <Alert severity="error" sx={{ mt: 2 }}>
               {displayError}
-            </Alert>
-          )}
-          {thanhCong && (
-            <Alert severity="success" sx={{ mt: 2 }}>
-              Đã đăng nhập cổng Dịch vụ công.
             </Alert>
           )}
         </DialogContent>

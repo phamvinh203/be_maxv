@@ -1,6 +1,15 @@
 import { randomUUID } from "crypto";
 import { describeErrorChain } from "../../../config/gdt-client";
+import { readZipEntryByExtension } from "../../../helpers/zip";
+import { filenameFromDisposition } from "../hddt/traCuuGoc/shared";
 import { docDvcCaptcha } from "./captcha-ocr";
+import {
+  laLoiCaptcha,
+  parseBangHoSo,
+  parseDanhSachThongBao,
+  type BangHoSoDaBoc,
+  type ThongBaoDaBoc,
+} from "./hoSoHtml";
 
 /**
  * Proxy cổng Dịch vụ công thuế (https://dichvucong.gdt.gov.vn/tthc).
@@ -231,23 +240,28 @@ export interface DvcCaptchaResult {
 }
 
 /**
- * Bước 2: lấy ảnh captcha của một phiên mới.
+ * GET một ảnh captcha, giải OCR ngầm, đóng gói thành `DvcCaptchaResult`. Dùng chung cho bước 2
+ * (`getCaptcha`, mở phiên mới) và captcha trang tra cứu hồ sơ (`getTchsCaptcha`, phiên đã có) —
+ * khác nhau đúng path + header `Referer`, còn lại đọc response giống hệt nhau.
  *
  * Trả data-URL thay vì bytes thô: FE chỉ cần gắn vào `<img src>`, khỏi phải quản blob URL
  * và khỏi thêm một endpoint nhị phân riêng. Ảnh 150x38 nên base64 chỉ ~5KB.
- *
- * Tham số `?<timestamp>` là để phá cache, giữ đúng như trình duyệt thật gửi.
  */
-export async function getCaptcha(): Promise<DvcCaptchaResult> {
-  const { key, session } = await openSession();
-
-  const response = await dvcSend(`/login/getCaptcha?${Date.now()}`, session, {
-    headers: { Accept: "image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8" },
+async function fetchCaptchaImage(
+  path: string,
+  key: string,
+  session: DvcSession,
+  extraHeaders?: Record<string, string>,
+): Promise<DvcCaptchaResult> {
+  const response = await dvcSend(path, session, {
+    headers: {
+      Accept: "image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8",
+      ...extraHeaders,
+    },
   });
 
   const bytes = Buffer.from(await response.arrayBuffer());
   const contentType = response.headers.get("content-type")?.split(";")[0]?.trim() || "image/png";
-
   const answer = await docDvcCaptcha(bytes);
 
   return {
@@ -255,6 +269,16 @@ export async function getCaptcha(): Promise<DvcCaptchaResult> {
     image: `data:${contentType};base64,${bytes.toString("base64")}`,
     answer,
   };
+}
+
+/**
+ * Bước 2: lấy ảnh captcha của một phiên mới.
+ *
+ * Tham số `?<timestamp>` là để phá cache, giữ đúng như trình duyệt thật gửi.
+ */
+export async function getCaptcha(): Promise<DvcCaptchaResult> {
+  const { key, session } = await openSession();
+  return fetchCaptchaImage(`/login/getCaptcha?${Date.now()}`, key, session);
 }
 
 /**
@@ -267,24 +291,9 @@ export async function getTchsCaptcha(key: string): Promise<DvcCaptchaResult> {
   sweepExpiredSessions();
   const session = getSession(key);
   if (!session) throw new Error(SESSION_EXPIRED_MESSAGE);
-
-  const response = await dvcSend(`/getCaptcha?${Date.now()}`, session, {
-    headers: {
-      Accept: "image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8",
-      Referer: `${DVC_BASE_URL}/tchs`,
-    },
+  return fetchCaptchaImage(`/getCaptcha?${Date.now()}`, key, session, {
+    Referer: `${DVC_BASE_URL}/tchs`,
   });
-
-  const bytes = Buffer.from(await response.arrayBuffer());
-  const contentType = response.headers.get("content-type")?.split(";")[0]?.trim() || "image/png";
-
-  const answer = await docDvcCaptcha(bytes);
-
-  return {
-    key,
-    image: `data:${contentType};base64,${bytes.toString("base64")}`,
-    answer,
-  };
 }
 
 export interface DvcLoginRequest {
@@ -378,12 +387,7 @@ export async function login(body: DvcLoginRequest): Promise<DvcLoginResult> {
 
   // Kiểm tra nếu cổng trả về chuỗi thông báo lỗi
   if (typeof data === "string") {
-    if (
-      data.includes("Sai tên đăng nhập") ||
-      data.includes("Mật khẩu không đúng") ||
-      data.includes("Mã xác thực không chính xác") ||
-      data.includes("Mã xác nhận không chính xác")
-    ) {
+    if (data.includes("Sai tên đăng nhập") || data.includes("Mật khẩu không đúng") || laLoiCaptcha(data)) {
       clearSession(body.key);
       throw new Error(
         data.length < 200
@@ -466,13 +470,11 @@ async function guiTraCuuHoSo(
 }
 
 /**
- * Tra cứu hồ sơ đã nộp (`GET /tthc/ho-so/search`).
- *
- * Tự động chạy ngầm: Nếu `q.captcha` không được truyền lên, hàm sẽ tự động lấy
- * captcha từ `/tthc/getCaptcha`, giải mã OCR qua `docDvcCaptcha` và gửi tra cứu
- * (tự động thử lại tối đa 3 lần nếu đọc sai mã).
+ * Chạy lượt tra cứu, trả HTML thô. Tự động chạy ngầm: Nếu `q.captcha` không được truyền lên,
+ * hàm sẽ tự động lấy captcha từ `/tthc/getCaptcha`, giải mã OCR qua `docDvcCaptcha` và gửi tra
+ * cứu (tự động thử lại tối đa 3 lần nếu đọc sai mã).
  */
-export async function traCuuHoSo(q: DvcTraCuuHoSoQuery): Promise<string> {
+async function traCuuHoSoHtml(q: DvcTraCuuHoSoQuery): Promise<string> {
   sweepExpiredSessions();
   const session = getSession(q.key);
   if (!session) throw new Error(SESSION_EXPIRED_MESSAGE);
@@ -490,10 +492,7 @@ export async function traCuuHoSo(q: DvcTraCuuHoSoQuery): Promise<string> {
       }
 
       const html = await guiTraCuuHoSo(session, q, cap.answer);
-      if (
-        html.includes("Mã xác nhận không chính xác") ||
-        html.includes("Mã xác thực không chính xác")
-      ) {
+      if (laLoiCaptcha(html)) {
         if (attempt < 3) continue;
       }
       return html;
@@ -504,4 +503,217 @@ export async function traCuuHoSo(q: DvcTraCuuHoSoQuery): Promise<string> {
   }
 
   throw lastError || new Error("Tra cứu hồ sơ thất bại do không giải được mã captcha hợp lệ.");
+}
+
+/**
+ * Tra cứu hồ sơ đã nộp (`GET /tthc/ho-so/search`), trả bảng ĐÃ BÓC sẵn — khớp cách
+ * `taiXmlHoSo`/`layTaiLieuDinhKem` trả dữ liệu đã xử lý, controller không còn phải biết tới
+ * `parseBangHoSo`/hình dạng HTML của cổng nữa.
+ */
+export async function traCuuHoSo(q: DvcTraCuuHoSoQuery): Promise<BangHoSoDaBoc> {
+  return parseBangHoSo(await traCuuHoSoHtml(q));
+}
+
+/** Referer XHR của trang chi tiết hồ sơ — cả `downloadhoso` lẫn `data-tai-lieu-dkem` đều gọi từ đây. */
+function chiTietHoSoUrl(maHoSo: string): string {
+  return `${DVC_BASE_URL}/tchs/files/detail/${encodeURIComponent(maHoSo)}?loai=`;
+}
+
+export interface DvcTepTaiVe {
+  bytes: Buffer;
+  contentType: string;
+  fileName: string;
+}
+
+interface DvcBocTep {
+  fileName?: string;
+  fileType?: string;
+  /** Nội dung file, mã hóa base64. */
+  content?: string;
+}
+
+/**
+ * `downloadhoso` không trả bytes thô mà bọc trong JSON `{fileName, fileType, content}` với
+ * `content` là base64 — dò bằng cách THỬ parse JSON (không tin content-type cổng gửi) thay vì
+ * giả định luôn là bytes thô. Không phải dạng này (JSON không có `content` string, hoặc parse
+ * lỗi) thì trả `null` để caller dùng thẳng `bodyBytes`.
+ */
+function docGoiTepJson(bodyBytes: Buffer): DvcBocTep | null {
+  try {
+    const parsed: unknown = JSON.parse(bodyBytes.toString("utf8"));
+    if (parsed && typeof parsed === "object" && typeof (parsed as DvcBocTep).content === "string") {
+      return parsed as DvcBocTep;
+    }
+  } catch {
+    // Không phải JSON -> đúng là bytes thô, không phải lỗi.
+  }
+  return null;
+}
+
+/**
+ * Đọc một `Response` tải file của cổng thành `DvcTepTaiVe` — dùng chung cho `taiXmlHoSo` và
+ * `taiThongBao`: cả hai endpoint (`downloadhoso`/`downloadthongbao`) cùng dạng response
+ * JSON-bọc-base64 (`docGoiTepJson`) hoặc bytes thô kèm header content-type/content-disposition,
+ * chỉ khác đuôi/tên file mặc định khi cổng không gửi header.
+ */
+async function docTepTuResponse(
+  response: Response,
+  tenFileMacDinh: string,
+  contentTypeMacDinh = "application/octet-stream",
+): Promise<DvcTepTaiVe> {
+  const bodyBytes = Buffer.from(await response.arrayBuffer());
+  let bytes: Buffer = bodyBytes;
+  let contentType =
+    response.headers.get("content-type")?.split(";")[0]?.trim() || contentTypeMacDinh;
+  const tenTuHeader = filenameFromDisposition(response.headers.get("content-disposition"));
+  let fileName = tenTuHeader || tenFileMacDinh;
+
+  const goiTep = docGoiTepJson(bodyBytes);
+  if (goiTep?.content) {
+    bytes = Buffer.from(goiTep.content, "base64");
+    contentType = goiTep.fileType || contentType;
+    fileName = goiTep.fileName || fileName;
+  }
+
+  return { bytes, contentType, fileName };
+}
+
+/**
+ * Tải file XML của một hồ sơ (`POST /tthc/tchs/downloadhoso`) — cột "Tải file".
+ *
+ * KHÔNG phải trang `/tchs/files/detail/{maHoSo}` (đó là trang xem chi tiết, trả HTML) — đây
+ * mới là request XHR thật sự trả file, trang kia gọi nó khi người dùng bấm nút tải trên đó.
+ */
+export async function taiXmlHoSo(key: string, maHoSo: string): Promise<DvcTepTaiVe> {
+  sweepExpiredSessions();
+  const session = getSession(key);
+  if (!session) throw new Error(SESSION_EXPIRED_MESSAGE);
+
+  const response = await dvcSend("/tchs/downloadhoso", session, {
+    method: "POST",
+    headers: {
+      Accept: "*/*",
+      "Content-Type": "application/json",
+      "X-Requested-With": "XMLHttpRequest",
+      Referer: chiTietHoSoUrl(maHoSo),
+      [session.csrfHeader]: session.csrfToken,
+    },
+    body: JSON.stringify({ maHoSo }),
+  });
+
+  const tep = await docTepTuResponse(response, `${maHoSo}.xml`);
+
+  // Cổng nén sẵn tờ khai vào ZIP — bóc ra để trả thẳng XML, người dùng khỏi tự giải nén.
+  // `readZipEntryByExtension` ném lỗi nếu `bytes` không phải ZIP hợp lệ — bắt lại vì không phải
+  // lúc nào response cũng là ZIP (header/`fileType` cổng gửi không đáng tin hoàn toàn).
+  try {
+    const xml = readZipEntryByExtension(tep.bytes, ".xml");
+    if (xml) {
+      return {
+        bytes: xml.data,
+        contentType: "application/xml",
+        fileName: xml.name.split("/").pop() || tep.fileName,
+      };
+    }
+  } catch {
+    // Không phải ZIP hợp lệ -> dùng nguyên `tep` đã có.
+  }
+
+  return tep;
+}
+
+/**
+ * Danh sách tài liệu đính kèm của một hồ sơ (`POST /tthc/tchs/data-tai-lieu-dkem`) — cột
+ * "Tệp đính kèm".
+ *
+ * Body dùng đúng khóa `maHso` (KHÔNG phải `maHoSo` như `downloadhoso`) — hai endpoint của
+ * cổng đặt tên tham số khác nhau, giữ nguyên chứ không "sửa lỗi chính tả" kẻo cổng không
+ * nhận ra tham số và trả rỗng/lỗi.
+ *
+ * Trả JSON THÔ: hình dạng thật của cổng chưa xác nhận (chưa có mẫu response), nên để nguyên
+ * cho caller tự đọc thay vì đoán và ép kiểu sai — xem `TaiLieuDinhKemDialog` bên FE.
+ */
+export async function layTaiLieuDinhKem(key: string, maHoSo: string): Promise<unknown> {
+  sweepExpiredSessions();
+  const session = getSession(key);
+  if (!session) throw new Error(SESSION_EXPIRED_MESSAGE);
+
+  const response = await dvcSend("/tchs/data-tai-lieu-dkem", session, {
+    method: "POST",
+    headers: {
+      Accept: "*/*",
+      "Content-Type": "application/json",
+      "X-Requested-With": "XMLHttpRequest",
+      Referer: chiTietHoSoUrl(maHoSo),
+      [session.csrfHeader]: session.csrfToken,
+    },
+    body: JSON.stringify({ maHso: maHoSo }),
+  });
+
+  return response.json();
+}
+
+/**
+ * Tải file của một thông báo (`POST /tthc/tchs/downloadthongbao`) — cột "Thông báo", tham số
+ * `idTbao` lấy từ dòng đang bấm trong danh sách thông báo (xem `layChiTietHoSoHtml`).
+ *
+ * `loaiTBao` cổng đòi trong body nhưng luôn rỗng ở hai request thật đã đối chiếu (danh sách
+ * thông báo bóc được — `ThongBaoDaBoc` — không có trường này để truyền lên) nên hardcode thay
+ * vì nhận tham số không ai từng truyền giá trị khác rỗng.
+ */
+export async function taiThongBao(key: string, maHoSo: string, idTbao: string): Promise<DvcTepTaiVe> {
+  sweepExpiredSessions();
+  const session = getSession(key);
+  if (!session) throw new Error(SESSION_EXPIRED_MESSAGE);
+
+  const response = await dvcSend("/tchs/downloadthongbao", session, {
+    method: "POST",
+    headers: {
+      Accept: "*/*",
+      "Content-Type": "application/json",
+      "X-Requested-With": "XMLHttpRequest",
+      Referer: chiTietHoSoUrl(maHoSo),
+      [session.csrfHeader]: session.csrfToken,
+    },
+    // `idTbao` dài tới 17 chữ số, VƯỢT `Number.MAX_SAFE_INTEGER` (2^53 ~ 16 chữ số) — từng ép
+    // `Number(idTbao)` ở đây và làm tròn sai chữ số cuối (vd ...687 -> ...688) khiến cổng nhận
+    // nhầm ID và báo "Tải file thất bại." (đối chiếu request thật của cổng: chấp nhận idTbao
+    // dạng CHUỖI). Gửi thẳng chuỗi, không ép số, để giữ nguyên từng chữ số.
+    body: JSON.stringify({ idTbao, loaiTBao: "" }),
+  });
+
+  return docTepTuResponse(response, `thong-bao-${idTbao}.xml`, "application/xml");
+}
+
+/**
+ * Trang chi tiết hồ sơ (`GET /tchs/files/detail/{maHoSo}`) — chứa "Danh sách thông báo" dưới
+ * dạng HTML. Cổng vốn chỉ dùng URL này làm Referer cho `taiXmlHoSo`/`layTaiLieuDinhKem`/
+ * `taiThongBao` (`chiTietHoSoUrl`) — hàm này lần đầu THỰC SỰ tải trang đó về.
+ */
+async function layChiTietHoSoHtml(key: string, maHoSo: string): Promise<string> {
+  sweepExpiredSessions();
+  const session = getSession(key);
+  if (!session) throw new Error(SESSION_EXPIRED_MESSAGE);
+
+  const response = await dvcSend(
+    `/tchs/files/detail/${encodeURIComponent(maHoSo)}?loai=`,
+    session,
+    {
+      headers: {
+        Accept:
+          "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8",
+        Referer: `${DVC_BASE_URL}/tchs`,
+      },
+    },
+  );
+
+  return response.text();
+}
+
+/**
+ * Danh sách thông báo của một hồ sơ (bóc từ modal `#modalThongBao` trong trang chi tiết hồ sơ,
+ * xem `parseDanhSachThongBao`) — cột "Thông báo".
+ */
+export async function layDanhSachThongBao(key: string, maHoSo: string): Promise<ThongBaoDaBoc[]> {
+  return parseDanhSachThongBao(await layChiTietHoSoHtml(key, maHoSo));
 }
