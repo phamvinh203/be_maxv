@@ -19,23 +19,7 @@ import { renderInvoiceHtml } from "./invoiceHtml";
 import { toInvoiceView } from "./invoiceView";
 import { traCuuNcc } from "./traCuuNcc";
 import type { DisplayRow, InvoiceDirection } from "./types";
-
-/**
- * Đẩy `blob` xuống thư mục Tải xuống của trình duyệt.
- *
- * Thẻ `<a download>` chứ không `window.open`: trình duyệt chặn popup, và cách này đặt được TÊN FILE
- * (tên do `invoiceFileBase` sinh, khớp với file của luồng xuất theo lô).
- */
-function luuVeMay(blob: Blob, filename: string): void {
-  const url = URL.createObjectURL(blob);
-  const link = document.createElement("a");
-  link.href = url;
-  link.download = filename;
-  document.body.appendChild(link);
-  link.click();
-  document.body.removeChild(link);
-  URL.revokeObjectURL(url);
-}
+import { luuVeMay } from "../../lib/downloadFile";
 
 export interface TaiMotHoaDonOpts {
   direction: InvoiceDirection;

@@ -35,13 +35,20 @@ export interface CotBang {
   /** Bề rộng gợi ý (px). Bỏ trống = để bảng tự co theo nội dung. */
   width?: number;
   align?: "center" | "right";
+  /**
+   * Cột NÚT HÀNH ĐỘNG (tải file, xem đính kèm, xem thông báo…) thay vì cột dữ liệu văn bản.
+   * `BangHoSo` tự nối icon theo `key` và gọi `onAction(key, maHoSo)` khi bấm — thêm cột hành
+   * động mới chỉ cần khai ở đây + đăng ký icon trong `BangHoSo`, khỏi sửa vòng lặp render.
+   */
+  action?: boolean;
 }
 
 /**
  * Cột bảng kết quả của hai tab tờ khai — nhãn hiển thị (`header`) giữ nguyên
  * cách đặt tên nội bộ, `srcHeader` khớp sang đúng tiêu đề thật cổng trả về
- * (đối chiếu ngày 2026-08-19). Cột "Thông báo"/"Tải file" cổng chưa có cột dữ
- * liệu tương ứng — chỗ để dành cho nút bấm, hiện luôn trống.
+ * (đối chiếu ngày 2026-08-19). Cột "Tệp đính kèm"/"Tải file" đã nối nút hành
+ * động (`action: true`) — xem `ICON_HANH_DONG` trong `BangHoSo`. Cột "Thông
+ * báo" chưa có endpoint để nối nên vẫn để trống, chưa đánh dấu `action`.
  */
 const COT_TO_KHAI: CotBang[] = [
   { key: "stt", header: "STT", width: 60, align: "center" },
@@ -59,9 +66,15 @@ const COT_TO_KHAI: CotBang[] = [
     header: "Tiến trình giải quyết hồ sơ (Trạng thái)",
     srcHeader: "Trạng thái",
   },
-  { key: "tepDinhKem", header: "Tệp đính kèm", align: "center", srcHeader: "Hồ sơ đính kèm" },
+  {
+    key: "tepDinhKem",
+    header: "Tệp đính kèm",
+    align: "center",
+    srcHeader: "Hồ sơ đính kèm",
+    action: true,
+  },
   { key: "thongBao", header: "Thông báo", align: "center" },
-  { key: "taiFile", header: "Tải file", align: "center" },
+  { key: "taiFile", header: "Tải file", align: "center", action: true },
 ];
 
 /**
@@ -85,7 +98,7 @@ const COT_GIAY_NOP_TIEN: CotBang[] = [
   { key: "hinhThucNop", header: "Hình thức nộp" },
   { key: "nganHang", header: "Ngân hàng" },
   { key: "taiKhoanNganHang", header: "Tài khoản ngân hàng" },
-  { key: "taiFile", header: "Tải file", align: "center" },
+  { key: "taiFile", header: "Tải file", align: "center", action: true },
 ];
 
 /** Một tab của khu Dịch vụ công. */

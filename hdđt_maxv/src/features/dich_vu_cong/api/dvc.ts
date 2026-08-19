@@ -1,4 +1,4 @@
-import { apiFetch } from "../../../lib/http";
+import { apiFetch, apiFetchBlob } from "../../../lib/http";
 
 /** Ảnh captcha + khóa phiên do BE mở với cổng Dịch vụ công. */
 export interface DvcCaptchaInfo {
@@ -99,4 +99,35 @@ export async function traCuuHoSoDvc(params: DvcTraCuuHoSoParams): Promise<DvcBan
     if (v) qs.set(k, v);
   }
   return apiFetch<DvcBangHoSo>(`/dvc/ho-so?${qs.toString()}`);
+}
+
+export interface DvcHoSoParams {
+  /** Khóa phiên đã đăng nhập. */
+  key: string;
+  /** Mã hồ sơ — cột "Mã giao dịch" của bảng kết quả (giá trị thật là "Mã hồ sơ" bên cổng). */
+  maHoSo: string;
+}
+
+/**
+ * GET /api/v1/dvc/ho-so/file → tải file XML của một hồ sơ, qua BE proxy (cổng không mở
+ * CORS). Trả `Blob` để FE tự lưu xuống máy.
+ *
+ * Dùng: `taiFileHoSo` (cột "Tải file").
+ */
+export function taiFileHoSoDvc({ key, maHoSo }: DvcHoSoParams): Promise<Blob> {
+  const qs = new URLSearchParams({ key, maHoSo });
+  return apiFetchBlob(`/dvc/ho-so/file?${qs.toString()}`);
+}
+
+/**
+ * GET /api/v1/dvc/ho-so/tai-lieu-dkem → danh sách tài liệu đính kèm của một hồ sơ.
+ *
+ * Trả JSON THÔ — hình dạng thật của cổng chưa xác nhận (chưa có mẫu response), BE không ép
+ * kiểu nên FE cũng để `unknown`, xem `TaiLieuDinhKemDialog` (tự dò cột từ khóa JSON).
+ *
+ * Dùng: `TaiLieuDinhKemDialog` (cột "Tệp đính kèm").
+ */
+export function layTaiLieuDinhKemDvc({ key, maHoSo }: DvcHoSoParams): Promise<unknown> {
+  const qs = new URLSearchParams({ key, maHoSo });
+  return apiFetch<unknown>(`/dvc/ho-so/tai-lieu-dkem?${qs.toString()}`);
 }

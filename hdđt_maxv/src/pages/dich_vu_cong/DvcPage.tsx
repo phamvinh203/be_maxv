@@ -13,9 +13,11 @@ import DialogLoginDVC from "../../components/dich_vu_cong/dialogLoginDVC";
 import BoLocHoSo, { type BoLocHoSoValues } from "../../features/dich_vu_cong/components/BoLocHoSo";
 import BangHoSo from "../../features/dich_vu_cong/components/BangHoSo";
 import XuatFileDvcDialog from "../../features/dich_vu_cong/components/XuatFileDvcDialog";
+import TaiLieuDinhKemDialog from "../../features/dich_vu_cong/components/TaiLieuDinhKemDialog";
 import { TAB_DVC } from "../../features/dich_vu_cong/config";
 import { useActiveCompanyMst } from "../../features/auth/useActiveCompanyMst";
 import { traCuuHoSoDvc, type DvcBangHoSo } from "../../features/dich_vu_cong/api/dvc";
+import { taiFileHoSo } from "../../features/dich_vu_cong/taiFileHoSo";
 import { getErrorMessage } from "../../lib/errors";
 
 /**
@@ -31,6 +33,12 @@ export default function DvcPage() {
   const [dvcKey, setDvcKey] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [bangData, setBangData] = useState<DvcBangHoSo>({ headers: [], rows: [] });
+  /** Hành động (cột "Tải file"...) đang chạy dở — xem `onAction` truyền cho `BangHoSo`. */
+  const [dangChayAction, setDangChayAction] = useState<{ key: string; maHoSo: string } | null>(
+    null,
+  );
+  /** Mã hồ sơ đang mở dialog "Tệp đính kèm" — null = dialog đóng. */
+  const [tepDinhKemMaHoSo, setTepDinhKemMaHoSo] = useState<string | null>(null);
 
   const activeMst = useActiveCompanyMst();
   // Tài khoản cổng Dịch vụ công là "<MST>-ql", khác cổng HĐĐT đăng nhập bằng MST trơ.
@@ -89,6 +97,49 @@ export default function DvcPage() {
     setDvcKey(key);
     setLoginOpen(false);
     toast.success("Đăng nhập cổng Dịch vụ công thành công.");
+  };
+
+  /**
+   * Bấm icon "Tải file" của một dòng — luôn có `dvcKey` vì icon chỉ hiện sau khi tra cứu
+   * ra dữ liệu, mà tra cứu đã bắt buộc đăng nhập trước đó.
+   */
+  const handleTaiFile = async (maHoSo: string) => {
+    if (!dvcKey) return;
+    setDangChayAction({ key: "taiFile", maHoSo });
+    const toastId = toast.loading(`Đang tải file hồ sơ ${maHoSo}…`);
+    try {
+      await taiFileHoSo(dvcKey, maHoSo);
+      toast.update(toastId, {
+        render: `Đã tải file hồ sơ ${maHoSo}.`,
+        type: "success",
+        isLoading: false,
+        autoClose: 4000,
+      });
+    } catch (err) {
+      toast.update(toastId, {
+        render: getErrorMessage(err, "Tải file hồ sơ thất bại."),
+        type: "error",
+        isLoading: false,
+        autoClose: 8000,
+      });
+    } finally {
+      setDangChayAction(null);
+    }
+  };
+
+  /**
+   * Bấm một icon hành động ở `BangHoSo` — phân theo `actionKey` khai trong `cotBang`
+   * (`config.ts`). Thêm cột hành động mới chỉ cần thêm 1 case ở đây, khỏi sửa `BangHoSo`.
+   */
+  const handleAction = (actionKey: string, maHoSo: string) => {
+    if (actionKey === "taiFile") {
+      void handleTaiFile(maHoSo);
+      return;
+    }
+    if (actionKey === "tepDinhKem") {
+      setTepDinhKemMaHoSo(maHoSo);
+      return;
+    }
   };
 
   return (
@@ -158,7 +209,13 @@ export default function DvcPage() {
           tên — cổng không có cột STT/nút bấm như `cotBang`, khớp theo vị trí
           sẽ đổ dữ liệu sang nhầm ô (vd "Mã giao dịch" lệch sang "Tên thủ tục").
         */}
-        <BangHoSo cot={dangMo.cotBang} headers={bangData.headers} rows={bangData.rows} />
+        <BangHoSo
+          cot={dangMo.cotBang}
+          headers={bangData.headers}
+          rows={bangData.rows}
+          onAction={handleAction}
+          dangChayAction={dangChayAction}
+        />
       </Box>
 
       <XuatFileDvcDialog open={xuatOpen} onClose={() => setXuatOpen(false)} />
@@ -168,6 +225,13 @@ export default function DvcPage() {
         onClose={() => setLoginOpen(false)}
         initialUsername={tenDangNhapDvc}
         onLoginSuccess={handleLoginSuccess}
+      />
+
+      <TaiLieuDinhKemDialog
+        open={!!tepDinhKemMaHoSo}
+        onClose={() => setTepDinhKemMaHoSo(null)}
+        dvcKey={dvcKey}
+        maHoSo={tepDinhKemMaHoSo}
       />
     </>
   );
