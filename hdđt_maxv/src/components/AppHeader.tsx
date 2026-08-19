@@ -66,14 +66,22 @@ export default function AppHeader() {
             src={logoMaxv}
             alt="MAXV"
             sx={{ height: 32, width: "auto", display: "block", cursor: "pointer" }}
-            onClick={() => navigate("/")}
+            onClick={() => navigate("/hoa-don-dien-tu")}
           />
           <Button
             color="inherit"
-            onClick={() => navigate("/")}
+            onClick={() => navigate("/hoa-don-dien-tu")}
             sx={{ textTransform: "none", fontWeight: 600 }}
           >
-            Hóa đơn và tờ khai
+            Hóa đơn điện tử
+          </Button>
+
+          <Button
+            color="inherit"
+            onClick={() => navigate("/dich-vu-cong")}
+            sx={{ textTransform: "none", fontWeight: 600 }}
+          >
+            Dịch vụ công
           </Button>
 
           {/* Chỉ hiện khi admin đã bật module HRM cho tài khoản này. */}
