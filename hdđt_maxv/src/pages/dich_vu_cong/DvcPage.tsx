@@ -1,4 +1,5 @@
 import { useState, type SyntheticEvent } from "react";
+import { useMutation } from "@tanstack/react-query";
 import Box from "@mui/material/Box";
 import Stack from "@mui/material/Stack";
 import Button from "@mui/material/Button";
@@ -9,14 +10,14 @@ import FileDownloadRounded from "@mui/icons-material/FileDownloadRounded";
 import { toast } from "react-toastify";
 
 import AppHeader from "../../components/AppHeader";
-import DialogLoginDVC from "../../components/dich_vu_cong/dialogLoginDVC";
+import DialogLoginDVC from "../../features/dich_vu_cong/components/DialogLoginDVC";
 import BoLocHoSo, { type BoLocHoSoValues } from "../../features/dich_vu_cong/components/BoLocHoSo";
 import BangHoSo from "../../features/dich_vu_cong/components/BangHoSo";
 import XuatFileDvcDialog from "../../features/dich_vu_cong/components/XuatFileDvcDialog";
 import TaiLieuDinhKemDialog from "../../features/dich_vu_cong/components/TaiLieuDinhKemDialog";
 import { TAB_DVC } from "../../features/dich_vu_cong/config";
 import { useActiveCompanyMst } from "../../features/auth/useActiveCompanyMst";
-import { traCuuHoSoDvc, type DvcBangHoSo } from "../../features/dich_vu_cong/api/dvc";
+import { traCuuHoSoDvc } from "../../features/dich_vu_cong/api/dvc";
 import { taiFileHoSo } from "../../features/dich_vu_cong/taiFileHoSo";
 import { getErrorMessage } from "../../lib/errors";
 
@@ -31,8 +32,6 @@ export default function DvcPage() {
   const [xuatOpen, setXuatOpen] = useState(false);
   const [loginOpen, setLoginOpen] = useState(false);
   const [dvcKey, setDvcKey] = useState<string | null>(null);
-  const [loading, setLoading] = useState(false);
-  const [bangData, setBangData] = useState<DvcBangHoSo>({ headers: [], rows: [] });
   /** Hành động (cột "Tải file"...) đang chạy dở — xem `onAction` truyền cho `BangHoSo`. */
   const [dangChayAction, setDangChayAction] = useState<{ key: string; maHoSo: string } | null>(
     null,
@@ -50,31 +49,30 @@ export default function DvcPage() {
   const doiTab = (_e: SyntheticEvent, value: string) => setTab(value);
 
   /**
-   * Gọi API tra cứu hồ sơ chạy ngầm: Backend tự động lấy captcha & OCR ngầm
-   * mà không cần người dùng nhập mã.
+   * Tra cứu hồ sơ chạy ngầm: Backend tự động lấy captcha & OCR ngầm mà không cần người dùng
+   * nhập mã. `useMutation` thay vì tự quản `loading`/kết quả bằng tay — khớp cách
+   * `loginMutation` trong `DialogLoginDVC` và `TaiLieuDinhKemDialog` đã dùng TanStack Query.
    */
-  const thucHienTraCuu = async (key: string, filterValues: BoLocHoSoValues) => {
-    setLoading(true);
-    try {
-      const res = await traCuuHoSoDvc({
-        key,
-        tuNgay: filterValues.tuNgay,
-        denNgay: filterValues.denNgay,
-        maHoSo: filterValues.hoSo,
-        maToKhai: filterValues.loaiHoSo,
-      });
-      setBangData(res);
+  const traCuuMutation = useMutation({
+    mutationFn: (vars: { key: string; values: BoLocHoSoValues }) =>
+      traCuuHoSoDvc({
+        key: vars.key,
+        tuNgay: vars.values.tuNgay,
+        denNgay: vars.values.denNgay,
+        maHoSo: vars.values.hoSo,
+        maToKhai: vars.values.loaiHoSo,
+      }),
+    onSuccess: (res) => {
       if (res.rows.length === 0) {
         toast.info("Không tìm thấy hồ sơ nào khớp với điều kiện tìm kiếm.");
       } else {
         toast.success(`Tìm thấy ${res.rows.length} hồ sơ.`);
       }
-    } catch (err) {
-      toast.error(getErrorMessage(err, "Tra cứu hồ sơ thất bại."));
-    } finally {
-      setLoading(false);
-    }
-  };
+    },
+    onError: (err) => toast.error(getErrorMessage(err, "Tra cứu hồ sơ thất bại.")),
+  });
+  const bangData = traCuuMutation.data ?? { headers: [], rows: [] };
+  const loading = traCuuMutation.isPending;
 
   /**
    * Nhấn "Tìm kiếm":
@@ -86,7 +84,7 @@ export default function DvcPage() {
       setLoginOpen(true);
       return;
     }
-    void thucHienTraCuu(dvcKey, values);
+    traCuuMutation.mutate({ key: dvcKey, values });
   };
 
   /**
@@ -199,7 +197,7 @@ export default function DvcPage() {
           nhan={dangMo.nhanBoLoc}
           loading={loading}
           onSearch={handleSearch}
-          onReset={() => setBangData({ headers: [], rows: [] })}
+          onReset={() => traCuuMutation.reset()}
         />
 
         {/*

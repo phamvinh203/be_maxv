@@ -40,16 +40,6 @@ export async function getDvcCaptcha(): Promise<DvcCaptchaInfo> {
 }
 
 /**
- * GET /api/v1/dvc/tchs/captcha?key=... → `{ key, image, answer }`.
- *
- * Lấy ảnh captcha và tự động giải OCR cho form tra cứu hồ sơ (/tthc/getCaptcha)
- * bằng phiên đã đăng nhập qua `key`.
- */
-export async function getDvcTchsCaptcha(key: string): Promise<DvcCaptchaInfo> {
-  return apiFetch<DvcCaptchaInfo>(`/dvc/tchs/captcha?key=${encodeURIComponent(key)}`);
-}
-
-/**
  * POST /api/v1/dvc/login → `{ key, data }`.
  *
  * Khác `loginGdt` bên HĐĐT: hàm này KHÔNG tự kết luận đăng nhập thành công hay thất bại.
