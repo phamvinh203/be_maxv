@@ -8,13 +8,16 @@ import TableRow from "@mui/material/TableRow";
 import Typography from "@mui/material/Typography";
 import type { CotBang } from "../config";
 
-/** Một dòng kết quả. Kiểu còn lỏng vì chưa chốt được response của API `gdt-dvc`. */
-export type DongBang = Record<string, string>;
-
 interface Props {
+  /** Cột khai sẵn trong `config.ts` — dùng làm khung khi CHƯA có kết quả. */
   cot: CotBang[];
-  /** Chưa nối API nên mặc định rỗng — bảng hiện dòng "chưa có dữ liệu". */
-  rows?: DongBang[];
+  /**
+   * Tiêu đề cột do cổng trả về. Có giá trị thì bảng hiện theo bộ này thay cho `cot`:
+   * cổng thêm/bớt cột thì bảng đi theo, không bị đổ lệch dữ liệu sang nhầm ô.
+   */
+  headers?: string[];
+  /** Dòng kết quả theo THỨ TỰ CỘT của `headers`. */
+  rows?: string[][];
 }
 
 /**
@@ -24,19 +27,23 @@ interface Props {
  * khung của nó, tiêu đề không xuống dòng và dính lại khi cuộn dọc — cuộn tới
  * dòng thứ ba mươi mà mất tiêu đề thì không biết cột nào là cột nào.
  */
-export default function BangHoSo({ cot, rows = [] }: Props) {
+export default function BangHoSo({ cot, headers, rows = [] }: Props) {
+  // Có kết quả thì tin bộ cột của cổng; chưa có thì dựng khung theo cột khai sẵn.
+  const tieuDe = headers?.length ? headers : cot.map((c) => c.header);
+  const canLe = (i: number) => (headers?.length ? undefined : cot[i]?.align);
+
   return (
     <TableContainer component={Paper} variant="outlined" sx={{ maxHeight: 520 }}>
       <Table size="small" stickyHeader>
         <TableHead>
           <TableRow>
-            {cot.map((c) => (
+            {tieuDe.map((header, i) => (
               <TableCell
-                key={c.key}
-                align={c.align}
-                sx={{ fontWeight: 700, whiteSpace: "nowrap", width: c.width }}
+                key={header || i}
+                align={canLe(i)}
+                sx={{ fontWeight: 700, whiteSpace: "nowrap" }}
               >
-                {c.header}
+                {header}
               </TableCell>
             ))}
           </TableRow>
@@ -45,7 +52,7 @@ export default function BangHoSo({ cot, rows = [] }: Props) {
         <TableBody>
           {rows.length === 0 ? (
             <TableRow>
-              <TableCell colSpan={cot.length} align="center" sx={{ py: 6 }}>
+              <TableCell colSpan={tieuDe.length} align="center" sx={{ py: 6 }}>
                 <Typography variant="body2" color="text.secondary">
                   Chưa có dữ liệu. Nhập điều kiện rồi nhấn “Tìm kiếm”.
                 </Typography>
@@ -53,14 +60,10 @@ export default function BangHoSo({ cot, rows = [] }: Props) {
             </TableRow>
           ) : (
             rows.map((row, i) => (
-              <TableRow key={row.maGiaoDich ?? i} hover>
-                {cot.map((c) => (
-                  <TableCell
-                    key={c.key}
-                    align={c.align}
-                    sx={{ whiteSpace: "nowrap" }}
-                  >
-                    {c.key === "stt" ? i + 1 : (row[c.key] ?? "")}
+              <TableRow key={i} hover>
+                {tieuDe.map((_h, j) => (
+                  <TableCell key={j} align={canLe(j)} sx={{ whiteSpace: "nowrap" }}>
+                    {row[j] ?? ""}
                   </TableCell>
                 ))}
               </TableRow>

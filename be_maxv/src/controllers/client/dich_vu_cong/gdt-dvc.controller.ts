@@ -1,5 +1,6 @@
 import { FastifyReply, FastifyRequest } from "fastify";
 import * as DvcService from "../../../services/client/dich_vu_cong/gdt-dvc.service";
+import { parseBangHoSo } from "../../../services/client/dich_vu_cong/hoSoHtml";
 
 /**
  * GET /dvc/captcha — mở một phiên mới với cổng Dịch vụ công và trả ảnh captcha.
@@ -15,6 +16,29 @@ export async function captcha(request: FastifyRequest, reply: FastifyReply) {
     request.log.error(err);
     return reply.status(502).send({
       message: DvcService.toUserMessage(err, "Không lấy được mã captcha của cổng Dịch vụ công."),
+    });
+  }
+}
+
+/**
+ * GET /dvc/tchs/captcha?key=... — lấy ảnh captcha và tự động giải OCR cho form tra cứu hồ sơ /tthc/tchs.
+ */
+export async function tchsCaptcha(
+  request: FastifyRequest<{ Querystring: { key?: string } }>,
+  reply: FastifyReply,
+) {
+  const key = request.query?.key;
+  if (!key) {
+    return reply.status(400).send({ message: "Thiếu khóa phiên key." });
+  }
+
+  try {
+    const result = await DvcService.getTchsCaptcha(key);
+    return reply.send(result);
+  } catch (err) {
+    request.log.error(err);
+    return reply.status(502).send({
+      message: DvcService.toUserMessage(err, "Không lấy được mã captcha tra cứu hồ sơ."),
     });
   }
 }
@@ -57,6 +81,47 @@ export async function login(
     // cho một lần bấm. Giống lý do đã ghi ở `hddt/gdt.controller.ts`.
     return reply.status(400).send({
       message: DvcService.toUserMessage(err, "Đăng nhập cổng Dịch vụ công thất bại."),
+    });
+  }
+}
+
+type DvcTraCuuHoSoQuery = Partial<DvcService.DvcTraCuuHoSoQuery>;
+
+/**
+ * GET /dvc/ho-so — tra cứu hồ sơ đã nộp, trả bảng đã bóc sẵn từ mảnh HTML của cổng.
+ *
+ * Bóc ở BE chứ không đẩy HTML thô về trình duyệt: mảnh HTML của cổng mang cả thẻ script và
+ * link nội bộ, nhét thẳng vào React là vừa mở đường XSS vừa buộc FE biết markup của cổng.
+ */
+export async function traCuuHoSo(
+  request: FastifyRequest<{ Querystring: DvcTraCuuHoSoQuery }>,
+  reply: FastifyReply,
+) {
+  const q = request.query;
+  if (!q?.key) {
+    return reply
+      .status(400)
+      .send({ message: "Thiếu khóa phiên đăng nhập Dịch vụ công." });
+  }
+
+  try {
+    const html = await DvcService.traCuuHoSo({
+      key: q.key,
+      tuNgay: q.tuNgay,
+      denNgay: q.denNgay,
+      captcha: q.captcha,
+      maNghiepVu: q.maNghiepVu,
+      maTTHC: q.maTTHC,
+      maToKhai: q.maToKhai,
+      maHoSo: q.maHoSo,
+      scope: q.scope,
+      mstUyQuyen: q.mstUyQuyen,
+    });
+    return reply.send(parseBangHoSo(html));
+  } catch (err) {
+    request.log.error(err);
+    return reply.status(400).send({
+      message: DvcService.toUserMessage(err, "Tra cứu hồ sơ thất bại."),
     });
   }
 }

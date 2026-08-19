@@ -257,6 +257,36 @@ export async function getCaptcha(): Promise<DvcCaptchaResult> {
   };
 }
 
+/**
+ * Lấy ảnh và tự động giải OCR captcha của trang Tra cứu hồ sơ (`/tthc/getCaptcha`).
+ *
+ * Dùng cho các lượt tra cứu hồ sơ sau khi đã mở phiên / đăng nhập.
+ * Gửi header `Referer: https://dichvucong.gdt.gov.vn/tthc/tchs` đúng như trình duyệt thật.
+ */
+export async function getTchsCaptcha(key: string): Promise<DvcCaptchaResult> {
+  sweepExpiredSessions();
+  const session = getSession(key);
+  if (!session) throw new Error(SESSION_EXPIRED_MESSAGE);
+
+  const response = await dvcSend(`/getCaptcha?${Date.now()}`, session, {
+    headers: {
+      Accept: "image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8",
+      Referer: `${DVC_BASE_URL}/tchs`,
+    },
+  });
+
+  const bytes = Buffer.from(await response.arrayBuffer());
+  const contentType = response.headers.get("content-type")?.split(";")[0]?.trim() || "image/png";
+
+  const answer = await docDvcCaptcha(bytes);
+
+  return {
+    key,
+    image: `data:${contentType};base64,${bytes.toString("base64")}`,
+    answer,
+  };
+}
+
 export interface DvcLoginRequest {
   /** Khóa phiên nhận từ `getCaptcha`. */
   key: string;
@@ -331,12 +361,147 @@ export async function login(body: DvcLoginRequest): Promise<DvcLoginResult> {
     // Không phải JSON (cổng trả HTML/chuỗi trơ) — giữ nguyên chuỗi cho caller đọc.
   }
 
+  // Kiểm tra nếu cổng trả về trạng thái lỗi trong JSON
+  if (data && typeof data === "object") {
+    const obj = data as Record<string, unknown>;
+    if (
+      obj.status === "FAIL" ||
+      obj.status === "ERROR" ||
+      obj.success === false ||
+      (typeof obj.code === "number" && obj.code !== 0 && obj.code !== 200)
+    ) {
+      clearSession(body.key);
+      const msg = typeof obj.message === "string" && obj.message.trim() ? obj.message.trim() : null;
+      throw new Error(msg || "Đăng nhập cổng Dịch vụ công không thành công (thông tin không chính xác).");
+    }
+  }
+
+  // Kiểm tra nếu cổng trả về chuỗi thông báo lỗi
+  if (typeof data === "string") {
+    if (
+      data.includes("Sai tên đăng nhập") ||
+      data.includes("Mật khẩu không đúng") ||
+      data.includes("Mã xác thực không chính xác") ||
+      data.includes("Mã xác nhận không chính xác")
+    ) {
+      clearSession(body.key);
+      throw new Error(
+        data.length < 200
+          ? data.trim()
+          : "Đăng nhập cổng Dịch vụ công thất bại do thông tin không chính xác.",
+      );
+    }
+  }
+
   return { key: body.key, data };
 }
 
 /** Đổi lỗi bất kỳ thành câu tiếng Việt hiển thị được. Dùng: controller. */
 export function toUserMessage(err: unknown, fallback: string): string {
   if (err instanceof DvcHttpError && err.status === 429) return RATE_LIMITED_MESSAGE;
+  if (err instanceof DvcHttpError && err.status === 302) {
+    return "Phiên đăng nhập Dịch vụ công đã hết hạn hoặc chưa đăng nhập thành công. Vui lòng đăng nhập lại.";
+  }
+  if (err instanceof DvcHttpError && err.status === 401) {
+    return "Tài khoản hoặc mật khẩu Dịch vụ công không chính xác.";
+  }
   if (err instanceof DvcHttpError) return fallback;
   return err instanceof Error && err.message ? err.message : fallback;
+}
+
+/** `yyyy-mm-dd` (input type=date của FE) -> `dd/MM/yyyy` (dạng cổng DVC nhận). */
+function toDvcDate(isoDate?: string): string {
+  if (!isoDate || !isoDate.includes("-")) return "";
+  const [y, m, d] = isoDate.split("-");
+  if (!y || !m || !d) return "";
+  return `${d}/${m}/${y}`;
+}
+
+export interface DvcTraCuuHoSoQuery {
+  /** Khóa phiên ĐÃ ĐĂNG NHẬP. */
+  key: string;
+  /** `yyyy-mm-dd`; service tự đổi sang dạng cổng nhận. */
+  tuNgay?: string;
+  denNgay?: string;
+  /** Mã captcha tra cứu. Nếu bỏ trống, service sẽ tự động lấy và giải OCR ngầm. */
+  captcha?: string;
+  maNghiepVu?: string;
+  maTTHC?: string;
+  maToKhai?: string;
+  maHoSo?: string;
+  /** `SELF` = hồ sơ của chính đơn vị. Cổng còn giá trị khác cho luồng ủy quyền. */
+  scope?: string;
+  mstUyQuyen?: string;
+}
+
+async function guiTraCuuHoSo(
+  session: DvcSession,
+  q: DvcTraCuuHoSoQuery,
+  captcha: string,
+): Promise<string> {
+  const params = new URLSearchParams({
+    maNghiepVu: q.maNghiepVu ?? "",
+    maTTHC: q.maTTHC ?? "",
+    maToKhai: q.maToKhai ?? "",
+    maHoSo: q.maHoSo ?? "",
+    tuNgay: toDvcDate(q.tuNgay),
+    denNgay: toDvcDate(q.denNgay),
+    scope_tdt1: q.scope ?? "SELF",
+    mstUyQuyen_tdt1: q.mstUyQuyen ?? "",
+    captcha,
+  });
+
+  const response = await dvcSend(`/ho-so/search?${params.toString()}`, session, {
+    headers: {
+      Accept: "text/html-partial",
+      Referer: `${DVC_BASE_URL}/tchs`,
+      "HX-Request": "true",
+      "HX-Current-URL": `${DVC_BASE_URL}/tchs`,
+      "HX-Target": "table-container",
+      "HX-Trigger": "form-search-advanced",
+    },
+  });
+
+  return response.text();
+}
+
+/**
+ * Tra cứu hồ sơ đã nộp (`GET /tthc/ho-so/search`).
+ *
+ * Tự động chạy ngầm: Nếu `q.captcha` không được truyền lên, hàm sẽ tự động lấy
+ * captcha từ `/tthc/getCaptcha`, giải mã OCR qua `docDvcCaptcha` và gửi tra cứu
+ * (tự động thử lại tối đa 3 lần nếu đọc sai mã).
+ */
+export async function traCuuHoSo(q: DvcTraCuuHoSoQuery): Promise<string> {
+  sweepExpiredSessions();
+  const session = getSession(q.key);
+  if (!session) throw new Error(SESSION_EXPIRED_MESSAGE);
+
+  if (q.captcha) {
+    return guiTraCuuHoSo(session, q, q.captcha);
+  }
+
+  let lastError: unknown = null;
+  for (let attempt = 1; attempt <= 3; attempt++) {
+    try {
+      const cap = await getTchsCaptcha(q.key);
+      if (!cap.answer) {
+        throw new Error("Không thể tự động giải mã captcha trang tra cứu hồ sơ.");
+      }
+
+      const html = await guiTraCuuHoSo(session, q, cap.answer);
+      if (
+        html.includes("Mã xác nhận không chính xác") ||
+        html.includes("Mã xác thực không chính xác")
+      ) {
+        if (attempt < 3) continue;
+      }
+      return html;
+    } catch (err) {
+      lastError = err;
+      if (attempt === 3) throw err;
+    }
+  }
+
+  throw lastError || new Error("Tra cứu hồ sơ thất bại do không giải được mã captcha hợp lệ.");
 }
