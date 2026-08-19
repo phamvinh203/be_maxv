@@ -1,6 +1,5 @@
 import { FastifyReply, FastifyRequest } from "fastify";
 import * as DvcService from "../../../services/client/dich_vu_cong/gdt-dvc.service";
-import { parseBangHoSo } from "../../../services/client/dich_vu_cong/hoSoHtml";
 
 /**
  * GET /dvc/captcha — mở một phiên mới với cổng Dịch vụ công và trả ảnh captcha.
@@ -105,7 +104,7 @@ export async function traCuuHoSo(
   }
 
   try {
-    const html = await DvcService.traCuuHoSo({
+    const bang = await DvcService.traCuuHoSo({
       key: q.key,
       tuNgay: q.tuNgay,
       denNgay: q.denNgay,
@@ -117,7 +116,7 @@ export async function traCuuHoSo(
       scope: q.scope,
       mstUyQuyen: q.mstUyQuyen,
     });
-    return reply.send(parseBangHoSo(html));
+    return reply.send(bang);
   } catch (err) {
     request.log.error(err);
     return reply.status(400).send({

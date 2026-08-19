@@ -3,6 +3,7 @@ import { describeErrorChain } from "../../../config/gdt-client";
 import { readZipEntryByExtension } from "../../../helpers/zip";
 import { filenameFromDisposition } from "../hddt/traCuuGoc/shared";
 import { docDvcCaptcha } from "./captcha-ocr";
+import { laLoiCaptcha, parseBangHoSo, type BangHoSoDaBoc } from "./hoSoHtml";
 
 /**
  * Proxy cổng Dịch vụ công thuế (https://dichvucong.gdt.gov.vn/tthc).
@@ -233,23 +234,28 @@ export interface DvcCaptchaResult {
 }
 
 /**
- * Bước 2: lấy ảnh captcha của một phiên mới.
+ * GET một ảnh captcha, giải OCR ngầm, đóng gói thành `DvcCaptchaResult`. Dùng chung cho bước 2
+ * (`getCaptcha`, mở phiên mới) và captcha trang tra cứu hồ sơ (`getTchsCaptcha`, phiên đã có) —
+ * khác nhau đúng path + header `Referer`, còn lại đọc response giống hệt nhau.
  *
  * Trả data-URL thay vì bytes thô: FE chỉ cần gắn vào `<img src>`, khỏi phải quản blob URL
  * và khỏi thêm một endpoint nhị phân riêng. Ảnh 150x38 nên base64 chỉ ~5KB.
- *
- * Tham số `?<timestamp>` là để phá cache, giữ đúng như trình duyệt thật gửi.
  */
-export async function getCaptcha(): Promise<DvcCaptchaResult> {
-  const { key, session } = await openSession();
-
-  const response = await dvcSend(`/login/getCaptcha?${Date.now()}`, session, {
-    headers: { Accept: "image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8" },
+async function fetchCaptchaImage(
+  path: string,
+  key: string,
+  session: DvcSession,
+  extraHeaders?: Record<string, string>,
+): Promise<DvcCaptchaResult> {
+  const response = await dvcSend(path, session, {
+    headers: {
+      Accept: "image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8",
+      ...extraHeaders,
+    },
   });
 
   const bytes = Buffer.from(await response.arrayBuffer());
   const contentType = response.headers.get("content-type")?.split(";")[0]?.trim() || "image/png";
-
   const answer = await docDvcCaptcha(bytes);
 
   return {
@@ -257,6 +263,16 @@ export async function getCaptcha(): Promise<DvcCaptchaResult> {
     image: `data:${contentType};base64,${bytes.toString("base64")}`,
     answer,
   };
+}
+
+/**
+ * Bước 2: lấy ảnh captcha của một phiên mới.
+ *
+ * Tham số `?<timestamp>` là để phá cache, giữ đúng như trình duyệt thật gửi.
+ */
+export async function getCaptcha(): Promise<DvcCaptchaResult> {
+  const { key, session } = await openSession();
+  return fetchCaptchaImage(`/login/getCaptcha?${Date.now()}`, key, session);
 }
 
 /**
@@ -269,24 +285,9 @@ export async function getTchsCaptcha(key: string): Promise<DvcCaptchaResult> {
   sweepExpiredSessions();
   const session = getSession(key);
   if (!session) throw new Error(SESSION_EXPIRED_MESSAGE);
-
-  const response = await dvcSend(`/getCaptcha?${Date.now()}`, session, {
-    headers: {
-      Accept: "image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8",
-      Referer: `${DVC_BASE_URL}/tchs`,
-    },
+  return fetchCaptchaImage(`/getCaptcha?${Date.now()}`, key, session, {
+    Referer: `${DVC_BASE_URL}/tchs`,
   });
-
-  const bytes = Buffer.from(await response.arrayBuffer());
-  const contentType = response.headers.get("content-type")?.split(";")[0]?.trim() || "image/png";
-
-  const answer = await docDvcCaptcha(bytes);
-
-  return {
-    key,
-    image: `data:${contentType};base64,${bytes.toString("base64")}`,
-    answer,
-  };
 }
 
 export interface DvcLoginRequest {
@@ -380,12 +381,7 @@ export async function login(body: DvcLoginRequest): Promise<DvcLoginResult> {
 
   // Kiểm tra nếu cổng trả về chuỗi thông báo lỗi
   if (typeof data === "string") {
-    if (
-      data.includes("Sai tên đăng nhập") ||
-      data.includes("Mật khẩu không đúng") ||
-      data.includes("Mã xác thực không chính xác") ||
-      data.includes("Mã xác nhận không chính xác")
-    ) {
+    if (data.includes("Sai tên đăng nhập") || data.includes("Mật khẩu không đúng") || laLoiCaptcha(data)) {
       clearSession(body.key);
       throw new Error(
         data.length < 200
@@ -468,13 +464,11 @@ async function guiTraCuuHoSo(
 }
 
 /**
- * Tra cứu hồ sơ đã nộp (`GET /tthc/ho-so/search`).
- *
- * Tự động chạy ngầm: Nếu `q.captcha` không được truyền lên, hàm sẽ tự động lấy
- * captcha từ `/tthc/getCaptcha`, giải mã OCR qua `docDvcCaptcha` và gửi tra cứu
- * (tự động thử lại tối đa 3 lần nếu đọc sai mã).
+ * Chạy lượt tra cứu, trả HTML thô. Tự động chạy ngầm: Nếu `q.captcha` không được truyền lên,
+ * hàm sẽ tự động lấy captcha từ `/tthc/getCaptcha`, giải mã OCR qua `docDvcCaptcha` và gửi tra
+ * cứu (tự động thử lại tối đa 3 lần nếu đọc sai mã).
  */
-export async function traCuuHoSo(q: DvcTraCuuHoSoQuery): Promise<string> {
+async function traCuuHoSoHtml(q: DvcTraCuuHoSoQuery): Promise<string> {
   sweepExpiredSessions();
   const session = getSession(q.key);
   if (!session) throw new Error(SESSION_EXPIRED_MESSAGE);
@@ -492,10 +486,7 @@ export async function traCuuHoSo(q: DvcTraCuuHoSoQuery): Promise<string> {
       }
 
       const html = await guiTraCuuHoSo(session, q, cap.answer);
-      if (
-        html.includes("Mã xác nhận không chính xác") ||
-        html.includes("Mã xác thực không chính xác")
-      ) {
+      if (laLoiCaptcha(html)) {
         if (attempt < 3) continue;
       }
       return html;
@@ -506,6 +497,15 @@ export async function traCuuHoSo(q: DvcTraCuuHoSoQuery): Promise<string> {
   }
 
   throw lastError || new Error("Tra cứu hồ sơ thất bại do không giải được mã captcha hợp lệ.");
+}
+
+/**
+ * Tra cứu hồ sơ đã nộp (`GET /tthc/ho-so/search`), trả bảng ĐÃ BÓC sẵn — khớp cách
+ * `taiXmlHoSo`/`layTaiLieuDinhKem` trả dữ liệu đã xử lý, controller không còn phải biết tới
+ * `parseBangHoSo`/hình dạng HTML của cổng nữa.
+ */
+export async function traCuuHoSo(q: DvcTraCuuHoSoQuery): Promise<BangHoSoDaBoc> {
+  return parseBangHoSo(await traCuuHoSoHtml(q));
 }
 
 /** Referer XHR của trang chi tiết hồ sơ — cả `downloadhoso` lẫn `data-tai-lieu-dkem` đều gọi từ đây. */
