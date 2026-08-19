@@ -31,7 +31,6 @@ export default function DvcPage() {
   const [dvcKey, setDvcKey] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [bangData, setBangData] = useState<DvcBangHoSo>({ headers: [], rows: [] });
-  const [pendingFilter, setPendingFilter] = useState<BoLocHoSoValues | null>(null);
 
   const activeMst = useActiveCompanyMst();
   // Tài khoản cổng Dịch vụ công là "<MST>-ql", khác cổng HĐĐT đăng nhập bằng MST trơ.
@@ -76,7 +75,6 @@ export default function DvcPage() {
    */
   const handleSearch = (values: BoLocHoSoValues) => {
     if (!dvcKey) {
-      setPendingFilter(values);
       setLoginOpen(true);
       return;
     }
@@ -90,7 +88,6 @@ export default function DvcPage() {
   const handleLoginSuccess = (key: string) => {
     setDvcKey(key);
     setLoginOpen(false);
-    setPendingFilter(null);
     toast.success("Đăng nhập cổng Dịch vụ công thành công.");
   };
 
@@ -154,11 +151,14 @@ export default function DvcPage() {
           onReset={() => setBangData({ headers: [], rows: [] })}
         />
 
-        <BangHoSo
-          cot={dangMo.cotBang}
-          headers={bangData.headers.length > 0 ? bangData.headers : undefined}
-          rows={bangData.rows}
-        />
+        {/*
+          Tiêu đề HIỂN THỊ luôn lấy từ `cotBang` (COT_TO_KHAI/COT_GIAY_NOP_TIEN
+          trong config.ts), không dùng câu chữ tiêu đề cổng trả về. Vẫn phải
+          truyền `bangData.headers` xuống để BangHoSo khớp đúng cột NGUỒN theo
+          tên — cổng không có cột STT/nút bấm như `cotBang`, khớp theo vị trí
+          sẽ đổ dữ liệu sang nhầm ô (vd "Mã giao dịch" lệch sang "Tên thủ tục").
+        */}
+        <BangHoSo cot={dangMo.cotBang} headers={bangData.headers} rows={bangData.rows} />
       </Box>
 
       <XuatFileDvcDialog open={xuatOpen} onClose={() => setXuatOpen(false)} />
