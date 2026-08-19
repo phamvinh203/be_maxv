@@ -15,6 +15,7 @@ import BoLocHoSo, { type BoLocHoSoValues } from "../../features/dich_vu_cong/com
 import BangHoSo from "../../features/dich_vu_cong/components/BangHoSo";
 import XuatFileDvcDialog from "../../features/dich_vu_cong/components/XuatFileDvcDialog";
 import TaiLieuDinhKemDialog from "../../features/dich_vu_cong/components/TaiLieuDinhKemDialog";
+import ThongBaoDialog from "../../features/dich_vu_cong/components/ThongBaoDialog";
 import { TAB_DVC } from "../../features/dich_vu_cong/config";
 import { useActiveCompanyMst } from "../../features/auth/useActiveCompanyMst";
 import { traCuuHoSoDvc } from "../../features/dich_vu_cong/api/dvc";
@@ -38,6 +39,8 @@ export default function DvcPage() {
   );
   /** Mã hồ sơ đang mở dialog "Tệp đính kèm" — null = dialog đóng. */
   const [tepDinhKemMaHoSo, setTepDinhKemMaHoSo] = useState<string | null>(null);
+  /** Mã hồ sơ đang mở dialog "Thông báo" — null = dialog đóng. */
+  const [thongBaoMaHoSo, setThongBaoMaHoSo] = useState<string | null>(null);
 
   const activeMst = useActiveCompanyMst();
   // Tài khoản cổng Dịch vụ công là "<MST>-ql", khác cổng HĐĐT đăng nhập bằng MST trơ.
@@ -138,6 +141,10 @@ export default function DvcPage() {
       setTepDinhKemMaHoSo(maHoSo);
       return;
     }
+    if (actionKey === "thongBao") {
+      setThongBaoMaHoSo(maHoSo);
+      return;
+    }
   };
 
   return (
@@ -230,6 +237,13 @@ export default function DvcPage() {
         onClose={() => setTepDinhKemMaHoSo(null)}
         dvcKey={dvcKey}
         maHoSo={tepDinhKemMaHoSo}
+      />
+
+      <ThongBaoDialog
+        open={!!thongBaoMaHoSo}
+        onClose={() => setThongBaoMaHoSo(null)}
+        dvcKey={dvcKey}
+        maHoSo={thongBaoMaHoSo}
       />
     </>
   );

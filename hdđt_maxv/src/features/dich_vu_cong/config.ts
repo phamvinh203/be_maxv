@@ -46,9 +46,8 @@ export interface CotBang {
 /**
  * Cột bảng kết quả của hai tab tờ khai — nhãn hiển thị (`header`) giữ nguyên
  * cách đặt tên nội bộ, `srcHeader` khớp sang đúng tiêu đề thật cổng trả về
- * (đối chiếu ngày 2026-08-19). Cột "Tệp đính kèm"/"Tải file" đã nối nút hành
- * động (`action: true`) — xem `ICON_HANH_DONG` trong `BangHoSo`. Cột "Thông
- * báo" chưa có endpoint để nối nên vẫn để trống, chưa đánh dấu `action`.
+ * (đối chiếu ngày 2026-08-19). Cột "Tệp đính kèm"/"Thông báo"/"Tải file" đã
+ * nối nút hành động (`action: true`) — xem `ICON_HANH_DONG` trong `BangHoSo`.
  */
 const COT_TO_KHAI: CotBang[] = [
   { key: "stt", header: "STT", width: 60, align: "center" },
@@ -73,7 +72,7 @@ const COT_TO_KHAI: CotBang[] = [
     srcHeader: "Hồ sơ đính kèm",
     action: true,
   },
-  { key: "thongBao", header: "Thông báo", align: "center" },
+  { key: "thongBao", header: "Thông báo", align: "center", action: true },
   { key: "taiFile", header: "Tải file", align: "center", action: true },
 ];
 

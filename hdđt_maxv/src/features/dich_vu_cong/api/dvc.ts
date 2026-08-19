@@ -121,3 +121,42 @@ export function layTaiLieuDinhKemDvc({ key, maHoSo }: DvcHoSoParams): Promise<un
   const qs = new URLSearchParams({ key, maHoSo });
   return apiFetch<unknown>(`/dvc/ho-so/tai-lieu-dkem?${qs.toString()}`);
 }
+
+/**
+ * Một dòng "Danh sách thông báo" của một hồ sơ — BE đã bóc từ HTML trang chi tiết
+ * (đối chiếu mẫu ngày 2026-08-19). Cổng KHÔNG có "Số thông báo"/"Người gửi" nên chỉ có
+ * đúng 3 trường, khác đặc tả 6 cột ban đầu.
+ */
+export interface DvcThongBao {
+  /** Nội dung/tiêu đề thông báo. */
+  tieuDe: string;
+  /** Giờ + ngày gửi, dạng thô cổng trả — không parse thành Date (cổng không ghi rõ múi giờ). */
+  ngayGui: string;
+  /** Truyền vào `taiThongBaoDvc` để tải file thông báo này. */
+  idTbao: string;
+}
+
+/**
+ * GET /api/v1/dvc/ho-so/thong-bao → danh sách thông báo của một hồ sơ.
+ *
+ * Dùng: `ThongBaoDialog` (cột "Thông báo").
+ */
+export function layDanhSachThongBaoDvc({ key, maHoSo }: DvcHoSoParams): Promise<DvcThongBao[]> {
+  const qs = new URLSearchParams({ key, maHoSo });
+  return apiFetch<DvcThongBao[]>(`/dvc/ho-so/thong-bao?${qs.toString()}`);
+}
+
+export interface DvcThongBaoFileParams extends DvcHoSoParams {
+  idTbao: string;
+}
+
+/**
+ * GET /api/v1/dvc/ho-so/thong-bao/file → tải file của một thông báo, qua BE proxy. Trả
+ * `Blob` để FE tự lưu xuống máy, cùng quy ước với `taiFileHoSoDvc`.
+ *
+ * Dùng: `taiThongBao` (nút tải trong `ThongBaoDialog`).
+ */
+export function taiThongBaoDvc({ key, maHoSo, idTbao }: DvcThongBaoFileParams): Promise<Blob> {
+  const qs = new URLSearchParams({ key, maHoSo, idTbao });
+  return apiFetchBlob(`/dvc/ho-so/thong-bao/file?${qs.toString()}`);
+}

@@ -11,6 +11,7 @@ import Tooltip from "@mui/material/Tooltip";
 import CircularProgress from "@mui/material/CircularProgress";
 import FileDownloadRounded from "@mui/icons-material/FileDownloadRounded";
 import AttachFileRounded from "@mui/icons-material/AttachFileRounded";
+import NotificationsRounded from "@mui/icons-material/NotificationsRounded";
 import type { CotBang } from "../config";
 
 interface Props {
@@ -39,6 +40,7 @@ interface Props {
 const ICON_HANH_DONG: Record<string, typeof FileDownloadRounded> = {
   taiFile: FileDownloadRounded,
   tepDinhKem: AttachFileRounded,
+  thongBao: NotificationsRounded,
 };
 
 function chuanHoaTieuDe(s: string): string {
@@ -126,8 +128,8 @@ export default function BangHoSo({
                       );
                     }
 
-                    // Cột hành động chưa đăng ký icon (vd "Thông báo" — chưa có endpoint để nối)
-                    // -> hiện trống, giống cột dữ liệu chưa có nguồn, thay vì vẽ nút không làm gì.
+                    // Cột hành động chưa đăng ký icon trong ICON_HANH_DONG -> hiện trống, giống
+                    // cột dữ liệu chưa có nguồn, thay vì vẽ nút không làm gì.
                     const Icon = ICON_HANH_DONG[c.key];
                     if (!Icon) return <TableCell key={j} align={canLe(j)} />;
 
