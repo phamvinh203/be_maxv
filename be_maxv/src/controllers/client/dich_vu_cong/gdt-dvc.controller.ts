@@ -7,6 +7,7 @@ import { resolveTenantDb } from "../../../helpers/resolveTenantDb";
 // Dùng lại module crypto của HĐĐT: file đó CỐ Ý không đụng Prisma/HĐĐT gì (chỉ AES-256-GCM
 // thuần trên chuỗi), nên tái dùng được cho cột `dvcPassword*` mà không cần chép lại.
 import { decryptGdtPassword, encryptGdtPassword } from "../../../services/client/hddt/gdtCredential";
+import { layChiTietToKhai } from "../../../services/client/dich_vu_cong/toKhaiXml";
 
 type KetQuaDocCache<T> = { ok: true; giaTri: T } | { ok: false; message: string };
 
@@ -403,6 +404,43 @@ export async function taiLieuDinhKem(
     request.log.error(err);
     return reply.status(400).send({
       message: DvcService.toUserMessage(err, "Không lấy được danh sách tài liệu đính kèm."),
+    });
+  }
+}
+
+/**
+ * GET /dvc/ho-so/to-khai-chi-tiet — chỉ tiêu tờ khai đã bóc từ XML (dialog "Xem tờ khai" khi bấm
+ * cột "Tên thủ tục hành chính"). CÙNG cơ chế đọc-cache-trước như `taiFileHoSo` (đọc `dvc_ho_so`
+ * trong DB tenant trước, thiếu mới cần `key` để gọi cổng thật), chỉ khác là trả JSON đã bóc
+ * (`layChiTietToKhai`) thay vì nguyên bytes file XML.
+ */
+export async function chiTietToKhai(
+  request: FastifyRequest<{ Querystring: DvcHoSoQuery }>,
+  reply: FastifyReply,
+) {
+  const q = request.query;
+  const maHoSo = q?.maHoSo;
+  if (!maHoSo) {
+    return reply.status(400).send({ message: "Thiếu mã hồ sơ." });
+  }
+
+  const tenantDb = await resolveTenantDb(request);
+  try {
+    const ket = await docCacheHoacGoiCong({
+      key: q.key,
+      docCache: () => DvcDongBo.layFileHoSoDaLuu(tenantDb, maHoSo),
+      goiCong: (key) => DvcService.taiXmlHoSo(key, maHoSo),
+      ghiCache: (tep) => DvcDongBo.luuFileHoSoVaoCache(tenantDb, maHoSo, tep),
+      thieuKeyMessage:
+        'Hồ sơ chưa đồng bộ — bấm "Đăng nhập cổng Dịch vụ công" rồi thử lại để xem trực tiếp.',
+    });
+    if (!ket.ok) return reply.status(400).send({ message: ket.message });
+
+    return reply.send(layChiTietToKhai(ket.giaTri.bytes.toString("utf8")));
+  } catch (err) {
+    request.log.error(err);
+    return reply.status(400).send({
+      message: DvcService.toUserMessage(err, "Không đọc được nội dung tờ khai."),
     });
   }
 }

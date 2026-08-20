@@ -18,6 +18,7 @@ import BangHoSo from "../../features/dich_vu_cong/components/BangHoSo";
 import XuatFileDvcDialog from "../../features/dich_vu_cong/components/XuatFileDvcDialog";
 import TaiLieuDinhKemDialog from "../../features/dich_vu_cong/components/TaiLieuDinhKemDialog";
 import ThongBaoDialog from "../../features/dich_vu_cong/components/ThongBaoDialog";
+import ToKhaiXmlDialog from "../../features/dich_vu_cong/components/ToKhaiXmlDialog";
 import DialogDongBo from "../../features/dich_vu_cong/components/DialogDongBo";
 import { TAB_DVC } from "../../features/dich_vu_cong/config";
 import { useActiveCompanyMst } from "../../features/auth/useActiveCompanyMst";
@@ -52,6 +53,8 @@ export default function DvcPage() {
   const [tepDinhKemMaHoSo, setTepDinhKemMaHoSo] = useState<string | null>(null);
 
   const [thongBaoMaHoSo, setThongBaoMaHoSo] = useState<string | null>(null);
+
+  const [toKhaiMaHoSo, setToKhaiMaHoSo] = useState<string | null>(null);
 
   const activeMst = useActiveCompanyMst();
 
@@ -260,6 +263,7 @@ export default function DvcPage() {
           rows={bangData.rows}
           onAction={handleAction}
           dangChayAction={dangChayAction}
+          onXemToKhai={setToKhaiMaHoSo}
         />
       </Box>
 
@@ -287,6 +291,13 @@ export default function DvcPage() {
         onClose={() => setThongBaoMaHoSo(null)}
         dvcKey={dvcKey}
         maHoSo={thongBaoMaHoSo}
+      />
+
+      <ToKhaiXmlDialog
+        open={!!toKhaiMaHoSo}
+        onClose={() => setToKhaiMaHoSo(null)}
+        dvcKey={dvcKey}
+        maHoSo={toKhaiMaHoSo}
       />
     </>
   );

@@ -1,6 +1,7 @@
 import { FastifyInstance } from "fastify";
 import {
   captcha,
+  chiTietToKhai,
   danhSachThongBao,
   dongBo,
   getCredential,
@@ -41,6 +42,11 @@ export default async function (fastify: FastifyInstance) {
   fastify.get("/ho-so/file", {
     preHandler: [fastify.authenticate],
     handler: taiFileHoSo,
+  });
+
+  fastify.get("/ho-so/to-khai-chi-tiet", {
+    preHandler: [fastify.authenticate],
+    handler: chiTietToKhai,
   });
 
   fastify.get("/ho-so/tai-lieu-dkem", {

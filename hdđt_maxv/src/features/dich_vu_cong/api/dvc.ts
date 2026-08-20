@@ -234,6 +234,89 @@ export function layDanhSachThongBaoDvc({
   return apiFetch<DvcThongBao[]>(`/dvc/ho-so/thong-bao?${qsBoQuaRong({ key, maHoSo }).toString()}`);
 }
 
+/** Một chỉ tiêu đã bóc từ XML tờ khai mẫu CHƯA có layout riêng — `nhan` là tên thẻ XML thô (xem
+ * `DvcChiTietToKhai` nhánh `loai: "raw"`). */
+export interface DvcChiTieuToKhai {
+  nhan: string;
+  giaTri: string;
+}
+
+/** Tên thẻ `<ctNN>` hợp lệ trên mẫu in 01/GTGT — mirror của `CtTagGtgt01` bên BE (`toKhaiXml.ts`).
+ * Dùng làm kiểu cho `giaTri`/`thue` ở `HANG` trong `ToKhaiGtgt01Form` để gõ sai tên thẻ báo lỗi
+ * biên dịch thay vì render lặng lẽ một ô trống. */
+export type CtTagGtgt01 =
+  | "ct21"
+  | "ct22"
+  | "ct23"
+  | "ct24"
+  | "ct23a"
+  | "ct24a"
+  | "ct25"
+  | "ct26"
+  | "ct27"
+  | "ct28"
+  | "ct29"
+  | "ct30"
+  | "ct31"
+  | "ct32"
+  | "ct33"
+  | "ct32a"
+  | "ct34"
+  | "ct35"
+  | "ct36"
+  | "ct37"
+  | "ct38"
+  | "ct39a"
+  | "ct40a"
+  | "ct40b"
+  | "ct40"
+  | "ct41"
+  | "ct42"
+  | "ct43";
+
+/** Dữ liệu mẫu 01/GTGT đã bóc — đủ để `ToKhaiGtgt01Form` dựng lại đúng layout mẫu in (quốc hiệu,
+ * khối thông tin NNT, bảng chỉ tiêu, khối ký), xem `ChiTietGtgt01` bên BE. */
+export interface DvcChiTietGtgt01 {
+  tenTKhai: string;
+  moTaBMau: string;
+  tenNganhNghe: string;
+  /** Đã dựng sẵn dạng "Quý 2 năm 2026". */
+  kyTinhThue: string;
+  laLanDau: boolean;
+  soLanBoSung: number;
+  tenNNT: string;
+  mst: string;
+  tenCQTNoiNop: string;
+  nguoiKy: string;
+  /** `yyyy-mm-dd` thô — tự format khi hiển thị. */
+  ngayKy: string | null;
+  kyDienTuBoi: string | null;
+  /** ISO datetime thô của chữ ký số. */
+  ngayKyDienTu: string | null;
+  /** `{ ct22: 29826193, ... }` — thẻ vắng mặt hoặc `null` đều nghĩa là không có dữ liệu, khác 0. */
+  ct: Partial<Record<CtTagGtgt01, number | null>>;
+}
+
+/** Kết quả bóc XML tờ khai của một hồ sơ, xem `layChiTietToKhai` bên BE. */
+export type DvcChiTietToKhai =
+  | { loai: "gtgt01"; duLieu: DvcChiTietGtgt01; xmlTho: string }
+  | { loai: "raw"; chiTieu: DvcChiTieuToKhai[]; xmlTho: string };
+
+/**
+ * GET /api/v1/dvc/ho-so/to-khai-chi-tiet → chỉ tiêu đã bóc từ XML tờ khai của một hồ sơ, qua BE
+ * proxy — cùng cơ chế cache-hoặc-gọi-cổng với `taiFileHoSoDvc`.
+ *
+ * Dùng: `ToKhaiXmlDialog` (click cột "Tên thủ tục hành chính").
+ */
+export function layChiTietToKhaiDvc({
+  key,
+  maHoSo,
+}: DvcHoSoDaDongBoParams): Promise<DvcChiTietToKhai> {
+  return apiFetch<DvcChiTietToKhai>(
+    `/dvc/ho-so/to-khai-chi-tiet?${qsBoQuaRong({ key, maHoSo }).toString()}`,
+  );
+}
+
 export interface DvcThongBaoFileParams extends DvcHoSoDaDongBoParams {
   idTbao: string;
 }

@@ -7,6 +7,7 @@ import TableHead from "@mui/material/TableHead";
 import TableRow from "@mui/material/TableRow";
 import Typography from "@mui/material/Typography";
 import IconButton from "@mui/material/IconButton";
+import Link from "@mui/material/Link";
 import Tooltip from "@mui/material/Tooltip";
 import CircularProgress from "@mui/material/CircularProgress";
 import FileDownloadRounded from "@mui/icons-material/FileDownloadRounded";
@@ -35,6 +36,12 @@ interface Props {
   onAction?: (actionKey: string, maHoSo: string) => void;
   /** Hành động đang chạy dở — hiện vòng quay đúng icon/dòng đó, khóa các icon còn lại. */
   dangChayAction?: { key: string; maHoSo: string } | null;
+  /**
+   * Bấm vào ô của cột khai `clickable: true` (`cot[i].clickable`, xem `config.ts` — hiện là "Tên
+   * thủ tục hành chính") — nhận `maHoSo` (giá trị cột "Mã giao dịch") của đúng dòng vừa bấm, để mở
+   * dialog "Xem tờ khai". Bỏ trống hoặc dòng không có `maHoSo` thì ô hiện như text thường.
+   */
+  onXemToKhai?: (maHoSo: string) => void;
 }
 
 /** Icon cho từng cột hành động, theo `key` khai trong `config.ts`. Chưa có ở đây = icon ẩn. */
@@ -66,6 +73,7 @@ export default function BangHoSo({
   rows = [],
   onAction,
   dangChayAction,
+  onXemToKhai,
 }: Props) {
   const tieuDe = cot.map((c) => c.header);
   const canLe = (i: number) => cot[i]?.align;
@@ -123,9 +131,28 @@ export default function BangHoSo({
                   {tieuDe.map((_h, j) => {
                     const c = cot[j];
                     if (!c?.action) {
+                      const gia = layO(row, j, i);
+                      // Cột khai `clickable: true` (vd "Tên thủ tục hành chính") mở dialog "Xem tờ
+                      // khai" qua `maGiaoDich` của đúng dòng — cần cả `onXemToKhai` lẫn có mã hồ sơ
+                      // mới bấm được, cùng quy ước khóa icon hành động khi thiếu `maGiaoDich` ở
+                      // nhánh bên dưới.
+                      const bamDuoc = c?.clickable && onXemToKhai && maGiaoDich;
+
                       return (
                         <TableCell key={j} align={canLe(j)} sx={{ whiteSpace: "nowrap" }}>
-                          {layO(row, j, i)}
+                          {bamDuoc ? (
+                            <Link
+                              component="button"
+                              type="button"
+                              underline="hover"
+                              onClick={() => onXemToKhai(maGiaoDich)}
+                              sx={{ font: "inherit", textAlign: "left" }}
+                            >
+                              {gia}
+                            </Link>
+                          ) : (
+                            gia
+                          )}
                         </TableCell>
                       );
                     }

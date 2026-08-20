@@ -1,0 +1,154 @@
+import { test } from "node:test";
+import assert from "node:assert/strict";
+import { layChiTietToKhai, layChiTieuToKhaiGtgt } from "../services/client/dich_vu_cong/toKhaiXml";
+
+/**
+ * npx tsx --test src/__tests__/toKhaiXml.test.ts
+ *
+ * XML mẫu 01/GTGT dưới đây là DỮ LIỆU THẬT (hồ sơ Quý 2/2026, MST 0106200129, tải qua cột "Tải
+ * file" rồi người dùng gửi lại để đối chiếu — không phải xml tự bịa) — mọi chỉ tiêu ở đây khớp
+ * ĐÚNG với ảnh chụp mẫu in của iTaxViewer, kể cả dấu âm ct36.
+ */
+const XML_GTGT01 = `<?xml version="1.0" encoding="UTF-8"?>
+<HSoThueDTu xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns="http://kekhaithue.gdt.gov.vn/TKhaiThue">
+  <HSoKhaiThue id="ID_1">
+    <TTinChung>
+      <TTinDVu>
+        <maDVu>HTKK</maDVu>
+        <tenDVu>HỖ TRỢ KÊ KHAI THUẾ</tenDVu>
+      </TTinDVu>
+      <TTinTKhaiThue>
+        <TKhaiThue>
+          <maTKhai>842</maTKhai>
+          <tenTKhai>TỜ KHAI THUẾ GIÁ TRỊ GIA TĂNG (Mẫu số 01/GTGT)</tenTKhai>
+          <moTaBMau>(Ban hành kèm theo Thông tư số 80/2021/TT-BTC ngày 29 tháng 9 năm 2021 của Bộ trưởng Bộ Tài chính)</moTaBMau>
+          <soLan>0</soLan>
+          <KyKKhaiThue>
+            <kieuKy>Q</kieuKy>
+            <kyKKhai>2/2026</kyKKhai>
+          </KyKKhaiThue>
+          <tenCQTNoiNop>Thuế cơ sở 5 Thành phố Hà Nội</tenCQTNoiNop>
+          <nguoiKy>Nguyễn Văn Thanh</nguoiKy>
+          <ngayKy>2026-07-29</ngayKy>
+        </TKhaiThue>
+        <NNT>
+          <mst>0106200129</mst>
+          <tenNNT>Công ty Cổ phần Phần mềm Maxv Việt Nam</tenNNT>
+        </NNT>
+      </TTinTKhaiThue>
+    </TTinChung>
+    <CTieuTKhaiChinh>
+      <ten_NganhNghe>Hoạt động sản xuất kinh doanh thông thường</ten_NganhNghe>
+      <ct21>0</ct21>
+      <ct22>29826193</ct22>
+      <GiaTriVaThueGTGTHHDVMuaVao>
+        <ct23>16673369</ct23>
+        <ct24>1446670</ct24>
+      </GiaTriVaThueGTGTHHDVMuaVao>
+      <HangHoaDichVuNhapKhau>
+        <ct23a>0</ct23a>
+        <ct24a>0</ct24a>
+      </HangHoaDichVuNhapKhau>
+      <ct25>1446670</ct25>
+      <ct26>354650000</ct26>
+      <HHDVBRaChiuThueGTGT>
+        <ct27>0</ct27>
+        <ct28>0</ct28>
+      </HHDVBRaChiuThueGTGT>
+      <ct29>0</ct29>
+      <HHDVBRaChiuTSuat5>
+        <ct30>0</ct30>
+        <ct31>0</ct31>
+      </HHDVBRaChiuTSuat5>
+      <HHDVBRaChiuTSuat10>
+        <ct32>0</ct32>
+        <ct33>0</ct33>
+      </HHDVBRaChiuTSuat10>
+      <ct32a>0</ct32a>
+      <TongDThuVaThueGTGTHHDVBRa>
+        <ct34>354650000</ct34>
+        <ct35>0</ct35>
+      </TongDThuVaThueGTGTHHDVBRa>
+      <ct36>-1446670</ct36>
+      <ct37>0</ct37>
+      <ct38>0</ct38>
+      <ct39a>0</ct39a>
+      <ct40a>0</ct40a>
+      <ct40b>0</ct40b>
+      <ct40>0</ct40>
+      <ct41>31272863</ct41>
+      <ct42>0</ct42>
+      <ct43>31272863</ct43>
+    </CTieuTKhaiChinh>
+  </HSoKhaiThue>
+<CKyDTu><Signature xmlns="http://www.w3.org/2000/09/xmldsig#"><KeyInfo><X509Data><X509SubjectName>OID.0.9.2342.19200300.100.1.1=MST:0106200129, CN=CÔNG TY CỔ PHẦN PHẦN MỀM MAXV VIỆT NAM, O=CÔNG TY CỔ PHẦN PHẦN MỀM MAXV VIỆT NAM, S=Hà Nội, C=VN</X509SubjectName></X509Data></KeyInfo><Object><SignatureProperties xmlns=""><SignatureProperty xmlns=""><SigningTime xmlns="">2026-07-29T06:56:37</SigningTime></SignatureProperty></SignatureProperties></Object></Signature></CKyDTu></HSoThueDTu>
+`;
+
+test("layChiTietToKhai: mẫu 01/GTGT -> loai=gtgt01, đủ chỉ tiêu đúng số liệu thật", () => {
+  const ket = layChiTietToKhai(XML_GTGT01);
+  assert.equal(ket.loai, "gtgt01");
+  if (ket.loai !== "gtgt01") return; // narrow cho TypeScript
+
+  assert.equal(ket.duLieu.tenNNT, "Công ty Cổ phần Phần mềm Maxv Việt Nam");
+  assert.equal(ket.duLieu.mst, "0106200129");
+  assert.equal(ket.duLieu.kyTinhThue, "Quý 2 năm 2026");
+  assert.equal(ket.duLieu.laLanDau, true);
+  assert.equal(ket.duLieu.nguoiKy, "Nguyễn Văn Thanh");
+  assert.equal(ket.duLieu.kyDienTuBoi, "CÔNG TY CỔ PHẦN PHẦN MỀM MAXV VIỆT NAM");
+  assert.equal(ket.duLieu.ngayKyDienTu, "2026-07-29T06:56:37");
+
+  // Chỉ tiêu tiền — đối chiếu ĐÚNG với ảnh chụp mẫu in.
+  assert.equal(ket.duLieu.ct.ct22, 29826193);
+  assert.equal(ket.duLieu.ct.ct23, 16673369);
+  assert.equal(ket.duLieu.ct.ct24, 1446670);
+  assert.equal(ket.duLieu.ct.ct25, 1446670);
+  assert.equal(ket.duLieu.ct.ct26, 354650000);
+  assert.equal(ket.duLieu.ct.ct34, 354650000);
+  assert.equal(ket.duLieu.ct.ct36, -1446670); // ÂM — lưu sẵn trong xml, không tự suy công thức
+  assert.equal(ket.duLieu.ct.ct41, 31272863);
+  assert.equal(ket.duLieu.ct.ct43, 31272863);
+});
+
+test("layChiTietToKhai: mẫu chưa biết layout -> loai=raw, liệt kê tên thẻ thô", () => {
+  const xml = "<HSoKhaiThue><mst>0106200129</mst><tenNNT>CÔNG TY ABC</tenNNT></HSoKhaiThue>";
+  const ket = layChiTietToKhai(xml);
+  assert.equal(ket.loai, "raw");
+  if (ket.loai !== "raw") return;
+  assert.deepEqual(ket.chiTieu, [
+    { nhan: "mst", giaTri: "0106200129" },
+    { nhan: "tenNNT", giaTri: "CÔNG TY ABC" },
+  ]);
+});
+
+test("layChiTietToKhai: thẻ cha lồng thẻ con -> bỏ qua thẻ cha, chỉ lấy thẻ lá", () => {
+  const xml = "<HSoKhaiThue><CtietPLuc><ten>A</ten><tien>100</tien></CtietPLuc></HSoKhaiThue>";
+  const ket = layChiTietToKhai(xml);
+  assert.equal(ket.loai, "raw");
+  if (ket.loai !== "raw") return;
+  assert.deepEqual(ket.chiTieu, [
+    { nhan: "ten", giaTri: "A" },
+    { nhan: "tien", giaTri: "100" },
+  ]);
+});
+
+test("layChiTietToKhai: thẻ rỗng bị bỏ qua (không liệt kê giá trị rỗng)", () => {
+  const xml = "<HSoKhaiThue><a></a><b>x</b></HSoKhaiThue>";
+  const ket = layChiTietToKhai(xml);
+  assert.equal(ket.loai, "raw");
+  if (ket.loai !== "raw") return;
+  assert.deepEqual(ket.chiTieu, [{ nhan: "b", giaTri: "x" }]);
+});
+
+test("layChiTietToKhai: thẻ mở có thuộc tính vẫn khớp được", () => {
+  const xml = '<HSoKhaiThue><ten dtype="string">A</ten></HSoKhaiThue>';
+  const ket = layChiTietToKhai(xml);
+  assert.equal(ket.loai, "raw");
+  if (ket.loai !== "raw") return;
+  assert.deepEqual(ket.chiTieu, [{ nhan: "ten", giaTri: "A" }]);
+});
+
+test("layChiTieuToKhaiGtgt: giữ nguyên hành vi cũ (bảng cột GTGT ở BangHoSo vẫn dùng hàm này)", () => {
+  const m = layChiTieuToKhaiGtgt(XML_GTGT01);
+  assert.equal(m["Khấu trừ kỳ trước"], "29826193");
+  assert.equal(m["Khấu trừ kỳ này"], "1446670");
+});
