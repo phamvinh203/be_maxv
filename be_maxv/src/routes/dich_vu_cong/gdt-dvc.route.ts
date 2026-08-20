@@ -2,6 +2,7 @@ import { FastifyInstance } from "fastify";
 import {
   captcha,
   danhSachThongBao,
+  getCredential,
   login,
   taiFileHoSo,
   taiLieuDinhKem,
@@ -56,5 +57,10 @@ export default async function (fastify: FastifyInstance) {
   fastify.post("/login", {
     preHandler: [fastify.authenticate],
     handler: login,
+  });
+
+  fastify.get("/credential", {
+    preHandler: [fastify.authenticate],
+    handler: getCredential,
   });
 }

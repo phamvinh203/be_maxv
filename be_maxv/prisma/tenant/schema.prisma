@@ -593,3 +593,104 @@ model hrm_nhan_vien {
 
   @@index([ma_pb])
 }
+
+// ============================================================
+//  DỊCH VỤ CÔNG › CACHE HỒ SƠ ĐÃ NỘP (dich-vu-cong)
+//  Cùng chiến lược cache như vct50view: cột chính bóc sẵn + `raw` Json
+//  giữ nguyên dữ liệu cổng, file XML cache VĨNH VIỄN trong cột Text
+//  (bất biến sau phát hành, Postgres TOAST tự nén).
+//  Phạm vi: 2 tab tờ khai. Giấy nộp tiền chưa cache (làm sau nếu cần).
+// ============================================================
+
+/// Hồ sơ tờ khai đã nộp — cache tra cứu từ cổng Dịch vụ công (dichvucong.gdt.gov.vn).
+/// Upsert theo `ma_ho_so` mỗi lần tra cứu: metadata + `trang_thai` GHI ĐÈ bản mới nhất
+/// (trạng thái đổi theo tiến trình xử lý), riêng `xml_to_khai` đã có thì giữ nguyên.
+model dvc_ho_so {
+  ma_ho_so String @id @db.VarChar(64) // "Mã hồ sơ" bên cổng (FE hiện là cột "Mã giao dịch")
+
+  ten_tthc     String? @db.VarChar(512) // Tên TTHC
+  to_khai      String? @db.VarChar(512) // Tờ khai / phụ lục
+  ky_tinh_thue String? @db.VarChar(32)
+  loai_to_khai String? @db.VarChar(64) // Chính thức / bổ sung...
+  lan_nop      String? @db.VarChar(16)
+  lan_bo_sung  String? @db.VarChar(16) // "Lần nộp bổ sung" bên cổng
+  ngay_nop     String? @db.VarChar(32) // Dạng thô cổng trả (dd/MM/yyyy...), không parse Date
+  /// Suy từ `ngay_nop` (parse best-effort dd/MM/yyyy) CHỈ để lọc/sắp xếp theo khoảng ngày ở
+  /// `timHoSoTrongCache` — hiển thị vẫn dùng `ngay_nop` (chuỗi thô), cột này không xuất ra FE.
+  ngay_nop_date DateTime? @db.Date
+  noi_nop      String? @db.VarChar(254) // "Cơ quan thuế tiếp nhận"
+  trang_thai   String? @db.VarChar(254) // Ghi đè mỗi lần tra cứu — KHÔNG cache vĩnh viễn
+
+  /// Tờ khai XML gốc (bóc từ gói ZIP của POST /tchs/downloadhoso). Cache vĩnh viễn:
+  /// null = chưa tải; đã có thì lượt "Tải file" sau đọc thẳng DB, không gọi lại cổng.
+  xml_to_khai   String? @db.Text
+  ten_file_xml  String? @db.VarChar(254) // Tên file thật cổng đặt, dùng lại khi trả về FE
+
+  /// Đã đồng bộ TRỌN VẸN (xml + danh sách thông báo + nội dung + tệp đính kèm) ít nhất 1 lần.
+  /// true -> lượt tra cứu sau BỎ QUA mọi request cổng cho hồ sơ này (chỉ ghi đè trang_thai).
+  /// Thông báo phát sinh SAU khi đã đồng bộ sẽ không tự về — đánh đổi đã chốt để giữ đúng
+  /// "1 captcha, sau không làm lại"; cần thì thêm nút đồng bộ lại thủ công sau.
+  da_dong_bo Boolean @default(false)
+
+  raw Json // Nguyên dòng cổng trả ({tiêu đề cột: giá trị}) — cổng thêm cột không cần migration
+
+  datetime0 DateTime @default(now())
+  datetime2 DateTime @updatedAt
+
+  tai_lieu dvc_tai_lieu[]
+
+  @@index([ngay_nop_date])
+}
+
+/// Tài liệu gắn với một hồ sơ — gộp thông báo + tệp đính kèm bằng cột `loai`
+/// (hai loại cùng hình dạng logic: thuộc 1 hồ sơ, có nội dung file tải sau được).
+///   loai = "thong_bao":    mỗi thông báo 1 dòng, `khoa` = idTbao,
+///                          `noi_dung` = XML thông báo (null = chưa tải).
+///   loai = "tep_dinh_kem": CẢ danh sách 1 dòng/hồ sơ, `khoa` = ma_ho_so, `raw` = nguyên
+///                          JSON cổng trả — hình dạng thật chưa xác nhận nên chưa tách
+///                          từng tệp; cổng cũng chưa thấy endpoint tải nội dung tệp.
+model dvc_tai_lieu {
+  loai String @db.VarChar(16)
+  khoa String @db.VarChar(64)
+
+  ma_ho_so String  @db.VarChar(64)
+  tieu_de  String? @db.VarChar(512) // Tiêu đề thông báo (vd "V/v: Tiếp nhận hồ sơ...")
+  ngay_gui String? @db.VarChar(32) // Dạng thô cổng trả (vd "06:58 29/07/2026")
+  noi_dung String? @db.Text // Nội dung file (XML thông báo); null = chưa tải
+  ten_file String? @db.VarChar(254) // Tên file thật cổng đặt khi tải
+
+  raw Json
+
+  datetime0 DateTime @default(now())
+  datetime2 DateTime @updatedAt
+
+  ho_so dvc_ho_so @relation(fields: [ma_ho_so], references: [ma_ho_so], onDelete: Cascade, onUpdate: Cascade)
+
+  @@id([loai, khoa])
+  @@index([ma_ho_so, loai])
+}
+
+/// Lịch sử các lượt "Đồng bộ" (nút riêng, khác tra cứu bảng thường — xem `DvcCache.ghiLichSuDongBo`).
+/// Cùng vai trò `sync_log` bên HĐĐT nhưng tách bảng riêng: hai module cache khác hẳn nhau
+/// (hóa đơn theo chiều mua/bán, hồ sơ theo loại giấy tờ), gộp chung sẽ phải thêm cột rỗng
+/// tùy module.
+model dvc_dong_bo_log {
+  id String @id @db.VarChar(64)
+
+  loai    String @db.VarChar(32) // khớp TAB_DVC.value: to-khai-dvc | to-khai-thue-dien-tu | giay-nop-tien
+  tu_ngay DateTime
+  den_ngay DateTime
+
+  tong_ho_so   Int @default(0) // Tổng hồ sơ cổng trả trong khoảng ngày
+  da_co_san    Int @default(0) // Đã cache từ trước (da_dong_bo=true) -> bỏ qua, không gọi cổng
+  dong_bo_xong Int @default(0) // Hồ sơ mới đồng bộ xong trong lượt này
+  loi          Int @default(0) // Hồ sơ lỗi giữa chừng (bù ở lượt sau)
+
+  trang_thai String  @db.VarChar(16) // done | partial (loi > 0)
+  dien_giai  String? @db.VarChar(512) // "Đồng bộ <loại giấy tờ> — <lý do nếu partial>"; nullable
+  // như sync_log bên HĐĐT — dòng ghi TRƯỚC khi thêm cột này không có giá trị.
+
+  created_at DateTime @default(now())
+
+  @@index([created_at])
+}
