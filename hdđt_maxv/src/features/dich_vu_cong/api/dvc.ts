@@ -27,6 +27,12 @@ export interface DvcLoginResult {
   data: unknown;
 }
 
+/** Tài khoản + mật khẩu DVC đã lưu (đã giải mã) của công ty đang chọn — `null` = chưa lưu. */
+export interface DvcCredential {
+  username: string | null;
+  password: string | null;
+}
+
 /**
  * GET /api/v1/dvc/captcha → `{ key, image }`.
  *
@@ -53,6 +59,17 @@ export async function loginDvc(body: DvcLoginPayload): Promise<DvcLoginResult> {
     method: "POST",
     body: JSON.stringify(body),
   });
+}
+
+/**
+ * GET /api/v1/dvc/credential → tài khoản + MẬT KHẨU đã lưu (đã giải mã) của công ty đang chọn,
+ * để điền sẵn dialog đăng nhập. `{ username: null, password: null }` nếu chưa từng đăng nhập
+ * DVC thành công cho công ty này.
+ *
+ * Dùng: `DialogLoginDVC` (điền sẵn khi mở dialog).
+ */
+export async function getDvcCredential(): Promise<DvcCredential> {
+  return apiFetch<DvcCredential>("/dvc/credential");
 }
 
 /** Bảng kết quả tra cứu, đã được BE bóc từ mảnh HTML của cổng. */

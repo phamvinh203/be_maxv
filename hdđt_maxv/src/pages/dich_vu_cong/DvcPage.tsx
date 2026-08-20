@@ -11,53 +11,62 @@ import { toast } from "react-toastify";
 
 import AppHeader from "../../components/AppHeader";
 import DialogLoginDVC from "../../features/dich_vu_cong/components/DialogLoginDVC";
-import BoLocHoSo, { type BoLocHoSoValues } from "../../features/dich_vu_cong/components/BoLocHoSo";
+import BoLocHoSo, {
+  type BoLocHoSoValues,
+} from "../../features/dich_vu_cong/components/BoLocHoSo";
 import BangHoSo from "../../features/dich_vu_cong/components/BangHoSo";
 import XuatFileDvcDialog from "../../features/dich_vu_cong/components/XuatFileDvcDialog";
 import TaiLieuDinhKemDialog from "../../features/dich_vu_cong/components/TaiLieuDinhKemDialog";
 import ThongBaoDialog from "../../features/dich_vu_cong/components/ThongBaoDialog";
+import DialogDongBo from "../../features/dich_vu_cong/components/DialogDongBo";
 import { TAB_DVC } from "../../features/dich_vu_cong/config";
 import { useActiveCompanyMst } from "../../features/auth/useActiveCompanyMst";
 import { traCuuHoSoDvc } from "../../features/dich_vu_cong/api/dvc";
 import { taiFileHoSo } from "../../features/dich_vu_cong/taiFileHoSo";
 import { getErrorMessage } from "../../lib/errors";
+import { LoginRounded, SyncRounded } from "@mui/icons-material";
 
-/**
- * Khu Dịch vụ công (`/dich-vu-cong`) — ba loại hồ sơ chia theo tab.
- *
- * Đổi tab bằng state chứ không phải route, giống 2 tab "Hóa đơn đầu vào/đầu ra"
- * bên khu Hóa đơn: đây là tab trong một màn hình, không phải ba màn hình riêng.
- */
 export default function DvcPage() {
   const [tab, setTab] = useState(TAB_DVC[0]!.value);
   const [xuatOpen, setXuatOpen] = useState(false);
+  const [dongBoOpen, setDongBoOpen] = useState(false);
   const [loginOpen, setLoginOpen] = useState(false);
-  const [dvcKey, setDvcKey] = useState<string | null>(null);
-  /** Hành động (cột "Tải file"...) đang chạy dở — xem `onAction` truyền cho `BangHoSo`. */
-  const [dangChayAction, setDangChayAction] = useState<{ key: string; maHoSo: string } | null>(
-    null,
-  );
-  /** Mã hồ sơ đang mở dialog "Tệp đính kèm" — null = dialog đóng. */
+
+  /**
+   * Khóa phiên cổng Dịch vụ công, LƯU THEO MST — không phải một biến phẳng dùng chung.
+   *
+   * Đổi công ty không remount trang này (`switchCompany` chỉ đổi state ở `AuthContext`), nên
+   * một biến phẳng sẽ giữ nguyên phiên của công ty trước: tra cứu ra hồ sơ công ty A trong khi
+   * màn hình đang hiện công ty B. Cùng loại lỗi rò rỉ giữa tenant mà `useActiveGdtToken` bên
+   * HĐĐT dựng riêng một hook để chặn.
+   */
+  const [dvcKeyTheoMst, setDvcKeyTheoMst] = useState<Record<string, string>>({});
+  /** MST của lượt tra cứu đang hiển thị — lệch công ty đang chọn thì bảng phải trống. */
+  const [mstKetQua, setMstKetQua] = useState<string | undefined>(undefined);
+
+  const [dangChayAction, setDangChayAction] = useState<{
+    key: string;
+    maHoSo: string;
+  } | null>(null);
+
   const [tepDinhKemMaHoSo, setTepDinhKemMaHoSo] = useState<string | null>(null);
-  /** Mã hồ sơ đang mở dialog "Thông báo" — null = dialog đóng. */
+
   const [thongBaoMaHoSo, setThongBaoMaHoSo] = useState<string | null>(null);
 
   const activeMst = useActiveCompanyMst();
-  // Tài khoản cổng Dịch vụ công là "<MST>-ql", khác cổng HĐĐT đăng nhập bằng MST trơ.
+
   const tenDangNhapDvc = activeMst ? `${activeMst}-ql` : undefined;
 
-  // Bảng có đúng ba dòng cố định nên tab nào cũng tra ra — không cần nhánh dự phòng.
+  /** Phiên cổng của ĐÚNG công ty đang chọn — điểm đọc khóa phiên duy nhất của trang. */
+  const dvcKey = activeMst ? (dvcKeyTheoMst[activeMst] ?? null) : null;
+
   const dangMo = TAB_DVC.find((muc) => muc.value === tab)!;
 
   const doiTab = (_e: SyntheticEvent, value: string) => setTab(value);
 
-  /**
-   * Tra cứu hồ sơ chạy ngầm: Backend tự động lấy captcha & OCR ngầm mà không cần người dùng
-   * nhập mã. `useMutation` thay vì tự quản `loading`/kết quả bằng tay — khớp cách
-   * `loginMutation` trong `DialogLoginDVC` và `TaiLieuDinhKemDialog` đã dùng TanStack Query.
-   */
   const traCuuMutation = useMutation({
-    mutationFn: (vars: { key: string; values: BoLocHoSoValues }) =>
+    // `mst` không gửi lên API — chỉ đi kèm để `onSuccess` biết kết quả này của công ty nào.
+    mutationFn: (vars: { key: string; mst: string; values: BoLocHoSoValues }) =>
       traCuuHoSoDvc({
         key: vars.key,
         tuNgay: vars.values.tuNgay,
@@ -65,45 +74,53 @@ export default function DvcPage() {
         maHoSo: vars.values.hoSo,
         maToKhai: vars.values.loaiHoSo,
       }),
-    onSuccess: (res) => {
+    onSuccess: (res, vars) => {
+      setMstKetQua(vars.mst);
       if (res.rows.length === 0) {
         toast.info("Không tìm thấy hồ sơ nào khớp với điều kiện tìm kiếm.");
       } else {
         toast.success(`Tìm thấy ${res.rows.length} hồ sơ.`);
       }
     },
-    onError: (err) => toast.error(getErrorMessage(err, "Tra cứu hồ sơ thất bại.")),
+    onError: (err) =>
+      toast.error(getErrorMessage(err, "Tra cứu hồ sơ thất bại.")),
   });
-  const bangData = traCuuMutation.data ?? { headers: [], rows: [] };
+  /**
+   * Kết quả chỉ hiện khi thuộc về công ty đang chọn. Đổi công ty giữa chừng thì bảng trống
+   * NGAY ở lượt render kế — không giữ lại hồ sơ của công ty trước dưới tên công ty mới.
+   */
+  const bangData =
+    (mstKetQua === activeMst ? traCuuMutation.data : undefined) ?? {
+      headers: [],
+      rows: [],
+    };
   const loading = traCuuMutation.isPending;
 
   /**
-   * Nhấn "Tìm kiếm":
-   * - Nếu chưa đăng nhập DVC: Mở modal đăng nhập (captcha login tự động OCR điền sẵn).
-   * - Nếu đã có phiên: Tự động chạy tra cứu ngầm mà không hiện captcha.
+   * Nhấn "Tìm kiếm" — chỉ tra cứu, KHÔNG tự mở form đăng nhập nữa: đăng nhập cổng đã có nút
+   * riêng ở đầu trang, bấm tìm kiếm mà bị đè một dialog lên là cắt ngang điều kiện đang gõ dở.
    */
   const handleSearch = (values: BoLocHoSoValues) => {
-    if (!dvcKey) {
-      setLoginOpen(true);
+    if (!activeMst || !dvcKey) {
+      toast.info(
+        'Chưa có phiên cổng Dịch vụ công — bấm "Đăng nhập cổng Dịch vụ công" trước khi tìm kiếm.',
+      );
       return;
     }
-    traCuuMutation.mutate({ key: dvcKey, values });
+    traCuuMutation.mutate({ key: dvcKey, mst: activeMst, values });
   };
 
-  /**
-   * Đăng nhập thành công -> Chỉ lưu key phiên và đóng dialog.
-   * Không tự động tra cứu — người dùng phải bấm lại "Tìm kiếm".
-   */
+  /** Lưu phiên vừa đăng nhập vào ĐÚNG MST đang chọn — xem chú thích ở `dvcKeyTheoMst`. */
   const handleLoginSuccess = (key: string) => {
-    setDvcKey(key);
+    if (!activeMst) {
+      toast.error("Chưa chọn công ty có mã số thuế nên không giữ được phiên đăng nhập.");
+      return;
+    }
+    setDvcKeyTheoMst((prev) => ({ ...prev, [activeMst]: key }));
     setLoginOpen(false);
     toast.success("Đăng nhập cổng Dịch vụ công thành công.");
   };
 
-  /**
-   * Bấm icon "Tải file" của một dòng — luôn có `dvcKey` vì icon chỉ hiện sau khi tra cứu
-   * ra dữ liệu, mà tra cứu đã bắt buộc đăng nhập trước đó.
-   */
   const handleTaiFile = async (maHoSo: string) => {
     if (!dvcKey) return;
     setDangChayAction({ key: "taiFile", maHoSo });
@@ -128,10 +145,6 @@ export default function DvcPage() {
     }
   };
 
-  /**
-   * Bấm một icon hành động ở `BangHoSo` — phân theo `actionKey` khai trong `cotBang`
-   * (`config.ts`). Thêm cột hành động mới chỉ cần thêm 1 case ở đây, khỏi sửa `BangHoSo`.
-   */
   const handleAction = (actionKey: string, maHoSo: string) => {
     if (actionKey === "taiFile") {
       void handleTaiFile(maHoSo);
@@ -151,9 +164,40 @@ export default function DvcPage() {
     <>
       <AppHeader />
       <Box sx={{ p: 3 }}>
-        <Typography variant="h6" sx={{ fontWeight: 700, mb: 2 }}>
-          Dịch vụ công
-        </Typography>
+        <Stack
+          direction="row"
+          sx={{
+            justifyContent: "space-between",
+            alignItems: "center",
+            mb: 2,
+          }}
+        >
+          {/* Bên trái */}
+          <Typography variant="h6" sx={{ fontWeight: 700 }}>
+            Dịch vụ công
+          </Typography>
+
+          {/* Bên phải */}
+          <Stack direction="row" spacing={1}>
+            <Button
+              variant="contained"
+              startIcon={<SyncRounded fontSize="small" />}
+              sx={{ textTransform: "none", whiteSpace: "nowrap" }}
+              onClick={() => setDongBoOpen(true)}
+            >
+              Đồng bộ dữ liệu thuế điện tử
+            </Button>
+
+            <Button
+              variant="contained"
+              startIcon={<LoginRounded fontSize="small" />}
+              sx={{ textTransform: "none", whiteSpace: "nowrap" }}
+              onClick={() => setLoginOpen(true)}
+            >
+              Đăng nhập cổng Dịch vụ công
+            </Button>
+          </Stack>
+        </Stack>
 
         {/* Nút xuất nằm ở hàng tab nên dùng chung cho cả ba tab, không riêng tab nào. */}
         <Stack
@@ -225,9 +269,12 @@ export default function DvcPage() {
 
       <XuatFileDvcDialog open={xuatOpen} onClose={() => setXuatOpen(false)} />
 
+      <DialogDongBo open={dongBoOpen} onClose={() => setDongBoOpen(false)} />
+
       <DialogLoginDVC
         open={loginOpen}
         onClose={() => setLoginOpen(false)}
+        activeMst={activeMst}
         initialUsername={tenDangNhapDvc}
         onLoginSuccess={handleLoginSuccess}
       />
