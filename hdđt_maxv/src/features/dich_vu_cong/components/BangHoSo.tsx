@@ -13,6 +13,7 @@ import FileDownloadRounded from "@mui/icons-material/FileDownloadRounded";
 import AttachFileRounded from "@mui/icons-material/AttachFileRounded";
 import NotificationsRounded from "@mui/icons-material/NotificationsRounded";
 import type { CotBang } from "../config";
+import { fmtMoney } from "../../../utils/format";
 
 interface Props {
   /** Cột khai sẵn trong `config.ts` — luôn dùng bộ này làm tiêu đề bảng. */
@@ -83,7 +84,8 @@ export default function BangHoSo({
   const layO = (row: string[], cotIdx: number, dongThu: number): string => {
     if (cot[cotIdx]?.key === "stt") return String(dongThu + 1);
     const nguon = viTriNguon[cotIdx];
-    return nguon >= 0 ? (row[nguon] ?? "") : "";
+    const gia = nguon >= 0 ? (row[nguon] ?? "") : "";
+    return cot[cotIdx]?.format === "money" ? fmtMoney(gia) : gia;
   };
 
   return (

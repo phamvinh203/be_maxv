@@ -66,9 +66,8 @@ export default function DvcPage() {
 
   const traCuuMutation = useMutation({
     // `mst` không gửi lên API — chỉ đi kèm để `onSuccess` biết kết quả này của công ty nào.
-    mutationFn: (vars: { key: string; mst: string; values: BoLocHoSoValues }) =>
+    mutationFn: (vars: { mst: string; values: BoLocHoSoValues }) =>
       traCuuHoSoDvc({
-        key: vars.key,
         tuNgay: vars.values.tuNgay,
         denNgay: vars.values.denNgay,
         maHoSo: vars.values.hoSo,
@@ -97,17 +96,13 @@ export default function DvcPage() {
   const loading = traCuuMutation.isPending;
 
   /**
-   * Nhấn "Tìm kiếm" — chỉ tra cứu, KHÔNG tự mở form đăng nhập nữa: đăng nhập cổng đã có nút
-   * riêng ở đầu trang, bấm tìm kiếm mà bị đè một dialog lên là cắt ngang điều kiện đang gõ dở.
+   * Nhấn "Tìm kiếm" — đọc thẳng dữ liệu ĐÃ ĐỒNG BỘ trong DB, không gọi cổng nên không cần đăng
+   * nhập cổng nữa (khác trước đây) — chỉ cần đã chọn công ty. Có dữ liệu mới hay không là việc
+   * của nút "Đồng bộ dữ liệu thuế điện tử".
    */
   const handleSearch = (values: BoLocHoSoValues) => {
-    if (!activeMst || !dvcKey) {
-      toast.info(
-        'Chưa có phiên cổng Dịch vụ công — bấm "Đăng nhập cổng Dịch vụ công" trước khi tìm kiếm.',
-      );
-      return;
-    }
-    traCuuMutation.mutate({ key: dvcKey, mst: activeMst, values });
+    if (!activeMst) return;
+    traCuuMutation.mutate({ mst: activeMst, values });
   };
 
   /** Lưu phiên vừa đăng nhập vào ĐÚNG MST đang chọn — xem chú thích ở `dvcKeyTheoMst`. */
@@ -121,8 +116,9 @@ export default function DvcPage() {
     toast.success("Đăng nhập cổng Dịch vụ công thành công.");
   };
 
+  // Không còn chặn khi thiếu `dvcKey`: hồ sơ đã đồng bộ thì BE đọc thẳng cache, không cần đăng
+  // nhập cổng — thiếu key chỉ hỏng khi CẦN gọi cổng thật, lúc đó BE tự trả lỗi rõ ràng.
   const handleTaiFile = async (maHoSo: string) => {
-    if (!dvcKey) return;
     setDangChayAction({ key: "taiFile", maHoSo });
     const toastId = toast.loading(`Đang tải file hồ sơ ${maHoSo}…`);
     try {
@@ -269,7 +265,7 @@ export default function DvcPage() {
 
       <XuatFileDvcDialog open={xuatOpen} onClose={() => setXuatOpen(false)} />
 
-      <DialogDongBo open={dongBoOpen} onClose={() => setDongBoOpen(false)} />
+      <DialogDongBo open={dongBoOpen} onClose={() => setDongBoOpen(false)} dvcKey={dvcKey} />
 
       <DialogLoginDVC
         open={loginOpen}

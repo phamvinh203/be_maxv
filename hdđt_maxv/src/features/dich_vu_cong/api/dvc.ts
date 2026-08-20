@@ -1,5 +1,17 @@
 import { apiFetch, apiFetchBlob } from "../../../lib/http";
 
+/** Xây `URLSearchParams`, bỏ qua field rỗng/`undefined` — dùng chung cho mọi query GET của module
+ * này (tra cứu, tải file, tải thông báo…), kể cả các field CHỈ CẦN KHI CẦN (vd `key`, xem
+ * `DvcHoSoDaDongBoParams`). Nhận `object` (không phải `Record<string, ...>`) để nhận thẳng các
+ * interface tham số (`DvcTraCuuHoSoParams`…) mà khỏi phải ép kiểu ở nơi gọi. */
+function qsBoQuaRong(params: object): URLSearchParams {
+  const qs = new URLSearchParams();
+  for (const [k, v] of Object.entries(params)) {
+    if (typeof v === "string" && v) qs.set(k, v);
+  }
+  return qs;
+}
+
 /** Ảnh captcha + khóa phiên do BE mở với cổng Dịch vụ công. */
 export interface DvcCaptchaInfo {
   /** Khóa phiên — phải gửi lại y nguyên khi đăng nhập. */
@@ -81,36 +93,91 @@ export interface DvcBangHoSo {
 }
 
 export interface DvcTraCuuHoSoParams {
-  /** Khóa phiên đã đăng nhập. */
-  key: string;
-  /** `yyyy-mm-dd`; BE tự đổi sang dạng cổng nhận. */
+  /** `yyyy-mm-dd`. */
   tuNgay?: string;
   denNgay?: string;
-  /** Captcha của trang tra cứu (tùy chọn: BE tự động OCR ngầm nếu bỏ trống). */
-  captcha?: string;
   maHoSo?: string;
   maToKhai?: string;
-  maTTHC?: string;
-  maNghiepVu?: string;
 }
 
 /**
  * GET /api/v1/dvc/ho-so → `{ headers, rows }`.
  *
- * Trả cột ĐỘNG theo đúng cổng trả về, không ép vào bộ cột khai sẵn trong `config.ts`: cổng
- * đổi hay thêm cột thì bảng hiện theo, khỏi phải sửa code và khỏi lệch dữ liệu sang nhầm ô.
+ * ĐỌC THẲNG DỮ LIỆU ĐÃ ĐỒNG BỘ trong DB (không gọi cổng, không cần đăng nhập) — xem
+ * `dongBoDvc`/`DialogDongBo`. Trả cột ĐỘNG theo đúng cổng trả về lúc đồng bộ, không ép vào bộ cột
+ * khai sẵn trong `config.ts`.
  */
 export async function traCuuHoSoDvc(params: DvcTraCuuHoSoParams): Promise<DvcBangHoSo> {
-  const qs = new URLSearchParams();
-  for (const [k, v] of Object.entries(params)) {
-    if (v) qs.set(k, v);
-  }
-  return apiFetch<DvcBangHoSo>(`/dvc/ho-so?${qs.toString()}`);
+  return apiFetch<DvcBangHoSo>(`/dvc/ho-so?${qsBoQuaRong(params).toString()}`);
+}
+
+/** Một lượt bấm nút "Đồng bộ" đã chạy — khớp 1-1 bảng `dvc_dong_bo_log` (snake_case), xem
+ * `DialogDongBo`. */
+export interface DvcDongBoLog {
+  id: string;
+  loai: string;
+  tu_ngay: string;
+  den_ngay: string;
+  tong_ho_so: number;
+  da_co_san: number;
+  dong_bo_xong: number;
+  loi: number;
+  trang_thai: "done" | "partial";
+  dien_giai: string | null;
+  created_at: string;
+}
+
+export interface DvcDongBoParams {
+  /** Khóa phiên cổng DVC ĐÃ ĐĂNG NHẬP — đồng bộ vẫn gọi cổng thật, khác tra cứu (đọc DB). */
+  key: string;
+  /** `yyyy-mm-dd`. */
+  tuNgay: string;
+  denNgay: string;
+}
+
+/**
+ * POST /api/v1/dvc/dong-bo → dòng lịch sử vừa ghi (`DvcDongBoLog`).
+ *
+ * Chạy ĐỒNG BỘ phía BE (blocking) — có thể mất một lúc nếu nhiều hồ sơ mới, xem
+ * `dvc-dong-bo.service.ts`. Dùng: `DialogDongBo` (nút "Đồng bộ").
+ */
+export async function dongBoDvc(params: DvcDongBoParams): Promise<DvcDongBoLog> {
+  return apiFetch<DvcDongBoLog>("/dvc/dong-bo", {
+    method: "POST",
+    body: JSON.stringify(params),
+  });
+}
+
+/** GET /api/v1/dvc/dong-bo/lich-su → lịch sử đồng bộ (mới nhất trước). Dùng: `DialogDongBo`. */
+export async function layLichSuDongBoDvc(): Promise<DvcDongBoLog[]> {
+  return apiFetch<DvcDongBoLog[]>("/dvc/dong-bo/lich-su");
+}
+
+/** DELETE /api/v1/dvc/dong-bo/lich-su/:id → xóa 1 dòng lịch sử (chỉ bản ghi log). Dùng:
+ * `DialogDongBo`. */
+export async function xoaLichSuDongBoDvc(id: string): Promise<{ deleted: number }> {
+  return apiFetch<{ deleted: number }>(`/dvc/dong-bo/lich-su/${encodeURIComponent(id)}`, {
+    method: "DELETE",
+  });
+}
+
+/** DELETE /api/v1/dvc/dong-bo/lich-su → xóa TOÀN BỘ lịch sử đồng bộ (chỉ bản ghi log). Dùng:
+ * `DialogDongBo`. */
+export async function xoaTatCaLichSuDongBoDvc(): Promise<{ deleted: number }> {
+  return apiFetch<{ deleted: number }>("/dvc/dong-bo/lich-su", { method: "DELETE" });
 }
 
 export interface DvcHoSoParams {
   /** Khóa phiên đã đăng nhập. */
   key: string;
+  /** Mã hồ sơ — cột "Mã giao dịch" của bảng kết quả (giá trị thật là "Mã hồ sơ" bên cổng). */
+  maHoSo: string;
+}
+
+export interface DvcHoSoDaDongBoParams {
+  /** Khóa phiên đã đăng nhập — CHỈ cần khi hồ sơ CHƯA được đồng bộ/cache: BE đọc DB trước
+   * (`dvc-dong-bo.service.ts`), thiếu mới cần `key` để gọi cổng thật. */
+  key?: string;
   /** Mã hồ sơ — cột "Mã giao dịch" của bảng kết quả (giá trị thật là "Mã hồ sơ" bên cổng). */
   maHoSo: string;
 }
@@ -121,9 +188,8 @@ export interface DvcHoSoParams {
  *
  * Dùng: `taiFileHoSo` (cột "Tải file").
  */
-export function taiFileHoSoDvc({ key, maHoSo }: DvcHoSoParams): Promise<Blob> {
-  const qs = new URLSearchParams({ key, maHoSo });
-  return apiFetchBlob(`/dvc/ho-so/file?${qs.toString()}`);
+export function taiFileHoSoDvc({ key, maHoSo }: DvcHoSoDaDongBoParams): Promise<Blob> {
+  return apiFetchBlob(`/dvc/ho-so/file?${qsBoQuaRong({ key, maHoSo }).toString()}`);
 }
 
 /**
@@ -131,6 +197,9 @@ export function taiFileHoSoDvc({ key, maHoSo }: DvcHoSoParams): Promise<Blob> {
  *
  * Trả JSON THÔ — hình dạng thật của cổng chưa xác nhận (chưa có mẫu response), BE không ép
  * kiểu nên FE cũng để `unknown`, xem `TaiLieuDinhKemDialog` (tự dò cột từ khóa JSON).
+ *
+ * KHÔNG đọc cache (khác `taiFileHoSoDvc`/`layDanhSachThongBaoDvc`): hình dạng dữ liệu chưa xác
+ * nhận nên BE chưa lưu được gì đáng tin — luôn gọi cổng thật, `key` vẫn bắt buộc.
  *
  * Dùng: `TaiLieuDinhKemDialog` (cột "Tệp đính kèm").
  */
@@ -158,12 +227,14 @@ export interface DvcThongBao {
  *
  * Dùng: `ThongBaoDialog` (cột "Thông báo").
  */
-export function layDanhSachThongBaoDvc({ key, maHoSo }: DvcHoSoParams): Promise<DvcThongBao[]> {
-  const qs = new URLSearchParams({ key, maHoSo });
-  return apiFetch<DvcThongBao[]>(`/dvc/ho-so/thong-bao?${qs.toString()}`);
+export function layDanhSachThongBaoDvc({
+  key,
+  maHoSo,
+}: DvcHoSoDaDongBoParams): Promise<DvcThongBao[]> {
+  return apiFetch<DvcThongBao[]>(`/dvc/ho-so/thong-bao?${qsBoQuaRong({ key, maHoSo }).toString()}`);
 }
 
-export interface DvcThongBaoFileParams extends DvcHoSoParams {
+export interface DvcThongBaoFileParams extends DvcHoSoDaDongBoParams {
   idTbao: string;
 }
 
@@ -174,6 +245,6 @@ export interface DvcThongBaoFileParams extends DvcHoSoParams {
  * Dùng: `taiThongBao` (nút tải trong `ThongBaoDialog`).
  */
 export function taiThongBaoDvc({ key, maHoSo, idTbao }: DvcThongBaoFileParams): Promise<Blob> {
-  const qs = new URLSearchParams({ key, maHoSo, idTbao });
+  const qs = qsBoQuaRong({ key, maHoSo, idTbao });
   return apiFetchBlob(`/dvc/ho-so/thong-bao/file?${qs.toString()}`);
 }

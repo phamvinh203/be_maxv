@@ -8,9 +8,12 @@ import { duoiTuContentType } from "./duoiTuContentType";
  *
  * `maHoSo` là giá trị đã bóc từ cột "Mã giao dịch" của dòng đang bấm (tên thật bên cổng là
  * "Mã hồ sơ", xem `srcHeader` trong `config.ts`).
+ *
+ * `key` là TÙY CHỌN (`null` = chưa đăng nhập cổng): BE đọc cache trong DB trước, chỉ cần `key`
+ * khi hồ sơ chưa được đồng bộ — xem `DvcHoSoDaDongBoParams`.
  */
-export async function taiFileHoSo(key: string, maHoSo: string): Promise<void> {
-  const blob = await taiFileHoSoDvc({ key, maHoSo });
+export async function taiFileHoSo(key: string | null, maHoSo: string): Promise<void> {
+  const blob = await taiFileHoSoDvc({ key: key ?? undefined, maHoSo });
   const duoi = duoiTuContentType(blob.type, "xml");
   luuVeMay(blob, `${maHoSo}.${duoi}`);
 }

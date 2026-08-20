@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import Dialog from "@mui/material/Dialog";
 import DialogTitle from "@mui/material/DialogTitle";
 import DialogContent from "@mui/material/DialogContent";
@@ -23,39 +24,25 @@ import Tooltip from "@mui/material/Tooltip";
 import Typography from "@mui/material/Typography";
 import CloseRounded from "@mui/icons-material/CloseRounded";
 import DeleteOutlineRounded from "@mui/icons-material/DeleteOutlineRounded";
+import DeleteSweepRounded from "@mui/icons-material/DeleteSweepRounded";
 import ReplayRounded from "@mui/icons-material/ReplayRounded";
 import SyncRounded from "@mui/icons-material/SyncRounded";
 import { toast } from "react-toastify";
 
 import { TAB_DVC } from "../config";
 import { currentMonthRange, formatDateVN, formatDateTimeVN } from "../../hddt/dateUtils";
+import {
+  dongBoDvc,
+  layLichSuDongBoDvc,
+  xoaLichSuDongBoDvc,
+  xoaTatCaLichSuDongBoDvc,
+  type DvcDongBoLog,
+} from "../api/dvc";
+import { getErrorMessage } from "../../../lib/errors";
 
-/**
- * Một lượt bấm nút "Đồng bộ" đã chạy — khớp 1-1 bảng `dvc_dong_bo_log`
- * (`be_maxv/prisma/tenant/schema.prisma`), kể cả cách đặt tên cột snake_case, để khi BE mở
- * endpoint thì gán thẳng không cần lớp đổi tên ở giữa.
- *
- * Đặt tạm ở đây vì chưa có lời gọi API nào dùng tới; chuyển sang `api/dvc.ts` cùng lúc thêm
- * hàm `layLichSuDongBoDvc`.
- */
-export interface DvcDongBoLog {
-  id: string;
-  /** Khớp `TAB_DVC.value`: to-khai-dvc | to-khai-thue-dien-tu | giay-nop-tien. */
-  loai: string;
-  tu_ngay: string;
-  den_ngay: string;
-  /** Tổng hồ sơ cổng trả về trong khoảng ngày. */
-  tong_ho_so: number;
-  /** Đã cache từ lượt trước nên bỏ qua, không gọi lại cổng. */
-  da_co_san: number;
-  /** Hồ sơ mới đồng bộ xong trong lượt này. */
-  dong_bo_xong: number;
-  /** Hồ sơ lỗi giữa chừng — sẽ bù ở lượt sau. */
-  loi: number;
-  trang_thai: "done" | "partial";
-  dien_giai: string | null;
-  created_at: string;
-}
+/** Loại giấy tờ DUY NHẤT đã có backend đồng bộ thật — hai tab còn lại (Tờ khai Thuế điện tử, Giấy
+ * nộp tiền) chưa có tích hợp cổng nào phía sau, giữ trong danh sách nhưng khóa lại. */
+const LOAI_DA_HO_TRO = "to-khai-dvc";
 
 /**
  * Tiêu đề bảng lịch sử kèm cách căn — gắn `align` NGAY TẠI cột thay vì suy từ so khớp chuỗi
@@ -78,9 +65,14 @@ function nhanLoai(loai: string): string {
   return TAB_DVC.find((muc) => muc.value === loai)?.label ?? loai;
 }
 
+const QUERY_KEY_LICH_SU = ["dvc", "dong-bo", "lich-su"];
+
 interface Props {
   open: boolean;
   onClose: () => void;
+  /** Khóa phiên cổng DVC đã đăng nhập — `null` = chưa đăng nhập, nút "Đồng bộ" báo cần đăng nhập
+   * trước (đồng bộ vẫn gọi cổng thật, khác nút "Tìm kiếm" chính đã đọc thẳng DB). */
+  dvcKey: string | null;
 }
 
 /**
@@ -89,21 +81,65 @@ interface Props {
  *
  * Tách hẳn khỏi ô tìm kiếm ở `DvcPage`: tìm kiếm đọc thẳng dữ liệu đã lưu (nhanh, không cần đăng
  * nhập cổng), còn đồng bộ mới là lượt gọi cổng thật — gộp chung thì mỗi lần lọc lại phải chờ cổng.
- *
- * PHẦN CHƯA CHẠY THẬT: BE chưa mở endpoint đồng bộ / lịch sử (bảng `dvc_dong_bo_log` mới chỉ có
- * trong schema Prisma), nên hai nút "Đồng bộ" và "Xóa" còn báo đang phát triển và bảng luôn rỗng
- * — cùng cách `XuatFileDvcDialog` đang tạm để. Khi có API chỉ cần thay `lichSu`/`dangTaiLichSu`
- * bằng `useQuery` và thay thân hai hàm `handleDongBo`/`handleXoa`, phần render giữ nguyên.
  */
-export default function DialogDongBo({ open, onClose }: Props) {
+export default function DialogDongBo({ open, onClose, dvcKey }: Props) {
   const [loai, setLoai] = useState(TAB_DVC[0]!.value);
   const [range, setRange] = useState(currentMonthRange);
   const [loiForm, setLoiForm] = useState("");
   /** Dòng lịch sử đang chờ xác nhận xóa (null = không mở dialog xác nhận). */
   const [dongChoXoa, setDongChoXoa] = useState<DvcDongBoLog | null>(null);
+  /** Đang chờ xác nhận "Xóa tất cả" (dialog riêng, không dùng chung state với xóa 1 dòng). */
+  const [choXoaTatCa, setChoXoaTatCa] = useState(false);
 
-  const lichSu: DvcDongBoLog[] = [];
-  const dangTaiLichSu = false;
+  const queryClient = useQueryClient();
+
+  // `enabled: open` — dialog đóng thì khỏi fetch, mở lại luôn thấy lịch sử mới nhất.
+  const lichSuQuery = useQuery({
+    queryKey: QUERY_KEY_LICH_SU,
+    queryFn: layLichSuDongBoDvc,
+    enabled: open,
+  });
+  const lichSu = lichSuQuery.data ?? [];
+  const dangTaiLichSu = lichSuQuery.isLoading;
+
+  const lamMoiLichSu = () => queryClient.invalidateQueries({ queryKey: QUERY_KEY_LICH_SU });
+
+  const dongBoMutation = useMutation({
+    mutationFn: (vars: { tuNgay: string; denNgay: string }) =>
+      dongBoDvc({ key: dvcKey!, tuNgay: vars.tuNgay, denNgay: vars.denNgay }),
+    onSuccess: (log) => {
+      void lamMoiLichSu();
+      toast.success(
+        log.trang_thai === "done"
+          ? `Đồng bộ xong: ${log.dong_bo_xong} hồ sơ mới, ${log.da_co_san} đã có sẵn.`
+          : `Đồng bộ xong nhưng còn ${log.loi} hồ sơ lỗi — sẽ tự bù ở lượt sau.`,
+      );
+      // TODO(tạm): CHỈ để debug xem BE có tự đăng nhập lại ngầm không — xóa khối này + field
+      // `_tuDongDangNhapLai` bên BE (gdt-dvc.controller.ts) khi hết cần theo dõi.
+      if ((log as unknown as { _tuDongDangNhapLai?: boolean })._tuDongDangNhapLai) {
+        toast.info("[DEBUG] BE vừa tự đăng nhập lại cổng Dịch vụ công ngầm.");
+      }
+    },
+    onError: (err) => toast.error(getErrorMessage(err, "Đồng bộ dữ liệu Dịch vụ công thất bại.")),
+  });
+
+  const xoaMutation = useMutation({
+    mutationFn: (id: string) => xoaLichSuDongBoDvc(id),
+    onSuccess: () => {
+      void lamMoiLichSu();
+      toast.success("Đã xóa dòng lịch sử đồng bộ.");
+    },
+    onError: (err) => toast.error(getErrorMessage(err, "Xóa dòng lịch sử đồng bộ thất bại.")),
+  });
+
+  const xoaTatCaMutation = useMutation({
+    mutationFn: xoaTatCaLichSuDongBoDvc,
+    onSuccess: (res) => {
+      void lamMoiLichSu();
+      toast.success(`Đã xóa ${res.deleted} dòng lịch sử đồng bộ.`);
+    },
+    onError: (err) => toast.error(getErrorMessage(err, "Xóa lịch sử đồng bộ thất bại.")),
+  });
 
   const datRange = (key: "tuNgay" | "denNgay", value: string) => {
     setLoiForm("");
@@ -120,7 +156,15 @@ export default function DialogDongBo({ open, onClose }: Props) {
       setLoiForm("Từ ngày phải trước hoặc bằng Đến ngày.");
       return;
     }
-    toast.info("Đồng bộ dữ liệu Dịch vụ công đang được phát triển.");
+    if (loai !== LOAI_DA_HO_TRO) {
+      setLoiForm("Loại giấy tờ này chưa hỗ trợ đồng bộ.");
+      return;
+    }
+    if (!dvcKey) {
+      setLoiForm('Chưa có phiên cổng Dịch vụ công — bấm "Đăng nhập cổng Dịch vụ công" trước.');
+      return;
+    }
+    dongBoMutation.mutate({ tuNgay: range.tuNgay, denNgay: range.denNgay });
   };
 
   /**
@@ -134,9 +178,17 @@ export default function DialogDongBo({ open, onClose }: Props) {
   };
 
   const handleXoa = () => {
+    if (!dongChoXoa) return;
+    xoaMutation.mutate(dongChoXoa.id);
     setDongChoXoa(null);
-    toast.info("Xóa dòng lịch sử đồng bộ đang được phát triển.");
   };
+
+  const handleXoaTatCa = () => {
+    xoaTatCaMutation.mutate();
+    setChoXoaTatCa(false);
+  };
+
+  const dangDongBo = dongBoMutation.isPending;
 
   return (
     <Dialog open={open} onClose={onClose} fullWidth maxWidth="lg" scroll="paper">
@@ -171,8 +223,9 @@ export default function DialogDongBo({ open, onClose }: Props) {
             onChange={(e) => setLoai(e.target.value)}
           >
             {TAB_DVC.map((muc) => (
-              <MenuItem key={muc.value} value={muc.value}>
+              <MenuItem key={muc.value} value={muc.value} disabled={muc.value !== LOAI_DA_HO_TRO}>
                 {muc.label}
+                {muc.value !== LOAI_DA_HO_TRO ? " (chưa hỗ trợ)" : ""}
               </MenuItem>
             ))}
           </TextField>
@@ -202,7 +255,22 @@ export default function DialogDongBo({ open, onClose }: Props) {
           sx={{ alignItems: "center", justifyContent: "space-between", mb: 1 }}
         >
           <Typography sx={{ fontWeight: 700 }}>Lịch sử đồng bộ</Typography>
-          {dangTaiLichSu && <CircularProgress size={16} />}
+          <Stack direction="row" spacing={1} sx={{ alignItems: "center" }}>
+            {dangTaiLichSu && <CircularProgress size={16} />}
+            <Tooltip title="Xóa tất cả lịch sử đồng bộ">
+              <span>
+                <IconButton
+                  size="small"
+                  color="error"
+                  aria-label="Xóa tất cả lịch sử đồng bộ"
+                  disabled={lichSu.length === 0}
+                  onClick={() => setChoXoaTatCa(true)}
+                >
+                  <DeleteSweepRounded fontSize="small" />
+                </IconButton>
+              </span>
+            </Tooltip>
+          </Stack>
         </Stack>
 
         <TableContainer sx={{ border: "1px solid", borderColor: "divider", borderRadius: 1 }}>
@@ -299,11 +367,12 @@ export default function DialogDongBo({ open, onClose }: Props) {
         </Button>
         <Button
           variant="contained"
-          startIcon={<SyncRounded />}
+          startIcon={dangDongBo ? undefined : <SyncRounded />}
           onClick={handleDongBo}
+          disabled={dangDongBo}
           sx={{ textTransform: "none" }}
         >
-          Đồng bộ
+          {dangDongBo ? <CircularProgress size={20} color="inherit" /> : "Đồng bộ"}
         </Button>
       </DialogActions>
 
@@ -333,6 +402,30 @@ export default function DialogDongBo({ open, onClose }: Props) {
             sx={{ textTransform: "none" }}
           >
             Xóa
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Xác nhận xóa TẤT CẢ lịch sử */}
+      <Dialog open={choXoaTatCa} onClose={() => setChoXoaTatCa(false)} maxWidth="xs" fullWidth>
+        <DialogTitle sx={{ fontWeight: 700 }}>Xóa tất cả lịch sử đồng bộ</DialogTitle>
+        <DialogContent>
+          <DialogContentText>
+            Xóa toàn bộ {lichSu.length} dòng lịch sử đồng bộ? Chỉ xóa bản ghi lịch sử, KHÔNG ảnh
+            hưởng đến hồ sơ đã lưu trong cơ sở dữ liệu.
+          </DialogContentText>
+        </DialogContent>
+        <DialogActions sx={{ px: 3, pb: 2 }}>
+          <Button onClick={() => setChoXoaTatCa(false)} sx={{ textTransform: "none" }}>
+            Hủy
+          </Button>
+          <Button
+            variant="contained"
+            color="error"
+            onClick={handleXoaTatCa}
+            sx={{ textTransform: "none" }}
+          >
+            Xóa tất cả
           </Button>
         </DialogActions>
       </Dialog>
