@@ -2,13 +2,17 @@ import { FastifyInstance } from "fastify";
 import {
   captcha,
   danhSachThongBao,
+  dongBo,
   getCredential,
+  lichSuDongBo,
   login,
   taiFileHoSo,
   taiLieuDinhKem,
   taiThongBao,
   tchsCaptcha,
   traCuuHoSo,
+  xoaLichSuDongBo,
+  xoaTatCaLichSuDongBo,
 } from "../../controllers/client/dich_vu_cong/gdt-dvc.controller";
 
 /**
@@ -62,5 +66,25 @@ export default async function (fastify: FastifyInstance) {
   fastify.get("/credential", {
     preHandler: [fastify.authenticate],
     handler: getCredential,
+  });
+
+  fastify.post("/dong-bo", {
+    preHandler: [fastify.authenticate],
+    handler: dongBo,
+  });
+
+  fastify.get("/dong-bo/lich-su", {
+    preHandler: [fastify.authenticate],
+    handler: lichSuDongBo,
+  });
+
+  fastify.delete("/dong-bo/lich-su/:id", {
+    preHandler: [fastify.authenticate],
+    handler: xoaLichSuDongBo,
+  });
+
+  fastify.delete("/dong-bo/lich-su", {
+    preHandler: [fastify.authenticate],
+    handler: xoaTatCaLichSuDongBo,
   });
 }

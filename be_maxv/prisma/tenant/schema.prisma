@@ -616,7 +616,7 @@ model dvc_ho_so {
   lan_bo_sung  String? @db.VarChar(16) // "Lần nộp bổ sung" bên cổng
   ngay_nop     String? @db.VarChar(32) // Dạng thô cổng trả (dd/MM/yyyy...), không parse Date
   /// Suy từ `ngay_nop` (parse best-effort dd/MM/yyyy) CHỈ để lọc/sắp xếp theo khoảng ngày ở
-  /// `timHoSoTrongCache` — hiển thị vẫn dùng `ngay_nop` (chuỗi thô), cột này không xuất ra FE.
+  /// `timHoSoDaDongBo` — hiển thị vẫn dùng `ngay_nop` (chuỗi thô), cột này không xuất ra FE.
   ngay_nop_date DateTime? @db.Date
   noi_nop      String? @db.VarChar(254) // "Cơ quan thuế tiếp nhận"
   trang_thai   String? @db.VarChar(254) // Ghi đè mỗi lần tra cứu — KHÔNG cache vĩnh viễn
@@ -670,7 +670,8 @@ model dvc_tai_lieu {
   @@index([ma_ho_so, loai])
 }
 
-/// Lịch sử các lượt "Đồng bộ" (nút riêng, khác tra cứu bảng thường — xem `DvcCache.ghiLichSuDongBo`).
+/// Lịch sử các lượt "Đồng bộ" (nút riêng, khác tra cứu bảng thường — xem
+/// `dvc-dong-bo.service.ts#ghiLichSuDongBo`).
 /// Cùng vai trò `sync_log` bên HĐĐT nhưng tách bảng riêng: hai module cache khác hẳn nhau
 /// (hóa đơn theo chiều mua/bán, hồ sơ theo loại giấy tờ), gộp chung sẽ phải thêm cột rỗng
 /// tùy module.
