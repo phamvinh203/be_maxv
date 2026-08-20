@@ -126,15 +126,13 @@ export default function AppRouter() {
               </ProtectedRoute>
             }
           />
-          {/*
-            Dịch vụ công mở cho mọi tài khoản đã đăng nhập — nút trên header
-            không gắn cờ module nên ở đây cũng không bọc ModuleRoute.
-          */}
           <Route
             path="dich-vu-cong"
             element={
               <ProtectedRoute>
-                <DvcPage />
+                <ModuleRoute module="dvc">
+                  <DvcPage />
+                </ModuleRoute>
               </ProtectedRoute>
             }
           />

@@ -76,13 +76,16 @@ export default function AppHeader() {
             Hóa đơn điện tử
           </Button>
 
-          <Button
-            color="inherit"
-            onClick={() => navigate("/dich-vu-cong")}
-            sx={{ textTransform: "none", fontWeight: 600 }}
-          >
-            Dịch vụ công
-          </Button>
+          {/* Chỉ hiện khi admin đã bật module Dịch vụ công cho tài khoản này. */}
+          {modules.dvc && (
+            <Button
+              color="inherit"
+              onClick={() => navigate("/dich-vu-cong")}
+              sx={{ textTransform: "none", fontWeight: 600 }}
+            >
+              Dịch vụ công
+            </Button>
+          )}
 
           {/* Chỉ hiện khi admin đã bật module HRM cho tài khoản này. */}
           {modules.hrm && (

@@ -16,7 +16,7 @@ export interface AuthUser {
  * `MODULE_KEYS` bên `be_maxv/src/constants/modules.ts`; hai app không dùng
  * chung package nên đây là chỗ duy nhất phải nhớ đồng bộ.
  */
-export const MODULE_KEYS = ["hrm", "accounting"] as const;
+export const MODULE_KEYS = ["hrm", "accounting", "dvc"] as const;
 
 export type ModuleKey = (typeof MODULE_KEYS)[number];
 
