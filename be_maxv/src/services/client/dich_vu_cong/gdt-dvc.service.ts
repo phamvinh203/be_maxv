@@ -41,8 +41,17 @@ const DVC_DOI_TUONG = "DN";
 /** Timeout mỗi request — một socket treo không được chặn vô hạn. */
 const DVC_TIMEOUT_MS = 30_000;
 
-/** Phiên lấy captcha rồi bỏ dở (không đăng nhập) tự hết hạn sau ngần này. */
+/** Phiên lấy captcha rồi bỏ dở (CHƯA đăng nhập) tự hết hạn sau ngần này. */
 const SESSION_TTL_MS = 5 * 60 * 1000;
+
+/**
+ * Phiên ĐÃ đăng nhập — hạn dài hơn và còn được trượt lại mỗi lần dùng (xem `getSession`).
+ *
+ * Trước đây phiên nào cũng dùng `SESSION_TTL_MS` tính từ lúc lấy captcha và không chỗ nào gia
+ * hạn: đăng nhập xong ngồi xem bảng quá 5 phút rồi bấm Tìm kiếm là đã phải đăng nhập lại, dù
+ * cookie phiên bên cổng vẫn còn sống.
+ */
+const SESSION_DANG_NHAP_TTL_MS = 30 * 60 * 1000;
 
 /** Cổng chặn tần suất khá gắt — gọi liên tiếp vài lần là dính `429 Too Many Requests`. */
 const RATE_LIMITED_MESSAGE =
@@ -66,6 +75,38 @@ export class DvcHttpError extends Error {
   }
 }
 
+/**
+ * Phiên trong RAM đã hết hạn hoặc không tồn tại — khác lỗi do cổng trả về (`DvcHttpError`).
+ *
+ * Có lớp riêng thay vì `new Error(SESSION_EXPIRED_MESSAGE)` để nơi khác nhận diện bằng
+ * `instanceof` chứ không phải so chuỗi thông báo (xem `khongNenThuLai`). `message` giữ nguyên
+ * nên `toUserMessage` và mọi caller cũ không đổi gì.
+ */
+export class DvcSessionExpiredError extends Error {
+  constructor() {
+    super(SESSION_EXPIRED_MESSAGE);
+    this.name = "DvcSessionExpiredError";
+  }
+}
+
+/** Cổng trả lời "sai tên đăng nhập/mật khẩu" rõ ràng — KHÁC lỗi captcha sai (retry vô ích, xem `tuDangNhapLai`). */
+class DvcWrongCredentialError extends Error {}
+
+/**
+ * Tự đăng nhập lại (khi cổng đá phiên giữa chừng) đã thử hết lượt mà vẫn không xong — phiên RAM đã
+ * bị xóa, bắt buộc người dùng mở lại dialog và đăng nhập tay.
+ */
+export class DvcAutoLoginFailedError extends Error {
+  constructor(chiTietLoiCuoi?: string) {
+    super(
+      "Phiên đăng nhập Dịch vụ công đã hết hạn và tự động đăng nhập lại không thành công" +
+        (chiTietLoiCuoi ? ` (${chiTietLoiCuoi})` : "") +
+        ". Vui lòng đăng nhập lại.",
+    );
+    this.name = "DvcAutoLoginFailedError";
+  }
+}
+
 interface DvcSession {
   /**
    * Cookie của phiên, khóa theo TÊN cookie -> chuỗi `ten=gia_tri`.
@@ -80,7 +121,22 @@ interface DvcSession {
   csrfToken: string;
   /** Tên header gửi token CSRF, đọc từ `<meta name="csrf-header">` (thường `X-XSRF-TOKEN`). */
   csrfHeader: string;
+  /** Đã đăng nhập xong -> phiên đổi sang `SESSION_DANG_NHAP_TTL_MS` thay cho TTL captcha. */
+  daDangNhap: boolean;
+  /** Mốc hết hạn — TRƯỢT lại mỗi lần `getSession` chạm tới, xem hàm đó. */
   expiresAt: number;
+  /**
+   * Tài khoản đã dùng ở lượt đăng nhập gần nhất — CHỈ giữ trong RAM của chính phiên này (cùng mức
+   * lộ diện với `cookies`/`csrfToken` vốn đã là bí mật sống trong RAM), dùng để tự đăng nhập lại
+   * ngầm khi cổng đá phiên giữa chừng thao tác (xem `tuDangNhapLai`). Không ghi ra DB/log ở đây —
+   * bản mã hóa bền đã có riêng ở cột `dvcPassword*` (`gdt-dvc.controller.ts`).
+   */
+  credential?: { tenDN: string; matKhau: string };
+  /**
+   * TODO(tạm): CHỈ để debug xem auto-relogin có thật sự chạy không, xóa field này +
+   * `laVuaTuDongDangNhapLai` + chỗ dùng ở controller/FE khi hết cần theo dõi.
+   */
+  viTuDongDangNhapLaiLuc?: number;
 }
 
 /**
@@ -98,7 +154,17 @@ function sweepExpiredSessions() {
   }
 }
 
-/** Lấy phiên còn hạn, `null` nếu không có hoặc đã quá hạn. */
+/** Hạn áp cho phiên — tùy đã đăng nhập hay mới chỉ lấy captcha. */
+function ttlCuaPhien(session: DvcSession): number {
+  return session.daDangNhap ? SESSION_DANG_NHAP_TTL_MS : SESSION_TTL_MS;
+}
+
+/**
+ * Lấy phiên còn hạn, `null` nếu không có hoặc đã quá hạn.
+ *
+ * TRƯỢT hạn mỗi lần chạm tới: hạn phải đếm từ lần DÙNG cuối chứ không phải từ lúc mở phiên —
+ * đếm từ lúc mở thì đang thao tác liên tục phiên vẫn chết đúng lúc TTL trôi hết.
+ */
 function getSession(key: string): DvcSession | null {
   const session = sessions.get(key);
   if (!session) return null;
@@ -106,12 +172,25 @@ function getSession(key: string): DvcSession | null {
     sessions.delete(key);
     return null;
   }
+  session.expiresAt = Date.now() + ttlCuaPhien(session);
   return session;
 }
 
 /** Xóa phiên — gọi khi đăng nhập hỏng, để lần sau buộc lấy captcha mới. */
 export function clearSession(key: string) {
   sessions.delete(key);
+}
+
+/**
+ * `sweepExpiredSessions` + `getSession` + ném `DvcSessionExpiredError` nếu không còn — 3 dòng
+ * lặp lại giống hệt nhau ở đầu mọi hàm cần phiên sống (captcha trang tra cứu, login, tra cứu hồ
+ * sơ, tải file/tài liệu/thông báo...). Gộp một chỗ để đổi cách báo hết hạn chỉ phải sửa ở đây.
+ */
+function requireSession(key: string): DvcSession {
+  sweepExpiredSessions();
+  const session = getSession(key);
+  if (!session) throw new DvcSessionExpiredError();
+  return session;
 }
 
 /** Gộp `Set-Cookie` của response vào phiên (ghi đè theo tên, xem chú thích ở `DvcSession`). */
@@ -192,21 +271,17 @@ const CSRF_TOKEN_RE = /<meta\s+name="csrf-token"\s+content="([^"]+)"/i;
 const CSRF_HEADER_RE = /<meta\s+name="csrf-header"\s+content="([^"]+)"/i;
 
 /**
- * Bước 1: mở phiên mới — tải trang login để lấy cookie phiên và token CSRF.
+ * Tải trang login để lấy cookie phiên + token CSRF, GHI ĐÈ vào `session` truyền vào (không tạo
+ * phiên/khóa mới) — dùng chung cho `openSession` (phiên hoàn toàn mới) và `tuDangNhapLai` (tự đăng
+ * nhập lại ngầm trên phiên/khóa ĐÃ CÓ, để FE khỏi phải biết `key` vừa đổi).
  *
  * Token CSRF nằm trong thẻ meta của HTML chứ không phải cookie `XSRF-TOKEN` (hai giá trị
  * đó KHÁC nhau: cookie là UUID, token là chuỗi base64 dài). Gửi nhầm giá trị cookie lên
  * header thì cổng từ chối POST đăng nhập.
  */
-async function openSession(): Promise<{ key: string; session: DvcSession }> {
-  sweepExpiredSessions();
-
-  const session: DvcSession = {
-    cookies: new Map(),
-    csrfToken: "",
-    csrfHeader: "X-XSRF-TOKEN",
-    expiresAt: Date.now() + SESSION_TTL_MS,
-  };
+async function refreshSessionCookies(session: DvcSession): Promise<void> {
+  // Cookie của phiên cũ (nếu có) đã vô dụng — dọn trước để không gửi lẫn cookie chết cùng cookie mới.
+  session.cookies.clear();
 
   const response = await dvcSend("/login", session, {
     headers: { Accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8" },
@@ -224,6 +299,21 @@ async function openSession(): Promise<{ key: string; session: DvcSession }> {
   }
   session.csrfToken = token;
   session.csrfHeader = head.match(CSRF_HEADER_RE)?.[1] || session.csrfHeader;
+}
+
+/** Bước 1: mở phiên hoàn toàn mới (khóa `key` mới) — dùng cho lượt lấy captcha đăng nhập đầu tiên. */
+async function openSession(): Promise<{ key: string; session: DvcSession }> {
+  sweepExpiredSessions();
+
+  const session: DvcSession = {
+    cookies: new Map(),
+    csrfToken: "",
+    csrfHeader: "X-XSRF-TOKEN",
+    daDangNhap: false,
+    expiresAt: Date.now() + SESSION_TTL_MS,
+  };
+
+  await refreshSessionCookies(session);
 
   const key = randomUUID();
   sessions.set(key, session);
@@ -288,12 +378,12 @@ export async function getCaptcha(): Promise<DvcCaptchaResult> {
  * Gửi header `Referer: https://dichvucong.gdt.gov.vn/tthc/tchs` đúng như trình duyệt thật.
  */
 export async function getTchsCaptcha(key: string): Promise<DvcCaptchaResult> {
-  sweepExpiredSessions();
-  const session = getSession(key);
-  if (!session) throw new Error(SESSION_EXPIRED_MESSAGE);
-  return fetchCaptchaImage(`/getCaptcha?${Date.now()}`, key, session, {
-    Referer: `${DVC_BASE_URL}/tchs`,
-  });
+  const session = requireSession(key);
+  return voiTuDangNhapLai(key, session, () =>
+    fetchCaptchaImage(`/getCaptcha?${Date.now()}`, key, session, {
+      Referer: `${DVC_BASE_URL}/tchs`,
+    }),
+  );
 }
 
 export interface DvcLoginRequest {
@@ -314,54 +404,43 @@ export interface DvcLoginResult {
 }
 
 /**
- * Bước 3: đăng nhập bằng phiên đã lấy captcha.
+ * Gửi POST đăng nhập và đọc kết quả — dùng chung cho lượt đăng nhập THẬT do người dùng bấm (`login`)
+ * lẫn lượt tự đăng nhập lại ngầm (`tuDangNhapLai`).
  *
- * `matKhau` gửi lên cổng dưới dạng base64 — đó là ĐỊNH DẠNG cổng quy định, KHÔNG phải mã
- * hóa: ai bắt được gói tin đều giải ngược được. Mã hóa base64 ở đây thay vì để FE làm, để
- * mọi thứ thuộc về giao thức của cổng nằm gọn trong tầng adapter này.
- *
- * Phiên KHÔNG đổi khóa sau khi đăng nhập (khác cổng HĐĐT re-key sang bearer token): cổng
- * DVC xác thực bằng chính cookie phiên đó, nên `key` cũ vẫn là thứ định danh phiên đã
- * đăng nhập cho các lượt tra cứu sau.
+ * `matKhau` gửi lên cổng dưới dạng base64 — đó là ĐỊNH DẠNG cổng quy định, KHÔNG phải mã hóa: ai
+ * bắt được gói tin đều giải ngược được. Mã hóa base64 ở đây thay vì để FE làm, để mọi thứ thuộc về
+ * giao thức của cổng nằm gọn trong tầng adapter này.
  *
  * CHƯA CHỐT: dạng body khi đăng nhập ĐÚNG và khi SAI captcha/mật khẩu. Cổng trả 200 cho cả
  * hai (Spring hay trả JSON `{...}` kèm cờ lỗi), nên hàm này forward nguyên body cho caller
  * tự quyết thay vì đoán bừa một trường `success`. Có một lượt đăng nhập thật để đối chiếu
  * là siết lại được ngay tại đây.
  */
-export async function login(body: DvcLoginRequest): Promise<DvcLoginResult> {
-  sweepExpiredSessions();
-  const session = getSession(body.key);
-  if (!session) throw new Error(SESSION_EXPIRED_MESSAGE);
-
+async function performLogin(
+  session: DvcSession,
+  tenDN: string,
+  matKhau: string,
+  captcha: string,
+): Promise<unknown> {
   const form = new URLSearchParams({
-    tenDN: body.tenDN,
-    matKhau: Buffer.from(body.matKhau, "utf8").toString("base64"),
+    tenDN,
+    matKhau: Buffer.from(matKhau, "utf8").toString("base64"),
     doiTuong: DVC_DOI_TUONG,
-    captcha: body.captcha,
+    captcha,
   });
 
-  let raw: string;
-  try {
-    const response = await dvcSend("/loginLDAP", session, {
-      method: "POST",
-      headers: {
-        Accept: "*/*",
-        "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8",
-        "X-Requested-With": "XMLHttpRequest",
-        Origin: "https://dichvucong.gdt.gov.vn",
-        [session.csrfHeader]: session.csrfToken,
-      },
-      body: form.toString(),
-    });
-    raw = await response.text();
-  } catch (err) {
-    // Captcha đã bị tiêu ở lượt hỏng này -> phiên vô dụng, buộc lấy mã mới.
-    // Giữ nguyên `DvcHttpError` (còn `status`) — việc đổi thành câu tiếng Việt dồn hết
-    // về `toUserMessage`, ném lại `Error` trơn ở đây là vứt mất status.
-    clearSession(body.key);
-    throw err;
-  }
+  const response = await dvcSend("/loginLDAP", session, {
+    method: "POST",
+    headers: {
+      Accept: "*/*",
+      "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8",
+      "X-Requested-With": "XMLHttpRequest",
+      Origin: "https://dichvucong.gdt.gov.vn",
+      [session.csrfHeader]: session.csrfToken,
+    },
+    body: form.toString(),
+  });
+  const raw = await response.text();
 
   let data: unknown = raw;
   try {
@@ -379,25 +458,139 @@ export async function login(body: DvcLoginRequest): Promise<DvcLoginResult> {
       obj.success === false ||
       (typeof obj.code === "number" && obj.code !== 0 && obj.code !== 200)
     ) {
-      clearSession(body.key);
       const msg = typeof obj.message === "string" && obj.message.trim() ? obj.message.trim() : null;
       throw new Error(msg || "Đăng nhập cổng Dịch vụ công không thành công (thông tin không chính xác).");
     }
   }
 
-  // Kiểm tra nếu cổng trả về chuỗi thông báo lỗi
+  // Kiểm tra nếu cổng trả về chuỗi thông báo lỗi — tách riêng nhánh "sai tài khoản/mật khẩu"
+  // (KHÔNG đáng thử lại) khỏi nhánh "sai captcha" (đáng thử lại với mã mới), xem `tuDangNhapLai`.
   if (typeof data === "string") {
-    if (data.includes("Sai tên đăng nhập") || data.includes("Mật khẩu không đúng") || laLoiCaptcha(data)) {
-      clearSession(body.key);
-      throw new Error(
-        data.length < 200
-          ? data.trim()
-          : "Đăng nhập cổng Dịch vụ công thất bại do thông tin không chính xác.",
+    if (data.includes("Sai tên đăng nhập") || data.includes("Mật khẩu không đúng")) {
+      throw new DvcWrongCredentialError(
+        data.length < 200 ? data.trim() : "Sai tên đăng nhập hoặc mật khẩu Dịch vụ công.",
       );
+    }
+    if (laLoiCaptcha(data)) {
+      throw new Error(data.length < 200 ? data.trim() : "Mã captcha đăng nhập không đúng.");
     }
   }
 
-  return { key: body.key, data };
+  // Qua hết các nhánh chê ở trên -> coi như đã đăng nhập. Đổi phiên sang TTL dài ngay tại đây,
+  // các lượt tra cứu sau tự trượt hạn tiếp qua `getSession`. Nhớ luôn tài khoản vừa dùng để
+  // `tuDangNhapLai` có thể tự đăng nhập lại sau này mà không cần hỏi lại người dùng.
+  //
+  // Lưu ý: "coi như" đúng nghĩa đen — dạng body khi đăng nhập ĐÚNG vẫn chưa chốt (xem doc của
+  // hàm này), nên phiên sai cũng được kéo dài hạn. Không hại: nó chỉ nằm trong RAM tới khi hết
+  // hạn, còn cổng vẫn từ chối mọi request của phiên chưa xác thực.
+  session.daDangNhap = true;
+  session.credential = { tenDN, matKhau };
+  session.expiresAt = Date.now() + ttlCuaPhien(session);
+
+  return data;
+}
+
+/**
+ * Bước 3: đăng nhập bằng phiên đã lấy captcha (lượt đăng nhập THẬT do người dùng bấm).
+ *
+ * Phiên KHÔNG đổi khóa sau khi đăng nhập (khác cổng HĐĐT re-key sang bearer token): cổng
+ * DVC xác thực bằng chính cookie phiên đó, nên `key` cũ vẫn là thứ định danh phiên đã
+ * đăng nhập cho các lượt tra cứu sau — kể cả sau khi tự đăng nhập lại ngầm (`tuDangNhapLai`).
+ */
+export async function login(body: DvcLoginRequest): Promise<DvcLoginResult> {
+  const session = requireSession(body.key);
+  try {
+    const data = await performLogin(session, body.tenDN, body.matKhau, body.captcha);
+    return { key: body.key, data };
+  } catch (err) {
+    // Captcha đã bị tiêu ở lượt hỏng này -> phiên vô dụng, buộc lấy mã mới.
+    clearSession(body.key);
+    throw err;
+  }
+}
+
+/** Số lần tự đăng nhập lại tối đa khi cổng đá phiên (302/401) giữa chừng thao tác. Quá số này thì
+ * bắt buộc người dùng đăng nhập tay lại — KHÔNG thử vô hạn để tránh cổng khóa tài khoản do gõ sai
+ * mật khẩu/captcha liên tiếp (rủi ro đã lường trước ở `gdt-dvc.controller.ts`). */
+const SO_LAN_THU_TU_DANG_NHAP_LAI = 3;
+
+/** Cổng đã đá phiên hiện tại — KHÁC `DvcSessionExpiredError` (phiên RAM đã mất hẳn): ở đây phiên
+ * RAM (và `credential` kèm theo) vẫn còn, chỉ là cookie phiên bên cổng không còn được chấp nhận. */
+function phienBenCongDaChet(err: unknown): boolean {
+  return err instanceof DvcHttpError && (err.status === 302 || err.status === 401);
+}
+
+/**
+ * Tự đăng nhập lại NGẦM bằng tài khoản đã dùng ở lượt đăng nhập gần nhất (`session.credential`),
+ * tái sử dụng ĐÚNG `key`/`session` hiện có (không đổi khóa) để FE không nhận ra gì đã xảy ra.
+ *
+ * Mỗi lượt lấy một captcha MỚI (OCR tự động) rồi thử đăng nhập — sai tài khoản/mật khẩu (
+ * `DvcWrongCredentialError`) là lỗi DỨT KHOÁT, dừng ngay không phí lượt còn lại: mật khẩu sai thì
+ * thử thêm cũng không đúng hơn, mà mỗi lượt thử là một lần gõ sai thật gửi lên cổng. Chỉ lỗi
+ * captcha/mạng (đáng thử lại) mới dùng hết `SO_LAN_THU_TU_DANG_NHAP_LAI` lượt.
+ *
+ * Hết cách (dù vì lý do gì) -> xóa phiên RAM, ném `DvcAutoLoginFailedError` để caller (
+ * `voiTuDangNhapLai`) bắn lỗi đó lên FE, buộc mở lại dialog đăng nhập tay.
+ */
+async function tuDangNhapLai(key: string, session: DvcSession): Promise<void> {
+  const cred = session.credential;
+  if (!cred) {
+    clearSession(key);
+    throw new DvcAutoLoginFailedError("chưa từng đăng nhập trên phiên này");
+  }
+
+  let lastErr: unknown = null;
+  for (let attempt = 1; attempt <= SO_LAN_THU_TU_DANG_NHAP_LAI; attempt++) {
+    try {
+      await refreshSessionCookies(session);
+      const cap = await fetchCaptchaImage(`/login/getCaptcha?${Date.now()}`, key, session);
+      if (!cap.answer) {
+        throw new Error("Không tự động giải được mã captcha đăng nhập.");
+      }
+      await performLogin(session, cred.tenDN, cred.matKhau, cap.answer);
+      session.viTuDongDangNhapLaiLuc = Date.now(); // TODO(tạm): xóa cùng field debug ở trên.
+      return; // Thành công — session đã được `performLogin` cập nhật cookie + TTL tại chỗ.
+    } catch (err) {
+      lastErr = err;
+      if (err instanceof DvcWrongCredentialError) break;
+    }
+  }
+
+  clearSession(key);
+  throw new DvcAutoLoginFailedError(lastErr instanceof Error ? lastErr.message : undefined);
+}
+
+/**
+ * Bọc quanh MỘT thao tác cần phiên đã đăng nhập (tra cứu hồ sơ, tải file...): nếu thao tác đó hỏng
+ * vì cổng đá phiên (`phienBenCongDaChet`), tự đăng nhập lại ngầm rồi thử lại thao tác ĐÚNG MỘT lần.
+ * Người dùng không thấy gián đoạn trừ khi `tuDangNhapLai` cũng hết lượt.
+ *
+ * Chỉ thử lại thao tác 1 lần (không đặt trong vòng lặp cùng `tuDangNhapLai`): nếu vừa đăng nhập lại
+ * xong mà thao tác vẫn lỗi 302/401 thì đó là lỗi khác (cổng trục trặc thật), lặp thêm chỉ tổ đăng
+ * nhập lại vô ích.
+ */
+async function voiTuDangNhapLai<T>(
+  key: string,
+  session: DvcSession,
+  thaoTac: () => Promise<T>,
+): Promise<T> {
+  try {
+    return await thaoTac();
+  } catch (err) {
+    if (!phienBenCongDaChet(err)) throw err;
+    await tuDangNhapLai(key, session);
+    return thaoTac();
+  }
+}
+
+/**
+ * TODO(tạm): CHỈ để debug — báo cho controller biết lượt gọi vừa rồi có tự đăng nhập lại ngầm hay
+ * không (trong 5s gần nhất), để FE hiện toast xác nhận cơ chế có chạy. Xóa hàm này + field
+ * `viTuDongDangNhapLaiLuc` + chỗ dùng ở controller/FE khi hết cần theo dõi.
+ */
+export function laVuaTuDongDangNhapLai(key: string): boolean {
+  const session = sessions.get(key);
+  return !!session?.viTuDongDangNhapLaiLuc && Date.now() - session.viTuDongDangNhapLaiLuc < 5000;
 }
 
 /** Đổi lỗi bất kỳ thành câu tiếng Việt hiển thị được. Dùng: controller. */
@@ -469,22 +662,44 @@ async function guiTraCuuHoSo(
   return response.text();
 }
 
+/** Số lần thử tự giải captcha trang tra cứu trước khi chịu thua. */
+const SO_LAN_THU_CAPTCHA = 3;
+
+/**
+ * Lỗi mà thử lại chắc chắn vô ích — bỏ vòng lặp ngay thay vì đốt thêm lượt gọi cổng:
+ *  - `429`: đang bị chặn tần suất, gọi tiếp chỉ làm bị chặn lâu hơn (đúng thứ `RATE_LIMITED_MESSAGE`
+ *    dặn người dùng chờ), mà mỗi lần thử lại là THÊM 2 request (lấy captcha + tra cứu).
+ *  - `302`/`401`: cổng đá về trang đăng nhập / từ chối xác thực = phiên bên cổng đã chết, lượt
+ *    sau vẫn dùng đúng cookie đó nên kết quả không thể khác.
+ *  - `DvcSessionExpiredError`: phiên trong RAM hết hạn, thử lại vẫn không có phiên.
+ *
+ * Còn lại (OCR đọc sai mã, timeout, mạng chập chờn) mới đáng thử lại.
+ */
+function khongNenThuLai(err: unknown): boolean {
+  if (err instanceof DvcSessionExpiredError) return true;
+  if (err instanceof DvcHttpError) {
+    return err.status === 429 || err.status === 302 || err.status === 401;
+  }
+  return false;
+}
+
 /**
  * Chạy lượt tra cứu, trả HTML thô. Tự động chạy ngầm: Nếu `q.captcha` không được truyền lên,
  * hàm sẽ tự động lấy captcha từ `/tthc/getCaptcha`, giải mã OCR qua `docDvcCaptcha` và gửi tra
- * cứu (tự động thử lại tối đa 3 lần nếu đọc sai mã).
+ * cứu, thử lại tối đa `SO_LAN_THU_CAPTCHA` lần nếu đọc sai mã.
+ *
+ * Hết số lần thử là NÉM LỖI, không trả HTML báo sai mã ra ngoài. Gặp lỗi thuộc nhóm
+ * `khongNenThuLai` thì ném ra ngay, không dùng hết số lần thử.
  */
 async function traCuuHoSoHtml(q: DvcTraCuuHoSoQuery): Promise<string> {
-  sweepExpiredSessions();
-  const session = getSession(q.key);
-  if (!session) throw new Error(SESSION_EXPIRED_MESSAGE);
+  const session = requireSession(q.key);
 
   if (q.captcha) {
     return guiTraCuuHoSo(session, q, q.captcha);
   }
 
   let lastError: unknown = null;
-  for (let attempt = 1; attempt <= 3; attempt++) {
+  for (let attempt = 1; attempt <= SO_LAN_THU_CAPTCHA; attempt++) {
     try {
       const cap = await getTchsCaptcha(q.key);
       if (!cap.answer) {
@@ -492,17 +707,24 @@ async function traCuuHoSoHtml(q: DvcTraCuuHoSoQuery): Promise<string> {
       }
 
       const html = await guiTraCuuHoSo(session, q, cap.answer);
+      // Cổng trả 200 kèm mảnh HTML báo sai mã — vẫn là hỏng, phải thử lại. Ném lỗi thay vì
+      // `continue` rồi rơi xuống `return html` như trước: mảnh đó qua `parseBangHoSo` ra bảng
+      // rỗng, người dùng đọc thành "không tìm thấy hồ sơ nào" trong khi thật ra chưa tra được.
       if (laLoiCaptcha(html)) {
-        if (attempt < 3) continue;
+        throw new Error("Mã captcha trang tra cứu hồ sơ không đúng.");
       }
       return html;
     } catch (err) {
       lastError = err;
-      if (attempt === 3) throw err;
+      if (khongNenThuLai(err)) throw err;
     }
   }
 
-  throw lastError || new Error("Tra cứu hồ sơ thất bại do không giải được mã captcha hợp lệ.");
+  // Tới đây là đã thử đủ số lần mà lần nào cũng hỏng — `lastError` luôn có giá trị, nhánh
+  // `new Error` chỉ để TypeScript yên tâm là hàm không rơi xuống `undefined`.
+  throw lastError instanceof Error
+    ? lastError
+    : new Error("Tra cứu hồ sơ thất bại do không giải được mã captcha hợp lệ.");
 }
 
 /**
@@ -511,7 +733,9 @@ async function traCuuHoSoHtml(q: DvcTraCuuHoSoQuery): Promise<string> {
  * `parseBangHoSo`/hình dạng HTML của cổng nữa.
  */
 export async function traCuuHoSo(q: DvcTraCuuHoSoQuery): Promise<BangHoSoDaBoc> {
-  return parseBangHoSo(await traCuuHoSoHtml(q));
+  const session = requireSession(q.key);
+  const html = await voiTuDangNhapLai(q.key, session, () => traCuuHoSoHtml(q));
+  return parseBangHoSo(html);
 }
 
 /** Referer XHR của trang chi tiết hồ sơ — cả `downloadhoso` lẫn `data-tai-lieu-dkem` đều gọi từ đây. */
@@ -585,10 +809,11 @@ async function docTepTuResponse(
  * mới là request XHR thật sự trả file, trang kia gọi nó khi người dùng bấm nút tải trên đó.
  */
 export async function taiXmlHoSo(key: string, maHoSo: string): Promise<DvcTepTaiVe> {
-  sweepExpiredSessions();
-  const session = getSession(key);
-  if (!session) throw new Error(SESSION_EXPIRED_MESSAGE);
+  const session = requireSession(key);
+  return voiTuDangNhapLai(key, session, () => taiXmlHoSoThuc(session, maHoSo));
+}
 
+async function taiXmlHoSoThuc(session: DvcSession, maHoSo: string): Promise<DvcTepTaiVe> {
   const response = await dvcSend("/tchs/downloadhoso", session, {
     method: "POST",
     headers: {
@@ -634,10 +859,11 @@ export async function taiXmlHoSo(key: string, maHoSo: string): Promise<DvcTepTai
  * cho caller tự đọc thay vì đoán và ép kiểu sai — xem `TaiLieuDinhKemDialog` bên FE.
  */
 export async function layTaiLieuDinhKem(key: string, maHoSo: string): Promise<unknown> {
-  sweepExpiredSessions();
-  const session = getSession(key);
-  if (!session) throw new Error(SESSION_EXPIRED_MESSAGE);
+  const session = requireSession(key);
+  return voiTuDangNhapLai(key, session, () => layTaiLieuDinhKemThuc(session, maHoSo));
+}
 
+async function layTaiLieuDinhKemThuc(session: DvcSession, maHoSo: string): Promise<unknown> {
   const response = await dvcSend("/tchs/data-tai-lieu-dkem", session, {
     method: "POST",
     headers: {
@@ -662,10 +888,15 @@ export async function layTaiLieuDinhKem(key: string, maHoSo: string): Promise<un
  * vì nhận tham số không ai từng truyền giá trị khác rỗng.
  */
 export async function taiThongBao(key: string, maHoSo: string, idTbao: string): Promise<DvcTepTaiVe> {
-  sweepExpiredSessions();
-  const session = getSession(key);
-  if (!session) throw new Error(SESSION_EXPIRED_MESSAGE);
+  const session = requireSession(key);
+  return voiTuDangNhapLai(key, session, () => taiThongBaoThuc(session, maHoSo, idTbao));
+}
 
+async function taiThongBaoThuc(
+  session: DvcSession,
+  maHoSo: string,
+  idTbao: string,
+): Promise<DvcTepTaiVe> {
   const response = await dvcSend("/tchs/downloadthongbao", session, {
     method: "POST",
     headers: {
@@ -691,9 +922,7 @@ export async function taiThongBao(key: string, maHoSo: string, idTbao: string): 
  * `taiThongBao` (`chiTietHoSoUrl`) — hàm này lần đầu THỰC SỰ tải trang đó về.
  */
 async function layChiTietHoSoHtml(key: string, maHoSo: string): Promise<string> {
-  sweepExpiredSessions();
-  const session = getSession(key);
-  if (!session) throw new Error(SESSION_EXPIRED_MESSAGE);
+  const session = requireSession(key);
 
   const response = await dvcSend(
     `/tchs/files/detail/${encodeURIComponent(maHoSo)}?loai=`,
@@ -715,5 +944,7 @@ async function layChiTietHoSoHtml(key: string, maHoSo: string): Promise<string> 
  * xem `parseDanhSachThongBao`) — cột "Thông báo".
  */
 export async function layDanhSachThongBao(key: string, maHoSo: string): Promise<ThongBaoDaBoc[]> {
-  return parseDanhSachThongBao(await layChiTietHoSoHtml(key, maHoSo));
+  const session = requireSession(key);
+  const html = await voiTuDangNhapLai(key, session, () => layChiTietHoSoHtml(key, maHoSo));
+  return parseDanhSachThongBao(html);
 }

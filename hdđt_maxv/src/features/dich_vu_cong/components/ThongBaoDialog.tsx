@@ -42,18 +42,20 @@ export default function ThongBaoDialog({ open, onClose, dvcKey, maHoSo }: Props)
   const [dangTai, setDangTai] = useState<string | null>(null);
 
   const query = useQuery({
-    queryKey: ["dvc", "thong-bao", dvcKey, maHoSo],
-    queryFn: () => layDanhSachThongBaoDvc({ key: dvcKey as string, maHoSo: maHoSo as string }),
-    enabled: open && !!dvcKey && !!maHoSo,
-    // BE lượt này tải nguyên trang chi tiết hồ sơ từ cổng GDT rồi regex-parse, không rẻ như
-    // tra cứu bảng — tránh gọi lại cổng mỗi lần đóng/mở dialog liên tiếp cho cùng hồ sơ.
+    queryKey: ["dvc", "thong-bao", maHoSo],
+    // `key` tùy chọn: BE đọc cache trước (hồ sơ đã đồng bộ thì không cần đăng nhập cổng), chỉ
+    // dùng `dvcKey` khi BE cần gọi cổng thật vì cache còn thiếu.
+    queryFn: () => layDanhSachThongBaoDvc({ key: dvcKey ?? undefined, maHoSo: maHoSo as string }),
+    enabled: open && !!maHoSo,
+    // BE lượt này (khi cache miss) tải nguyên trang chi tiết hồ sơ từ cổng GDT rồi regex-parse,
+    // không rẻ như tra cứu bảng — tránh gọi lại cổng mỗi lần đóng/mở dialog liên tiếp cùng hồ sơ.
     staleTime: 30_000,
   });
 
   const ds = query.data ?? [];
 
   const handleTai = async (idTbao: string) => {
-    if (!dvcKey || !maHoSo) return;
+    if (!maHoSo) return;
     setDangTai(idTbao);
     const toastId = toast.loading("Đang tải file thông báo…");
     try {

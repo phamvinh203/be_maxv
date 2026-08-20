@@ -75,6 +75,16 @@ model DonVi {
   gdtPasswordIv     String? // IV/nonce 12 byte (base64)
   gdtPasswordTag    String? // GCM auth tag (base64)
 
+  // Tài khoản/mật khẩu cổng Dịch vụ công (DVC) đã lưu — cùng cơ chế với gdtPassword* ở trên,
+  // dùng lại chung services/client/hddt/gdtCredential.ts (thuần crypto, không đụng Prisma nên
+  // tái dùng được cho cột khác). LƯU CẢ tên đăng nhập: quy ước "<MST>-ql" không chắc đúng cho
+  // mọi đơn vị, nên phải lưu tên thật đã đăng nhập thành công thay vì suy lại từ MST lúc cần
+  // đăng nhập lại. null = chưa lưu; ba cột dvcPassword* luôn cùng null hoặc cùng có giá trị.
+  dvcUsername       String? // tên đăng nhập cổng DVC đã đăng nhập thành công gần nhất
+  dvcPasswordCipher String? // ciphertext (base64)
+  dvcPasswordIv     String? // IV/nonce 12 byte (base64)
+  dvcPasswordTag    String? // GCM auth tag (base64)
+
   // Owner sở hữu MST này (đếm giới hạn gói + xác định ai quản lý/nhân viên thuộc account nào)
   ownerId String
   owner   User   @relation("DonViOwner", fields: [ownerId], references: [id], onDelete: Cascade)

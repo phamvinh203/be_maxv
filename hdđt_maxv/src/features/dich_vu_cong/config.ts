@@ -41,6 +41,15 @@ export interface CotBang {
    * động mới chỉ cần khai ở đây + đăng ký icon trong `BangHoSo`, khỏi sửa vòng lặp render.
    */
   action?: boolean;
+  /** Cột tiền — `BangHoSo` tự format qua `fmtMoney` (phân cách ngàn kiểu VN, ẩn số 0) thay vì
+   * hiện nguyên chuỗi số thô cổng trả về. */
+  format?: "money";
+  /**
+   * Ô hiện thành link bấm được (mở dialog "Xem tờ khai") thay vì text thường, khi dòng có
+   * `maGiaoDich` — `BangHoSo` gọi `onXemToKhai(maHoSo)` khi bấm. Cùng cách khai báo với `action`:
+   * thêm cột bấm được khác chỉ cần đặt cờ này, khỏi sửa vòng lặp render.
+   */
+  clickable?: boolean;
 }
 
 /**
@@ -52,8 +61,28 @@ export interface CotBang {
 const COT_TO_KHAI: CotBang[] = [
   { key: "stt", header: "STT", width: 60, align: "center" },
   { key: "maGiaoDich", header: "Mã giao dịch", srcHeader: "Mã hồ sơ" },
-  { key: "tenThuTuc", header: "Tên thủ tục hành chính", srcHeader: "Tên TTHC" },
+  { key: "tenThuTuc", header: "Tên thủ tục hành chính", srcHeader: "Tên TTHC", clickable: true },
   { key: "toKhaiPhuLuc", header: "Tờ khai / Phụ lục", srcHeader: "Tờ khai" },
+  { key: "khauTruKyTruoc", header: "Khấu trừ kỳ trước", align: "right", format: "money" },
+  { key: "giaTriHhdvMuaVao", header: "Giá trị HHDV mua vào", align: "right", format: "money" },
+  {
+    key: "thueGtgtHhdvMuaVao",
+    header: "Thuế GTGT HHDV mua vào",
+    align: "right",
+    format: "money",
+  },
+  { key: "khauTruKyNay", header: "Khấu trừ kỳ này", align: "right", format: "money" },
+  { key: "hhdvBanRa", header: "HHDV bán ra", align: "right", format: "money" },
+  { key: "dieuChinhGiam", header: "Điều chỉnh giảm", align: "right", format: "money" },
+  { key: "dieuChinhTang", header: "Điều chỉnh tăng", align: "right", format: "money" },
+  { key: "phaiNopTrongKy", header: "Phải nộp trong kỳ", align: "right", format: "money" },
+  {
+    key: "khauTruChuyenKySau",
+    header: "Khấu trừ chuyển kỳ sau",
+    align: "right",
+    format: "money",
+  },
+  { key: "doanhThuHhdvBanRa", header: "Doanh thu HHDV bán ra", align: "right", format: "money" },
   { key: "kyTinhThue", header: "Kỳ tính thuế" },
   { key: "loaiToKhai", header: "Loại tờ khai" },
   { key: "lanNop", header: "Lần nộp", align: "center" },
@@ -86,7 +115,7 @@ const COT_GIAY_NOP_TIEN: CotBang[] = [
   { key: "maGiaoDichDsChiTiet", header: "Mã giao dịch DS chi tiết" },
   { key: "lanNop", header: "Lần nộp", align: "center" },
   { key: "soGiayNopTien", header: "Số giấy nộp tiền" },
-  { key: "soTien", header: "Số tiền", align: "right" },
+  { key: "soTien", header: "Số tiền", align: "right", format: "money" },
   { key: "loaiTien", header: "Loại tiền", align: "center" },
   { key: "trangThai", header: "Trạng thái" },
   { key: "soChungTu", header: "Số chứng từ" },

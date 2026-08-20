@@ -7,7 +7,7 @@
  *
  * Quyền chỉ đến từ **gói thuê bao** — không có bật/tắt riêng theo tài khoản.
  */
-export const MODULE_KEYS = ['hrm', 'accounting'] as const;
+export const MODULE_KEYS = ['hrm', 'accounting', 'dvc'] as const;
 
 export type ModuleKey = (typeof MODULE_KEYS)[number];
 
@@ -27,5 +27,9 @@ export const MODULE_META: Record<ModuleKey, ModuleMeta> = {
   accounting: {
     nhanNgan: 'Kế toán',
     moTa: 'Quản lý kế toán: bán hàng, tổng hợp, tồn kho và các danh mục kế toán.',
+  },
+  dvc: {
+    nhanNgan: 'Dịch vụ công',
+    moTa: 'Tra cứu, đồng bộ và xem tờ khai/giấy nộp tiền qua cổng Dịch vụ công thuế điện tử.',
   },
 };

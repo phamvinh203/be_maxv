@@ -1,5 +1,5 @@
-import { useEffect, useId, useState, type FormEvent } from "react";
-import { useMutation, useQuery } from "@tanstack/react-query";
+import { useEffect, useId, useRef, useState, type FormEvent } from "react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import Dialog from "@mui/material/Dialog";
 import DialogContent from "@mui/material/DialogContent";
 import DialogActions from "@mui/material/DialogActions";
@@ -17,13 +17,19 @@ import Refresh from "@mui/icons-material/Refresh";
 import Visibility from "@mui/icons-material/Visibility";
 import VisibilityOff from "@mui/icons-material/VisibilityOff";
 
-import { getDvcCaptcha, loginDvc } from "../api/dvc";
+import { getDvcCaptcha, getDvcCredential, loginDvc } from "../api/dvc";
 import { getErrorMessage } from "../../../lib/errors";
 import logoThueNhaNuoc from "../../../assets/logo_thue_nha_nuoc.jpg";
 
 interface Props {
   open: boolean;
   onClose: () => void;
+  /**
+   * MST công ty đang chọn — khóa cache mật khẩu đã lưu (`dvcCredentialKey`). TÁCH RIÊNG khỏi
+   * `initialUsername`: đó là tên đăng nhập DVC (thường `<MST>-ql`), có thể khác MST trần và
+   * không đáng tin để suy ngược lại MST (xem BE `mstTuTenDangNhapDvc`).
+   */
+  activeMst?: string;
   /** Điền sẵn MST công ty đang chọn — người dùng chỉ phải nhập mật khẩu và captcha. */
   initialUsername?: string;
   /** Báo khóa phiên đã đăng nhập ra ngoài để các lượt tra cứu sau dùng lại. */
@@ -64,17 +70,28 @@ function messageCuaCong(data: unknown): string | null {
 }
 
 /**
+ * Khóa cache mật khẩu DVC đã lưu, gắn theo MST — đổi công ty tự nạp lại (xem `enabled` của
+ * `credentialQuery`), và dùng lại được để invalidate ngay sau khi đăng nhập thành công (xem
+ * `handleSubmit`). Cùng khuôn `gdtSavedPasswordKey` bên `credentialQueries.ts` (HĐĐT) — không
+ * tách file riêng vì DVC hiện chỉ có đúng một nơi dùng (component này).
+ */
+const dvcCredentialKey = (mst: string) => ["dvcCredential", mst] as const;
+
+/**
  * Dialog đăng nhập cổng Dịch vụ công — giao diện dựng theo `dialogLoginHddt`.
  *
  * Captcha lấy qua `useQuery`, đăng nhập qua `useMutation`, đều đi vòng qua BE
  * (`/api/v1/dvc/*`) vì cổng không mở CORS và cookie phiên là `HttpOnly`.
  *
- * KHÔNG tự điền mã captcha như bản HĐĐT: captcha cổng này là ảnh PNG có nhiễu, không phải
- * SVG, nên mẹo đọc vân tay đường vẽ bên `features/hddt/captcha/` không áp dụng được.
+ * Mã captcha CÓ được điền sẵn, nhưng bằng đường khác bản HĐĐT: captcha cổng này là ảnh PNG có
+ * nhiễu chứ không phải SVG, nên mẹo đọc vân tay đường vẽ ở `features/hddt/captcha/` không dùng
+ * được — BE giải bằng OCR (`docDvcCaptcha`) rồi trả kèm `answer`. OCR đọc sai được nên ô vẫn để
+ * người dùng sửa tay.
  */
 export default function DialogLoginDVC({
   open,
   onClose,
+  activeMst,
   initialUsername,
   onLoginSuccess,
 }: Props) {
@@ -99,6 +116,30 @@ export default function DialogLoginDVC({
   });
   const captcha = captchaQuery.data;
   const loadingCaptcha = captchaQuery.isFetching;
+
+  /**
+   * Tài khoản + mật khẩu đã lưu từ lượt đăng nhập ĐÚNG gần nhất (nếu có) — điền sẵn để người
+   * dùng chỉ còn phải bấm Đăng nhập. `staleTime: 0` như `captchaQuery`: đọc lại mỗi lần mở
+   * dialog để không hiện nhầm mật khẩu cũ nếu công ty đang chọn vừa đổi trong lúc dialog đóng.
+   *
+   * Khóa theo MST, KHÔNG dùng `useId()` như `captchaQuery`: captcha là tài nguyên DÙNG-MỘT-LẦN
+   * (khóa riêng từng instance để hai dialog mở cùng lúc không đè phiên của nhau), còn credential
+   * là một GET không trạng thái — khóa theo MST cho phép `handleSubmit` invalidate đúng chỗ sau
+   * khi đăng nhập, mirror `useGdtSavedPasswordQuery`/`gdtSavedPasswordKey` bên `dialogLoginHddt.tsx`.
+   */
+  const mst = activeMst ?? "";
+  const credentialQuery = useQuery({
+    queryKey: dvcCredentialKey(mst),
+    queryFn: getDvcCredential,
+    enabled: open && !!mst,
+    staleTime: 0,
+  });
+  const credential = credentialQuery.data;
+  // Chỉ điền sẵn 1 lần mỗi lần mở, để không đè lên khi người dùng đã sửa tay (kể cả nếu
+  // TanStack Query refetch lại giữa chừng, vd `refetchOnWindowFocus`) — cùng cơ chế
+  // `didPrefillRef` bên `dialogLoginHddt.tsx`.
+  const didPrefillRef = useRef(false);
+  const queryClient = useQueryClient();
 
   const loginMutation = useMutation({ mutationFn: loginDvc });
   const submitting = loginMutation.isPending;
@@ -130,6 +171,7 @@ export default function DialogLoginDVC({
     setUsername(initialUsername ?? "");
     setPassword("");
     setError("");
+    didPrefillRef.current = false;
   }, [open, initialUsername]);
 
   // TỰ ĐIỀN MÃ CAPTCHA: mỗi khi backend trả về kết quả OCR (`captcha.answer`),
@@ -139,6 +181,34 @@ export default function DialogLoginDVC({
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setCaptchaInput(captcha.answer);
   }, [captcha?.key, captcha?.answer]);
+
+  /**
+   * TỰ ĐIỀN TÀI KHOẢN + MẬT KHẨU đã lưu (nếu có), CHỈ MỘT LẦN mỗi lần mở (`didPrefillRef`) —
+   * tách khỏi effect reset ở trên vì lý do y hệt effect captcha: dữ liệu này tới KHÔNG đồng bộ
+   * với `open` (phải chờ round-trip API), gộp chung effect reset thì lúc `credential` về sau sẽ
+   * không có dịp ghi vào ô nữa.
+   *
+   * Mật khẩu: idiom `prev || X` như `dialogLoginHddt.tsx` — ô luôn bắt đầu rỗng nên chỉ điền
+   * khi còn trống, không đè lên nếu người dùng đã kịp gõ.
+   * Tên đăng nhập: KHÔNG dùng được cùng idiom — ô này bắt đầu đã có sẵn giá trị ĐOÁN
+   * (`initialUsername`, effect reset ở trên điền), `prev || X` sẽ không bao giờ thắng được giá
+   * trị đoán để thay bằng tên đăng nhập THẬT đã lưu. Chỉ ghi đè khi ô vẫn còn nguyên giá trị
+   * đoán (người dùng chưa sửa tay).
+   */
+  useEffect(() => {
+    if (!open || didPrefillRef.current || !credential) return;
+    didPrefillRef.current = true;
+    if (credential.username) {
+      const doan = initialUsername ?? "";
+      const tenThat = credential.username;
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setUsername((prev) => (prev === doan ? tenThat : prev));
+    }
+    if (credential.password) {
+      const matKhauThat = credential.password;
+      setPassword((prev) => prev || matKhauThat);
+    }
+  }, [open, credential, initialUsername]);
 
   const handleSubmit = (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
@@ -171,6 +241,12 @@ export default function DialogLoginDVC({
             refreshCaptcha();
             return;
           }
+
+          // BE vừa lưu/cập nhật credential khi đăng nhập không có cờ lỗi (xem `login` ở
+          // gdt-dvc.controller.ts) -> làm mới cache mật khẩu đã lưu để lần mở sau (hoặc phiên
+          // hiện tại nếu dialog không unmount) điền đúng bản mới nhất — cùng cách
+          // `dialogLoginHddt.tsx` làm sau khi đăng nhập HĐĐT thành công.
+          if (mst) void queryClient.invalidateQueries({ queryKey: dvcCredentialKey(mst) });
 
           // Không hiện Alert "thành công" ở đây: `onLoginSuccess` khiến trang cha đóng dialog
           // này NGAY trong cùng tick (xem `DvcPage.handleLoginSuccess`), nên Alert không kịp
