@@ -1,5 +1,6 @@
 import type { FastifyInstance } from 'fastify';
 import * as ctrl from '../../../controllers/client/accounting/tonKho/danh_muc/dvt.controller';
+import { requireModule } from '../../../services/shared/modules.service';
 
 /**
  * Tồn kho › Danh mục › Đơn vị tính (dmdvt).
@@ -8,6 +9,7 @@ import * as ctrl from '../../../controllers/client/accounting/tonKho/danh_muc/dv
  */
 export async function dvtRoutes(app: FastifyInstance) {
   app.addHook('preHandler', app.authenticate);
+  app.addHook('preHandler', requireModule('accounting'));
 
   app.get('/dvt', ctrl.list);
   app.post('/dvt', ctrl.create);

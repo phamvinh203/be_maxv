@@ -1,5 +1,6 @@
 import type { FastifyInstance } from 'fastify';
 import * as ctrl from '../../../controllers/client/accounting/tonKho/danh_muc/kho.controller';
+import { requireModule } from '../../../services/shared/modules.service';
 
 /**
  * Tồn kho › Danh mục › Kho hàng (dmkho).
@@ -8,6 +9,7 @@ import * as ctrl from '../../../controllers/client/accounting/tonKho/danh_muc/kh
  */
 export async function khoRoutes(app: FastifyInstance) {
   app.addHook('preHandler', app.authenticate);
+  app.addHook('preHandler', requireModule('accounting'));
 
   app.get('/kho', ctrl.list);
   app.post('/kho', ctrl.create);

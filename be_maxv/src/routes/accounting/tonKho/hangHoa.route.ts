@@ -1,5 +1,6 @@
 import type { FastifyInstance } from 'fastify';
 import * as ctrl from '../../../controllers/client/accounting/tonKho/danh_muc/hangHoa.controller';
+import { requireModule } from '../../../services/shared/modules.service';
 
 /**
  * Tồn kho › Danh mục › Hàng hóa (+ lookup cho form).
@@ -9,6 +10,7 @@ import * as ctrl from '../../../controllers/client/accounting/tonKho/danh_muc/ha
 export async function tonKhoRoutes(app: FastifyInstance) {
   // Mọi endpoint trong nhóm này yêu cầu JWT hợp lệ.
   app.addHook('preHandler', app.authenticate);
+  app.addHook('preHandler', requireModule('accounting'));
 
   // --- Hàng hóa (dmvt) ---
   app.get('/hang-hoa', ctrl.list);

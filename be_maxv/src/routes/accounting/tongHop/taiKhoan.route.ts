@@ -1,5 +1,6 @@
 import type { FastifyInstance } from 'fastify';
 import * as ctrl from '../../../controllers/client/accounting/tongHop/danh_muc/taiKhoan.controller';
+import { requireModule } from '../../../services/shared/modules.service';
 
 /**
  * Tổng hợp › Danh mục › Tài khoản (dmtk).
@@ -8,6 +9,7 @@ import * as ctrl from '../../../controllers/client/accounting/tongHop/danh_muc/t
  */
 export async function taiKhoanRoutes(app: FastifyInstance) {
   app.addHook('preHandler', app.authenticate);
+  app.addHook('preHandler', requireModule('accounting'));
 
   app.get('/tai-khoan', ctrl.list);
   app.post('/tai-khoan', ctrl.create);

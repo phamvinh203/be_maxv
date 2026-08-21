@@ -1,5 +1,6 @@
 import type { FastifyInstance } from 'fastify';
 import * as ctrl from '../../../controllers/client/accounting/tonKho/danh_muc/maGd.controller';
+import { requireModule } from '../../../services/shared/modules.service';
 
 /**
  * Tồn kho › Danh mục › Mã giao dịch (dmmagd).
@@ -8,6 +9,7 @@ import * as ctrl from '../../../controllers/client/accounting/tonKho/danh_muc/ma
  */
 export async function maGdRoutes(app: FastifyInstance) {
   app.addHook('preHandler', app.authenticate);
+  app.addHook('preHandler', requireModule('accounting'));
 
   app.get('/ma-gd', ctrl.list);
   app.post('/ma-gd', ctrl.create);

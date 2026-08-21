@@ -1,5 +1,6 @@
 import type { FastifyInstance } from 'fastify';
 import * as ctrl from '../../../controllers/client/accounting/tongHop/danh_muc/tienTe.controller';
+import { requireModule } from '../../../services/shared/modules.service';
 
 /**
  * Tổng hợp › Danh mục › Tiền tệ / ngoại tệ (dmnt).
@@ -7,6 +8,7 @@ import * as ctrl from '../../../controllers/client/accounting/tongHop/danh_muc/t
  */
 export async function tienTeRoutes(app: FastifyInstance) {
   app.addHook('preHandler', app.authenticate);
+  app.addHook('preHandler', requireModule('accounting'));
 
   app.get('/tien-te', ctrl.list);
   app.post('/tien-te', ctrl.create);

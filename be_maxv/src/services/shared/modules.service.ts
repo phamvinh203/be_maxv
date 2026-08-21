@@ -1,10 +1,14 @@
+import type { FastifyRequest } from 'fastify';
 import { sysPrisma } from '../../config/db.sys';
 import {
   MODULE_KEYS,
   khongCoModule,
+  type ModuleKey,
   type UserModules,
 } from '../../constants/modules';
 import type { Prisma, Role, SubscriptionStatus } from '../../generated/sys';
+import { ForbiddenError, UnauthorizedError } from '../../helpers/errors';
+import { MESSAGES } from '../../constants/messages';
 
 export type { ModuleKey, UserModules } from '../../constants/modules';
 
@@ -94,4 +98,39 @@ export async function moduleCuaUser(user: {
     select: SELECT_GOI,
   });
   return moduleCuaGoi(sub);
+}
+
+/** Ném ForbiddenError nếu quyền module đã quy đổi không có `module`. Hàm thuần, không đụng DB. */
+export function assertModuleAllowed(modules: UserModules, module: ModuleKey): void {
+  if (!modules[module]) {
+    throw new ForbiddenError(MESSAGES.SUBSCRIPTION.MODULE_NOT_INCLUDED);
+  }
+}
+
+/**
+ * Guard theo module gói — dùng SAU `fastify.authenticate` (cần `req.user`).
+ *
+ * JWT chỉ mang `role`/`donViId` (xem `types/fastify.d.ts`), không mang `ownerId` của
+ * `moduleCuaUser`, nên phải tra lại user thật (giống `loadUserSession` ở auth.service.ts)
+ * rồi mới quy đổi quyền — không tránh được thêm 1 lượt DB, nhưng module đổi ngay khi đổi
+ * gói nên không thể tin dữ liệu ký sẵn trong token.
+ *
+ *   preHandler: [fastify.authenticate, requireModule('dvc')]
+ */
+export function requireModule(module: ModuleKey) {
+  return async (req: FastifyRequest): Promise<void> => {
+    // ADMIN luôn có tất cả module (giống nhánh tatCaModule() trong moduleCuaUser) — khỏi tốn 2
+    // lượt DB để đi vòng tới cùng kết luận. Role đọc thẳng từ JWT là đủ tin, cùng mức tin cậy
+    // với requireRole() ở jwt.plugin.ts (route admin cũng chỉ soi req.user.role, không tra lại DB).
+    if (req.user.role === 'ADMIN') return;
+
+    const user = await sysPrisma.user.findUnique({
+      where: { id: req.user.userId },
+      select: { id: true, role: true, ownerId: true, isActive: true },
+    });
+    if (!user || !user.isActive) {
+      throw new UnauthorizedError(MESSAGES.AUTH.UNAUTHORIZED);
+    }
+    assertModuleAllowed(await moduleCuaUser(user), module);
+  };
 }
