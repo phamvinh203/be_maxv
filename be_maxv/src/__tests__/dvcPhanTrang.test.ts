@@ -52,3 +52,24 @@ test("bocPhanTrang: markup đổi một nửa -> phần đọc được vẫn tr
     tongSoTrang: 3,
   });
 });
+
+// ---------------- Pager tab Thuế điện tử ----------------
+
+// Markup THẬT của tab Thuế điện tử — khác DVC: không có `id="totalPage"`, và dùng em-dash.
+const HTML_TDT = `<div class="order-3 order-md-2 d-none d-md-block flex-grow-1 text-center">
+ <span class="fw-bold small"> Trang <span>1</span>/ <span>1</span> — Tổng số bản ghi: <span>10</span> </span>
+ </div>`;
+
+test("bocPhanTrang: đọc được pager kiểu ETAX (không có id=totalPage)", () => {
+  assert.deepEqual(bocPhanTrang(HTML_TDT), { tongSoBanGhi: 10, tongSoTrang: 1 });
+});
+
+test("bocPhanTrang: pager ETAX nhiều trang", () => {
+  const html = HTML_TDT.replace("<span>1</span>/ <span>1</span>", "<span>2</span>/ <span>7</span>");
+  assert.deepEqual(bocPhanTrang(html), { tongSoBanGhi: 10, tongSoTrang: 7 });
+});
+
+test("bocPhanTrang: dạng DVC vẫn ưu tiên khi có cả hai", () => {
+  const html = `<span id="totalPage">3</span> - Tổng số bản ghi: <span>25</span>` + HTML_TDT;
+  assert.deepEqual(bocPhanTrang(html), { tongSoBanGhi: 25, tongSoTrang: 3 });
+});

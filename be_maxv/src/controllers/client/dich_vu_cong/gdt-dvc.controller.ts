@@ -514,7 +514,10 @@ export async function taiFileHoSo(
       request,
       key: q.key,
       docCache: () => DvcDongBo.layFileHoSoDaLuu(tenantDb, maHoSo),
-      goiCong: (key) => DvcService.taiXmlHoSo(key, maHoSo),
+      // Nguồn đọc từ DB, KHÔNG mặc định `dvc`: hồ sơ nguồn ETAX dùng endpoint khác hẳn. Đọc bên
+      // trong `goiCong` nên chỉ tốn thêm một query khi cache miss, không phải mọi lượt.
+      goiCong: async (key) =>
+        DvcService.taiXmlHoSo(key, maHoSo, await DvcDongBo.layNguonHoSoDaLuu(tenantDb, maHoSo)),
       ghiCache: (tep) => DvcDongBo.luuFileHoSoVaoCache(tenantDb, maHoSo, tep),
       thieuKeyMessage:
         'Hồ sơ chưa đồng bộ — bấm "Đăng nhập cổng Dịch vụ công" rồi thử lại để tải trực tiếp.',
@@ -588,7 +591,10 @@ export async function chiTietToKhai(
       request,
       key: q.key,
       docCache: () => DvcDongBo.layFileHoSoDaLuu(tenantDb, maHoSo),
-      goiCong: (key) => DvcService.taiXmlHoSo(key, maHoSo),
+      // Nguồn đọc từ DB, KHÔNG mặc định `dvc`: hồ sơ nguồn ETAX dùng endpoint khác hẳn. Đọc bên
+      // trong `goiCong` nên chỉ tốn thêm một query khi cache miss, không phải mọi lượt.
+      goiCong: async (key) =>
+        DvcService.taiXmlHoSo(key, maHoSo, await DvcDongBo.layNguonHoSoDaLuu(tenantDb, maHoSo)),
       ghiCache: (tep) => DvcDongBo.luuFileHoSoVaoCache(tenantDb, maHoSo, tep),
       thieuKeyMessage:
         'Hồ sơ chưa đồng bộ — bấm "Đăng nhập cổng Dịch vụ công" rồi thử lại để xem trực tiếp.',
@@ -633,7 +639,8 @@ export async function taiThongBao(
       request,
       key: q.key,
       docCache: () => DvcDongBo.layFileThongBaoDaLuu(tenantDb, maHoSo, idTbao),
-      goiCong: (key) => DvcService.taiThongBao(key, maHoSo, idTbao),
+      goiCong: async (key) =>
+        DvcService.taiThongBao(key, maHoSo, idTbao, await DvcDongBo.layNguonHoSoDaLuu(tenantDb, maHoSo)),
       ghiCache: (tep) => DvcDongBo.luuFileThongBaoVaoCache(tenantDb, maHoSo, idTbao, tep),
       thieuKeyMessage:
         'Thông báo chưa đồng bộ — bấm "Đăng nhập cổng Dịch vụ công" rồi thử lại để tải trực tiếp.',
@@ -678,7 +685,8 @@ export async function danhSachThongBao(
       request,
       key: q.key,
       docCache: () => DvcDongBo.layDanhSachThongBaoDaLuu(tenantDb, maHoSo),
-      goiCong: (key) => DvcService.layDanhSachThongBao(key, maHoSo),
+      goiCong: async (key) =>
+        DvcService.layDanhSachThongBao(key, maHoSo, await DvcDongBo.layNguonHoSoDaLuu(tenantDb, maHoSo)),
       ghiCache: (ds) => DvcDongBo.luuMetaThongBaoVaoCache(tenantDb, maHoSo, ds),
       thieuKeyMessage:
         'Hồ sơ chưa đồng bộ — bấm "Đăng nhập cổng Dịch vụ công" rồi thử lại để xem trực tiếp.',

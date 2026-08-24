@@ -141,7 +141,7 @@ export interface TabDvc {
 }
 
 /**
- * Ba loại hồ sơ của khu Dịch vụ công.
+ * Các loại hồ sơ của khu Dịch vụ công.
  *
  * Mỗi tab khai đủ nhãn bộ lọc và cột bảng của nó ở đây, nên thêm tab hay đổi
  * cột đều không phải đụng vào `DvcPage`.
@@ -149,18 +149,12 @@ export interface TabDvc {
 export const TAB_DVC: TabDvc[] = [
   {
     value: "to-khai-dvc",
-    label: "Tờ khai (Dịch vụ công)",
+    label: "Tờ khai (Dịch vụ công - thuế điện tử)",
     tieuDeBoLoc: "Bộ lọc tờ khai đã được đồng bộ",
     nhanBoLoc: NHAN_TO_KHAI,
     cotBang: COT_TO_KHAI,
   },
-  {
-    value: "to-khai-thue-dien-tu",
-    label: "Tờ khai (Thuế điện tử)",
-    tieuDeBoLoc: "Bộ lọc tờ khai đã được đồng bộ",
-    nhanBoLoc: NHAN_TO_KHAI,
-    cotBang: COT_TO_KHAI,
-  },
+
   {
     value: "giay-nop-tien",
     label: "Giấy nộp tiền",

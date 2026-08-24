@@ -147,3 +147,17 @@ test("cổng ÉP cỡ trang nhỏ hơn số xin -> vẫn lấy đủ theo cỡ t
 
   assert.deepEqual(maCua(r), ["HS-1", "HS-2", "HS-3", "HS-4", "HS-5", "HS-6"]);
 });
+
+test("bảng nguồn ETAX (cột 'Mã giao dịch') vẫn chống trùng được", async () => {
+  // Vòng gộp chống trùng bằng cột "Mã hồ sơ". Bảng ETAX thô gọi cột đó là "Mã giao dịch", nên nếu
+  // chuẩn hoá tên cột xảy ra SAU vòng gộp thì mọi dòng có mã rỗng và chống trùng câm hoàn toàn —
+  // cổng lờ `page` là nhân bản dữ liệu mà `thieuHoSo` vẫn báo 0. `traCuuHoSo` chuẩn hoá ngay trong
+  // callback lấy trang chính là để tránh chuyện đó.
+  const H = ["STT", "Mã hồ sơ", "Ngày nộp"];
+  const rows = [["1", "HS-1", "x"], ["2", "HS-2", "x"], ["3", "HS-3", "x"]];
+  const r = await gopCacTrangHoSo(
+    () => Promise.resolve({ bang: { headers: H, rows }, phanTrang: CO_PAGER(9, 3) }),
+    { size: 3 },
+  );
+  assert.equal(r.rows.length, 3, "cổng trả lại y hệt mỗi trang -> phải dừng ở 3 dòng");
+});
