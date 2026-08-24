@@ -32,8 +32,14 @@ export interface CotBang {
    * `header`.
    */
   srcHeader?: string;
-  /** Bề rộng gợi ý (px). Bỏ trống = để bảng tự co theo nội dung. */
-  width?: number;
+  /**
+   * Chặn bề rộng ô (px) rồi cho nội dung XUỐNG DÒNG, cắt còn `SO_DONG_CO_HEP` dòng kèm "…".
+   *
+   * Chỉ đặt cho cột có nội dung dài bất định (tên thủ tục, tên tờ khai) — mọi ô khác giữ
+   * `nowrap` vì để chúng xuống dòng chỉ làm dòng cao thấp so le mà chẳng hẹp thêm được bao nhiêu.
+   * Chữ bị cắt KHÔNG mất: `BangHoSo` gắn `title` nên rê chuột là thấy đủ.
+   */
+  rongToiDa?: number;
   align?: "center" | "right";
   /**
    * Cột NÚT HÀNH ĐỘNG (tải file, xem đính kèm, xem thông báo…) thay vì cột dữ liệu văn bản.
@@ -59,10 +65,16 @@ export interface CotBang {
  * nối nút hành động (`action: true`) — xem `ICON_HANH_DONG` trong `BangHoSo`.
  */
 const COT_TO_KHAI: CotBang[] = [
-  { key: "stt", header: "STT", width: 60, align: "center" },
+  { key: "stt", header: "STT", align: "center" },
   { key: "maGiaoDich", header: "Mã giao dịch", srcHeader: "Mã hồ sơ" },
-  { key: "tenThuTuc", header: "Tên thủ tục hành chính", srcHeader: "Tên TTHC" },
-  { key: "toKhaiPhuLuc", header: "Tờ khai / Phụ lục", srcHeader: "Tờ khai", clickable: true },
+  { key: "tenThuTuc", header: "Tên thủ tục hành chính", srcHeader: "Tên TTHC", rongToiDa: 260 },
+  {
+    key: "toKhaiPhuLuc",
+    header: "Tờ khai / Phụ lục",
+    srcHeader: "Tờ khai",
+    clickable: true,
+    rongToiDa: 240,
+  },
   { key: "khauTruKyTruoc", header: "Khấu trừ kỳ trước", align: "right", format: "money" },
   { key: "giaTriHhdvMuaVao", header: "Giá trị HHDV mua vào", align: "right", format: "money" },
   {
@@ -110,7 +122,7 @@ const COT_TO_KHAI: CotBang[] = [
  * nên khai riêng chứ không cố dùng chung.
  */
 const COT_GIAY_NOP_TIEN: CotBang[] = [
-  { key: "stt", header: "STT", width: 60, align: "center" },
+  { key: "stt", header: "STT", align: "center" },
   { key: "soThamChieu", header: "Số tham chiếu / Mã giao dịch" },
   { key: "maGiaoDichDsChiTiet", header: "Mã giao dịch DS chi tiết" },
   { key: "lanNop", header: "Lần nộp", align: "center" },
