@@ -46,8 +46,8 @@ export interface CotBang {
   format?: "money";
   /**
    * Ô hiện thành link bấm được (mở dialog "Xem tờ khai") thay vì text thường, khi dòng có
-   * `maGiaoDich` — `BangHoSo` gọi `onXemToKhai(maHoSo)` khi bấm. Cùng cách khai báo với `action`:
-   * thêm cột bấm được khác chỉ cần đặt cờ này, khỏi sửa vòng lặp render.
+   * `maGiaoDich` VÀ ô này có giá trị — `BangHoSo` gọi `onXemToKhai(maHoSo)` khi bấm. Cùng cách khai
+   * báo với `action`: thêm cột bấm được khác chỉ cần đặt cờ này, khỏi sửa vòng lặp render.
    */
   clickable?: boolean;
 }
@@ -61,8 +61,8 @@ export interface CotBang {
 const COT_TO_KHAI: CotBang[] = [
   { key: "stt", header: "STT", width: 60, align: "center" },
   { key: "maGiaoDich", header: "Mã giao dịch", srcHeader: "Mã hồ sơ" },
-  { key: "tenThuTuc", header: "Tên thủ tục hành chính", srcHeader: "Tên TTHC", clickable: true },
-  { key: "toKhaiPhuLuc", header: "Tờ khai / Phụ lục", srcHeader: "Tờ khai" },
+  { key: "tenThuTuc", header: "Tên thủ tục hành chính", srcHeader: "Tên TTHC" },
+  { key: "toKhaiPhuLuc", header: "Tờ khai / Phụ lục", srcHeader: "Tờ khai", clickable: true },
   { key: "khauTruKyTruoc", header: "Khấu trừ kỳ trước", align: "right", format: "money" },
   { key: "giaTriHhdvMuaVao", header: "Giá trị HHDV mua vào", align: "right", format: "money" },
   {

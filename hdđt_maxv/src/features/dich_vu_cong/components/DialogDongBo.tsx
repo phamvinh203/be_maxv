@@ -73,6 +73,9 @@ interface Props {
   /** Khóa phiên cổng DVC đã đăng nhập — `null` = chưa đăng nhập, nút "Đồng bộ" báo cần đăng nhập
    * trước (đồng bộ vẫn gọi cổng thật, khác nút "Tìm kiếm" chính đã đọc thẳng DB). */
   dvcKey: string | null;
+  /** Báo lên `DvcPage` khi lượt đồng bộ hỏng, để nơi đó bỏ khóa phiên nếu BE nói phiên chết hẳn —
+   * xem `boKhoaNeuPhienChet`. Dialog không tự giữ khóa nên không tự bỏ được. */
+  onPhienChet?: (err: unknown) => void;
 }
 
 /**
@@ -82,7 +85,7 @@ interface Props {
  * Tách hẳn khỏi ô tìm kiếm ở `DvcPage`: tìm kiếm đọc thẳng dữ liệu đã lưu (nhanh, không cần đăng
  * nhập cổng), còn đồng bộ mới là lượt gọi cổng thật — gộp chung thì mỗi lần lọc lại phải chờ cổng.
  */
-export default function DialogDongBo({ open, onClose, dvcKey }: Props) {
+export default function DialogDongBo({ open, onClose, dvcKey, onPhienChet }: Props) {
   const [loai, setLoai] = useState(TAB_DVC[0]!.value);
   const [range, setRange] = useState(currentMonthRange);
   const [loiForm, setLoiForm] = useState("");
@@ -114,13 +117,11 @@ export default function DialogDongBo({ open, onClose, dvcKey }: Props) {
           ? `Đồng bộ xong: ${log.dong_bo_xong} hồ sơ mới, ${log.da_co_san} đã có sẵn.`
           : `Đồng bộ xong nhưng còn ${log.loi} hồ sơ lỗi — sẽ tự bù ở lượt sau.`,
       );
-      // TODO(tạm): CHỈ để debug xem BE có tự đăng nhập lại ngầm không — xóa khối này + field
-      // `_tuDongDangNhapLai` bên BE (gdt-dvc.controller.ts) khi hết cần theo dõi.
-      if ((log as unknown as { _tuDongDangNhapLai?: boolean })._tuDongDangNhapLai) {
-        toast.info("[DEBUG] BE vừa tự đăng nhập lại cổng Dịch vụ công ngầm.");
-      }
     },
-    onError: (err) => toast.error(getErrorMessage(err, "Đồng bộ dữ liệu Dịch vụ công thất bại.")),
+    onError: (err) => {
+      onPhienChet?.(err);
+      toast.error(getErrorMessage(err, "Đồng bộ dữ liệu Dịch vụ công thất bại."));
+    },
   });
 
   const xoaMutation = useMutation({

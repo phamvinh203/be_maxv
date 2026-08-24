@@ -2,6 +2,8 @@ import { API_BASE } from "../config/api";
 
 interface ApiErrorBody {
   message?: string;
+  /** Mã lỗi máy đọc được, BE gắn cho vài trường hợp FE cần rẽ nhánh (vd `DVC_AUTO_LOGIN_FAILED`). */
+  code?: string;
 }
 
 /**
@@ -12,11 +14,14 @@ interface ApiErrorBody {
  */
 export class ApiError extends Error {
   readonly status: number;
+  /** `code` BE gửi kèm (nếu có) — rẽ nhánh theo mã thay vì dò câu chữ thông báo tiếng Việt. */
+  readonly code?: string;
 
-  constructor(message: string, status: number) {
+  constructor(message: string, status: number, code?: string) {
     super(message);
     this.name = "ApiError";
     this.status = status;
+    this.code = code;
   }
 }
 
@@ -117,7 +122,7 @@ async function apiFetchRaw(path: string, options: ApiFetchOptions = {}): Promise
 async function throwIfNotOk(res: Response): Promise<void> {
   if (res.ok) return;
   const body = (await res.json().catch(() => ({}))) as ApiErrorBody;
-  throw new ApiError(body.message || `Yêu cầu thất bại (${res.status})`, res.status);
+  throw new ApiError(body.message || `Yêu cầu thất bại (${res.status})`, res.status, body.code);
 }
 
 /**
@@ -129,7 +134,7 @@ export async function apiFetch<T>(path: string, options: ApiFetchOptions = {}): 
   // Đọc body TRƯỚC khi kiểm ok: nhánh thành công cần chính body này, mà body chỉ đọc được 1 lần.
   const body = (await res.json().catch(() => ({}))) as T & ApiErrorBody;
   if (!res.ok) {
-    throw new ApiError(body.message || `Yêu cầu thất bại (${res.status})`, res.status);
+    throw new ApiError(body.message || `Yêu cầu thất bại (${res.status})`, res.status, body.code);
   }
   return body;
 }

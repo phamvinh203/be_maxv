@@ -17,8 +17,10 @@ import Typography from "@mui/material/Typography";
 import CircularProgress from "@mui/material/CircularProgress";
 import CloseRounded from "@mui/icons-material/CloseRounded";
 import { layChiTietToKhaiDvc, type DvcChiTietToKhai } from "../api/dvc";
+import { useBaoPhienChet } from "../useBaoPhienChet";
 import { getErrorMessage } from "../../../lib/errors";
 import ToKhaiGtgt01Form from "./ToKhaiGtgt01Form";
+import ToKhaiTNCN05Form from "./ToKhaiTNCN05Form";
 
 interface Props {
   open: boolean;
@@ -26,6 +28,8 @@ interface Props {
   dvcKey: string | null;
   /** Mã hồ sơ đang xem — `null` khi chưa chọn dòng nào (dialog không fetch). */
   maHoSo: string | null;
+  /** Báo lên `DvcPage` để bỏ khóa phiên khi BE nói phiên chết hẳn — xem `boKhoaNeuPhienChet`. */
+  onPhienChet?: (err: unknown) => void;
 }
 
 function RawXmlView({ xml }: { xml: string }) {
@@ -47,10 +51,25 @@ function RawXmlView({ xml }: { xml: string }) {
   );
 }
 
-/** Nội dung đã bóc, tách theo `loai` — mẫu 01/GTGT dựng lại đúng layout mẫu in qua
- * `ToKhaiGtgt01Form`; mẫu khác hiện bảng tên-thẻ-XML-thô/giá-trị kèm cảnh báo "chưa có layout". */
+/**
+ * Mẫu nào có layout mẫu in riêng thì cần khổ dialog RỘNG (bảng chỉ tiêu nhiều cột, nhãn dài mấy
+ * dòng); mẫu `raw` giữ khổ hẹp.
+ *
+ * Để cạnh chỗ chọn component thay vì viết rời một biểu thức `loai === ... || loai === ...` cách đó
+ * mấy chục dòng: thêm mẫu mà quên cập nhật thì trước đây dialog lặng lẽ render khổ hẹp, không lỗi
+ * biên dịch nào cả.
+ */
+const CAN_KHO_RONG: Record<Exclude<DvcChiTietToKhai["loai"], "raw">, true> = {
+  gtgt01: true,
+  tncn05: true,
+};
+
+/** Nội dung đã bóc, tách theo `loai` — mẫu 01/GTGT và 05/KK-TNCN dựng lại đúng layout mẫu in qua
+ * form riêng của từng mẫu; mẫu khác hiện bảng tên-thẻ-XML-thô/giá-trị kèm cảnh báo "chưa có
+ * layout". */
 function NoiDungDaBoc({ data }: { data: DvcChiTietToKhai }) {
   if (data.loai === "gtgt01") return <ToKhaiGtgt01Form data={data.duLieu} />;
+  if (data.loai === "tncn05") return <ToKhaiTNCN05Form data={data.duLieu} />;
 
   if (data.chiTieu.length === 0) {
     return (
@@ -85,12 +104,12 @@ function NoiDungDaBoc({ data }: { data: DvcChiTietToKhai }) {
 
 /**
  * Dialog "Xem tờ khai" — nội dung bóc từ XML tờ khai đã lưu của một hồ sơ
- * (`GET /dvc/ho-so/to-khai-chi-tiet`), mở khi bấm vào ô cột "Tên thủ tục hành chính". Xem
+ * (`GET /dvc/ho-so/to-khai-chi-tiet`), mở khi bấm vào ô cột "Tờ khai / Phụ lục". Xem
  * `NoiDungDaBoc` cho cách tách nhánh theo mẫu. Nút "Xem XML gốc" luôn có để đối chiếu khi cần.
  *
- * Dùng: `BangHoSo` (click cột "Tên thủ tục hành chính").
+ * Dùng: `BangHoSo` (click cột "Tờ khai / Phụ lục").
  */
-export default function ToKhaiXmlDialog({ open, onClose, dvcKey, maHoSo }: Props) {
+export default function ToKhaiXmlDialog({ open, onClose, dvcKey, maHoSo, onPhienChet }: Props) {
   const [xemXmlGoc, setXemXmlGoc] = useState(false);
 
   const query = useQuery({
@@ -102,10 +121,10 @@ export default function ToKhaiXmlDialog({ open, onClose, dvcKey, maHoSo }: Props
     staleTime: 30_000,
   });
 
+  useBaoPhienChet(query.error, onPhienChet);
+
   const data = query.data;
-  // Mẫu 01/GTGT rộng hơn hẳn bảng nhãn/giá-trị phẳng (cột chỉ tiêu dài, 2 cột tiền riêng) — cần
-  // dialog rộng hơn mới không vỡ layout; mẫu "raw" vẫn giữ khổ hẹp như trước.
-  const rong = data?.loai === "gtgt01";
+  const rong = !!data && data.loai !== "raw" && CAN_KHO_RONG[data.loai];
 
   return (
     <Dialog open={open} onClose={onClose} maxWidth={rong ? "md" : "sm"} fullWidth scroll="paper">

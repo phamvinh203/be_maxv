@@ -3,6 +3,7 @@ import { Prisma, type PrismaClient, type dvc_dong_bo_log } from "../../../genera
 import type { BangHoSoDaBoc, ThongBaoDaBoc } from "./hoSoHtml";
 import * as DvcService from "./gdt-dvc.service";
 import type { DvcTepTaiVe } from "./gdt-dvc.service";
+import { chuanHoaMime, doanContentType } from "./gdt-dvc.service";
 import { layChiTieuToKhaiGtgt } from "./toKhaiXml";
 
 /**
@@ -40,6 +41,60 @@ function parseNgayNop(ngayNop: string): Date | null {
 }
 
 /**
+ * Các cột nội dung tệp của `dvc_tai_lieu` cho MỘT file vừa tải — dùng chung cho mọi chỗ ghi
+ * (`dongBoChiTietHoSo` và `luuFileThongBaoVaoCache`) để bốn khối `create`/`update` không trôi khỏi
+ * nhau. Ghi NGUYÊN BYTE vào `noi_dung_bin`, KHÔNG đụng cột `noi_dung` cũ nữa (xem schema).
+ */
+function truongNoiDungTep(tep: DvcTepTaiVe) {
+  return {
+    // `new Uint8Array(...)` chứ không đưa thẳng `Buffer`: Prisma 7 đòi `Uint8Array<ArrayBuffer>`,
+    // còn `Buffer` khai là `Uint8Array<ArrayBufferLike>` (có thể nằm trên `SharedArrayBuffer`) nên
+    // không gán được. Đây là bản SAO, chi phí không đáng kể với cỡ file thông báo.
+    noi_dung_bin: new Uint8Array(tep.bytes),
+    content_type: tep.contentType,
+    ten_file: tep.fileName,
+  };
+}
+
+/**
+ * Các cột nội dung tờ khai của `dvc_ho_so` cho MỘT file vừa tải — song sinh với `truongNoiDungTep`,
+ * dùng chung cho `dongBoChiTietHoSo` và `luuFileHoSoVaoCache`. Ghi NGUYÊN BYTE vào `xml_to_khai_bin`,
+ * KHÔNG đụng cột `xml_to_khai` cũ nữa (xem schema).
+ */
+function truongToKhai(tep: DvcTepTaiVe) {
+  return {
+    // Xem chú thích `new Uint8Array` ở `truongNoiDungTep`.
+    xml_to_khai_bin: new Uint8Array(tep.bytes),
+    content_type: tep.contentType,
+    ten_file_xml: tep.fileName,
+  };
+}
+
+/**
+ * Tờ khai dạng CHUỖI để bóc chỉ tiêu cho bảng tìm kiếm — `null` khi chưa tải, hoặc khi file KHÔNG
+ * phải văn bản XML.
+ *
+ * Cái guard `application/xml` mới là điểm chính: từ khi `xml_to_khai_bin` nhận được cả nhị phân,
+ * một hồ sơ trả PDF sẽ cho ra chuỗi rác nếu cứ `toString("utf8")` rồi ném vào
+ * `layChiTieuToKhaiGtgt` — regex vẫn chạy, vẫn có thể vớ trúng thứ gì đó, và cột chỉ tiêu trên bảng
+ * hiện số bịa. Không đọc được thì để trống, đúng quy ước "ô trống là kiểu hỏng nhìn ra được".
+ */
+export function xmlToKhaiDangChuoi(h: {
+  xml_to_khai_bin: Uint8Array | null;
+  content_type: string | null;
+  xml_to_khai: string | null;
+  ten_file_xml: string | null;
+}): string | null {
+  if (h.xml_to_khai_bin) {
+    const mime = h.content_type ? chuanHoaMime(h.content_type) : doanContentType(h.ten_file_xml);
+    if (!mime.includes("xml")) return null;
+    return Buffer.from(h.xml_to_khai_bin).toString("utf8");
+  }
+  // Dòng cũ chỉ có cột Text: tới được đây thì chắc chắn là văn bản (nhị phân chưa bao giờ ghi nổi).
+  return h.xml_to_khai;
+}
+
+/**
  * Đồng bộ CHI TIẾT một hồ sơ (tờ khai XML + danh sách thông báo + nội dung từng thông báo) — chỉ
  * gọi cho hồ sơ MỚI/chưa đồng bộ trọn vẹn, xem `dongBoHoSo`.
  *
@@ -48,32 +103,39 @@ function parseNgayNop(ngayNop: string): Date | null {
  * gọi cổng trực tiếp như trước, không đổi. `da_dong_bo=true` ở đây nghĩa là "đã đồng bộ trọn vẹn
  * PHẦN đã có bộ bóc tin cậy", không phải tuyệt đối mọi dữ liệu liên quan hồ sơ.
  *
- * Lỗi ở MỘT thông báo (vd file tải hỏng) chỉ bỏ qua thông báo đó (log cảnh báo), không chặn cả hồ
- * sơ — hồ sơ vẫn coi là đồng bộ xong nếu tờ khai XML tải được.
+ * `da_dong_bo` chỉ được bật SAU KHI vòng tải thông báo chạy hết và KHÔNG thông báo nào lỗi. Trước
+ * đây cờ này nằm chung khối `update` với xml, tức bật TRƯỚC khi tải thông báo — mà lỗi thông báo lại
+ * bị nuốt, nên hồ sơ thiếu thông báo vẫn mang cờ "trọn vẹn"; lượt đồng bộ sau thấy cờ là bỏ qua
+ * (`da_co_san`), thông báo thiếu VĨNH VIỄN không bao giờ được bù. Nay thiếu thông báo -> cờ giữ
+ * `false` -> lượt sau tự thử lại đúng hồ sơ đó, đúng như schema tự khai.
+ *
+ * Trả về số thông báo hỏng để `dongBoHoSo` tính vào `loi` thay vì im lặng — hồ sơ dở dang phải
+ * hiện lên trong lịch sử đồng bộ, không thì không ai biết mà tra.
  */
 async function dongBoChiTietHoSo(
   tenantDb: PrismaClient,
-  dvcKey: string,
+  phien: DvcService.DvcPhien,
   maHoSo: string,
-): Promise<void> {
-  const xml = await DvcService.taiXmlHoSo(dvcKey, maHoSo);
+): Promise<{ thongBaoLoi: number }> {
+  const xml = await DvcService.taiXmlHoSo(phien, maHoSo);
   // Ghi DB (xml vừa tải) và gọi cổng lấy danh sách thông báo ĐỘC LẬP với nhau — chạy song song
   // để độ trễ ghi DB chồng lấn với độ trễ mạng của lượt gọi cổng tiếp theo (vẫn chỉ 1 lượt gọi
   // cổng đồng thời, không vi phạm giới hạn tránh spam 429).
+  //
+  // `Promise.all` KHÔNG rollback: nhánh ghi DB có thể commit xong trong khi nhánh gọi cổng ném lỗi.
+  // Chỉ ghi xml ở đây nên điều đó vô hại (xml tải được thì cache là đúng); đó cũng chính là lý do
+  // thứ hai khiến `da_dong_bo` không được phép nằm trong khối này.
   const [, danhSachThongBao] = await Promise.all([
     tenantDb.dvc_ho_so.update({
       where: { ma_ho_so: maHoSo },
-      data: {
-        xml_to_khai: xml.bytes.toString("utf8"),
-        ten_file_xml: xml.fileName,
-        da_dong_bo: true,
-      },
+      data: truongToKhai(xml),
     }),
-    DvcService.layDanhSachThongBao(dvcKey, maHoSo),
+    DvcService.layDanhSachThongBao(phien, maHoSo),
   ]);
+  let thongBaoLoi = 0;
   for (const tb of danhSachThongBao) {
     try {
-      const file = await DvcService.taiThongBao(dvcKey, maHoSo, tb.idTbao);
+      const file = await DvcService.taiThongBao(phien, maHoSo, tb.idTbao);
       await tenantDb.dvc_tai_lieu.upsert({
         where: { loai_khoa: { loai: "thong_bao", khoa: tb.idTbao } },
         create: {
@@ -82,29 +144,37 @@ async function dongBoChiTietHoSo(
           ma_ho_so: maHoSo,
           tieu_de: tb.tieuDe,
           ngay_gui: tb.ngayGui,
-          noi_dung: file.bytes.toString("utf8"),
-          ten_file: file.fileName,
+          ...truongNoiDungTep(file),
           raw: tb as unknown as Prisma.InputJsonValue,
         },
         update: {
           tieu_de: tb.tieuDe,
           ngay_gui: tb.ngayGui,
-          noi_dung: file.bytes.toString("utf8"),
-          ten_file: file.fileName,
+          ...truongNoiDungTep(file),
         },
       });
     } catch (err) {
+      thongBaoLoi++;
       console.warn(
         `[DVC-DONG-BO] Không tải được thông báo ${tb.idTbao} của hồ sơ ${maHoSo}: ` +
           (err instanceof Error ? err.message : String(err)),
       );
     }
   }
+
+  // Chỉ tới đây — xml đã lưu, danh sách thông báo đã lấy, MỌI thông báo đã tải xong — hồ sơ mới
+  // thật sự trọn vẹn. Thiếu dù một thông báo thì để cờ nguyên `false` cho lượt sau bù.
+  if (thongBaoLoi === 0) {
+    await tenantDb.dvc_ho_so.update({ where: { ma_ho_so: maHoSo }, data: { da_dong_bo: true } });
+  }
+
+  return { thongBaoLoi };
 }
 
 export interface DongBoHoSoParams {
-  /** Khóa phiên cổng DVC ĐÃ ĐĂNG NHẬP — đồng bộ vẫn cần gọi cổng thật, khác tìm kiếm (đọc DB). */
-  dvcKey: string;
+  /** Phiên cổng DVC ĐÃ ĐĂNG NHẬP (khóa + công ty sở hữu) — đồng bộ vẫn cần gọi cổng thật, khác
+   * tìm kiếm (đọc DB). */
+  phien: DvcService.DvcPhien;
   /** `yyyy-mm-dd`. */
   tuNgay: string;
   denNgay: string;
@@ -129,7 +199,7 @@ export async function dongBoHoSo(
   params: DongBoHoSoParams,
 ): Promise<dvc_dong_bo_log> {
   const { headers, rows } = await DvcService.traCuuHoSo({
-    key: params.dvcKey,
+    ...params.phien,
     tuNgay: params.tuNgay,
     denNgay: params.denNgay,
     scope: "SELF",
@@ -192,8 +262,17 @@ export async function dongBoHoSo(
         update: { trang_thai: trangThai, raw },
       });
 
-      await dongBoChiTietHoSo(tenantDb, params.dvcKey, maHoSo);
-      dongBoXong++;
+      const { thongBaoLoi } = await dongBoChiTietHoSo(tenantDb, params.phien, maHoSo);
+      if (thongBaoLoi > 0) {
+        // Hồ sơ dở dang: xml có nhưng thiếu thông báo -> `da_dong_bo` vẫn false nên lượt sau tự bù.
+        // Tính vào `loi` để lịch sử đồng bộ nói đúng "sẽ bù ở lượt sau", thay vì báo xong mà thiếu.
+        loi++;
+        console.warn(
+          `[DVC-DONG-BO] Hồ sơ ${maHoSo} thiếu ${thongBaoLoi} thông báo — giữ da_dong_bo=false để bù ở lượt sau.`,
+        );
+      } else {
+        dongBoXong++;
+      }
     } catch (err) {
       loi++;
       console.warn(
@@ -305,15 +384,24 @@ export async function timHoSoDaDongBo(
     where,
     orderBy: { ngay_nop_date: "desc" },
     take: MAX_KET_QUA_TIM_KIEM,
-    select: { raw: true, xml_to_khai: true },
+    select: {
+      raw: true,
+      xml_to_khai_bin: true,
+      content_type: true,
+      xml_to_khai: true,
+      ten_file_xml: true,
+    },
   });
 
   if (daLuu.length === 0) return { headers: [], rows: [] };
 
-  const banDay = daLuu.map(({ raw, xml_to_khai }) => ({
-    ...(raw as Record<string, unknown>),
-    ...(xml_to_khai ? layChiTieuToKhaiGtgt(xml_to_khai) : {}),
-  }));
+  const banDay = daLuu.map((h) => {
+    const xml = xmlToKhaiDangChuoi(h);
+    return {
+      ...(h.raw as Record<string, unknown>),
+      ...(xml ? layChiTieuToKhaiGtgt(xml) : {}),
+    };
+  });
 
   const headers: string[] = [];
   for (const dong of banDay) {
@@ -337,21 +425,60 @@ export async function timHoSoDaDongBo(
 //  phần kia (vd đã có xml nhờ bấm tay nhưng thông báo thì chưa) mà tự bù, không bỏ sót.
 // ============================================================
 
-/** Tờ khai XML đã lưu của một hồ sơ — `null` nếu chưa có (kể cả khi hồ sơ chưa tồn tại trong DB). */
+/**
+ * Tờ khai đã lưu của một hồ sơ — `null` nếu chưa có (kể cả khi hồ sơ chưa tồn tại trong DB).
+ *
+ * Đọc HAI cột theo thứ tự, hệt `layFileThongBaoDaLuu`: `xml_to_khai_bin` (nguyên byte, mọi dòng ghi
+ * từ nay) trước, rồi mới tới `xml_to_khai` (Text) của bản cache cũ.
+ */
 export async function layFileHoSoDaLuu(
   tenantDb: PrismaClient,
   maHoSo: string,
 ): Promise<DvcTepTaiVe | null> {
   const hoSo = await tenantDb.dvc_ho_so.findUnique({
     where: { ma_ho_so: maHoSo },
-    select: { xml_to_khai: true, ten_file_xml: true },
+    select: {
+      xml_to_khai_bin: true,
+      content_type: true,
+      xml_to_khai: true,
+      ten_file_xml: true,
+    },
   });
-  if (!hoSo?.xml_to_khai) return null;
-  return {
-    bytes: Buffer.from(hoSo.xml_to_khai, "utf8"),
-    contentType: "application/xml",
-    fileName: hoSo.ten_file_xml || `${maHoSo}.xml`,
-  };
+  if (!hoSo) return null;
+
+  const tenFile = hoSo.ten_file_xml || `${maHoSo}.xml`;
+  // Trước đây hardcode `application/xml` cho mọi tờ khai; nay lấy MIME thật cổng khai, dòng cũ
+  // chưa có cột thì đoán theo đuôi tên file (mặc định `${maHoSo}.xml` nên vẫn ra `application/xml`).
+  const contentType = hoSo.content_type
+    ? chuanHoaMime(hoSo.content_type)
+    : doanContentType(tenFile);
+
+  if (hoSo.xml_to_khai_bin) {
+    return { bytes: Buffer.from(hoSo.xml_to_khai_bin), contentType, fileName: tenFile };
+  }
+  if (hoSo.xml_to_khai) {
+    return { bytes: Buffer.from(hoSo.xml_to_khai, "utf8"), contentType, fileName: tenFile };
+  }
+  return null;
+}
+
+/**
+ * Giá trị cột "Tờ khai" của một hồ sơ (`dvc_ho_so.to_khai`, cột "Tờ khai / Phụ lục" trên bảng) —
+ * `null` nếu hồ sơ chưa có trong DB hoặc cổng không trả ô này.
+ *
+ * Dùng làm GỢI Ý NHẬN DIỆN MẪU cho `layChiTietToKhai`: ô này thường ghi thẳng mã mẫu ("05/KK-TNCN",
+ * "01/GTGT"), chắc chắn hơn so với dò chuỗi tiêu đề bên trong XML — tiêu đề có thể viết khác nhau
+ * giữa các phiên bản mẫu, mà XML thì có hồ sơ chưa tải về.
+ */
+export async function layMaToKhaiDaLuu(
+  tenantDb: PrismaClient,
+  maHoSo: string,
+): Promise<string | null> {
+  const hoSo = await tenantDb.dvc_ho_so.findUnique({
+    where: { ma_ho_so: maHoSo },
+    select: { to_khai: true },
+  });
+  return hoSo?.to_khai ?? null;
 }
 
 /** Ghi tờ khai XML vừa tải trực tiếp từ cổng vào `dvc_ho_so` — `updateMany` (không upsert): hồ sơ
@@ -363,7 +490,7 @@ export async function luuFileHoSoVaoCache(
 ): Promise<void> {
   await tenantDb.dvc_ho_so.updateMany({
     where: { ma_ho_so: maHoSo },
-    data: { xml_to_khai: tep.bytes.toString("utf8"), ten_file_xml: tep.fileName },
+    data: truongToKhai(tep),
   });
 }
 
@@ -381,6 +508,9 @@ export async function layDanhSachThongBaoDaLuu(
   const rows = await tenantDb.dvc_tai_lieu.findMany({
     where: { ma_ho_so: maHoSo, loai: "thong_bao" },
     orderBy: { datetime0: "asc" },
+    // `select` chứ không lấy cả dòng: đây chỉ là danh sách tiêu đề, mà `noi_dung_bin` nay giữ
+    // NGUYÊN BYTE file (có cả PDF) — kéo về rồi vứt đi là tốn băng thông DB cho không.
+    select: { tieu_de: true, ngay_gui: true, khoa: true },
   });
   if (rows.length > 0) {
     return rows.map((r) => ({ tieuDe: r.tieu_de ?? "", ngayGui: r.ngay_gui ?? "", idTbao: r.khoa }));
@@ -421,8 +551,14 @@ export async function luuMetaThongBaoVaoCache(
   );
 }
 
-/** Nội dung file của MỘT thông báo đã lưu — `null` nếu chưa tải (dòng có thể tồn tại với mỗi
- * metadata, hoặc chưa tồn tại luôn). */
+/**
+ * Nội dung file của MỘT thông báo đã lưu — `null` nếu chưa tải (dòng có thể tồn tại với mỗi
+ * metadata, hoặc chưa tồn tại luôn).
+ *
+ * Đọc HAI cột theo thứ tự: `noi_dung_bin` (nguyên byte, mọi dòng ghi từ nay) trước, rồi mới tới
+ * `noi_dung` (Text) — cột cũ chỉ còn dữ liệu cache từ trước lượt sửa này, giữ lại để không bắt
+ * người dùng tải lại từ cổng thứ đã có sẵn. Xem chú thích hai cột trong schema.
+ */
 export async function layFileThongBaoDaLuu(
   tenantDb: PrismaClient,
   maHoSo: string,
@@ -431,12 +567,32 @@ export async function layFileThongBaoDaLuu(
   const row = await tenantDb.dvc_tai_lieu.findUnique({
     where: { loai_khoa: { loai: "thong_bao", khoa: idTbao } },
   });
-  if (!row || row.ma_ho_so !== maHoSo || !row.noi_dung) return null;
-  return {
-    bytes: Buffer.from(row.noi_dung, "utf8"),
-    contentType: "application/xml",
-    fileName: row.ten_file || `thong-bao-${idTbao}.xml`,
-  };
+  if (!row || row.ma_ho_so !== maHoSo) return null;
+
+  const tenFile = row.ten_file || `thong-bao-${idTbao}.xml`;
+
+  if (row.noi_dung_bin) {
+    return {
+      bytes: Buffer.from(row.noi_dung_bin),
+      // `chuanHoaMime` chứ không dùng thẳng: dòng ghi trong khoảng thời gian ngắn trước khi
+      // `chuanHoaMime` được thêm vào `docTepTuResponse` đã kịp lưu ĐUÔI ("xml") vào cột này.
+      // Dòng cũ hơn nữa thì cột rỗng -> đoán theo đuôi tên file.
+      contentType: row.content_type ? chuanHoaMime(row.content_type) : doanContentType(row.ten_file),
+      fileName: tenFile,
+    };
+  }
+
+  // Dòng cache CŨ: chỉ có cột Text. Tới được đây thì nội dung chắc chắn là văn bản — nhị phân
+  // chưa bao giờ ghi nổi vào cột đó (Postgres chặn), đúng cái lỗi lượt sửa này vá.
+  if (row.noi_dung) {
+    return {
+      bytes: Buffer.from(row.noi_dung, "utf8"),
+      contentType: row.content_type ? chuanHoaMime(row.content_type) : doanContentType(row.ten_file),
+      fileName: tenFile,
+    };
+  }
+
+  return null;
 }
 
 /** Ghi nội dung file thông báo vừa tải trực tiếp từ cổng. Upsert (không chỉ update) vì dòng
@@ -454,10 +610,9 @@ export async function luuFileThongBaoVaoCache(
       loai: "thong_bao",
       khoa: idTbao,
       ma_ho_so: maHoSo,
-      noi_dung: tep.bytes.toString("utf8"),
-      ten_file: tep.fileName,
+      ...truongNoiDungTep(tep),
       raw: {},
     },
-    update: { noi_dung: tep.bytes.toString("utf8"), ten_file: tep.fileName },
+    update: truongNoiDungTep(tep),
   });
 }

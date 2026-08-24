@@ -1,4 +1,4 @@
-import { useState, type SyntheticEvent } from "react";
+import { useCallback, useEffect, useState, type SyntheticEvent } from "react";
 import { useMutation } from "@tanstack/react-query";
 import Box from "@mui/material/Box";
 import Stack from "@mui/material/Stack";
@@ -23,6 +23,12 @@ import DialogDongBo from "../../features/dich_vu_cong/components/DialogDongBo";
 import { TAB_DVC } from "../../features/dich_vu_cong/config";
 import { useActiveCompanyMst } from "../../features/auth/useActiveCompanyMst";
 import { traCuuHoSoDvc } from "../../features/dich_vu_cong/api/dvc";
+import {
+  MA_LOI_DVC_PHIEN_CHET,
+  loadDvcKeys,
+  saveDvcKeys,
+} from "../../features/dich_vu_cong/dvcKeyStore";
+import { ApiError } from "../../lib/http";
 import { taiFileHoSo } from "../../features/dich_vu_cong/taiFileHoSo";
 import { getErrorMessage } from "../../lib/errors";
 import { LoginRounded, SyncRounded } from "@mui/icons-material";
@@ -40,8 +46,17 @@ export default function DvcPage() {
    * một biến phẳng sẽ giữ nguyên phiên của công ty trước: tra cứu ra hồ sơ công ty A trong khi
    * màn hình đang hiện công ty B. Cùng loại lỗi rò rỉ giữa tenant mà `useActiveGdtToken` bên
    * HĐĐT dựng riêng một hook để chặn.
+   *
+   * Khởi tạo từ `localStorage` và ghi lại mỗi khi đổi -> sống qua F5 (xem `dvcKeyStore`). Khóa cũ
+   * trỏ tới phiên BE đã chết KHÔNG sao: BE tự đăng nhập lại ngầm rồi gắn phiên mới vào đúng khóa đó.
    */
-  const [dvcKeyTheoMst, setDvcKeyTheoMst] = useState<Record<string, string>>({});
+  const [dvcKeyTheoMst, setDvcKeyTheoMst] = useState<Record<string, string>>(loadDvcKeys);
+  // Ghi qua effect (không phải side effect ngay trong updater của setState, vốn có thể chạy 2 lần
+  // dưới StrictMode/concurrent rendering) — cùng lý do đã ghi ở `GdtSessionProvider`.
+  useEffect(() => {
+    saveDvcKeys(dvcKeyTheoMst);
+  }, [dvcKeyTheoMst]);
+
   /** MST của lượt tra cứu đang hiển thị — lệch công ty đang chọn thì bảng phải trống. */
   const [mstKetQua, setMstKetQua] = useState<string | undefined>(undefined);
 
@@ -119,6 +134,33 @@ export default function DvcPage() {
     toast.success("Đăng nhập cổng Dịch vụ công thành công.");
   };
 
+  /**
+   * BE báo khóa phiên đã CHẾT HẲN (tự đăng nhập lại ngầm cũng không cứu được) -> bỏ khóa đó đi.
+   *
+   * Không bỏ thì khóa chết nằm lại `localStorage` vô thời hạn, và mỗi thao tác sau đó lại kích một
+   * lượt tự đăng nhập lại vô ích lên cổng — đúng kiểu dội request khiến cổng chặn tần suất, thậm
+   * chí khóa tài khoản. Bỏ rồi thì lần sau người dùng thấy ngay là cần đăng nhập cổng lại.
+   */
+  const boKhoaNeuPhienChet = useCallback(
+    (err: unknown) => {
+      if (!activeMst) return;
+      if (!(err instanceof ApiError) || err.code !== MA_LOI_DVC_PHIEN_CHET) return;
+
+      setDvcKeyTheoMst((prev) => {
+        if (!(activeMst in prev)) return prev; // giữ nguyên identity -> khỏi ghi lại localStorage
+        const conLai = { ...prev };
+        delete conLai[activeMst];
+        return conLai;
+      });
+      toast.warning(
+        'Phiên cổng Dịch vụ công đã hết hạn — bấm "Đăng nhập cổng Dịch vụ công" để dùng tiếp.',
+      );
+    },
+    // `useCallback` KHÔNG phải để tối ưu: `useBaoPhienChet` lấy hàm này làm dep của effect, hàm mới
+    // mỗi render là effect chạy lại mỗi render -> một tràng toast cho cùng một lỗi.
+    [activeMst],
+  );
+
   // Không còn chặn khi thiếu `dvcKey`: hồ sơ đã đồng bộ thì BE đọc thẳng cache, không cần đăng
   // nhập cổng — thiếu key chỉ hỏng khi CẦN gọi cổng thật, lúc đó BE tự trả lỗi rõ ràng.
   const handleTaiFile = async (maHoSo: string) => {
@@ -133,6 +175,7 @@ export default function DvcPage() {
         autoClose: 4000,
       });
     } catch (err) {
+      boKhoaNeuPhienChet(err);
       toast.update(toastId, {
         render: getErrorMessage(err, "Tải file hồ sơ thất bại."),
         type: "error",
@@ -269,7 +312,12 @@ export default function DvcPage() {
 
       <XuatFileDvcDialog open={xuatOpen} onClose={() => setXuatOpen(false)} />
 
-      <DialogDongBo open={dongBoOpen} onClose={() => setDongBoOpen(false)} dvcKey={dvcKey} />
+      <DialogDongBo
+        open={dongBoOpen}
+        onClose={() => setDongBoOpen(false)}
+        dvcKey={dvcKey}
+        onPhienChet={boKhoaNeuPhienChet}
+      />
 
       <DialogLoginDVC
         open={loginOpen}
@@ -284,6 +332,7 @@ export default function DvcPage() {
         onClose={() => setTepDinhKemMaHoSo(null)}
         dvcKey={dvcKey}
         maHoSo={tepDinhKemMaHoSo}
+        onPhienChet={boKhoaNeuPhienChet}
       />
 
       <ThongBaoDialog
@@ -291,6 +340,7 @@ export default function DvcPage() {
         onClose={() => setThongBaoMaHoSo(null)}
         dvcKey={dvcKey}
         maHoSo={thongBaoMaHoSo}
+        onPhienChet={boKhoaNeuPhienChet}
       />
 
       <ToKhaiXmlDialog
@@ -298,6 +348,7 @@ export default function DvcPage() {
         onClose={() => setToKhaiMaHoSo(null)}
         dvcKey={dvcKey}
         maHoSo={toKhaiMaHoSo}
+        onPhienChet={boKhoaNeuPhienChet}
       />
     </>
   );

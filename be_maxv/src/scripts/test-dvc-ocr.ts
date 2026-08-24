@@ -17,7 +17,9 @@ async function main() {
     console.log(`\n--- Lượt ${i}/${NUM_TESTS} ---`);
     try {
       const started = Date.now();
-      const res = await getCaptcha();
+      // Script đo OCR chạy ngoài request, không có công ty nào đang chọn — phiên tạo ra chỉ để lấy
+      // ảnh captcha rồi bỏ, nên gắn một `donViId` giả là đủ (không API nào dùng lại phiên này).
+      const res = await getCaptcha("script-test-ocr");
       const fetchTime = Date.now() - started;
 
       // Trích xuất buffer từ base64 data URI

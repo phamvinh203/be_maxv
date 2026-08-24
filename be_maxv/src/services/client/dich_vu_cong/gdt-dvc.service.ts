@@ -2,6 +2,11 @@ import { randomUUID } from "crypto";
 import { describeErrorChain } from "../../../config/gdt-client";
 import { readZipEntryByExtension } from "../../../helpers/zip";
 import { filenameFromDisposition } from "../hddt/traCuuGoc/shared";
+import {
+  schedule as pacerSchedule,
+  reportOk as pacerReportOk,
+  reportRateLimited as pacerReportRateLimited,
+} from "../hddt/gdtPacer";
 import { docDvcCaptcha } from "./captcha-ocr";
 import {
   laLoiCaptcha,
@@ -107,7 +112,28 @@ export class DvcAutoLoginFailedError extends Error {
   }
 }
 
+/** Cặp tài khoản cổng DVC — dùng chung cho `session.credential`, `phucHoiPhienDaMat` và
+ * `taiKhoanDvcDaLuu` bên controller. Khai một chỗ để thêm trường chỉ phải sửa một chỗ, cùng lý lẽ
+ * đã ghi ở `DvcLoginBody` trong `gdt-dvc.controller.ts`. */
+export type DvcCredential = { tenDN: string; matKhau: string };
+
+/**
+ * Định danh MỘT phiên cổng DVC: khóa FE đang giữ + công ty sở hữu phiên đó.
+ *
+ * `donViId` KHÔNG phải thứ trang trí — nó là phần kiểm quyền. `key` chỉ là tên gọi phiên trong Map,
+ * bản thân nó KHÔNG chứng minh ai được dùng phiên: thiếu ràng buộc này thì một khóa nhặt được (nay
+ * còn nằm trong `localStorage`, đọc được bằng console trên máy dùng chung) cộng với BẤT KỲ phiên
+ * app hợp lệ nào là đủ để proxy request sang cổng bằng cookie của công ty KHÁC.
+ */
+export interface DvcPhien {
+  key: string;
+  /** `DonVi.id` của công ty đang chọn, do controller lấy từ `request.user` — không suy từ `key`. */
+  donViId: string;
+}
+
 interface DvcSession {
+  /** Công ty ĐÃ mở phiên này. Chốt lúc tạo, không bao giờ đổi — xem `DvcPhien`. */
+  donViId: string;
   /**
    * Cookie của phiên, khóa theo TÊN cookie -> chuỗi `ten=gia_tri`.
    *
@@ -131,12 +157,7 @@ interface DvcSession {
    * ngầm khi cổng đá phiên giữa chừng thao tác (xem `tuDangNhapLai`). Không ghi ra DB/log ở đây —
    * bản mã hóa bền đã có riêng ở cột `dvcPassword*` (`gdt-dvc.controller.ts`).
    */
-  credential?: { tenDN: string; matKhau: string };
-  /**
-   * TODO(tạm): CHỈ để debug xem auto-relogin có thật sự chạy không, xóa field này +
-   * `laVuaTuDongDangNhapLai` + chỗ dùng ở controller/FE khi hết cần theo dõi.
-   */
-  viTuDongDangNhapLaiLuc?: number;
+  credential?: DvcCredential;
 }
 
 /**
@@ -147,10 +168,28 @@ interface DvcSession {
  */
 const sessions = new Map<string, DvcSession>();
 
+/** Khóa phiên hợp lệ = UUID `randomUUID()` sinh ra. Chặn dạng khác ở `phucHoiPhienDaMat` — hàm đó
+ * ghi vào `sessions` bằng khóa CLIENT gửi lên, khác mọi chỗ còn lại (server tự sinh). */
+const RE_KHOA_PHIEN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/** Lượt phục hồi ĐANG chạy của từng khóa — gộp các request trùng khóa, xem `phucHoiPhienDaMat`. */
+const dangPhucHoi = new Map<string, Promise<void>>();
+
+/** Mốc lần phục hồi HỎNG gần nhất của từng khóa, để bắt nghỉ trước khi cho thử lại. */
+const phucHoiHongLuc = new Map<string, number>();
+
+/** Phục hồi hỏng thì nghỉ ngần này mới cho thử lại — xem `phucHoiPhienDaMat`. */
+const NGHI_SAU_PHUC_HOI_HONG_MS = 5 * 60 * 1000;
+
 function sweepExpiredSessions() {
   const now = Date.now();
   for (const [key, session] of sessions) {
     if (session.expiresAt <= now) sessions.delete(key);
+  }
+  // Dọn luôn mốc phạt đã hết hiệu lực: `phucHoiHongLuc` khóa theo `key` (UUID, không lặp lại) nên
+  // không tự co lại — để nguyên thì nó phình dần theo số phiên từng hỏng suốt đời tiến trình.
+  for (const [key, luc] of phucHoiHongLuc) {
+    if (now - luc >= NGHI_SAU_PHUC_HOI_HONG_MS) phucHoiHongLuc.delete(key);
   }
 }
 
@@ -186,10 +225,12 @@ export function clearSession(key: string) {
  * lặp lại giống hệt nhau ở đầu mọi hàm cần phiên sống (captcha trang tra cứu, login, tra cứu hồ
  * sơ, tải file/tài liệu/thông báo...). Gộp một chỗ để đổi cách báo hết hạn chỉ phải sửa ở đây.
  */
-function requireSession(key: string): DvcSession {
+function requireSession({ key, donViId }: DvcPhien): DvcSession {
   sweepExpiredSessions();
   const session = getSession(key);
-  if (!session) throw new DvcSessionExpiredError();
+  // Sai chủ -> đối xử ĐÚNG NHƯ "không có phiên", không báo lỗi riêng: người gọi không cần biết khóa
+  // đó có tồn tại hay không, và không có gì để dò.
+  if (!session || session.donViId !== donViId) throw new DvcSessionExpiredError();
   return session;
 }
 
@@ -214,6 +255,20 @@ function cookieHeader(session: DvcSession): string {
  * Gửi 1 request tới cổng DVC bằng cookie của `session`, thu `Set-Cookie` vào lại phiên,
  * và ném `DvcHttpError` nếu status không 2xx. Trả `Response` CHƯA đọc body.
  */
+/**
+ * Gửi MỘT request tới cổng, qua PACER (làn `dvc`, khóa = công ty sở hữu phiên).
+ *
+ * VÌ SAO PHẢI ĐIỀU NHỊP: cổng chặn tần suất gắt (xem `RATE_LIMITED_MESSAGE`) và một lượt "Đồng bộ"
+ * gọi liên tiếp ~4 request cho MỖI hồ sơ, không nghỉ giây nào — đủ để dính 429 hàng loạt giữa
+ * chừng. Pacer ép khoảng cách tối thiểu và tự giãn ×2 khi bị chặn, co lại khi trót lọt.
+ *
+ * Làn `dvc` chạy TUẦN TỰ theo từng công ty: các call cùng dùng chung `session`, mà `mergeSetCookie`
+ * bên dưới GHI cookie xoay vòng ngược vào đó — chạy chồng là hai lượt giành nhau một bộ cookie.
+ *
+ * Bọc đúng lượt `fetch` (không bọc cả hàm) vì `schedule` chạy tuần tự trên một hàng đợi: nếu một
+ * task đã xếp hàng lại đi xếp hàng tiếp thì vòng bơm tự chờ chính nó. `dvcSend` là lá — không hàm
+ * nào bên trong nó gọi lại `dvcSend` — nên đây là chỗ duy nhất an toàn để đặt ranh giới.
+ */
 async function dvcSend(
   path: string,
   session: DvcSession,
@@ -233,14 +288,18 @@ async function dvcSend(
 
   let response: Response;
   try {
-    response = await fetch(`${DVC_BASE_URL}${path}`, {
-      ...init,
-      headers,
-      // Cổng trả 302 về trang login khi phiên hỏng — muốn thấy status thật, không đi theo.
-      redirect: "manual",
-      signal: init.signal ?? AbortSignal.timeout(DVC_TIMEOUT_MS),
-    });
+    response = await pacerSchedule(session.donViId, "dvc", () =>
+      fetch(`${DVC_BASE_URL}${path}`, {
+        ...init,
+        headers,
+        // Cổng trả 302 về trang login khi phiên hỏng — muốn thấy status thật, không đi theo.
+        redirect: "manual",
+        signal: init.signal ?? AbortSignal.timeout(DVC_TIMEOUT_MS),
+      }),
+    );
   } catch (err) {
+    // Ném ở tầng fetch = timeout hoặc bị cổng cắt kết nối, cùng họ với "quá tải" -> giãn nhịp.
+    pacerReportRateLimited(session.donViId, "dvc");
     console.error(
       `[DEBUG-DVC] ${shortPath} NÉM LỖI TẦNG FETCH sau ${Date.now() - startedAt}ms: ` +
         // Lỗi fetch của undici có `message` trơ ("terminated"/"fetch failed"), lý do thật
@@ -254,6 +313,9 @@ async function dvcSend(
   mergeSetCookie(session, response);
 
   if (!response.ok) {
+    // 429 = đúng thứ pacer sinh ra để tránh -> giãn ngay. Các mã khác (302/401/5xx) là chuyện phiên
+    // hoặc lỗi cổng, phạt nhịp là oan — cùng lý lẽ đã ghi ở `fetchListPagePaced` bên HĐĐT.
+    if (response.status === 429) pacerReportRateLimited(session.donViId, "dvc");
     console.warn(
       `[DEBUG-DVC] ${shortPath} -> ${response.status} ${response.statusText} ` +
         `(${Date.now() - startedAt}ms) <- LỖI DO CỔNG DVC TRẢ VỀ, không phải BE của mình`,
@@ -264,6 +326,7 @@ async function dvcSend(
     throw new DvcHttpError(response.status, response.statusText, detail);
   }
 
+  pacerReportOk(session.donViId, "dvc");
   return response;
 }
 
@@ -301,17 +364,28 @@ async function refreshSessionCookies(session: DvcSession): Promise<void> {
   session.csrfHeader = head.match(CSRF_HEADER_RE)?.[1] || session.csrfHeader;
 }
 
-/** Bước 1: mở phiên hoàn toàn mới (khóa `key` mới) — dùng cho lượt lấy captcha đăng nhập đầu tiên. */
-async function openSession(): Promise<{ key: string; session: DvcSession }> {
-  sweepExpiredSessions();
-
-  const session: DvcSession = {
+/**
+ * Phiên rỗng CHƯA chạm cổng — chỗ duy nhất biết hình dạng khởi tạo của `DvcSession`, dùng chung cho
+ * `openSession` (mở khóa mới) và `phucHoiPhienDaMat` (gắn vào khóa FE đang giữ). Thêm field mới vào
+ * `DvcSession` chỉ phải khai giá trị mặc định ở đây, không sợ sót một trong hai chỗ.
+ */
+function phienRong(donViId: string, credential?: DvcCredential): DvcSession {
+  return {
+    donViId,
     cookies: new Map(),
     csrfToken: "",
     csrfHeader: "X-XSRF-TOKEN",
     daDangNhap: false,
     expiresAt: Date.now() + SESSION_TTL_MS,
+    credential,
   };
+}
+
+/** Bước 1: mở phiên hoàn toàn mới (khóa `key` mới) — dùng cho lượt lấy captcha đăng nhập đầu tiên. */
+async function openSession(donViId: string): Promise<{ key: string; session: DvcSession }> {
+  sweepExpiredSessions();
+
+  const session = phienRong(donViId);
 
   await refreshSessionCookies(session);
 
@@ -366,8 +440,8 @@ async function fetchCaptchaImage(
  *
  * Tham số `?<timestamp>` là để phá cache, giữ đúng như trình duyệt thật gửi.
  */
-export async function getCaptcha(): Promise<DvcCaptchaResult> {
-  const { key, session } = await openSession();
+export async function getCaptcha(donViId: string): Promise<DvcCaptchaResult> {
+  const { key, session } = await openSession(donViId);
   return fetchCaptchaImage(`/login/getCaptcha?${Date.now()}`, key, session);
 }
 
@@ -377,8 +451,9 @@ export async function getCaptcha(): Promise<DvcCaptchaResult> {
  * Dùng cho các lượt tra cứu hồ sơ sau khi đã mở phiên / đăng nhập.
  * Gửi header `Referer: https://dichvucong.gdt.gov.vn/tthc/tchs` đúng như trình duyệt thật.
  */
-export async function getTchsCaptcha(key: string): Promise<DvcCaptchaResult> {
-  const session = requireSession(key);
+export async function getTchsCaptcha(p: DvcPhien): Promise<DvcCaptchaResult> {
+  const session = requireSession(p);
+  const key = p.key;
   return voiTuDangNhapLai(key, session, () =>
     fetchCaptchaImage(`/getCaptcha?${Date.now()}`, key, session, {
       Referer: `${DVC_BASE_URL}/tchs`,
@@ -386,9 +461,7 @@ export async function getTchsCaptcha(key: string): Promise<DvcCaptchaResult> {
   );
 }
 
-export interface DvcLoginRequest {
-  /** Khóa phiên nhận từ `getCaptcha`. */
-  key: string;
+export interface DvcLoginRequest extends DvcPhien {
   /** Tên đăng nhập cổng DVC — thường dạng `<MST>-ql`. */
   tenDN: string;
   /** Mật khẩu THÔ. Service tự mã hóa base64 theo đúng dạng cổng nhận. */
@@ -498,7 +571,7 @@ async function performLogin(
  * đăng nhập cho các lượt tra cứu sau — kể cả sau khi tự đăng nhập lại ngầm (`tuDangNhapLai`).
  */
 export async function login(body: DvcLoginRequest): Promise<DvcLoginResult> {
-  const session = requireSession(body.key);
+  const session = requireSession(body);
   try {
     const data = await performLogin(session, body.tenDN, body.matKhau, body.captcha);
     return { key: body.key, data };
@@ -548,7 +621,6 @@ async function tuDangNhapLai(key: string, session: DvcSession): Promise<void> {
         throw new Error("Không tự động giải được mã captcha đăng nhập.");
       }
       await performLogin(session, cred.tenDN, cred.matKhau, cap.answer);
-      session.viTuDongDangNhapLaiLuc = Date.now(); // TODO(tạm): xóa cùng field debug ở trên.
       return; // Thành công — session đã được `performLogin` cập nhật cookie + TTL tại chỗ.
     } catch (err) {
       lastErr = err;
@@ -584,13 +656,57 @@ async function voiTuDangNhapLai<T>(
 }
 
 /**
- * TODO(tạm): CHỈ để debug — báo cho controller biết lượt gọi vừa rồi có tự đăng nhập lại ngầm hay
- * không (trong 5s gần nhất), để FE hiện toast xác nhận cơ chế có chạy. Xóa hàm này + field
- * `viTuDongDangNhapLaiLuc` + chỗ dùng ở controller/FE khi hết cần theo dõi.
+ * Phiên RAM đã MẤT HẲN (`DvcSessionExpiredError`, vd quá TTL hoặc BE vừa restart) — `voiTuDangNhapLai`
+ * KHÔNG cứu được vì nó cần một phiên còn sống để bám vào (`session.credential` mất theo phiên).
+ * Hàm này mở phiên hoàn toàn mới rồi đăng nhập ngầm bằng tài khoản đã lưu TRONG DB, và GẮN vào ĐÚNG
+ * `key` mà FE đang giữ — nên FE không phải biết gì, không phải cập nhật khóa (cùng lý lẽ với chú
+ * thích ở `login`: `key` chỉ là tên gọi phiên, không phải thứ cổng dùng để xác thực).
+ *
+ * `cred` do CONTROLLER đọc từ công ty đang chọn của người dùng ĐÃ đăng nhập app (không phải suy từ
+ * `key`) — `key` cũ không tự nó cho quyền phục hồi phiên nào cả, tránh mở đường lấy phiên công ty
+ * khác bằng một khóa nhặt được.
+ *
+ * Ném `DvcAutoLoginFailedError` nếu hết lượt thử (đã dọn phiên) — caller cứ để lỗi đó lên FE.
  */
-export function laVuaTuDongDangNhapLai(key: string): boolean {
-  const session = sessions.get(key);
-  return !!session?.viTuDongDangNhapLaiLuc && Date.now() - session.viTuDongDangNhapLaiLuc < 5000;
+export function phucHoiPhienDaMat(p: DvcPhien, cred: DvcCredential): Promise<void> {
+  const { key, donViId } = p;
+
+  // `key` do CLIENT gửi lên (FE lưu localStorage) chứ không còn chỉ là UUID server sinh như trước
+  // — chặn dạng lạ trước khi cho ghi vào kho phiên, đừng để một khóa ngắn tự đặt trở thành tên
+  // phiên mà người khác đoán trúng.
+  if (!RE_KHOA_PHIEN.test(key)) throw new DvcAutoLoginFailedError("khóa phiên không hợp lệ");
+
+  const hongLuc = phucHoiHongLuc.get(key);
+  if (hongLuc && Date.now() - hongLuc < NGHI_SAU_PHUC_HOI_HONG_MS) {
+    // Vừa thử và hỏng -> KHÔNG thử lại ngay. Không có cửa nghỉ này thì mỗi cú bấm của người dùng
+    // lại đốt tới 9 request đăng nhập lên cổng cho một khóa gần như chắc chắn không cứu được —
+    // vừa dễ dính 429, vừa đúng kiểu gõ sai liên tiếp có thể làm cổng khóa tài khoản.
+    throw new DvcAutoLoginFailedError("vừa thử tự đăng nhập lại và không thành công");
+  }
+
+  // Gộp các lượt phục hồi TRÙNG KHÓA đang chạy vào làm một. BE restart trong lúc trang mở vài
+  // dialog là mấy request cùng lúc phát hiện phiên chết: không chặn thì mỗi request mở một lượt
+  // đăng nhập THẬT cho cùng tài khoản, ghi đè phiên của nhau trong `sessions`, và lượt nào hỏng
+  // trước còn `clearSession` xóa mất phiên lượt kia vừa dựng xong.
+  const dangChay = dangPhucHoi.get(key);
+  if (dangChay) return dangChay;
+
+  const luot = (async () => {
+    const session = phienRong(donViId, cred);
+    sessions.set(key, session);
+    // Dùng lại NGUYÊN `tuDangNhapLai`: nó đã có đủ lấy cookie/CSRF mới, OCR captcha, thử tối đa
+    // `SO_LAN_THU_TU_DANG_NHAP_LAI` lượt, dừng sớm khi sai mật khẩu, và dọn phiên khi hỏng hẳn.
+    try {
+      await tuDangNhapLai(key, session);
+      phucHoiHongLuc.delete(key);
+    } catch (err) {
+      phucHoiHongLuc.set(key, Date.now());
+      throw err;
+    }
+  })().finally(() => dangPhucHoi.delete(key));
+
+  dangPhucHoi.set(key, luot);
+  return luot;
 }
 
 /** Đổi lỗi bất kỳ thành câu tiếng Việt hiển thị được. Dùng: controller. */
@@ -614,9 +730,7 @@ function toDvcDate(isoDate?: string): string {
   return `${d}/${m}/${y}`;
 }
 
-export interface DvcTraCuuHoSoQuery {
-  /** Khóa phiên ĐÃ ĐĂNG NHẬP. */
-  key: string;
+export interface DvcTraCuuHoSoQuery extends DvcPhien {
   /** `yyyy-mm-dd`; service tự đổi sang dạng cổng nhận. */
   tuNgay?: string;
   denNgay?: string;
@@ -692,7 +806,7 @@ function khongNenThuLai(err: unknown): boolean {
  * `khongNenThuLai` thì ném ra ngay, không dùng hết số lần thử.
  */
 async function traCuuHoSoHtml(q: DvcTraCuuHoSoQuery): Promise<string> {
-  const session = requireSession(q.key);
+  const session = requireSession(q);
 
   if (q.captcha) {
     return guiTraCuuHoSo(session, q, q.captcha);
@@ -701,7 +815,7 @@ async function traCuuHoSoHtml(q: DvcTraCuuHoSoQuery): Promise<string> {
   let lastError: unknown = null;
   for (let attempt = 1; attempt <= SO_LAN_THU_CAPTCHA; attempt++) {
     try {
-      const cap = await getTchsCaptcha(q.key);
+      const cap = await getTchsCaptcha(q);
       if (!cap.answer) {
         throw new Error("Không thể tự động giải mã captcha trang tra cứu hồ sơ.");
       }
@@ -733,7 +847,7 @@ async function traCuuHoSoHtml(q: DvcTraCuuHoSoQuery): Promise<string> {
  * `parseBangHoSo`/hình dạng HTML của cổng nữa.
  */
 export async function traCuuHoSo(q: DvcTraCuuHoSoQuery): Promise<BangHoSoDaBoc> {
-  const session = requireSession(q.key);
+  const session = requireSession(q);
   const html = await voiTuDangNhapLai(q.key, session, () => traCuuHoSoHtml(q));
   return parseBangHoSo(html);
 }
@@ -762,6 +876,40 @@ interface DvcBocTep {
  * giả định luôn là bytes thô. Không phải dạng này (JSON không có `content` string, hoặc parse
  * lỗi) thì trả `null` để caller dùng thẳng `bodyBytes`.
  */
+/** Đuôi file -> MIME. Cần vì cổng khai `fileType` bằng ĐUÔI ("xml"/"pdf"), không phải MIME. */
+const MIME_THEO_DUOI: Record<string, string> = {
+  xml: "application/xml",
+  pdf: "application/pdf",
+  zip: "application/zip",
+  html: "text/html",
+  htm: "text/html",
+  txt: "text/plain",
+};
+
+/**
+ * Chuẩn hóa thứ cổng khai thành MIME THẬT.
+ *
+ * Gói tệp JSON của cổng trả `fileType` là ĐUÔI FILE ("xml", "pdf") chứ không phải MIME, mà giá trị
+ * đó trước đây được gán thẳng vào `contentType` rồi đi tiếp vào `reply.type(...)` — sinh ra header
+ * `Content-Type: xml` vô nghĩa. Với PDF còn tệ hơn: FE bóc đuôi file TỪ content-type
+ * (`duoiTuContentType`), không khớp `"pdf"` nên rơi về mặc định và lưu PDF thành `.xml`.
+ *
+ * Có dấu `/` -> coi như đã là MIME, trả nguyên. Không nhận ra -> `application/octet-stream`:
+ * trình duyệt tải về, thay vì mở sai kiểu.
+ */
+export function chuanHoaMime(gia: string | null | undefined): string {
+  const v = (gia ?? "").trim().toLowerCase();
+  if (!v) return "application/octet-stream";
+  if (v.includes("/")) return v;
+  return MIME_THEO_DUOI[v] ?? "application/octet-stream";
+}
+
+/** MIME đoán từ ĐUÔI tên file — dùng cho dòng cache cũ chưa lưu `content_type` (xem
+ * `layFileThongBaoDaLuu` bên `dvc-dong-bo.service.ts`). */
+export function doanContentType(tenFile: string | null | undefined): string {
+  return chuanHoaMime(tenFile?.split(".").pop());
+}
+
 function docGoiTepJson(bodyBytes: Buffer): DvcBocTep | null {
   try {
     const parsed: unknown = JSON.parse(bodyBytes.toString("utf8"));
@@ -795,7 +943,8 @@ async function docTepTuResponse(
   const goiTep = docGoiTepJson(bodyBytes);
   if (goiTep?.content) {
     bytes = Buffer.from(goiTep.content, "base64");
-    contentType = goiTep.fileType || contentType;
+    // `fileType` là ĐUÔI, không phải MIME — xem `chuanHoaMime`.
+    contentType = goiTep.fileType ? chuanHoaMime(goiTep.fileType) : contentType;
     fileName = goiTep.fileName || fileName;
   }
 
@@ -808,9 +957,9 @@ async function docTepTuResponse(
  * KHÔNG phải trang `/tchs/files/detail/{maHoSo}` (đó là trang xem chi tiết, trả HTML) — đây
  * mới là request XHR thật sự trả file, trang kia gọi nó khi người dùng bấm nút tải trên đó.
  */
-export async function taiXmlHoSo(key: string, maHoSo: string): Promise<DvcTepTaiVe> {
-  const session = requireSession(key);
-  return voiTuDangNhapLai(key, session, () => taiXmlHoSoThuc(session, maHoSo));
+export async function taiXmlHoSo(p: DvcPhien, maHoSo: string): Promise<DvcTepTaiVe> {
+  const session = requireSession(p);
+  return voiTuDangNhapLai(p.key, session, () => taiXmlHoSoThuc(session, maHoSo));
 }
 
 async function taiXmlHoSoThuc(session: DvcSession, maHoSo: string): Promise<DvcTepTaiVe> {
@@ -858,9 +1007,9 @@ async function taiXmlHoSoThuc(session: DvcSession, maHoSo: string): Promise<DvcT
  * Trả JSON THÔ: hình dạng thật của cổng chưa xác nhận (chưa có mẫu response), nên để nguyên
  * cho caller tự đọc thay vì đoán và ép kiểu sai — xem `TaiLieuDinhKemDialog` bên FE.
  */
-export async function layTaiLieuDinhKem(key: string, maHoSo: string): Promise<unknown> {
-  const session = requireSession(key);
-  return voiTuDangNhapLai(key, session, () => layTaiLieuDinhKemThuc(session, maHoSo));
+export async function layTaiLieuDinhKem(p: DvcPhien, maHoSo: string): Promise<unknown> {
+  const session = requireSession(p);
+  return voiTuDangNhapLai(p.key, session, () => layTaiLieuDinhKemThuc(session, maHoSo));
 }
 
 async function layTaiLieuDinhKemThuc(session: DvcSession, maHoSo: string): Promise<unknown> {
@@ -887,9 +1036,13 @@ async function layTaiLieuDinhKemThuc(session: DvcSession, maHoSo: string): Promi
  * thông báo bóc được — `ThongBaoDaBoc` — không có trường này để truyền lên) nên hardcode thay
  * vì nhận tham số không ai từng truyền giá trị khác rỗng.
  */
-export async function taiThongBao(key: string, maHoSo: string, idTbao: string): Promise<DvcTepTaiVe> {
-  const session = requireSession(key);
-  return voiTuDangNhapLai(key, session, () => taiThongBaoThuc(session, maHoSo, idTbao));
+export async function taiThongBao(
+  p: DvcPhien,
+  maHoSo: string,
+  idTbao: string,
+): Promise<DvcTepTaiVe> {
+  const session = requireSession(p);
+  return voiTuDangNhapLai(p.key, session, () => taiThongBaoThuc(session, maHoSo, idTbao));
 }
 
 async function taiThongBaoThuc(
@@ -921,8 +1074,8 @@ async function taiThongBaoThuc(
  * dạng HTML. Cổng vốn chỉ dùng URL này làm Referer cho `taiXmlHoSo`/`layTaiLieuDinhKem`/
  * `taiThongBao` (`chiTietHoSoUrl`) — hàm này lần đầu THỰC SỰ tải trang đó về.
  */
-async function layChiTietHoSoHtml(key: string, maHoSo: string): Promise<string> {
-  const session = requireSession(key);
+async function layChiTietHoSoHtml(p: DvcPhien, maHoSo: string): Promise<string> {
+  const session = requireSession(p);
 
   const response = await dvcSend(
     `/tchs/files/detail/${encodeURIComponent(maHoSo)}?loai=`,
@@ -943,8 +1096,8 @@ async function layChiTietHoSoHtml(key: string, maHoSo: string): Promise<string> 
  * Danh sách thông báo của một hồ sơ (bóc từ modal `#modalThongBao` trong trang chi tiết hồ sơ,
  * xem `parseDanhSachThongBao`) — cột "Thông báo".
  */
-export async function layDanhSachThongBao(key: string, maHoSo: string): Promise<ThongBaoDaBoc[]> {
-  const session = requireSession(key);
-  const html = await voiTuDangNhapLai(key, session, () => layChiTietHoSoHtml(key, maHoSo));
+export async function layDanhSachThongBao(p: DvcPhien, maHoSo: string): Promise<ThongBaoDaBoc[]> {
+  const session = requireSession(p);
+  const html = await voiTuDangNhapLai(p.key, session, () => layChiTietHoSoHtml(p, maHoSo));
   return parseDanhSachThongBao(html);
 }

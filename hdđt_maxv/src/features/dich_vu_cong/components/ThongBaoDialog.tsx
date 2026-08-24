@@ -17,6 +17,7 @@ import CloseRounded from "@mui/icons-material/CloseRounded";
 import FileDownloadRounded from "@mui/icons-material/FileDownloadRounded";
 import { layDanhSachThongBaoDvc } from "../api/dvc";
 import { taiThongBao } from "../taiThongBao";
+import { useBaoPhienChet } from "../useBaoPhienChet";
 import { getErrorMessage } from "../../../lib/errors";
 
 interface Props {
@@ -25,6 +26,8 @@ interface Props {
   dvcKey: string | null;
   /** Mã hồ sơ đang xem — `null` khi chưa chọn dòng nào (dialog không fetch). */
   maHoSo: string | null;
+  /** Báo lên `DvcPage` để bỏ khóa phiên khi BE nói phiên chết hẳn — xem `boKhoaNeuPhienChet`. */
+  onPhienChet?: (err: unknown) => void;
 }
 
 /**
@@ -37,7 +40,7 @@ interface Props {
  *
  * Dùng: `BangHoSo` (icon cột "Thông báo").
  */
-export default function ThongBaoDialog({ open, onClose, dvcKey, maHoSo }: Props) {
+export default function ThongBaoDialog({ open, onClose, dvcKey, maHoSo, onPhienChet }: Props) {
   // idTbao đang tải — chỉ 1 nút bị khóa/xoay tại 1 thời điểm, các dòng khác vẫn bấm được.
   const [dangTai, setDangTai] = useState<string | null>(null);
 
@@ -51,6 +54,9 @@ export default function ThongBaoDialog({ open, onClose, dvcKey, maHoSo }: Props)
     // không rẻ như tra cứu bảng — tránh gọi lại cổng mỗi lần đóng/mở dialog liên tiếp cùng hồ sơ.
     staleTime: 30_000,
   });
+
+  // Lỗi khi LẤY DANH SÁCH cũng có thể là "phiên chết hẳn" — báo lên như nhánh tải file bên dưới.
+  useBaoPhienChet(query.error, onPhienChet);
 
   const ds = query.data ?? [];
 
@@ -67,6 +73,7 @@ export default function ThongBaoDialog({ open, onClose, dvcKey, maHoSo }: Props)
         autoClose: 4000,
       });
     } catch (err) {
+      onPhienChet?.(err);
       toast.update(toastId, {
         render: getErrorMessage(err, "Tải file thông báo thất bại."),
         type: "error",

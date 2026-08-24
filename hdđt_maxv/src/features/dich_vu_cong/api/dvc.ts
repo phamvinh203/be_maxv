@@ -297,16 +297,72 @@ export interface DvcChiTietGtgt01 {
   ct: Partial<Record<CtTagGtgt01, number | null>>;
 }
 
+/** Tên thẻ `<ctNN>` hợp lệ trên mẫu in 05/KK-TNCN — mirror của `CtTagTncn05` bên BE. Mã chỉ tiêu
+ * trên mẫu chạy liền [16]..[32] nên danh sách này liền mạch, khác 01/GTGT có thêm hậu tố a/b. */
+export type CtTagTncn05 =
+  | "ct16"
+  | "ct17"
+  | "ct18"
+  | "ct19"
+  | "ct20"
+  | "ct21"
+  | "ct22"
+  | "ct23"
+  | "ct24"
+  | "ct25"
+  | "ct26"
+  | "ct27"
+  | "ct28"
+  | "ct29"
+  | "ct30"
+  | "ct31"
+  | "ct32";
+
+/** Dữ liệu mẫu 05/KK-TNCN đã bóc — đủ để `ToKhaiTNCN05Form` dựng lại đúng layout mẫu in, xem
+ * `ChiTietTncn05` bên BE. Khối [06]..[15] (địa chỉ, đại lý thuế) là thứ 01/GTGT KHÔNG có. */
+export interface DvcChiTietTncn05 {
+  tenTKhai: string;
+  moTaBMau: string;
+  /** Đã dựng sẵn dạng "Quý 3 năm 2025". */
+  kyTinhThue: string;
+  laLanDau: boolean;
+  soLanBoSung: number;
+  tenNNT: string;
+  mst: string;
+  diaChi: string;
+  phuongXa: string;
+  tinhTP: string;
+  dienThoai: string;
+  fax: string;
+  email: string;
+  tenDaiLyThue: string;
+  mstDaiLyThue: string;
+  hopDongDaiLySo: string;
+  /** `yyyy-mm-dd` thô hoặc rỗng — hợp đồng đại lý thuế thường bỏ trống. */
+  hopDongDaiLyNgay: string;
+  /** Ô đánh dấu [15] — có đơn vị hạch toán phụ thuộc ở tỉnh khác hay không. */
+  phanBoThue: boolean;
+  nguoiKy: string;
+  /** `yyyy-mm-dd` thô — tự format khi hiển thị. */
+  ngayKy: string | null;
+  kyDienTuBoi: string | null;
+  /** ISO datetime thô của chữ ký số. */
+  ngayKyDienTu: string | null;
+  /** `{ ct16: 4, ct21: 105000000, ... }` — thẻ vắng mặt hoặc `null` = không có dữ liệu, khác 0. */
+  ct: Partial<Record<CtTagTncn05, number | null>>;
+}
+
 /** Kết quả bóc XML tờ khai của một hồ sơ, xem `layChiTietToKhai` bên BE. */
 export type DvcChiTietToKhai =
   | { loai: "gtgt01"; duLieu: DvcChiTietGtgt01; xmlTho: string }
+  | { loai: "tncn05"; duLieu: DvcChiTietTncn05; xmlTho: string }
   | { loai: "raw"; chiTieu: DvcChiTieuToKhai[]; xmlTho: string };
 
 /**
  * GET /api/v1/dvc/ho-so/to-khai-chi-tiet → chỉ tiêu đã bóc từ XML tờ khai của một hồ sơ, qua BE
  * proxy — cùng cơ chế cache-hoặc-gọi-cổng với `taiFileHoSoDvc`.
  *
- * Dùng: `ToKhaiXmlDialog` (click cột "Tên thủ tục hành chính").
+ * Dùng: `ToKhaiXmlDialog` (click cột "Tờ khai / Phụ lục").
  */
 export function layChiTietToKhaiDvc({
   key,
