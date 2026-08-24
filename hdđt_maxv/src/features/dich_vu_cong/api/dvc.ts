@@ -153,6 +153,8 @@ export interface DvcDongBoTienDo {
   dongBoXong: number;
   loi: number;
   maHoSoDangLam: string;
+  /** Số thông báo đang được bù ở cuối lượt; `0` = không ở pha bù. Xem `buThongBaoHong` bên BE. */
+  dangBuLai: number;
   /** Số hồ sơ cổng khai có mà lượt này không lấy về được — >0 thì toast phải báo VÀNG, không
    * được hiện "Đồng bộ xong" màu xanh. Xem `DvcDongBoTienDo` bên BE. */
   thieuHoSo: number;

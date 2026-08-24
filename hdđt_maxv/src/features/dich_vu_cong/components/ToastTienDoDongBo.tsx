@@ -22,13 +22,17 @@ export default function ToastTienDoDongBo({ st }: { st: DvcDongBoTienDo }) {
   return (
     <Box sx={{ width: "100%" }}>
       <Typography variant="body2" sx={{ fontWeight: 600 }}>
-        {coMauSo
-          ? `Đang đồng bộ hồ sơ ${daXong}/${st.tongHoSo}…`
-          : "Đang tra cứu hồ sơ trên cổng Dịch vụ công…"}
+        {st.dangBuLai > 0
+          ? `Đang tải lại ${st.dangBuLai} thông báo lỗi…`
+          : coMauSo
+            ? `Đang đồng bộ hồ sơ ${daXong}/${st.tongHoSo}…`
+            : "Đang tra cứu hồ sơ trên cổng Dịch vụ công…"}
       </Typography>
       <LinearProgress
-        variant={coMauSo ? "determinate" : "indeterminate"}
-        value={coMauSo ? (daXong / st.tongHoSo) * 100 : undefined}
+        // Pha bù chạy khi thanh đã đầy và bộ đếm đứng im — quay lại vô định để người dùng thấy máy
+        // vẫn đang làm, thay vì một thanh 100% treo hàng chục giây.
+        variant={coMauSo && st.dangBuLai === 0 ? "determinate" : "indeterminate"}
+        value={coMauSo && st.dangBuLai === 0 ? (daXong / st.tongHoSo) * 100 : undefined}
         // `color="inherit"` để thanh ăn theo màu chữ của toast: `ToastContainer` chạy
         // `theme="colored"` nên nền toast đổi màu theo loại, màu primary cố định sẽ chìm.
         color="inherit"
