@@ -3,8 +3,11 @@ import assert from 'node:assert/strict';
 import {
   goiConHieuLuc,
   moduleCuaGoi,
+  assertModuleAllowed,
   type GoiRutGon,
 } from '../services/shared/modules.service';
+import { ForbiddenError } from '../helpers/errors';
+import { MESSAGES } from '../constants/messages';
 
 /**
  * Test luật quy đổi quyền module — hàm thuần, không đụng DB.
@@ -43,35 +46,39 @@ test('goiConHieuLuc', () => {
 });
 
 test('moduleCuaGoi — chỉ nhận đúng khóa và đúng giá trị true', () => {
-  assert.deepEqual(moduleCuaGoi(null, BAY_GIO), { hrm: false, accounting: false }, 'không có gói');
+  assert.deepEqual(
+    moduleCuaGoi(null, BAY_GIO),
+    { hrm: false, accounting: false, dvc: false },
+    'không có gói',
+  );
   assert.deepEqual(
     moduleCuaGoi(goi('ACTIVE', null, {}), BAY_GIO),
-    { hrm: false, accounting: false },
+    { hrm: false, accounting: false, dvc: false },
     'features rỗng',
   );
   assert.deepEqual(
     moduleCuaGoi(goi('ACTIVE', null, { hrm: true }), BAY_GIO),
-    { hrm: true, accounting: false },
+    { hrm: true, accounting: false, dvc: false },
     'gói có HRM',
   );
   assert.deepEqual(
-    moduleCuaGoi(goi('ACTIVE', null, { hrm: true, accounting: true }), BAY_GIO),
-    { hrm: true, accounting: true },
-    'gói có cả HRM lẫn Kế toán',
+    moduleCuaGoi(goi('ACTIVE', null, { hrm: true, accounting: true, dvc: true }), BAY_GIO),
+    { hrm: true, accounting: true, dvc: true },
+    'gói có cả HRM, Kế toán lẫn DVC',
   );
   assert.deepEqual(
     moduleCuaGoi(goi('ACTIVE', null, { hrm: false }), BAY_GIO),
-    { hrm: false, accounting: false },
+    { hrm: false, accounting: false, dvc: false },
     'false thì không cấp',
   );
   assert.deepEqual(
     moduleCuaGoi(goi('ACTIVE', null, { hrm: 'true' }), BAY_GIO),
-    { hrm: false, accounting: false },
+    { hrm: false, accounting: false, dvc: false },
     'chuỗi "true" không phải true',
   );
   assert.deepEqual(
     moduleCuaGoi(goi('ACTIVE', null, { khoaLa: true }), BAY_GIO),
-    { hrm: false, accounting: false },
+    { hrm: false, accounting: false, dvc: false },
     'khóa ngoài MODULE_KEYS bị bỏ qua',
   );
 
@@ -79,15 +86,31 @@ test('moduleCuaGoi — chỉ nhận đúng khóa và đúng giá trị true', ()
   for (const rac of [null, [], 'chuoi', 42]) {
     assert.deepEqual(
       moduleCuaGoi(goi('ACTIVE', null, rac), BAY_GIO),
-      { hrm: false, accounting: false },
+      { hrm: false, accounting: false, dvc: false },
       `features = ${JSON.stringify(rac)}`,
     );
   }
 
   assert.deepEqual(
-    moduleCuaGoi(goi('ACTIVE', HOM_QUA, { hrm: true }), BAY_GIO),
-    { hrm: false, accounting: false },
+    moduleCuaGoi(goi('ACTIVE', HOM_QUA, { hrm: true, dvc: true }), BAY_GIO),
+    { hrm: false, accounting: false, dvc: false },
     'gói hết hạn thì không cấp dù features có',
+  );
+});
+
+test('assertModuleAllowed — ném ForbiddenError khi gói không có module', () => {
+  assert.throws(
+    () => assertModuleAllowed({ hrm: false, accounting: false, dvc: false }, 'dvc'),
+    (err: unknown) =>
+      err instanceof ForbiddenError &&
+      err.message === MESSAGES.SUBSCRIPTION.MODULE_NOT_INCLUDED,
+    'phải ném đúng ForbiddenError với message chuẩn',
+  );
+});
+
+test('assertModuleAllowed — không ném khi gói có module', () => {
+  assert.doesNotThrow(() =>
+    assertModuleAllowed({ hrm: false, accounting: false, dvc: true }, 'dvc'),
   );
 });
 

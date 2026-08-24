@@ -1,6 +1,15 @@
 import { toast } from "react-toastify";
 import { apiFetch } from "../../../lib/http";
 import { getErrorMessage } from "../../../lib/errors";
+import {
+  batDauToastNen,
+  capNhatToastNen,
+  ketThucToastNen,
+  nghiMs,
+  POLL_NEN_MS,
+  MAX_POLL_NEN_HONG,
+  LOI_MAT_KET_NOI_NEN,
+} from "../../../lib/toastChayNen";
 import { buildInvoiceParams } from "./gdt";
 import type { InvoiceDirection, InvoiceQuery } from "../types";
 
@@ -51,16 +60,6 @@ export function getUpdateRunStatus(direction: InvoiceDirection): Promise<UpdateR
   return apiFetch<UpdateRunStatus>(`/gdt/invoices/${direction}/update-run/status`);
 }
 
-/** Nhịp poll tiến độ — 2s đủ mượt mà không dội BE (lượt có thể kéo hàng chục phút). */
-const POLL_MS = 2000;
-/**
- * Số nhịp poll LỖI LIÊN TIẾP tối đa trước khi bỏ cuộc (~10s). Chập mạng 1-2 nhịp là chuyện thường
- * nên phải bỏ qua, nhưng BE chết/mất mạng hẳn mà cứ `continue` thì vòng lặp không bao giờ thoát:
- * toast "Đang tải…" treo vĩnh viễn và FE poll mãi. Bỏ cuộc rồi báo lỗi, lượt vẫn chạy ở BE và
- * người dùng mở lại tab là nối lại được.
- */
-const MAX_POLL_FAILS = 5;
-const sleepMs = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
 const DIR_LABEL: Record<InvoiceDirection, string> = {
   purchase: "Mua vào",
@@ -116,7 +115,7 @@ export async function pollUpdateRunToast(
   initial: UpdateRunStatus,
   opts: { isStale: () => boolean; onProgress: () => void; onFinish: () => void },
 ): Promise<void> {
-  const toastId = toast.loading(renderProgress(direction, initial));
+  const toastId = batDauToastNen(renderProgress(direction, initial));
   let st = initial;
   let lastSeen = "";
   let fails = 0;
@@ -126,7 +125,7 @@ export async function pollUpdateRunToast(
         toast.dismiss(toastId);
         return;
       }
-      toast.update(toastId, { render: renderProgress(direction, st) });
+      capNhatToastNen(toastId, renderProgress(direction, st));
       // Chỉ invalidate khi CÓ số liệu mới (tránh refetch cả bảng mỗi 2s một cách vô ích).
       const seen = `${st.rows}/${st.saved}/${st.detail.done}`;
       if (seen !== lastSeen) {
@@ -134,7 +133,7 @@ export async function pollUpdateRunToast(
         opts.onProgress();
       }
       if (!st.active) break;
-      await sleepMs(POLL_MS);
+      await nghiMs(POLL_NEN_MS);
       try {
         st = await getUpdateRunStatus(direction);
         fails = 0;
@@ -142,20 +141,15 @@ export async function pollUpdateRunToast(
         // Lỗi mạng chập 1 nhịp poll -> thử lại nhịp sau, KHÔNG bỏ lượt (lượt vẫn chạy ở BE).
         // Nhưng lỗi LIÊN TIẾP quá ngưỡng = mất kết nối thật -> thoát, khỏi treo toast vĩnh viễn.
         fails += 1;
-        console.warn(`[DEBUG-CAPNHAT][FE] Poll lỗi nhịp ${fails}/${MAX_POLL_FAILS}:`, e);
-        if (fails >= MAX_POLL_FAILS) throw e;
+        console.warn(`[DEBUG-CAPNHAT][FE] Poll lỗi nhịp ${fails}/${MAX_POLL_NEN_HONG}:`, e);
+        if (fails >= MAX_POLL_NEN_HONG) throw e;
       }
     }
-    const { render, type } = renderFinal(direction, st);
-    toast.update(toastId, { render, type, isLoading: false, autoClose: 5000 });
+    ketThucToastNen(toastId, renderFinal(direction, st));
   } catch (e) {
-    toast.update(toastId, {
-      render: getErrorMessage(
-        e,
-        "Mất kết nối khi theo dõi tiến độ — lượt vẫn chạy ở máy chủ, mở lại tab để xem tiếp.",
-      ),
+    ketThucToastNen(toastId, {
+      render: getErrorMessage(e, LOI_MAT_KET_NOI_NEN),
       type: "error",
-      isLoading: false,
       autoClose: 4000,
     });
   } finally {

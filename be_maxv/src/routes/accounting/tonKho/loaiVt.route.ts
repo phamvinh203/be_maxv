@@ -1,5 +1,6 @@
 import type { FastifyInstance } from 'fastify';
 import * as ctrl from '../../../controllers/client/accounting/tonKho/danh_muc/loaiVt.controller';
+import { requireModule } from '../../../services/shared/modules.service';
 
 /**
  * Tồn kho › Danh mục › Loại vật tư (dmloaivt).
@@ -8,6 +9,7 @@ import * as ctrl from '../../../controllers/client/accounting/tonKho/danh_muc/lo
  */
 export async function loaiVtRoutes(app: FastifyInstance) {
   app.addHook('preHandler', app.authenticate);
+  app.addHook('preHandler', requireModule('accounting'));
 
   app.get('/loai-vt', ctrl.list);
   app.post('/loai-vt', ctrl.create);

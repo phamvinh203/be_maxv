@@ -597,14 +597,14 @@ model hrm_nhan_vien {
 // ============================================================
 //  DỊCH VỤ CÔNG › CACHE HỒ SƠ ĐÃ NỘP (dich-vu-cong)
 //  Cùng chiến lược cache như vct50view: cột chính bóc sẵn + `raw` Json
-//  giữ nguyên dữ liệu cổng, file XML cache VĨNH VIỄN trong cột Text
+//  giữ nguyên dữ liệu cổng, file cache VĨNH VIỄN trong cột Bytes
 //  (bất biến sau phát hành, Postgres TOAST tự nén).
 //  Phạm vi: 2 tab tờ khai. Giấy nộp tiền chưa cache (làm sau nếu cần).
 // ============================================================
 
 /// Hồ sơ tờ khai đã nộp — cache tra cứu từ cổng Dịch vụ công (dichvucong.gdt.gov.vn).
 /// Upsert theo `ma_ho_so` mỗi lần tra cứu: metadata + `trang_thai` GHI ĐÈ bản mới nhất
-/// (trạng thái đổi theo tiến trình xử lý), riêng `xml_to_khai` đã có thì giữ nguyên.
+/// (trạng thái đổi theo tiến trình xử lý), riêng `xml_to_khai_bin` đã có thì giữ nguyên.
 model dvc_ho_so {
   ma_ho_so String @id @db.VarChar(64) // "Mã hồ sơ" bên cổng (FE hiện là cột "Mã giao dịch")
 
@@ -621,12 +621,25 @@ model dvc_ho_so {
   noi_nop      String? @db.VarChar(254) // "Cơ quan thuế tiếp nhận"
   trang_thai   String? @db.VarChar(254) // Ghi đè mỗi lần tra cứu — KHÔNG cache vĩnh viễn
 
-  /// Tờ khai XML gốc (bóc từ gói ZIP của POST /tchs/downloadhoso). Cache vĩnh viễn:
+  /// Tờ khai gốc NGUYÊN BYTE (bóc từ gói ZIP của POST /tchs/downloadhoso). Cache vĩnh viễn:
   /// null = chưa tải; đã có thì lượt "Tải file" sau đọc thẳng DB, không gọi lại cổng.
+  /// `Bytes` chứ không `Text` cùng lý do `dvc_tai_lieu.noi_dung_bin`: `taiXmlHoSoThuc` CÓ nhánh dự
+  /// phòng trả nguyên bytes khi response không phải ZIP hợp lệ, mà nhị phân ép qua
+  /// `bytes.toString("utf8")` làm Postgres từ chối cả dòng (`invalid byte sequence ... 0x00`).
+  xml_to_khai_bin Bytes?
+  /// MIME của `xml_to_khai_bin` — hầu hết là `application/xml`, nhưng phải lưu để không đoán bừa.
+  /// null = dòng cũ chưa có cột này; đọc ra thì đoán theo đuôi `ten_file_xml`.
+  content_type String? @db.VarChar(128)
+  /// CŨ — chỉ còn để ĐỌC bản đã cache trước khi có `xml_to_khai_bin`; KHÔNG ghi mới vào đây nữa.
+  /// Giữ lại thay vì đổi kiểu tại chỗ vì `prisma db push` sẽ DROP cột (text không cast được sang
+  /// bytea), xóa sạch tờ khai đã cache trên MỌI tenant. Xem chú thích `dvc_tai_lieu.noi_dung`.
   xml_to_khai   String? @db.Text
   ten_file_xml  String? @db.VarChar(254) // Tên file thật cổng đặt, dùng lại khi trả về FE
 
-  /// Đã đồng bộ TRỌN VẸN (xml + danh sách thông báo + nội dung + tệp đính kèm) ít nhất 1 lần.
+  /// Đã đồng bộ TRỌN VẸN (xml + danh sách thông báo + nội dung TỪNG thông báo) ít nhất 1 lần.
+  /// KHÔNG gồm "tệp đính kèm" — cổng chưa có bộ bóc tin cậy cho phần đó, xem `dongBoChiTietHoSo`.
+  /// Cờ này CHỈ được bật sau khi mọi phần trên đã xong; thiếu dù một thông báo thì giữ false để
+  /// lượt sau bù (trước đây bật sớm hơn, khiến hồ sơ thiếu thông báo không bao giờ được thử lại).
   /// true -> lượt tra cứu sau BỎ QUA mọi request cổng cho hồ sơ này (chỉ ghi đè trang_thai).
   /// Thông báo phát sinh SAU khi đã đồng bộ sẽ không tự về — đánh đổi đã chốt để giữ đúng
   /// "1 captcha, sau không làm lại"; cần thì thêm nút đồng bộ lại thủ công sau.
@@ -645,7 +658,7 @@ model dvc_ho_so {
 /// Tài liệu gắn với một hồ sơ — gộp thông báo + tệp đính kèm bằng cột `loai`
 /// (hai loại cùng hình dạng logic: thuộc 1 hồ sơ, có nội dung file tải sau được).
 ///   loai = "thong_bao":    mỗi thông báo 1 dòng, `khoa` = idTbao,
-///                          `noi_dung` = XML thông báo (null = chưa tải).
+///                          `noi_dung_bin` = NGUYÊN BYTE file cổng trả (null = chưa tải).
 ///   loai = "tep_dinh_kem": CẢ danh sách 1 dòng/hồ sơ, `khoa` = ma_ho_so, `raw` = nguyên
 ///                          JSON cổng trả — hình dạng thật chưa xác nhận nên chưa tách
 ///                          từng tệp; cổng cũng chưa thấy endpoint tải nội dung tệp.
@@ -656,7 +669,20 @@ model dvc_tai_lieu {
   ma_ho_so String  @db.VarChar(64)
   tieu_de  String? @db.VarChar(512) // Tiêu đề thông báo (vd "V/v: Tiếp nhận hồ sơ...")
   ngay_gui String? @db.VarChar(32) // Dạng thô cổng trả (vd "06:58 29/07/2026")
-  noi_dung String? @db.Text // Nội dung file (XML thông báo); null = chưa tải
+  /// Nội dung file NGUYÊN BYTE — null = chưa tải. Dùng `Bytes` chứ không `Text` vì cổng trả
+  /// thông báo dưới nhiều định dạng: XML, nhưng cũng có PDF/ZIP. Ép nhị phân qua
+  /// `bytes.toString("utf8")` để nhét vào cột Text làm Postgres từ chối cả dòng
+  /// (`invalid byte sequence for encoding "UTF8": 0x00`) — file coi như không bao giờ cache được.
+  noi_dung_bin Bytes?
+  /// MIME cổng khai cho file (`DvcTepTaiVe.contentType`) — phải lưu kèm, không suy được từ byte.
+  /// null = dòng cũ chưa có cột này; đọc ra thì đoán theo đuôi `ten_file`.
+  content_type String? @db.VarChar(128)
+  /// CŨ — chỉ còn để ĐỌC dữ liệu đã cache trước khi có `noi_dung_bin`; KHÔNG ghi mới vào đây nữa.
+  /// Giữ lại thay vì đổi kiểu tại chỗ vì tenant DB đồng bộ bằng `prisma db push --accept-data-loss`
+  /// (xem `sync-tenants.ts`): Postgres không cast được text -> bytea nên push sẽ DROP cột, xóa sạch
+  /// thông báo đã cache trên MỌI tenant. Xóa cột này ở một lượt dọn riêng khi đã chắc không còn dòng
+  /// nào chỉ có `noi_dung`.
+  noi_dung String? @db.Text
   ten_file String? @db.VarChar(254) // Tên file thật cổng đặt khi tải
 
   raw Json

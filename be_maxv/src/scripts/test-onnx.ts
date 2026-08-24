@@ -19,7 +19,8 @@ async function main() {
 
   for (let i = 1; i <= NUM_TESTS; i++) {
     try {
-      const res = await getCaptcha();
+      // Xem chú thích tương ứng ở `test-dvc-ocr.ts`: script đo lường, phiên dùng một lần rồi bỏ.
+      const res = await getCaptcha("script-test-onnx");
       const base64Data = res.image.replace(/^data:image\/\w+;base64,/, "");
       const imgBuffer = Buffer.from(base64Data, "base64");
 

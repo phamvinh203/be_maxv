@@ -1,5 +1,6 @@
 import type { FastifyInstance } from 'fastify';
 import * as ctrl from '../../../controllers/client/accounting/tonKho/danh_muc/phanNhom.controller';
+import { requireModule } from '../../../services/shared/modules.service';
 
 /**
  * Tồn kho › Danh mục › Phân nhóm hàng hóa, vật tư (dmnhvt).
@@ -9,6 +10,7 @@ import * as ctrl from '../../../controllers/client/accounting/tonKho/danh_muc/ph
  */
 export async function phanNhomRoutes(app: FastifyInstance) {
   app.addHook('preHandler', app.authenticate);
+  app.addHook('preHandler', requireModule('accounting'));
 
   app.get('/phan-nhom', ctrl.list);
   app.post('/phan-nhom', ctrl.create);

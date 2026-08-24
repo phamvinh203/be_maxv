@@ -37,9 +37,9 @@ interface Props {
   /** Hành động đang chạy dở — hiện vòng quay đúng icon/dòng đó, khóa các icon còn lại. */
   dangChayAction?: { key: string; maHoSo: string } | null;
   /**
-   * Bấm vào ô của cột khai `clickable: true` (`cot[i].clickable`, xem `config.ts` — hiện là "Tên
-   * thủ tục hành chính") — nhận `maHoSo` (giá trị cột "Mã giao dịch") của đúng dòng vừa bấm, để mở
-   * dialog "Xem tờ khai". Bỏ trống hoặc dòng không có `maHoSo` thì ô hiện như text thường.
+   * Bấm vào ô của cột khai `clickable: true` (`cot[i].clickable`, xem `config.ts` — hiện là "Tờ
+   * khai / Phụ lục") — nhận `maHoSo` (giá trị cột "Mã giao dịch") của đúng dòng vừa bấm, để mở
+   * dialog "Xem tờ khai". Bỏ trống, dòng không có `maHoSo`, hoặc ô rỗng thì hiện như text thường.
    */
   onXemToKhai?: (maHoSo: string) => void;
 }
@@ -132,11 +132,16 @@ export default function BangHoSo({
                     const c = cot[j];
                     if (!c?.action) {
                       const gia = layO(row, j, i);
-                      // Cột khai `clickable: true` (vd "Tên thủ tục hành chính") mở dialog "Xem tờ
+                      // Cột khai `clickable: true` (hiện là "Tờ khai / Phụ lục") mở dialog "Xem tờ
                       // khai" qua `maGiaoDich` của đúng dòng — cần cả `onXemToKhai` lẫn có mã hồ sơ
                       // mới bấm được, cùng quy ước khóa icon hành động khi thiếu `maGiaoDich` ở
                       // nhánh bên dưới.
-                      const bamDuoc = c?.clickable && onXemToKhai && maGiaoDich;
+                      //
+                      // Đòi thêm `gia` không rỗng: cột bấm được nay là "Tờ khai / Phụ lục", mà ô đó
+                      // CÓ THỂ rỗng (`to_khai` lưu `null` khi cổng không trả) — khác "Tên TTHC" gần
+                      // như luôn có chữ. Rỗng mà vẫn bọc `Link` thì ra một link vô hình: không thấy
+                      // gì để bấm nhưng vẫn là vùng bấm được.
+                      const bamDuoc = c?.clickable && onXemToKhai && maGiaoDich && gia;
 
                       return (
                         <TableCell key={j} align={canLe(j)} sx={{ whiteSpace: "nowrap" }}>

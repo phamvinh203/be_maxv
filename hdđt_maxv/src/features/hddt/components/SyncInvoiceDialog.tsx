@@ -33,6 +33,7 @@ import ExpandMoreRounded from "@mui/icons-material/ExpandMoreRounded";
 import SyncRounded from "@mui/icons-material/SyncRounded";
 import DeleteOutlineRounded from "@mui/icons-material/DeleteOutlineRounded";
 import { toast } from "react-toastify";
+import { TOAST_KET_QUA_NEN } from "../../../lib/toastChayNen";
 import { useQueryClient } from "@tanstack/react-query";
 import { currentMonthRange, formatDateVN, formatDateTimeVN } from "../dateUtils";
 import { syncLogDescription, syncLogReason } from "../syncLogText";
@@ -248,19 +249,25 @@ export default function SyncInvoiceDialog({ open, onClose }: Props) {
     gdtToken: string,
     isStale: () => boolean,
   ) => {
-    // Toast tóm tắt DANH SÁCH theo từng chiều (all -> 2 toast: mua vào + bán ra).
+    // Toast tóm tắt DANH SÁCH theo từng chiều (all -> 2 toast: mua vào + bán ra). Góc DƯỚI PHẢI để
+    // đứng cùng chỗ với toast tiến độ của chính lượt này — xem `TOAST_KET_QUA_NEN`.
     results.forEach((res) => {
       const dirLabel =
         res.direction === "purchase" ? "Mua vào" : res.direction === "sold" ? "Bán ra" : "Tất cả";
       if (res.trang_thai !== "done") {
         toast.warning(
           `${dirLabel} — chưa hoàn thành: ${syncLogReason(res.dien_giai) || "lỗi khi đồng bộ"}. Đã bổ sung ${res.boSung}, đã có sẵn ${res.daCo}.`,
+          TOAST_KET_QUA_NEN,
         );
       } else if (res.boSung === 0) {
-        toast.success(`${dirLabel} — đầy đủ, không thiếu hóa đơn (đã có sẵn ${res.daCo}).`);
+        toast.success(
+          `${dirLabel} — đầy đủ, không thiếu hóa đơn (đã có sẵn ${res.daCo}).`,
+          TOAST_KET_QUA_NEN,
+        );
       } else {
         toast.success(
           `${dirLabel} — đã bổ sung ${res.boSung} hóa đơn thiếu (đã có sẵn ${res.daCo}).`,
+          TOAST_KET_QUA_NEN,
         );
       }
     });
@@ -273,7 +280,10 @@ export default function SyncInvoiceDialog({ open, onClose }: Props) {
     // Nối lại tiến độ sau khi F5 thì không còn token GDT trong tay -> bỏ qua phần chi tiết, người
     // dùng bấm "Tải chi tiết" ở bảng hóa đơn sau (danh sách đã lưu xong nên không mất gì).
     if (!gdtToken) {
-      toast.info("Đã đồng bộ xong danh sách. Bấm \"Tải chi tiết\" ở bảng hóa đơn để tải chi tiết.");
+      toast.info(
+        'Đã đồng bộ xong danh sách. Bấm "Tải chi tiết" ở bảng hóa đơn để tải chi tiết.',
+        TOAST_KET_QUA_NEN,
+      );
       return;
     }
 
@@ -337,7 +347,7 @@ export default function SyncInvoiceDialog({ open, onClose }: Props) {
     cancelMutation.mutate(undefined, {
       onSuccess: (status) => {
         setRunStatus(status);
-        toast.info("Đã gửi yêu cầu dừng — đang kết thúc trang hiện tại…");
+        toast.info("Đã gửi yêu cầu dừng — đang kết thúc trang hiện tại…", TOAST_KET_QUA_NEN);
       },
       onError: (e) => setError(getErrorMessage(e, "Không dừng được lượt đồng bộ.")),
     });

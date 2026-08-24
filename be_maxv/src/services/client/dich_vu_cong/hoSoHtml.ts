@@ -19,6 +19,48 @@ export interface BangHoSoDaBoc {
   headers: string[];
   /** Mỗi dòng là mảng ô theo đúng thứ tự cột. */
   rows: string[][];
+  /**
+   * Tổng số bản ghi CỔNG KHAI cho bộ lọc này (`bocPhanTrang`) — `null`/vắng mặt = không đọc được.
+   *
+   * Để người gọi ĐỐI CHIẾU với `rows.length`: lệch nghĩa là chưa lấy hết, phải báo ra thay vì ghi
+   * lịch sử "xong, 0 lỗi". `parseBangHoSo` không tự điền (nó chỉ bóc một mảnh HTML); chỗ điền là
+   * `traCuuHoSo` sau khi đã gộp đủ các trang.
+   */
+  tongSoBanGhi?: number | null;
+}
+
+/**
+ * Khối PHÂN TRANG của trang tra cứu — cổng chia trang mặc định 10 bản ghi/trang.
+ *
+ * VÌ SAO PHẢI BÓC: `parseBangHoSo` chỉ đọc `<table>`, nên nếu chỉ xin trang đầu thì mọi khoảng có
+ * hơn 10 hồ sơ âm thầm mất phần dư — lượt đồng bộ vẫn báo "xong, 0 lỗi". Hai con số này vừa để
+ * biết còn trang nào phải lấy, vừa để ĐỐI CHIẾU số dòng bóc được với số cổng khai.
+ *
+ * `null` = không đọc được (cổng bỏ khối này khi kết quả rỗng, hoặc đổi markup). Phân biệt với `0`:
+ * `0` là "cổng nói không có bản ghi nào", `null` là "không biết" — caller không được báo thiếu oan.
+ */
+export interface PhanTrangDaBoc {
+  /** Cổng khai tổng số bản ghi khớp bộ lọc (`Tổng số bản ghi: <span>16</span>`). */
+  tongSoBanGhi: number | null;
+  /** Tổng số trang (`<span id="totalPage">2</span>`). */
+  tongSoTrang: number | null;
+}
+
+const TONG_BAN_GHI_RE = /Tổng số bản ghi:\s*<span[^>]*>\s*([\d.,]+)\s*<\/span>/i;
+const TONG_TRANG_RE = /id="totalPage"[^>]*>\s*([\d.,]+)\s*</i;
+
+/** "1.234" / "1,234" -> 1234. Không ra số -> `null`. */
+function soNguyen(raw: string | undefined): number | null {
+  if (!raw) return null;
+  const n = Number(raw.replace(/[.,\s]/g, ""));
+  return Number.isInteger(n) ? n : null;
+}
+
+export function bocPhanTrang(html: string): PhanTrangDaBoc {
+  return {
+    tongSoBanGhi: soNguyen(TONG_BAN_GHI_RE.exec(html)?.[1]),
+    tongSoTrang: soNguyen(TONG_TRANG_RE.exec(html)?.[1]),
+  };
 }
 
 const TABLE_RE = /<table[^>]*>([\s\S]*?)<\/table>/i;
@@ -135,4 +177,129 @@ export function parseDanhSachThongBao(html: string): ThongBaoDaBoc[] {
     });
   }
   return out;
+}
+
+// ============================================================
+//  GỘP NHIỀU TRANG KẾT QUẢ
+//
+//  Nằm ở đây (không phải `gdt-dvc.service.ts`) để TÁCH quyết định khỏi I/O: hàm dưới nhận một
+//  `layTrang` bất kỳ nên test được đầy đủ mọi điều kiện dừng mà không cần cổng thật — xem
+//  `__tests__/dvcGopTrang.test.ts`. Đây đúng là phần đáng khóa nhất: lỗi gốc của cả lượt vá này là
+//  "mất dòng mà không ai biết".
+// ============================================================
+
+/** Một trang kết quả đã bóc: bảng + khối phân trang đi kèm. */
+export interface TrangHoSo {
+  bang: BangHoSoDaBoc;
+  phanTrang: PhanTrangDaBoc;
+}
+
+export interface GopTrangOpts {
+  /** Số bản ghi đã XIN mỗi trang — dùng để đoán "trang này đầy, có lẽ còn nữa". */
+  size: number;
+  /** Trần số trang, chặn vòng lặp vô tận khi cổng trả dữ liệu lạ. */
+  maxTrang?: number;
+  /** Lượt đã bị lượt mới thay thế -> dừng, khỏi tiêu thêm request cổng cho kết quả không ai đọc. */
+  daBiThay?: () => boolean;
+}
+
+const MAX_TRANG_MAC_DINH = 50;
+
+/** Ô "Mã hồ sơ" của một dòng, theo đúng TÊN cột (bảng cổng có thể đổi thứ tự cột). */
+function maHoSoCuaDong(headers: string[], row: string[]): string {
+  const i = headers.indexOf("Mã hồ sơ");
+  return i >= 0 ? (row[i] ?? "") : "";
+}
+
+/**
+ * Xin từng trang qua `layTrang` rồi gộp lại thành một bảng.
+ *
+ * CHỐNG TRÙNG bằng "Mã hồ sơ" chứ không tin `page` chạy đúng: nếu cổng lờ tham số đó thì trang 2
+ * trả lại y hệt trang 1, cứ nối vào là ra 20 dòng cho 16 bản ghi — sai theo hướng NGƯỢC LẠI với lỗi
+ * gốc và khó thấy hơn. Trang nào không thêm được dòng mới thì dừng luôn.
+ *
+ * KHÔNG đọc được khối phân trang thì KHÔNG dừng mù ở trang đầu — đó chính là lỗi gốc. Trang trả về
+ * ĐẦY (đúng bằng `size`) nghĩa là rất có thể còn nữa, cứ xin tiếp; chống trùng lo phần còn lại.
+ */
+export async function gopCacTrangHoSo(
+  layTrang: (page: number) => Promise<TrangHoSo>,
+  opts: GopTrangOpts,
+): Promise<BangHoSoDaBoc> {
+  const maxTrang = opts.maxTrang ?? MAX_TRANG_MAC_DINH;
+
+  let headers: string[] = [];
+  const rows: string[][] = [];
+  const daThay = new Set<string>();
+  let tongSoBanGhi: number | null = null;
+  /**
+   * Cỡ trang THỰC TẾ cổng dùng, để biết "trang này đầy, có lẽ còn nữa".
+   *
+   * Khởi tạo bằng cỡ mình XIN, và CHỈ hạ xuống khi có BẰNG CHỨNG cổng ép cỡ khác: trang 1 trả ít
+   * hơn số xin trong khi pager nói còn nhiều trang. Cổng thật nghĩ theo đơn vị 10
+   * (`onChangePage(2,10)`) nên chuyện nó lờ `size` là có thật.
+   *
+   * KHÔNG hiệu chuẩn vô điều kiện từ số dòng trang 1: trang đầu ngắn là trường hợp THƯỜNG (ít hồ
+   * sơ), coi nó là cỡ trang thì lượt tra cứu nào cũng phải xin thêm một trang nữa để biết đã hết —
+   * tốn thêm 1 captcha + 1 request cho mọi lần đồng bộ.
+   *
+   * Còn lại một khe hẹp: cổng vừa ép cỡ trang VỪA đổi markup pager thì không có gì để đối chiếu,
+   * và lượt sẽ dừng sớm. Cảnh báo "không bóc được khối phân trang" bên dưới là dấu vết duy nhất —
+   * chấp nhận, vì bịt nó đòi trả giá một request cho mọi lượt.
+   */
+  let coTrangThucTe = opts.size;
+
+  for (let page = 1; page <= maxTrang; page++) {
+    if (opts.daBiThay?.()) break;
+
+    const { bang, phanTrang } = await layTrang(page);
+
+    if (page === 1) {
+      headers = bang.headers;
+      tongSoBanGhi = phanTrang.tongSoBanGhi;
+      if (bang.rows.length > 0 && bang.rows.length < opts.size && (phanTrang.tongSoTrang ?? 1) > 1) {
+        coTrangThucTe = bang.rows.length;
+        console.warn(
+          `[DVC-TRACUU] Cổng ÉP cỡ trang về ${bang.rows.length} dù xin ${opts.size} — ` +
+            `lượt tra cứu tốn gấp ~${Math.ceil(opts.size / bang.rows.length)} lần số request.`,
+        );
+      }
+      if (tongSoBanGhi === null && bang.rows.length > 0) {
+        // Mất khối phân trang = mất luôn cơ chế đối chiếu. Đừng để im lặng: đây đúng là cách lỗi
+        // "chỉ lấy trang đầu" quay lại mà không ai hay.
+        console.warn(
+          "[DVC-TRACUU] Không bóc được khối phân trang (cổng đổi markup?) — mất cơ chế đối " +
+            "chiếu tổng số bản ghi, xem `bocPhanTrang`.",
+        );
+      }
+    } else if (bang.headers.length > 0 && bang.headers.join("|") !== headers.join("|")) {
+      // Cột đổi giữa chừng thì `maHoSoCuaDong` (dùng headers trang 1) đọc nhầm cột -> chống trùng
+      // sai. Dừng lại và để phần đối chiếu báo thiếu, còn hơn gộp bừa dữ liệu lệch cột.
+      console.warn(`[DVC-TRACUU] Cột bảng đổi giữa chừng ở trang ${page} — dừng gộp.`);
+      break;
+    }
+
+    let themMoi = 0;
+    for (const row of bang.rows) {
+      // Không bóc được mã (markup lạ) -> vẫn giữ dòng, chỉ không chống trùng được cho nó.
+      const ma = maHoSoCuaDong(headers, row);
+      if (ma && daThay.has(ma)) continue;
+      if (ma) daThay.add(ma);
+      rows.push(row);
+      themMoi++;
+    }
+
+    if (themMoi === 0) break; // hết dữ liệu, hoặc cổng lờ `page` và trả lại trang cũ
+    if (phanTrang.tongSoTrang !== null && page >= phanTrang.tongSoTrang) break;
+    if (phanTrang.tongSoTrang === null && bang.rows.length < coTrangThucTe) break;
+    if (tongSoBanGhi !== null && rows.length >= tongSoBanGhi) break;
+
+    if (page === maxTrang) {
+      console.warn(
+        `[DVC-TRACUU] Chạm trần ${maxTrang} trang (${rows.length} dòng) — có thể còn hồ sơ chưa ` +
+          "lấy; phần đối chiếu `tongSoBanGhi` sẽ báo thiếu.",
+      );
+    }
+  }
+
+  return { headers, rows, tongSoBanGhi };
 }

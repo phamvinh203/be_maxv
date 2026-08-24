@@ -1,7 +1,8 @@
 /**
- * PACER theo MST (khóa = donViId của công ty) — điều tiết nhịp gọi GDT của CÙNG một MST để không
- * vượt rate-limit (GDT trả 429 khi bị dội). Hiện engine tải chi tiết (`runDetailFetch`) và engine
- * lấy danh sách (`fetchListPagePaced`) đều đi qua đây; luồng tra CHI TIẾT LẺ vẫn tự giãn nhịp riêng.
+ * PACER theo MST (khóa = donViId của công ty) — điều tiết nhịp gọi cổng thuế của CÙNG một MST để
+ * không vượt rate-limit (cổng trả 429 khi bị dội). Hiện engine tải chi tiết (`runDetailFetch`),
+ * engine lấy danh sách (`fetchListPagePaced`) và TOÀN BỘ lưu lượng cổng Dịch vụ công (`dvcSend`)
+ * đều đi qua đây; luồng tra CHI TIẾT LẺ vẫn tự giãn nhịp riêng.
  * Đặc điểm:
  *
  *  - Hàng đợi FIFO theo MST. `list`/`detail` dùng CHUNG một hàng đợi chạy tuần tự (concurrency = 1)
@@ -26,7 +27,7 @@
  * `list` và `detail` vẫn dùng CHUNG một hàng đợi tuần tự — không tăng tải lên GDT so với bản đầu.
  * Riêng `xml` có hàng đợi riêng: xem `LANE_QUEUE` / `QUEUE_CONCURRENCY`.
  */
-export type Lane = "list" | "detail" | "xml";
+export type Lane = "list" | "detail" | "xml" | "dvc";
 
 /**
  * Làn `xml` (tải hóa đơn XML gốc, `export-xml`) có HÀNG ĐỢI RIÊNG, tách khỏi hàng đợi chung của
@@ -37,13 +38,20 @@ export type Lane = "list" | "detail" | "xml";
  * tốn ~3 giây và cần một call cho MỖI hóa đơn — 500 hóa đơn tuần tự là 25 phút. Cho làn này hàng
  * đợi riêng vừa để chạy song song được, vừa để lượt xuất không phải xếp sau cả trăm call đồng bộ.
  */
-type QueueName = "main" | "xml";
+type QueueName = "main" | "xml" | "dvc";
 
-/** Hàng đợi của từng làn. `list`/`detail` dùng chung — ràng buộc "đừng dội GDT" của chúng là một. */
+/**
+ * Hàng đợi của từng làn. `list`/`detail` dùng chung — ràng buộc "đừng dội GDT" của chúng là một.
+ *
+ * `dvc` có hàng đợi RIÊNG vì đó là host khác (dichvucong.gdt.gov.vn, không phải hoadondientu):
+ * xếp chung thì một lượt đồng bộ HĐĐT hàng trăm call sẽ chặn đứng thao tác Dịch vụ công, mà hai
+ * cổng chẳng liên quan gì tới rate-limit của nhau.
+ */
 const LANE_QUEUE: Record<Lane, QueueName> = {
   list: "main",
   detail: "main",
   xml: "xml",
+  dvc: "dvc",
 };
 
 /**
@@ -53,11 +61,14 @@ const LANE_QUEUE: Record<Lane, QueueName> = {
  * `xml`  = 2: đo thực tế cho thấy cổng thuế chịu được, và đây là làn người dùng phải ngồi chờ.
  *   Nếu nâng lên mà thấy log `[DEBUG-XML] ... lỗi TẠM THỜI` tăng vọt thì hạ về 1 — dội mạnh khiến
  *   nhịp bị phạt ×2 tới trần 15s, hóa ra CHẬM HƠN chạy tuần tự.
+ * `dvc`  = 1 và KHÔNG được nâng: mọi call Dịch vụ công của một công ty dùng CHUNG một phiên, và
+ *   `dvcSend` ghi lại cookie cổng xoay vòng vào chính phiên đó sau mỗi lượt. Hai call song song là
+ *   hai lượt cùng đọc-ghi một bộ cookie — tuần tự ở đây là ràng buộc ĐÚNG SAI, không phải lịch sự.
  *
  * Khóa là union `QueueName` chứ không phải `string`: thêm hàng đợi mới mà quên khai số này thì LỖI
  * BIÊN DỊCH, thay vì âm thầm chạy với 1 và biểu hiện thành "sao lượt này chậm thế".
  */
-const QUEUE_CONCURRENCY: Record<QueueName, number> = { main: 1, xml: 2 };
+const QUEUE_CONCURRENCY: Record<QueueName, number> = { main: 1, xml: 2, dvc: 1 };
 
 interface QueueItem {
   /** Làn của task — quyết định phải giãn bao lâu trước khi chạy. */
@@ -107,8 +118,8 @@ function getPacer(key: string): Pacer {
   let p = pacers.get(key);
   if (!p) {
     p = {
-      queues: { main: newQueue(), xml: newQueue() },
-      intervalMs: { list: START_MS, detail: START_MS, xml: START_MS },
+      queues: { main: newQueue(), xml: newQueue(), dvc: newQueue() },
+      intervalMs: { list: START_MS, detail: START_MS, xml: START_MS, dvc: START_MS },
     };
     pacers.set(key, p);
   }

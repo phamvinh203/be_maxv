@@ -1,5 +1,6 @@
 import type { FastifyInstance } from 'fastify';
 import * as ctrl from '../../../controllers/client/accounting/banHang/danh_muc/khachHang.controller';
+import { requireModule } from '../../../services/shared/modules.service';
 
 /**
  * Bán hàng › Danh mục › Khách hàng (dmkh).
@@ -7,6 +8,7 @@ import * as ctrl from '../../../controllers/client/accounting/banHang/danh_muc/k
  */
 export async function khachHangRoutes(app: FastifyInstance) {
   app.addHook('preHandler', app.authenticate);
+  app.addHook('preHandler', requireModule('accounting'));
 
   app.get('/khach-hang', ctrl.list);
   app.post('/khach-hang', ctrl.create);

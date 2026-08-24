@@ -15,6 +15,7 @@ import Typography from "@mui/material/Typography";
 import CircularProgress from "@mui/material/CircularProgress";
 import CloseRounded from "@mui/icons-material/CloseRounded";
 import { layTaiLieuDinhKemDvc } from "../api/dvc";
+import { useBaoPhienChet } from "../useBaoPhienChet";
 import { getErrorMessage } from "../../../lib/errors";
 
 interface Props {
@@ -23,6 +24,8 @@ interface Props {
   dvcKey: string | null;
   /** Mã hồ sơ đang xem — `null` khi chưa chọn dòng nào (dialog không fetch). */
   maHoSo: string | null;
+  /** Báo lên `DvcPage` để bỏ khóa phiên khi BE nói phiên chết hẳn — xem `boKhoaNeuPhienChet`. */
+  onPhienChet?: (err: unknown) => void;
 }
 
 type Dong = Record<string, unknown>;
@@ -57,12 +60,20 @@ function hienThiGiaTri(v: unknown): string {
  *
  * Dùng: `BangHoSo` (icon cột "Tệp đính kèm").
  */
-export default function TaiLieuDinhKemDialog({ open, onClose, dvcKey, maHoSo }: Props) {
+export default function TaiLieuDinhKemDialog({
+  open,
+  onClose,
+  dvcKey,
+  maHoSo,
+  onPhienChet,
+}: Props) {
   const query = useQuery({
     queryKey: ["dvc", "tai-lieu-dkem", dvcKey, maHoSo],
     queryFn: () => layTaiLieuDinhKemDvc({ key: dvcKey as string, maHoSo: maHoSo as string }),
     enabled: open && !!dvcKey && !!maHoSo,
   });
+
+  useBaoPhienChet(query.error, onPhienChet);
 
   const dsDong = chuanHoaThanhMangDong(query.data);
   const cot = dsDong.length > 0 ? Object.keys(dsDong[0]!) : [];

@@ -1,5 +1,6 @@
 import type { FastifyInstance } from 'fastify';
 import * as ctrl from '../../../controllers/client/accounting/tongHop/danh_muc/phongBan.controller';
+import { requireModule } from '../../../services/shared/modules.service';
 
 /**
  * Tổng hợp › Danh mục › Phòng ban (dmpb).
@@ -7,6 +8,7 @@ import * as ctrl from '../../../controllers/client/accounting/tongHop/danh_muc/p
  */
 export async function phongBanRoutes(app: FastifyInstance) {
   app.addHook('preHandler', app.authenticate);
+  app.addHook('preHandler', requireModule('accounting'));
 
   app.get('/phong-ban', ctrl.list);
   app.post('/phong-ban', ctrl.create);

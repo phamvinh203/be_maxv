@@ -3,13 +3,22 @@ import * as DvcService from "../../../services/client/dich_vu_cong/gdt-dvc.servi
 import * as DvcDongBo from "../../../services/client/dich_vu_cong/dvc-dong-bo.service";
 import { sysPrisma } from "../../../config/db.sys";
 import { accessibleDonViWhere } from "../../../helpers/access";
-import { resolveTenantDb } from "../../../helpers/resolveTenantDb";
+import { resolveTenantDb, resolveTenantDbName } from "../../../helpers/resolveTenantDb";
 // Dùng lại module crypto của HĐĐT: file đó CỐ Ý không đụng Prisma/HĐĐT gì (chỉ AES-256-GCM
 // thuần trên chuỗi), nên tái dùng được cho cột `dvcPassword*` mà không cần chép lại.
 import { decryptGdtPassword, encryptGdtPassword } from "../../../services/client/hddt/gdtCredential";
 import { layChiTietToKhai } from "../../../services/client/dich_vu_cong/toKhaiXml";
 
 type KetQuaDocCache<T> = { ok: true; giaTri: T } | { ok: false; message: string };
+
+
+/** Thân phản hồi lỗi dùng chung cho các handler DVC — kèm `code` khi phiên hết đường cứu. */
+function thanLoi(err: unknown, macDinh: string): { message: string; code?: string } {
+  const message = DvcService.toUserMessage(err, macDinh);
+  return err instanceof DvcService.DvcAutoLoginFailedError
+    ? { message, code: DvcService.MA_LOI_TU_DANG_NHAP_HONG }
+    : { message };
+}
 
 /**
  * Khung dùng chung cho `taiFileHoSo`/`taiThongBao`/`danhSachThongBao`: đọc cache trong DB tenant
@@ -18,20 +27,38 @@ type KetQuaDocCache<T> = { ok: true; giaTri: T } | { ok: false; message: string 
  * không phải lỗi bất ngờ, nên không đi qua `catch`/`request.log.error` của handler.
  */
 async function docCacheHoacGoiCong<T>(opts: {
+  /** Cần để tự đăng nhập lại khi phiên đã mất, xem `voiPhienTuPhucHoi`. */
+  request: FastifyRequest;
   key: string | undefined;
   docCache: () => Promise<T | null>;
-  goiCong: (key: string) => Promise<T>;
+  goiCong: (phien: DvcService.DvcPhien) => Promise<T>;
   ghiCache: (giaTri: T) => Promise<void>;
   thieuKeyMessage: string;
 }): Promise<KetQuaDocCache<T>> {
   const daLuu = await opts.docCache();
   if (daLuu !== null) return { ok: true, giaTri: daLuu };
 
-  if (!opts.key) return { ok: false, message: opts.thieuKeyMessage };
+  const phien = phienDvc(opts.request, opts.key);
+  if (!phien) return { ok: false, message: opts.thieuKeyMessage };
 
-  const giaTri = await opts.goiCong(opts.key);
+  const giaTri = await voiPhienTuPhucHoi(nguCanhTuRequest(opts.request), phien, () =>
+    opts.goiCong(phien),
+  );
   await opts.ghiCache(giaTri);
   return { ok: true, giaTri };
+}
+
+/**
+ * Ghép `key` FE gửi lên với công ty ĐANG CHỌN của người dùng đã đăng nhập app -> `DvcPhien`.
+ * `null` khi thiếu một trong hai (chưa đăng nhập cổng, hoặc chưa chọn công ty).
+ *
+ * Đây là chỗ DUY NHẤT `donViId` được gắn vào một lượt gọi cổng. Service không tự suy công ty từ
+ * `key` — nếu suy thì `key` lại trở thành thứ tự cấp quyền, đúng cái `requireSession` sinh ra để
+ * chặn (xem `DvcPhien` bên `gdt-dvc.service.ts`).
+ */
+function phienDvc(request: FastifyRequest, key: string | undefined): DvcService.DvcPhien | null {
+  const donViId = request.user?.donViId;
+  return key && donViId ? { key, donViId } : null;
 }
 
 /**
@@ -41,14 +68,19 @@ async function docCacheHoacGoiCong<T>(opts: {
  * data-URL gắn thẳng vào `<img src>`.
  */
 export async function captcha(request: FastifyRequest, reply: FastifyReply) {
+  // Phiên mở ra thuộc về công ty đang chọn và CHỈ công ty đó dùng lại được (xem `DvcPhien`), nên
+  // chưa chọn công ty thì không mở phiên — thiếu chủ sở hữu để gắn.
+  const donViId = request.user?.donViId;
+  if (!donViId) {
+    return reply.status(400).send({ message: "Chưa chọn công ty để đăng nhập cổng Dịch vụ công." });
+  }
+
   try {
-    const result = await DvcService.getCaptcha();
+    const result = await DvcService.getCaptcha(donViId);
     return reply.send(result);
   } catch (err) {
     request.log.error(err);
-    return reply.status(502).send({
-      message: DvcService.toUserMessage(err, "Không lấy được mã captcha của cổng Dịch vụ công."),
-    });
+    return reply.status(502).send(thanLoi(err, "Không lấy được mã captcha của cổng Dịch vụ công."));
   }
 }
 
@@ -59,19 +91,17 @@ export async function tchsCaptcha(
   request: FastifyRequest<{ Querystring: { key?: string } }>,
   reply: FastifyReply,
 ) {
-  const key = request.query?.key;
-  if (!key) {
-    return reply.status(400).send({ message: "Thiếu khóa phiên key." });
+  const phien = phienDvc(request, request.query?.key);
+  if (!phien) {
+    return reply.status(400).send({ message: "Thiếu khóa phiên key hoặc chưa chọn công ty." });
   }
 
   try {
-    const result = await DvcService.getTchsCaptcha(key);
+    const result = await DvcService.getTchsCaptcha(phien);
     return reply.send(result);
   } catch (err) {
     request.log.error(err);
-    return reply.status(502).send({
-      message: DvcService.toUserMessage(err, "Không lấy được mã captcha tra cứu hồ sơ."),
-    });
+    return reply.status(502).send(thanLoi(err, "Không lấy được mã captcha tra cứu hồ sơ."));
   }
 }
 
@@ -90,7 +120,17 @@ type DvcLoginBody = Partial<DvcService.DvcLoginRequest>;
  * tách chung: hai luồng lưu vào cột khác nhau (`gdtPassword*` vs `dvcUsername`+`dvcPassword*`),
  * tách chung giờ phải thêm tham số chọn cột — đợi có luồng thứ ba mới đáng tách.
  */
-async function activeCompanyForDvc(request: FastifyRequest): Promise<{
+/** Ba trường duy nhất của `request.user` mà `activeCompanyForDvc` cần — rút ra thành kiểu riêng để
+ * lượt chạy nền truyền được ba chuỗi thay vì giữ nguyên object request, xem `NguCanhPhucHoi`. */
+type NguoiDungDvc = { donViId?: string | null; userId: string; role: string };
+
+const nguoiDungCuaRequest = (request: FastifyRequest): NguoiDungDvc => ({
+  donViId: request.user?.donViId,
+  userId: request.user.userId,
+  role: request.user.role,
+});
+
+async function activeCompanyForDvc(u: NguoiDungDvc): Promise<{
   id: string;
   maSoThue: string;
   dvcUsername: string | null;
@@ -98,9 +138,9 @@ async function activeCompanyForDvc(request: FastifyRequest): Promise<{
   dvcPasswordIv: string | null;
   dvcPasswordTag: string | null;
 } | null> {
-  const donViId = request.user?.donViId;
+  const donViId = u.donViId;
   if (!donViId) return null;
-  const scope = accessibleDonViWhere(request.user.userId, request.user.role);
+  const scope = accessibleDonViWhere(u.userId, u.role);
   if (!scope) return null;
 
   return sysPrisma.donVi.findFirst({
@@ -122,6 +162,96 @@ function mstTuTenDangNhapDvc(tenDN: string): string | null {
 }
 
 /**
+ * Mật khẩu DVC đã giải mã của công ty đang chọn — `null` khi chưa lưu đủ 3 cột `dvcPassword*` hoặc
+ * chưa cấu hình khóa mã hóa (`decryptGdtPassword` tự trả `null`).
+ *
+ * Gom một chỗ vì `getCredential` (điền sẵn form) và `taiKhoanDvcDaLuu` (tự đăng nhập ngầm) đều cần
+ * đúng thao tác này: hai bên khác nhau ở chỗ CHẤP NHẬN GÌ khi thiếu, không phải ở cách giải mã.
+ */
+function matKhauDvcDaGiaiMa(
+  active: Awaited<ReturnType<typeof activeCompanyForDvc>>,
+): string | null {
+  if (!active?.dvcPasswordCipher || !active.dvcPasswordIv || !active.dvcPasswordTag) return null;
+  return decryptGdtPassword({
+    cipher: active.dvcPasswordCipher,
+    iv: active.dvcPasswordIv,
+    tag: active.dvcPasswordTag,
+  });
+}
+
+/**
+ * Tài khoản DVC đã lưu của công ty ĐANG CHỌN, mật khẩu đã giải mã — `null` nếu chưa từng đăng nhập
+ * hoặc chưa lưu đủ.
+ *
+ * Khác `getCredential` (trả về cho FE điền sẵn form, có username là đủ): ở đây thiếu MỘT trong hai
+ * là không tự đăng nhập ngầm được, nên đòi đủ cả cặp.
+ */
+async function taiKhoanDvcDaLuu(u: NguoiDungDvc): Promise<DvcService.DvcCredential | null> {
+  const active = await activeCompanyForDvc(u);
+  if (!active?.dvcUsername) return null;
+  const matKhau = matKhauDvcDaGiaiMa(active);
+  return matKhau ? { tenDN: active.dvcUsername, matKhau } : null;
+}
+
+/**
+ * Thứ `voiPhienTuPhucHoi` cần từ tầng request — TÁCH RA khỏi chính `request` để lượt chạy nền
+ * (`dongBo`) không phải giữ nguyên object request sống suốt vài phút sau khi đã trả response.
+ * Cùng lý lẽ `startUpdateRun` bên HĐĐT rút sẵn `dbName`/`gdtToken` trước khi mở lượt nền.
+ *
+ * `layTaiKhoan` là THUNK chứ không phải giá trị: các handler đọc-cache gọi `voiPhienTuPhucHoi` cho
+ * mọi lượt, mà hầu hết trúng cache và không bao giờ cần tới tài khoản — giải mã sẵn mỗi lượt là
+ * tốn công vô ích.
+ */
+interface NguCanhPhucHoi {
+  layTaiKhoan: () => Promise<DvcService.DvcCredential | null>;
+  log: FastifyRequest["log"];
+}
+
+function nguCanhTuRequest(request: FastifyRequest): NguCanhPhucHoi {
+  // Chụp BA CHUỖI ra ngay tại đây, không đóng gói `request` vào thunk: closure này bị lượt chạy nền
+  // giữ suốt vài phút sau khi response đã đi, mà `request` kéo theo cả `raw`/headers/body.
+  const u = nguoiDungCuaRequest(request);
+  return { layTaiKhoan: () => taiKhoanDvcDaLuu(u), log: request.log };
+}
+
+/**
+ * Bọc quanh MỘT thao tác cần phiên cổng: phiên RAM mất hẳn (`DvcSessionExpiredError`) thì tự mở
+ * phiên mới + đăng nhập ngầm bằng tài khoản đã lưu rồi thử lại ĐÚNG một lần.
+ *
+ * VÌ SAO NẰM Ở CONTROLLER, không nhét thẳng vào service như `voiTuDangNhapLai`: chỉ ở đây mới biết
+ * người dùng là ai và công ty đang chọn là công ty nào — tức là chỉ ở đây mới đọc được tài khoản đã
+ * lưu ĐÚNG chủ. Service không được tự suy tài khoản từ `key`, xem chú thích ở
+ * `DvcService.phucHoiPhienDaMat`.
+ *
+ * Bổ sung cho `voiTuDangNhapLai` trong service chứ không thay thế: bên đó lo phiên CÒN SỐNG bị cổng
+ * đá (302/401), bên này lo phiên đã BIẾN MẤT khỏi RAM (quá TTL 30 phút, hoặc BE vừa restart).
+ *
+ * Chưa lưu tài khoản -> ném lại nguyên lỗi cũ để người dùng vẫn thấy thông báo "đăng nhập lại"
+ * quen thuộc, không nuốt lỗi thành một thông báo khó hiểu hơn.
+ */
+async function voiPhienTuPhucHoi<T>(
+  ng: NguCanhPhucHoi,
+  phien: DvcService.DvcPhien,
+  thaoTac: () => Promise<T>,
+): Promise<T> {
+  try {
+    return await thaoTac();
+  } catch (err) {
+    if (!(err instanceof DvcService.DvcSessionExpiredError)) throw err;
+
+    const cred = await ng.layTaiKhoan();
+    if (!cred) {
+      ng.log.info("[dvc] phiên đã mất nhưng chưa lưu tài khoản DVC -> không tự đăng nhập lại");
+      throw err;
+    }
+
+    ng.log.info("[dvc] phiên đã mất -> tự mở phiên mới + đăng nhập lại bằng tài khoản đã lưu");
+    await DvcService.phucHoiPhienDaMat(phien, cred);
+    return thaoTac();
+  }
+}
+
+/**
  * GET /dvc/credential (authenticated) — trả tài khoản + MẬT KHẨU đã lưu (đã giải mã) của công
  * ty đang chọn, để FE điền sẵn vào dialog đăng nhập DVC. `{ username: null, password: null }`
  * nếu chưa lưu / chưa cấu hình khóa mã hóa (`isEncryptionConfigured()` false thì `decryptGdtPassword`
@@ -135,16 +265,11 @@ function mstTuTenDangNhapDvc(tenDN: string): string | null {
  * ty đang chọn) — cùng thiết kế `GET /gdt/credential` bên `hddt/gdt.controller.ts`.
  */
 export async function getCredential(request: FastifyRequest, reply: FastifyReply) {
-  const active = await activeCompanyForDvc(request);
-  const password =
-    active?.dvcPasswordCipher && active.dvcPasswordIv && active.dvcPasswordTag
-      ? decryptGdtPassword({
-          cipher: active.dvcPasswordCipher,
-          iv: active.dvcPasswordIv,
-          tag: active.dvcPasswordTag,
-        })
-      : null;
-  return reply.send({ username: active?.dvcUsername ?? null, password });
+  const active = await activeCompanyForDvc(nguoiDungCuaRequest(request));
+  return reply.send({
+    username: active?.dvcUsername ?? null,
+    password: matKhauDvcDaGiaiMa(active),
+  });
 }
 
 /**
@@ -173,10 +298,14 @@ export async function login(
   if (!body?.key || !body?.tenDN || !body?.matKhau || !body?.captcha) {
     return reply.status(400).send({ message: "Vui lòng nhập đầy đủ thông tin." });
   }
+  const phien = phienDvc(request, body.key);
+  if (!phien) {
+    return reply.status(400).send({ message: "Chưa chọn công ty để đăng nhập cổng Dịch vụ công." });
+  }
 
   try {
     const result = await DvcService.login({
-      key: body.key,
+      ...phien,
       tenDN: body.tenDN,
       matKhau: body.matKhau,
       captcha: body.captcha,
@@ -187,7 +316,7 @@ export async function login(
     // ô tên đăng nhập trước khi bấm). Không rõ quy ước (`mstTuTen === null`) thì vẫn lưu, vì tên
     // đăng nhập cổng DVC không đảm bảo luôn đúng "<MST>-ql". Lỗi lưu KHÔNG làm hỏng đăng nhập
     // (kết quả đã có trong tay), chỉ là lần sau không dùng lại được.
-    const active = await activeCompanyForDvc(request);
+    const active = await activeCompanyForDvc(nguoiDungCuaRequest(request));
     const mstTuTen = mstTuTenDangNhapDvc(body.tenDN);
     if (active && (mstTuTen === null || mstTuTen === active.maSoThue)) {
       const blob = encryptGdtPassword(body.matKhau);
@@ -213,9 +342,7 @@ export async function login(
     // KHÔNG dùng 401: `apiFetch` bên FE dành riêng 401 cho nghĩa "cookie app hết hạn" nên sẽ
     // gọi /auth/refresh rồi GỬI LẠI request này với captcha đã bị tiêu — thành 2 lượt gọi cổng
     // cho một lần bấm. Giống lý do đã ghi ở `hddt/gdt.controller.ts`.
-    return reply.status(400).send({
-      message: DvcService.toUserMessage(err, "Đăng nhập cổng Dịch vụ công thất bại."),
-    });
+    return reply.status(400).send(thanLoi(err, "Đăng nhập cổng Dịch vụ công thất bại."));
   }
 }
 
@@ -254,7 +381,7 @@ export async function traCuuHoSo(
 
 /**
  * POST /dvc/dong-bo — chạy một lượt "Đồng bộ" tờ khai (Dịch vụ công): gọi cổng thật (cần `key` phiên
- * ĐÃ đăng nhập), lưu hồ sơ + tài liệu vào DB tenant, trả về dòng lịch sử vừa ghi.
+ * ĐÃ đăng nhập), lưu hồ sơ + tài liệu vào DB tenant, trả về tiến độ lượt vừa mở.
  */
 export async function dongBo(
   request: FastifyRequest<{ Body: { key?: string; tuNgay?: string; denNgay?: string } }>,
@@ -264,23 +391,50 @@ export async function dongBo(
   if (!body?.key || !body?.tuNgay || !body?.denNgay) {
     return reply.status(400).send({ message: "Thiếu khóa phiên hoặc khoảng ngày đồng bộ." });
   }
-
-  const tenantDb = await resolveTenantDb(request);
-  try {
-    const log = await DvcDongBo.dongBoHoSo(tenantDb, {
-      dvcKey: body.key,
-      tuNgay: body.tuNgay,
-      denNgay: body.denNgay,
-    });
-    // TODO(tạm): CHỈ để debug xem auto-relogin có chạy không — xóa dòng dưới + field
-    // `_tuDongDangNhapLai` bên FE khi hết cần theo dõi.
-    return reply.send({ ...log, _tuDongDangNhapLai: DvcService.laVuaTuDongDangNhapLai(body.key) });
-  } catch (err) {
-    request.log.error(err);
-    return reply.status(400).send({
-      message: DvcService.toUserMessage(err, "Đồng bộ dữ liệu Dịch vụ công thất bại."),
-    });
+  // Tách ra biến riêng sau guard: kiểu đã hẹp về `string` ở đây mới còn giữ được khi dùng lại bên
+  // trong closure của `voiPhienTuPhucHoi` (TS bỏ narrowing của thuộc tính object khi vào callback).
+  const { tuNgay, denNgay } = body;
+  const phien = phienDvc(request, body.key);
+  if (!phien) {
+    return reply.status(400).send({ message: "Chưa chọn công ty để đồng bộ Dịch vụ công." });
   }
+
+  // `dbName` chứ KHÔNG phải client: lượt nền chạy hàng phút, giữ một `PrismaClient` suốt ngần ấy là
+  // để sweeper idle-10' của `tenantClient` đóng pool giữa chừng. `dongBoHoSo` tự gọi lại
+  // `getTenantDb` ở mỗi lần chạm DB — xem docblock `resolveTenantDbName`.
+  const dbName = await resolveTenantDbName(request);
+  // Rút sẵn ngữ cảnh TRƯỚC khi mở lượt nền, cùng lý do (xem `NguCanhPhucHoi`).
+  const nguCanh = nguCanhTuRequest(request);
+
+  // KHÔNG await: mở lượt nền rồi trả tiến độ ngay -> FE poll `/dong-bo/tien-do`.
+  const tienDo = DvcDongBo.batDauDongBoRun(phien.donViId, (st, daBiThay) =>
+    DvcDongBo.dongBoHoSo(dbName, {
+      phien,
+      tuNgay,
+      denNgay,
+      tienDo: st,
+      daBiThay,
+      // Phiên RAM hết hạn (>30 phút không thao tác) hoặc mất do BE restart -> tự đăng nhập lại
+      // ngầm rồi thử lại. CHỈ bọc pha tra cứu, xem `voiPhucHoi` ở `DongBoHoSoParams`.
+      voiPhucHoi: (thaoTac) => voiPhienTuPhucHoi(nguCanh, phien, thaoTac),
+    }),
+  );
+
+  return reply.send(tienDo);
+}
+
+/**
+ * GET /dvc/dong-bo/tien-do — tiến độ lượt đồng bộ đang chạy của CÔNG TY ĐANG CHỌN.
+ *
+ * `null` khi công ty này chưa từng chạy lượt nào. Khóa lượt là `donViId` lấy từ `request.user`, nên
+ * không có đường nào xem được lượt của công ty khác — cùng cách cô lập với `DvcPhien`.
+ *
+ * Dùng: vòng poll của FE, và lúc mở lại trang để NỐI LẠI lượt đang chạy.
+ */
+export async function tienDoDongBo(request: FastifyRequest, reply: FastifyReply) {
+  const donViId = request.user?.donViId;
+  if (!donViId) return reply.status(400).send({ message: "Chưa chọn công ty." });
+  return reply.send(DvcDongBo.docTienDoDongBo(donViId));
 }
 
 /** GET /dvc/dong-bo/lich-su — lịch sử các lượt đồng bộ (mới nhất trước). */
@@ -357,6 +511,7 @@ export async function taiFileHoSo(
   const tenantDb = await resolveTenantDb(request);
   try {
     const ket = await docCacheHoacGoiCong({
+      request,
       key: q.key,
       docCache: () => DvcDongBo.layFileHoSoDaLuu(tenantDb, maHoSo),
       goiCong: (key) => DvcService.taiXmlHoSo(key, maHoSo),
@@ -376,9 +531,7 @@ export async function taiFileHoSo(
       .send(tep.bytes);
   } catch (err) {
     request.log.error(err);
-    return reply.status(400).send({
-      message: DvcService.toUserMessage(err, "Tải file hồ sơ thất bại."),
-    });
+    return reply.status(400).send(thanLoi(err, "Tải file hồ sơ thất bại."));
   }
 }
 
@@ -396,21 +549,26 @@ export async function taiLieuDinhKem(
   if (!q?.key || !q?.maHoSo) {
     return reply.status(400).send({ message: "Thiếu khóa phiên hoặc mã hồ sơ." });
   }
+  const { maHoSo } = q;
+  const phien = phienDvc(request, q.key);
+  if (!phien) {
+    return reply.status(400).send({ message: "Chưa chọn công ty để gọi cổng Dịch vụ công." });
+  }
 
   try {
-    const data = await DvcService.layTaiLieuDinhKem(q.key, q.maHoSo);
+    const data = await voiPhienTuPhucHoi(nguCanhTuRequest(request), phien, () =>
+      DvcService.layTaiLieuDinhKem(phien, maHoSo),
+    );
     return reply.send(data);
   } catch (err) {
     request.log.error(err);
-    return reply.status(400).send({
-      message: DvcService.toUserMessage(err, "Không lấy được danh sách tài liệu đính kèm."),
-    });
+    return reply.status(400).send(thanLoi(err, "Không lấy được danh sách tài liệu đính kèm."));
   }
 }
 
 /**
  * GET /dvc/ho-so/to-khai-chi-tiet — chỉ tiêu tờ khai đã bóc từ XML (dialog "Xem tờ khai" khi bấm
- * cột "Tên thủ tục hành chính"). CÙNG cơ chế đọc-cache-trước như `taiFileHoSo` (đọc `dvc_ho_so`
+ * cột "Tờ khai / Phụ lục"). CÙNG cơ chế đọc-cache-trước như `taiFileHoSo` (đọc `dvc_ho_so`
  * trong DB tenant trước, thiếu mới cần `key` để gọi cổng thật), chỉ khác là trả JSON đã bóc
  * (`layChiTietToKhai`) thay vì nguyên bytes file XML.
  */
@@ -427,6 +585,7 @@ export async function chiTietToKhai(
   const tenantDb = await resolveTenantDb(request);
   try {
     const ket = await docCacheHoacGoiCong({
+      request,
       key: q.key,
       docCache: () => DvcDongBo.layFileHoSoDaLuu(tenantDb, maHoSo),
       goiCong: (key) => DvcService.taiXmlHoSo(key, maHoSo),
@@ -436,12 +595,16 @@ export async function chiTietToKhai(
     });
     if (!ket.ok) return reply.status(400).send({ message: ket.message });
 
-    return reply.send(layChiTietToKhai(ket.giaTri.bytes.toString("utf8")));
+    // Ô cột "Tờ khai / Phụ lục" của chính hồ sơ này (vd "05/KK-TNCN") — truyền vào để chọn layout
+    // theo ĐÚNG thứ người dùng thấy trên bảng, thay vì chỉ dò tiêu đề bên trong XML. Đọc thêm 1
+    // query nhẹ (1 cột, khóa chính) và KHÔNG chặn luồng: thiếu thì `layChiTietToKhai` vẫn tự dò
+    // `tenTKhai` như trước.
+    const maMau = await DvcDongBo.layMaToKhaiDaLuu(tenantDb, maHoSo).catch(() => null);
+
+    return reply.send(layChiTietToKhai(ket.giaTri.bytes.toString("utf8"), maMau));
   } catch (err) {
     request.log.error(err);
-    return reply.status(400).send({
-      message: DvcService.toUserMessage(err, "Không đọc được nội dung tờ khai."),
-    });
+    return reply.status(400).send(thanLoi(err, "Không đọc được nội dung tờ khai."));
   }
 }
 
@@ -467,6 +630,7 @@ export async function taiThongBao(
   const tenantDb = await resolveTenantDb(request);
   try {
     const ket = await docCacheHoacGoiCong({
+      request,
       key: q.key,
       docCache: () => DvcDongBo.layFileThongBaoDaLuu(tenantDb, maHoSo, idTbao),
       goiCong: (key) => DvcService.taiThongBao(key, maHoSo, idTbao),
@@ -486,9 +650,7 @@ export async function taiThongBao(
       .send(tep.bytes);
   } catch (err) {
     request.log.error(err);
-    return reply.status(400).send({
-      message: DvcService.toUserMessage(err, "Tải file thông báo thất bại."),
-    });
+    return reply.status(400).send(thanLoi(err, "Tải file thông báo thất bại."));
   }
 }
 
@@ -513,6 +675,7 @@ export async function danhSachThongBao(
   const tenantDb = await resolveTenantDb(request);
   try {
     const ket = await docCacheHoacGoiCong({
+      request,
       key: q.key,
       docCache: () => DvcDongBo.layDanhSachThongBaoDaLuu(tenantDb, maHoSo),
       goiCong: (key) => DvcService.layDanhSachThongBao(key, maHoSo),
@@ -524,8 +687,6 @@ export async function danhSachThongBao(
     return reply.send(ket.giaTri);
   } catch (err) {
     request.log.error(err);
-    return reply.status(400).send({
-      message: DvcService.toUserMessage(err, "Không lấy được danh sách thông báo."),
-    });
+    return reply.status(400).send(thanLoi(err, "Không lấy được danh sách thông báo."));
   }
 }

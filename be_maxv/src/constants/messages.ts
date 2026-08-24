@@ -74,6 +74,7 @@ export const MESSAGES = {
     ALREADY_CANCELED: 'Thuê bao đã bị hủy',
     MST_LIMIT_REACHED: 'Gói hiện tại đã đạt giới hạn số công ty/MST được tạo',
     USER_LIMIT_REACHED: 'Gói hiện tại đã đạt giới hạn số nhân viên',
+    MODULE_NOT_INCLUDED: 'Gói đăng ký hiện tại không bao gồm tính năng này',
   },
 
   TON_KHO: {
