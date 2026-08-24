@@ -107,7 +107,9 @@ export async function theoDoiDongBoDvc(
       }
       // Chỉ vẽ lại khi số liệu ĐỔI: pha tra cứu đứng im hàng chục giây, còn pha hồ sơ thì mỗi hồ
       // sơ ~3,2s so với nhịp poll 2s — vẽ vô điều kiện là quá nửa số lần render không đổi gì.
-      const dauVet = `${st.daCoSan}/${st.dongBoXong}/${st.loi}/${st.tongHoSo}/${st.maHoSoDangLam}`;
+      const dauVet =
+        `${st.daCoSan}/${st.dongBoXong}/${st.loi}/${st.tongHoSo}/${st.maHoSoDangLam}` +
+        `/${st.dangBuLai}`;
       if (dauVet !== dauVetCu) {
         dauVetCu = dauVet;
         capNhatToastNen(toastId, <ToastTienDoDongBo st={st} />);

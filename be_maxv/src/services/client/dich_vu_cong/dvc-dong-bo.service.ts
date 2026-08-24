@@ -1,6 +1,11 @@
 import { randomUUID } from "crypto";
 import { Prisma, type PrismaClient, type dvc_dong_bo_log } from "../../../generated/tenant";
-import type { BangHoSoDaBoc, ThongBaoDaBoc } from "./hoSoHtml";
+import {
+  oTheoTieuDe,
+  type BangHoSoDaBoc,
+  type ThongBaoDaBoc,
+} from "./hoSoHtml";
+import { chiaDoanTheoNguon, type DoanTraCuu } from "./nguonTheoNgay";
 import * as DvcService from "./gdt-dvc.service";
 import type { DvcTepTaiVe } from "./gdt-dvc.service";
 import { chuanHoaMime, doanContentType } from "./gdt-dvc.service";
@@ -14,9 +19,9 @@ import { getTenantDb } from "../../../helpers/tenantClient";
  * không phải đăng nhập cổng nữa. Vai trò tương tự `runSync`/`listSyncLogs` bên `hddt/gdt.service.ts`
  * nhưng tách file riêng vì nguồn dữ liệu (hồ sơ theo loại giấy tờ) khác hẳn hóa đơn.
  *
- * PHẠM VI HIỆN TẠI: chỉ tab "Tờ khai (Dịch vụ công)" — hai tab còn lại (Tờ khai Thuế điện tử, Giấy
- * nộp tiền) chưa có tích hợp cổng nào phía sau (khác domain/cấu trúc dữ liệu), nên `loai` luôn cố
- * định `"to-khai-dvc"` ở module này.
+ * PHẠM VI HIỆN TẠI: chỉ tab "Tờ khai (Dịch vụ công - thuế điện tử)" — tab "Giấy nộp tiền" chưa có
+ * tích hợp cổng nào phía sau (khác domain/cấu trúc dữ liệu), nên `loai` luôn cố định
+ * `"to-khai-dvc"` ở module này.
  */
 
 const LOAI_HO_SO = "to-khai-dvc";
@@ -25,11 +30,6 @@ const NHAN_LOAI = "tờ khai (Dịch vụ công)";
 /** Số hồ sơ tối đa trả về một lượt tìm kiếm — đủ cho một khoảng ngày, tránh kéo cả bảng khi bộ lọc rỗng. */
 const MAX_KET_QUA_TIM_KIEM = 500;
 
-/** Đọc 1 ô theo ĐÚNG tên cột thật cổng trả (không phải theo thứ tự) — bảng cổng có thể đổi thứ tự cột. */
-function oTheoTieuDe(headers: string[], row: string[], tieuDe: string): string {
-  const idx = headers.indexOf(tieuDe);
-  return idx >= 0 ? (row[idx] ?? "") : "";
-}
 
 /** "Ngày nộp" cổng trả dạng `dd/MM/yyyy...` -> `Date` (best-effort, neo 12:00 trưa tránh lệch múi
  * giờ nhảy ngày). `null` nếu không parse được — hồ sơ vẫn lưu bình thường, chỉ không lọc/sắp theo
@@ -96,6 +96,53 @@ export function xmlToKhaiDangChuoi(h: {
   return h.xml_to_khai;
 }
 
+/** Một thông báo tải hỏng trong lượt — đủ thông tin để thử lại mà không phải làm lại cả hồ sơ. */
+interface ThongBaoHong {
+  maHoSo: string;
+  nguon: DvcService.NguonHoSo;
+  tb: ThongBaoDaBoc;
+}
+
+/**
+ * Tải nội dung MỘT thông báo rồi ghi vào cache. Trả `false` nếu hỏng (đã log), KHÔNG ném — người
+ * gọi cần biết cái nào hỏng để bù, chứ không phải dừng cả hồ sơ vì một file.
+ */
+async function taiVaLuuThongBao(
+  db: () => PrismaClient,
+  phien: DvcService.DvcPhien,
+  maHoSo: string,
+  nguon: DvcService.NguonHoSo,
+  tb: ThongBaoDaBoc,
+): Promise<boolean> {
+  try {
+    const file = await DvcService.taiThongBao(phien, maHoSo, tb.idTbao, nguon);
+    await db().dvc_tai_lieu.upsert({
+      where: { loai_khoa: { loai: "thong_bao", khoa: tb.idTbao } },
+      create: {
+        loai: "thong_bao",
+        khoa: tb.idTbao,
+        ma_ho_so: maHoSo,
+        tieu_de: tb.tieuDe,
+        ngay_gui: tb.ngayGui,
+        ...truongNoiDungTep(file),
+        raw: tb as unknown as Prisma.InputJsonValue,
+      },
+      update: {
+        tieu_de: tb.tieuDe,
+        ngay_gui: tb.ngayGui,
+        ...truongNoiDungTep(file),
+      },
+    });
+    return true;
+  } catch (err) {
+    console.warn(
+      `[DVC-DONG-BO] Không tải được thông báo ${tb.idTbao} của hồ sơ ${maHoSo}: ` +
+        (err instanceof Error ? err.message : String(err)),
+    );
+    return false;
+  }
+}
+
 /**
  * Đồng bộ CHI TIẾT một hồ sơ (tờ khai XML + danh sách thông báo + nội dung từng thông báo) — chỉ
  * gọi cho hồ sơ MỚI/chưa đồng bộ trọn vẹn, xem `dongBoHoSo`.
@@ -118,9 +165,10 @@ async function dongBoChiTietHoSo(
   db: () => PrismaClient,
   phien: DvcService.DvcPhien,
   maHoSo: string,
+  nguon: DvcService.NguonHoSo,
   daBiThay: () => boolean,
-): Promise<{ thongBaoLoi: number }> {
-  const xml = await DvcService.taiXmlHoSo(phien, maHoSo);
+): Promise<ThongBaoHong[]> {
+  const xml = await DvcService.taiXmlHoSo(phien, maHoSo, nguon);
   // Ghi DB (xml vừa tải) và gọi cổng lấy danh sách thông báo ĐỘC LẬP với nhau — chạy song song
   // để độ trễ ghi DB chồng lấn với độ trễ mạng của lượt gọi cổng tiếp theo (vẫn chỉ 1 lượt gọi
   // cổng đồng thời, không vi phạm giới hạn tránh spam 429).
@@ -133,51 +181,34 @@ async function dongBoChiTietHoSo(
       where: { ma_ho_so: maHoSo },
       data: truongToKhai(xml),
     }),
-    DvcService.layDanhSachThongBao(phien, maHoSo),
+    DvcService.layDanhSachThongBao(phien, maHoSo, nguon),
   ]);
-  let thongBaoLoi = 0;
+
+  const hong: ThongBaoHong[] = [];
   for (const tb of danhSachThongBao) {
     // Kiểm ở ĐÂY chứ không chỉ giữa các hồ sơ: vòng này gọi cổng MỘT LƯỢT MỖI THÔNG BÁO và số
     // thông báo do cổng quyết định. Hồ sơ 20 thông báo là 20 call paced (~16s, tới 5 phút nếu nhịp
     // đang bị phạt) của một lượt không ai đọc — mà làn `dvc` nối đuôi concurrency 1, nên lượt MỚI
     // phải xếp hàng chờ hết chỗ đó mới bắt đầu được.
     if (daBiThay()) break;
-    try {
-      const file = await DvcService.taiThongBao(phien, maHoSo, tb.idTbao);
-      await db().dvc_tai_lieu.upsert({
-        where: { loai_khoa: { loai: "thong_bao", khoa: tb.idTbao } },
-        create: {
-          loai: "thong_bao",
-          khoa: tb.idTbao,
-          ma_ho_so: maHoSo,
-          tieu_de: tb.tieuDe,
-          ngay_gui: tb.ngayGui,
-          ...truongNoiDungTep(file),
-          raw: tb as unknown as Prisma.InputJsonValue,
-        },
-        update: {
-          tieu_de: tb.tieuDe,
-          ngay_gui: tb.ngayGui,
-          ...truongNoiDungTep(file),
-        },
-      });
-    } catch (err) {
-      thongBaoLoi++;
-      console.warn(
-        `[DVC-DONG-BO] Không tải được thông báo ${tb.idTbao} của hồ sơ ${maHoSo}: ` +
-          (err instanceof Error ? err.message : String(err)),
-      );
+    if (!(await taiVaLuuThongBao(db, phien, maHoSo, nguon, tb))) {
+      hong.push({ maHoSo, nguon, tb });
     }
   }
 
   // Chỉ tới đây — xml đã lưu, danh sách thông báo đã lấy, MỌI thông báo đã tải xong — hồ sơ mới
   // thật sự trọn vẹn. Thiếu dù một thông báo thì để cờ nguyên `false` cho lượt sau bù.
   // Bỏ dở vì lượt bị thay cũng KHÔNG được bật cờ: phần thông báo còn lại chưa tải.
-  if (thongBaoLoi === 0 && !daBiThay()) {
-    await db().dvc_ho_so.update({ where: { ma_ho_so: maHoSo }, data: { da_dong_bo: true } });
+  if (hong.length === 0 && !daBiThay()) {
+    await danhDauDongBoXong(db, maHoSo);
   }
 
-  return { thongBaoLoi };
+  return hong;
+}
+
+/** Bật cờ "đã đồng bộ trọn vẹn" — tách hàm vì lượt bù cuối lượt cũng cần bật, xem `buThongBaoHong`. */
+function danhDauDongBoXong(db: () => PrismaClient, maHoSo: string): Promise<unknown> {
+  return db().dvc_ho_so.update({ where: { ma_ho_so: maHoSo }, data: { da_dong_bo: true } });
 }
 
 export interface DongBoHoSoParams {
@@ -220,6 +251,13 @@ export interface DvcDongBoTienDo extends LuotChayNen {
   loi: number;
   /** Mã hồ sơ đang xử lý, để toast nói rõ đang làm gì thay vì chỉ một con số. */
   maHoSoDangLam: string;
+  /**
+   * Số thông báo đang được BÙ ở cuối lượt; `0` = không ở pha bù.
+   *
+   * Cần vì lúc bù thì `daXong/tongHoSo` đã đầy và đứng im — không có trường này thì toast treo ở
+   * "26/26" hàng chục giây mà người dùng không biết máy còn đang làm gì (xem `buThongBaoHong`).
+   */
+  dangBuLai: number;
   /**
    * Số hồ sơ cổng khai có mà lượt này KHÔNG lấy về được.
    *
@@ -280,6 +318,7 @@ export function batDauDongBoRun(
       dongBoXong: 0,
       loi: 0,
       maHoSoDangLam: "",
+      dangBuLai: 0,
       thieuHoSo: 0,
     }),
     work,
@@ -300,44 +339,46 @@ export function batDauDongBoRun(
  * ty thường chỉ vài chục, và hồ sơ đã đồng bộ trước chỉ tốn 1 lượt ghi đè nhẹ, nên không cần hạ tầng
  * chạy nền + tiến độ cho khối lượng này.
  */
-export async function dongBoHoSo(dbName: string, params: DongBoHoSoParams): Promise<void> {
-  // Lấy client tenant MỚI ở MỖI lần chạm DB, không giữ một client suốt lượt.
-  //
-  // `tenantClient` chỉ refresh `lastUsed` bên trong `getTenantDb`; query qua một client đang cầm
-  // KHÔNG chạm vào nó. Lượt này chạy nền hàng phút và thường là thứ duy nhất đụng tenant đó, nên
-  // giữ client là đúng kiểu để sweeper (idle > 10') đóng pool giữa chừng rồi mọi query sau hỏng
-  // hết — và hỏng vào đúng nhánh `catch` từng hồ sơ nên chỉ thành `loi++`, không ai biết vì sao.
-  // Khuôn này chép từ `runDetailFetch`, xem docblock `resolveTenantDbName`.
-  const db = () => getTenantDb(dbName);
-  const { headers, rows, tongSoBanGhi } = await params.voiPhucHoi(() =>
-    DvcService.traCuuHoSo({
-      ...params.phien,
-      tuNgay: params.tuNgay,
-      denNgay: params.denNgay,
-      scope: "SELF",
-      daBiThay: params.daBiThay,
-    }),
+/**
+ * Đồng bộ TRỌN VẸN một đoạn ngày của MỘT nguồn: tra cứu xong là làm chi tiết luôn.
+ *
+ * Tách hàm riêng thay vì lồng trong `dongBoHoSo` để mọi biến cục bộ (`headers`, `rows`, bộ đệm
+ * `da_dong_bo`) trở lại phạm vi hàm — lồng vào là chúng sống qua cả hai đoạn dù chỉ dùng cho một.
+ *
+ * Trả `tongCongKhai` để nơi gọi cộng dồn mà đối chiếu; `dungGiuaChung` khi lượt bị lượt mới thay.
+ */
+async function dongBoMotDoan(
+  db: () => PrismaClient,
+  params: DongBoHoSoParams,
+  d: DoanTraCuu,
+): Promise<{ thieuHoSo: number; dungGiuaChung: boolean; hong: ThongBaoHong[] }> {
+  const hong: ThongBaoHong[] = [];
+  const tienDo = params.tienDo;
+
+  const bangTho = await params.voiPhucHoi(() =>
+    DvcService.traCuuHoSo(
+      {
+        ...params.phien,
+        tuNgay: d.tuNgay,
+        denNgay: d.denNgay,
+        scope: "SELF",
+        daBiThay: params.daBiThay,
+      },
+      d.nguon,
+    ),
   );
 
-  // Cổng khai bao nhiêu bản ghi mà ta chỉ gộp được ít hơn -> CHƯA lấy hết. Phải báo ra: trước đây
-  // cổng chia trang 10 mà code chỉ đọc trang đầu, lịch sử vẫn ghi "xong, 0 lỗi" nên không ai biết
-  // là đang thiếu. Đối chiếu bằng chính con số cổng khai là cách duy nhất tự phát hiện lại được.
-  const thieuHoSo =
-    typeof tongSoBanGhi === "number" ? Math.max(0, tongSoBanGhi - rows.length) : 0;
-  if (thieuHoSo > 0) {
-    console.warn(
-      `[DVC-DONG-BO] Cổng khai ${tongSoBanGhi} hồ sơ nhưng chỉ lấy được ${rows.length} ` +
-        `-> thiếu ${thieuHoSo}. Xem vòng lặp trang ở \`traCuuHoSoMoiTrang\`.`,
-    );
-  }
+  // Kiểm NGAY sau tra cứu, trước khi gộp bảng và đọc DB: `gopCacTrangHoSo` cũng tôn trọng
+  // `daBiThay` nên nó có thể vừa trả về một bảng DỞ DANG — chạy tiếp là tốn một round trip DB với
+  // danh sách trăm mã cho lượt không ai đọc.
+  if (params.daBiThay()) return { thieuHoSo: 0, dungGiuaChung: true, hong };
 
-  const tienDo = params.tienDo;
-  tienDo.tongHoSo = rows.length;
-  tienDo.thieuHoSo = thieuHoSo;
-  let dungGiuaChung = false;
+  // Đã chuẩn hoá từ trong `traCuuHoSo` (phải làm trước vòng gộp để chống trùng hoạt động).
+  const { headers, rows } = bangTho;
+  tienDo.tongHoSo += rows.length;
 
-  // Đọc trước `da_dong_bo` của MỌI hồ sơ trong 1 query — tránh N+1 (1 query DB tenant/hồ sơ) nếu
-  // tra vòng lặp; đây là DB tenant nên gộp thoải mái, không đụng tới ràng buộc "gọi cổng tuần tự".
+  // Đọc trước `da_dong_bo` của MỌI hồ sơ trong đoạn bằng 1 query — tránh N+1 (1 query DB
+  // tenant/hồ sơ); đây là DB tenant nên gộp thoải mái, không đụng ràng buộc "gọi cổng tuần tự".
   const maHoSoList = [...new Set(rows.map((row) => oTheoTieuDe(headers, row, "Mã hồ sơ")))].filter(
     Boolean,
   );
@@ -353,8 +394,7 @@ export async function dongBoHoSo(dbName: string, params: DongBoHoSoParams): Prom
   for (const row of rows) {
     // Lượt mới đã thay lượt này -> dừng NGAY, đừng tiêu thêm request cổng cho kết quả không ai đọc.
     if (params.daBiThay()) {
-      dungGiuaChung = true;
-      break;
+      return { thieuHoSo: 0, dungGiuaChung: true, hong };
     }
 
     const maHoSo = oTheoTieuDe(headers, row, "Mã hồ sơ");
@@ -381,6 +421,9 @@ export async function dongBoHoSo(dbName: string, params: DongBoHoSoParams): Prom
         where: { ma_ho_so: maHoSo },
         create: {
           ma_ho_so: maHoSo,
+          // Chỉ ghi ở `create`, KHÔNG ở `update`: nguồn của một hồ sơ không bao giờ đổi, cho phép
+          // ghi đè là mở đường cho một lượt tra cứu lệch làm hỏng dòng vốn đã đúng.
+          nguon: d.nguon,
           ten_tthc: oTheoTieuDe(headers, row, "Tên TTHC") || null,
           to_khai: oTheoTieuDe(headers, row, "Tờ khai") || null,
           ky_tinh_thue: oTheoTieuDe(headers, row, "Kỳ tính thuế") || null,
@@ -396,13 +439,20 @@ export async function dongBoHoSo(dbName: string, params: DongBoHoSoParams): Prom
         update: { trang_thai: trangThai, raw },
       });
 
-      const { thongBaoLoi } = await dongBoChiTietHoSo(db, params.phien, maHoSo, params.daBiThay);
-      if (thongBaoLoi > 0) {
-        // Hồ sơ dở dang: xml có nhưng thiếu thông báo -> `da_dong_bo` vẫn false nên lượt sau tự bù.
-        // Tính vào `loi` để lịch sử đồng bộ nói đúng "sẽ bù ở lượt sau", thay vì báo xong mà thiếu.
+      const hongCuaHoSo = await dongBoChiTietHoSo(
+        db,
+        params.phien,
+        maHoSo,
+        d.nguon,
+        params.daBiThay,
+      );
+      if (hongCuaHoSo.length > 0) {
+        // Hồ sơ dở dang: xml có nhưng thiếu thông báo -> `da_dong_bo` vẫn false. Gom lại để bù
+        // NGAY CUỐI LƯỢT (xem `buThongBaoHong`), không bắt người dùng bấm Đồng bộ lần nữa.
+        hong.push(...hongCuaHoSo);
         tienDo.loi++;
         console.warn(
-          `[DVC-DONG-BO] Hồ sơ ${maHoSo} thiếu ${thongBaoLoi} thông báo — giữ da_dong_bo=false để bù ở lượt sau.`,
+          `[DVC-DONG-BO] Hồ sơ ${maHoSo} thiếu ${hongCuaHoSo.length} thông báo — sẽ thử bù ở cuối lượt.`,
         );
       } else {
         tienDo.dongBoXong++;
@@ -416,12 +466,121 @@ export async function dongBoHoSo(dbName: string, params: DongBoHoSoParams): Prom
     }
   }
 
+  // Đối chiếu NGAY TRONG đoạn, không cộng dồn hai đoạn rồi trừ một lần: gộp lại thì đoạn thừa và
+  // đoạn thiếu triệt tiêu nhau, và một đoạn không đọc được pager (`tongSoBanGhi` null -> 0) sẽ kéo
+  // tử số xuống mà vẫn góp dòng vào mẫu số, che mất chỗ thiếu thật của đoạn kia.
+  const thieuHoSo =
+    typeof bangTho.tongSoBanGhi === "number"
+      ? Math.max(0, bangTho.tongSoBanGhi - rows.length)
+      : 0;
+  if (thieuHoSo > 0) {
+    console.warn(
+      `[DVC-DONG-BO] Nguồn ${d.nguon} (${d.tuNgay}..${d.denNgay}): cổng khai ` +
+        `${bangTho.tongSoBanGhi} hồ sơ nhưng chỉ lấy được ${rows.length} -> thiếu ${thieuHoSo}.`,
+    );
+  }
+  return { thieuHoSo, dungGiuaChung: false, hong };
+}
+
+/**
+ * Thử lại MỘT LƯỢT các thông báo tải hỏng, sau khi mọi đoạn đã chạy xong.
+ *
+ * Vì sao có cơ hội thành công: nguyên nhân hỏng phổ biến nhất là `429`, mà pacer nhân đôi khoảng
+ * cách mỗi lần dính 429 (trần 15s) và chỉ co lại dần khi trót lọt. Tới cuối lượt làn `dvc` đã tự
+ * giãn, nên lượt bù chạy ở nhịp chậm hơn hẳn lúc vừa hỏng.
+ *
+ * Vì sao ĐÚNG MỘT lượt: 429 kéo dài thì lặp mãi có thể ngốn hàng chục phút trong khi người dùng
+ * đang ngồi chờ, còn hỏng vĩnh viễn thì lặp bao nhiêu cũng vô ích. Còn sót thì giữ nguyên hành vi
+ * cũ — `da_dong_bo=false`, lịch sử ghi `partial`, lượt đồng bộ sau bù tiếp.
+ *
+ * Chỉ gọi lại `taiThongBao` cho đúng thứ hỏng, KHÔNG chạy lại cả hồ sơ: làm lại cả hồ sơ là tải
+ * lại xml + trang chi tiết + mọi thông báo đã có, tốn gấp nhiều lần cho cùng một kết quả.
+ *
+ * Nguồn ETAX tự lo được: `baoDamPhienTdt` sẽ tra cứu lại nếu đoạn cuối đã chuyển phiên sang DVC.
+ */
+async function buThongBaoHong(
+  db: () => PrismaClient,
+  params: DongBoHoSoParams,
+  hong: ThongBaoHong[],
+): Promise<void> {
+  const tienDo = params.tienDo;
+  tienDo.dangBuLai = hong.length;
+
+  /** Số thông báo còn hỏng của từng hồ sơ — về 0 thì hồ sơ đó mới thật sự trọn vẹn. */
+  const conHong = new Map<string, number>();
+  for (const h of hong) conHong.set(h.maHoSo, (conHong.get(h.maHoSo) ?? 0) + 1);
+
+  for (const h of hong) {
+    if (params.daBiThay()) break;
+    tienDo.maHoSoDangLam = h.maHoSo;
+    if (!(await taiVaLuuThongBao(db, params.phien, h.maHoSo, h.nguon, h.tb))) continue;
+
+    const con = (conHong.get(h.maHoSo) ?? 1) - 1;
+    conHong.set(h.maHoSo, con);
+    if (con === 0) {
+      await danhDauDongBoXong(db, h.maHoSo);
+      // Hồ sơ này đã được tính vào `loi` ở vòng chính — chuyển sang `dongBoXong` để lịch sử và
+      // toast nói đúng kết cục cuối cùng, không phải kết cục giữa chừng.
+      tienDo.loi--;
+      tienDo.dongBoXong++;
+    }
+  }
+
+  tienDo.dangBuLai = 0;
   tienDo.maHoSoDangLam = "";
+}
+
+export async function dongBoHoSo(dbName: string, params: DongBoHoSoParams): Promise<void> {
+  // Lấy client tenant MỚI ở MỖI lần chạm DB, không giữ một client suốt lượt.
+  //
+  // `tenantClient` chỉ refresh `lastUsed` bên trong `getTenantDb`; query qua một client đang cầm
+  // KHÔNG chạm vào nó. Lượt này chạy nền hàng phút và thường là thứ duy nhất đụng tenant đó, nên
+  // giữ client là đúng kiểu để sweeper (idle > 10') đóng pool giữa chừng rồi mọi query sau hỏng
+  // hết — và hỏng vào đúng nhánh `catch` từng hồ sơ nên chỉ thành `loi++`, không ai biết vì sao.
+  // Khuôn này chép từ `runDetailFetch`, xem docblock `resolveTenantDbName`.
+  const db = () => getTenantDb(dbName);
+  const tienDo = params.tienDo;
+  let dungGiuaChung = false;
+  /** Số hồ sơ thiếu, cộng dồn qua các đoạn — mỗi đoạn tự đối chiếu với con số cổng khai của nó. */
+  let thieuHoSo = 0;
+  /** Thông báo hỏng gom từ mọi đoạn, để bù một lượt ở cuối. */
+  const hongCanBu: ThongBaoHong[] = [];
+
+  // Cắt khoảng theo mốc 01/07/2025 rồi xử lý TỪNG đoạn TRỌN VẸN, KHÔNG gộp hết rồi mới chạy.
+  //
+  // Vì sao phải xen kẽ: cổng giữ state phía server cho nguồn ETAX — trang chi tiết và lượt tải chỉ
+  // mở được sau khi ĐÃ tra cứu ETAX trong cùng phiên, và một lượt tra cứu Dịch vụ công xen vào
+  // giữa sẽ XOÁ state đó. Đo thực tế: gộp rồi chạy -> cả 10 hồ sơ ETAX lỗi; xen kẽ -> 10/10 xong.
+  //
+  // Giá phải trả: `tongHoSo` lớn dần theo từng đoạn thay vì biết ngay từ đầu, nên mẫu số thanh
+  // tiến độ nhích lên một lần khi sang đoạn thứ hai. Thà vậy còn hơn mất trọn một nguồn.
+  for (const d of chiaDoanTheoNguon(params.tuNgay, params.denNgay)) {
+    if (params.daBiThay()) {
+      dungGiuaChung = true;
+      break;
+    }
+    const ket = await dongBoMotDoan(db, params, d);
+    thieuHoSo += ket.thieuHoSo;
+    hongCanBu.push(...ket.hong);
+    if (ket.dungGiuaChung) {
+      dungGiuaChung = true;
+      break;
+    }
+  }
+
+  tienDo.maHoSoDangLam = "";
+
+  // Bù cuối lượt, khi nhịp pacer đã giãn ra vì chính những lần 429 vừa rồi — xem `buThongBaoHong`.
+  if (hongCanBu.length > 0 && !dungGiuaChung && !params.daBiThay()) {
+    await buThongBaoHong(db, params, hongCanBu);
+  }
+
+  tienDo.thieuHoSo = thieuHoSo;
 
   await ghiLichSuDongBo(db(), {
     tuNgay: params.tuNgay,
     denNgay: params.denNgay,
-    tongHoSo: rows.length,
+    tongHoSo: tienDo.tongHoSo,
     daCoSan: tienDo.daCoSan,
     dongBoXong: tienDo.dongBoXong,
     loi: tienDo.loi,
@@ -606,6 +765,24 @@ export async function layFileHoSoDaLuu(
     return { bytes: Buffer.from(hoSo.xml_to_khai, "utf8"), contentType, fileName: tenFile };
   }
   return null;
+}
+
+/**
+ * Nguồn của một hồ sơ đã lưu — quyết định gọi endpoint nào khi tải file (xem `DUONG_DAN`).
+ *
+ * Hồ sơ chưa có trong DB -> `"dvc"`: ta chỉ biết tới hồ sơ TDT qua chính lượt đồng bộ, mà lượt đó
+ * luôn ghi `nguon` xuống. Không có dòng nghĩa là chưa từng thấy, và đoán `"dvc"` chỉ làm lượt gọi
+ * cổng hỏng bằng lỗi rõ ràng chứ không lưu sai gì.
+ */
+export async function layNguonHoSoDaLuu(
+  tenantDb: PrismaClient,
+  maHoSo: string,
+): Promise<DvcService.NguonHoSo> {
+  const hoSo = await tenantDb.dvc_ho_so.findUnique({
+    where: { ma_ho_so: maHoSo },
+    select: { nguon: true },
+  });
+  return hoSo?.nguon === "tdt" ? "tdt" : "dvc";
 }
 
 /**

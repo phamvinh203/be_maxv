@@ -12,6 +12,7 @@
  */
 
 import { htmlToText } from "../hddt/traCuuGoc/shared";
+import type { NguonHoSo } from "./nguonTheoNgay";
 
 /** Một bảng đã bóc: tiêu đề cột theo đúng thứ tự cổng trả, và các dòng dữ liệu. */
 export interface BangHoSoDaBoc {
@@ -47,7 +48,17 @@ export interface PhanTrangDaBoc {
 }
 
 const TONG_BAN_GHI_RE = /Tổng số bản ghi:\s*<span[^>]*>\s*([\d.,]+)\s*<\/span>/i;
-const TONG_TRANG_RE = /id="totalPage"[^>]*>\s*([\d.,]+)\s*</i;
+/** Pager tab Dịch vụ công: `<span id="totalPage">2</span>`. */
+const TONG_TRANG_DVC_RE = /id="totalPage"[^>]*>\s*([\d.,]+)\s*</i;
+
+/**
+ * Pager tab Thuế điện tử: `Trang <span>1</span>/ <span>1</span> — Tổng số bản ghi: …`.
+ *
+ * Không có `id` nào để bám nên phải neo vào chữ "Trang" và dấu `/`. Hai tab của CÙNG một cổng lại
+ * viết pager khác hẳn nhau — gộp thành một biểu thức thì không ai đọc hiểu nổi nữa.
+ */
+const TONG_TRANG_TDT_RE =
+  /Trang\s*<span[^>]*>\s*[\d.,]+\s*<\/span>\s*\/\s*<span[^>]*>\s*([\d.,]+)\s*<\/span>/i;
 
 /** "1.234" / "1,234" -> 1234. Không ra số -> `null`. */
 function soNguyen(raw: string | undefined): number | null {
@@ -59,7 +70,10 @@ function soNguyen(raw: string | undefined): number | null {
 export function bocPhanTrang(html: string): PhanTrangDaBoc {
   return {
     tongSoBanGhi: soNguyen(TONG_BAN_GHI_RE.exec(html)?.[1]),
-    tongSoTrang: soNguyen(TONG_TRANG_RE.exec(html)?.[1]),
+    // Thử dạng DVC trước rồi mới tới ETAX — thứ tự chỉ có ý nghĩa nếu một mảnh HTML lỡ chứa cả
+    // hai, khi đó dạng có `id` là dạng đáng tin hơn.
+    tongSoTrang:
+      soNguyen(TONG_TRANG_DVC_RE.exec(html)?.[1]) ?? soNguyen(TONG_TRANG_TDT_RE.exec(html)?.[1]),
   };
 }
 
@@ -128,7 +142,13 @@ export function parseBangHoSo(html: string): BangHoSoDaBoc {
 /** Cổng báo captcha sai bằng câu tiếng Việt trong response (HTML hay JSON-as-string), không có
  * mã lỗi riêng — gom một chỗ vì `gdt-dvc.service.ts` dò đúng cụm này ở hai bước khác nhau
  * (đăng nhập, tra cứu hồ sơ) và trước đây mỗi nơi tự chép lại danh sách cụm từ. */
-const LOI_CAPTCHA_CUMS = ["Mã xác nhận không chính xác", "Mã xác thực không chính xác"];
+const LOI_CAPTCHA_CUMS = [
+  "Mã xác nhận không chính xác",
+  "Mã xác thực không chính xác",
+  // Tab Thuế điện tử dùng chữ khác hẳn hai tab kia của CÙNG một cổng, và trả kèm HTTP 400 chứ
+  // không phải HTML — xem `laLoiCaptchaTdt`.
+  "Mã captcha không chính xác",
+];
 
 export function laLoiCaptcha(text: string): boolean {
   return LOI_CAPTCHA_CUMS.some((cum) => text.includes(cum));
@@ -164,6 +184,44 @@ export interface ThongBaoDaBoc {
  */
 const THONG_BAO_RE =
   /<div class="fw-bold">([\s\S]*?)<\/div>\s*<div>([\s\S]*?)<\/div>[\s\S]*?onclick="downloadThongBao\(this\);\s*return false;"[\s\S]*?data-id="(\d+)"/g;
+
+/**
+ * Link tải thông báo của trang chi tiết nguồn ETAX. Nhận diện bằng `data-loaitracuu="ETAX"` —
+ * thuộc tính này CHỈ có ở nguồn đó, nên không đụng nhầm markup của nguồn Dịch vụ công.
+ */
+const THONG_BAO_TDT_RE =
+  /onclick="downloadThongBao\(this\);\s*return false;"[^>]*data-id="(\d+)"[^>]*data-loaitracuu="ETAX"/i;
+
+/**
+ * "Danh sách thông báo" của nguồn ETAX — trả TỐI ĐA MỘT mục.
+ *
+ * Cổng không liệt kê từng thông báo ở nguồn này: trang chi tiết chỉ có một link "Tải xuống" cho cả
+ * gói, và `data-id` chính là mã hồ sơ. Bấm vào trả về một ZIP chứa N file XML thông báo.
+ *
+ * Nên mục trả về ở đây là CẢ GÓI, không phải một thông báo lẻ — tiêu đề nói rõ điều đó, và `ngayGui`
+ * để TRỐNG thay vì bịa: cổng không cho ngày nào ở tầng này (ngày nằm trong từng XML bên trong gói).
+ */
+export class DvcKhongBocDuocThongBaoTdtError extends Error {
+  constructor() {
+    super("Không bóc được link tải thông báo trên trang chi tiết Thuế điện tử (cổng đổi markup?).");
+    this.name = "DvcKhongBocDuocThongBaoTdtError";
+  }
+}
+
+export function parseThongBaoTdt(html: string): ThongBaoDaBoc[] {
+  const m = THONG_BAO_TDT_RE.exec(html);
+  // NÉM chứ không trả rỗng. Với nguồn Dịch vụ công, rỗng nghĩa là "hồ sơ chưa có thông báo nào" —
+  // hợp lệ. Với ETAX thì KHÔNG: mọi trang chi tiết đều có đúng một link tải, nên rỗng nghĩa là
+  // regex đã hỏng (cổng đổi thứ tự thuộc tính chẳng hạn). Trả rỗng ở đây làm vòng thông báo không
+  // chạy lần nào -> `thongBaoLoi === 0` -> bật `da_dong_bo=true` -> mọi lượt sau bỏ qua hồ sơ đó:
+  // gói ZIP mất VĨNH VIỄN, không dấu vết. Ném thì thành `loi++` và lượt sau tự thử lại.
+  if (!m) throw new DvcKhongBocDuocThongBaoTdtError();
+  // `khoa` cache có TIỀN TỐ `tdt:`. `data-id` của ETAX chính là mã hồ sơ, mà mã hồ sơ ETAX và
+  // `idTbao` của Dịch vụ công đều là chuỗi 17 chữ số do hai bộ sinh khác nhau — dùng chung khoá
+  // `dvc_tai_lieu(loai, khoa)` là có ngày một cái đè nội dung của cái kia, im lặng và không cứu
+  // được. Tiền tố cũng làm "dòng này là gói của cả hồ sơ" nhìn thấy được ngay trong dữ liệu.
+  return [{ tieuDe: "Toàn bộ thông báo (gói ZIP)", ngayGui: "", idTbao: `tdt:${m[1]!}` }];
+}
 
 /** Bóc "Danh sách thông báo" từ HTML trang chi tiết hồ sơ (`layChiTietHoSoHtml`). Rỗng nếu hồ
  * sơ chưa có thông báo nào — bình thường, không phải lỗi. */
@@ -205,11 +263,20 @@ export interface GopTrangOpts {
 
 const MAX_TRANG_MAC_DINH = 50;
 
-/** Ô "Mã hồ sơ" của một dòng, theo đúng TÊN cột (bảng cổng có thể đổi thứ tự cột). */
-function maHoSoCuaDong(headers: string[], row: string[]): string {
-  const i = headers.indexOf("Mã hồ sơ");
+/**
+ * Đọc 1 ô theo ĐÚNG tên cột (không phải theo thứ tự) — bảng cổng có thể đổi thứ tự cột. Cột vắng
+ * mặt -> `""`, cùng quy ước với ô rỗng: nơi gọi không phải phân biệt hai ca đó.
+ *
+ * Ở `hoSoHtml.ts` vì đây là module sở hữu `BangHoSoDaBoc`. Trước có ba bản y hệt nằm rải rác.
+ */
+export function oTheoTieuDe(headers: string[], row: string[], tieuDe: string): string {
+  const i = headers.indexOf(tieuDe);
   return i >= 0 ? (row[i] ?? "") : "";
 }
+
+/** Ô "Mã hồ sơ" của một dòng. */
+const maHoSoCuaDong = (headers: string[], row: string[]) =>
+  oTheoTieuDe(headers, row, "Mã hồ sơ");
 
 /**
  * Xin từng trang qua `layTrang` rồi gộp lại thành một bảng.
@@ -302,4 +369,45 @@ export async function gopCacTrangHoSo(
   }
 
   return { headers, rows, tongSoBanGhi };
+}
+
+// ============================================================
+//  CHUẨN HOÁ BẢNG THEO NGUỒN
+// ============================================================
+
+/**
+ * Tên cột tab Thuế điện tử -> tên chuẩn (chính là tên tab Dịch vụ công đang dùng).
+ *
+ * Cần vì `dongBoHoSo` đọc ô theo TÊN cột chứ không theo vị trí — không đổi tên thì mọi ô đọc ra
+ * rỗng và hồ sơ lưu xuống trống trơn. Chuẩn hoá về tên DVC (chứ không phải một tên thứ ba) để cột
+ * `raw` đã lưu và bộ cột bên FE (`config.ts`, trường `srcHeader`) không phải đổi gì.
+ */
+const DOI_TEN_COT_TDT: Record<string, string> = {
+  "Mã giao dịch": "Mã hồ sơ",
+  "Tờ khai/Phụ lục": "Tờ khai",
+  "Lần bổ sung": "Lần nộp bổ sung",
+  "Nơi nộp": "Cơ quan thuế tiếp nhận",
+  "Tiến trình giải quyết hồ sơ (Trạng thái)": "Trạng thái",
+};
+
+/**
+ * Đổi tên cột của MỘT nguồn về bộ cột chuẩn, giữ nguyên mọi thứ khác.
+ *
+ * KHÔNG gộp nhiều nguồn: kiến trúc cấm điều đó. Cổng giữ state phía server cho ETAX nên mỗi đoạn
+ * ngày phải tra cứu XONG rồi xử lý XONG mới sang đoạn sau (xem `dongBoMotDoan`), tức hai bảng
+ * không bao giờ cùng tồn tại. Bản trước nhận mảng nhiều nguồn và hợp cột — máy móc cho một lời gọi
+ * mà thiết kế không cho phép, lại còn nhét thêm một cột "Nguồn" giả vào mọi dòng rồi cột đó theo
+ * `raw` xuống DB, phá đúng tính chất "raw là dòng nguyên bản cổng trả".
+ *
+ * Nguồn KHÔNG đi vào bảng: nơi gọi đã biết nó rồi.
+ */
+export function chuanHoaBangTheoNguon(
+  bang: BangHoSoDaBoc,
+  nguon: NguonHoSo,
+): BangHoSoDaBoc {
+  if (nguon !== "tdt") return bang;
+  return {
+    ...bang,
+    headers: bang.headers.map((ten) => DOI_TEN_COT_TDT[ten] ?? ten),
+  };
 }

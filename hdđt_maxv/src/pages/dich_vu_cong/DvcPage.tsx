@@ -330,7 +330,7 @@ export default function DvcPage() {
           </Stack>
         </Stack>
 
-        {/* Nút xuất nằm ở hàng tab nên dùng chung cho cả ba tab, không riêng tab nào. */}
+        {/* Nút xuất nằm ở hàng tab nên dùng chung cho mọi tab, không riêng tab nào. */}
         <Stack
           direction={{ xs: "column", sm: "row" }}
           spacing={1.5}
@@ -371,7 +371,7 @@ export default function DvcPage() {
         </Stack>
 
         {/*
-          Một bộ lọc dùng chung cho cả ba tab, cố tình không đặt `key={tab}`:
+          Một bộ lọc dùng chung cho mọi tab, cố tình không đặt `key={tab}`:
           đổi tab mà mất luôn điều kiện vừa gõ thì phải nhập lại từ đầu.
         */}
         <BoLocHoSo

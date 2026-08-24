@@ -8,10 +8,16 @@ import {
   reportRateLimited as pacerReportRateLimited,
 } from "../hddt/gdtPacer";
 import { docDvcCaptcha } from "./captcha-ocr";
+// Kiểu nguồn sống ở module lá `nguonTheoNgay` (xem chú thích ở đó); re-export để nơi gọi cũ
+// khỏi phải đổi đường import.
+export type { NguonHoSo } from "./nguonTheoNgay";
+import { KHOANG_TDT, type NguonHoSo } from "./nguonTheoNgay";
 import {
   laLoiCaptcha,
   parseBangHoSo,
   parseDanhSachThongBao,
+  parseThongBaoTdt,
+  chuanHoaBangTheoNguon,
   bocPhanTrang,
   gopCacTrangHoSo,
   type BangHoSoDaBoc,
@@ -40,7 +46,8 @@ import {
  * CSRF của Spring Security, trả HTML/PNG. Đủ khác để không dùng chung tầng client.
  */
 
-const DVC_BASE_URL = "https://dichvucong.gdt.gov.vn/tthc";
+const DVC_ORIGIN = "https://dichvucong.gdt.gov.vn";
+const DVC_BASE_URL = `${DVC_ORIGIN}/tthc`;
 
 /** Luồng này chỉ đăng nhập doanh nghiệp — cổng còn đối tượng khác nhưng chưa dùng tới. */
 const DVC_DOI_TUONG = "DN";
@@ -147,6 +154,17 @@ export interface DvcPhien {
 interface DvcSession {
   /** Công ty ĐÃ mở phiên này. Chốt lúc tạo, không bao giờ đổi — xem `DvcPhien`. */
   donViId: string;
+  /**
+   * Nguồn của lượt TRA CỨU gần nhất trên phiên này; `null` = chưa tra cứu lần nào.
+   *
+   * Cổng giữ state phía server cho nguồn ETAX: trang chi tiết và lượt tải file chỉ mở được sau một
+   * lượt tra cứu ETAX trong CÙNG phiên, và một lượt tra cứu Dịch vụ công xen vào giữa sẽ xoá state
+   * đó. `dongBoMotDoan` đã sắp xếp đúng thứ tự, nhưng vòng lặp đó không có quyền gì với
+   * `voiTuDangNhapLai` — hàm này đăng nhập MỚI hoàn toàn khi cổng đá phiên, và phiên mới thì chưa
+   * từng tra cứu ETAX nên lượt thử lại chắc chắn hỏng. Ghi lại ở đây để chỗ tải kiểm được, thay vì
+   * hỏng thành một `loi++` vô danh.
+   */
+  nguonTraCuuCuoi: NguonHoSo | null;
   /**
    * Cookie của phiên, khóa theo TÊN cookie -> chuỗi `ten=gia_tri`.
    *
@@ -389,9 +407,33 @@ function phienRong(donViId: string, credential?: DvcCredential): DvcSession {
     csrfToken: "",
     csrfHeader: "X-XSRF-TOKEN",
     daDangNhap: false,
+    nguonTraCuuCuoi: null,
     expiresAt: Date.now() + SESSION_TTL_MS,
     credential,
   };
+}
+
+/**
+ * Lượt tải nguồn ETAX chạy khi phiên CHƯA tra cứu ETAX — cổng sẽ từ chối bằng lỗi khó lần.
+ *
+ * Có lớp riêng để lỗi này không lẫn vào đám `loi++` vô danh: nó nghĩa là thứ tự thao tác sai, chứ
+ * không phải hồ sơ có vấn đề.
+ */
+export class DvcThieuTraCuuTdtError extends Error {
+  constructor() {
+    super(
+      "Không mở được tài liệu Thuế điện tử: phiên cổng vừa bị làm mới. " +
+        'Bấm "Đồng bộ" lại rồi thử lại.',
+    );
+    this.name = "DvcThieuTraCuuTdtError";
+  }
+}
+
+/** Chặn trước mọi lượt chạm tài liệu ETAX — xem `DvcSession.nguonTraCuuCuoi`. */
+function chanThieuTraCuuTdt(session: DvcSession, nguon: NguonHoSo): void {
+  if (nguon === "tdt" && session.nguonTraCuuCuoi !== "tdt") {
+    throw new DvcThieuTraCuuTdtError();
+  }
 }
 
 /** Bước 1: mở phiên hoàn toàn mới (khóa `key` mới) — dùng cho lượt lấy captcha đăng nhập đầu tiên. */
@@ -570,6 +612,8 @@ async function performLogin(
   // hàm này), nên phiên sai cũng được kéo dài hạn. Không hại: nó chỉ nằm trong RAM tới khi hết
   // hạn, còn cổng vẫn từ chối mọi request của phiên chưa xác thực.
   session.daDangNhap = true;
+  // Phiên vừa được dựng lại từ đầu -> state tra cứu bên cổng mất theo, đừng để cờ cũ nói dối.
+  session.nguonTraCuuCuoi = null;
   session.credential = { tenDN, matKhau };
   session.expiresAt = Date.now() + ttlCuaPhien(session);
 
@@ -762,9 +806,9 @@ export interface DvcTraCuuHoSoQuery extends DvcPhien {
 }
 
 /**
- * Query kèm số trang — CHỈ dùng nội bộ giữa `traCuuHoSoMoiTrang` và `guiTraCuuHoSo`.
+ * Query kèm số trang — CHỈ dùng nội bộ giữa `traCuuHoSo` và hai hàm gửi trang.
  *
- * Tách khỏi `DvcTraCuuHoSoQuery` để `page`/`size` không lộ ra mặt ngoài: `traCuuHoSoMoiTrang` luôn
+ * Tách khỏi `DvcTraCuuHoSoQuery` để `page`/`size` không lộ ra mặt ngoài: `traCuuHoSo` luôn
  * ghi đè hai trường đó, nên người gọi đặt `size: 10` sẽ lặng lẽ nhận 100 mà không có gì báo.
  */
 interface TraCuuTrangQuery extends DvcTraCuuHoSoQuery {
@@ -804,6 +848,7 @@ async function guiTraCuuHoSo(
     },
   });
 
+  session.nguonTraCuuCuoi = "dvc";
   return response.text();
 }
 
@@ -872,42 +917,180 @@ async function traCuuHoSoHtml(q: TraCuuTrangQuery): Promise<string> {
     : new Error("Tra cứu hồ sơ thất bại do không giải được mã captcha hợp lệ.");
 }
 
+
+/** Lấy MỘT trang HTML kết quả, theo nguồn. Đây là chỗ DUY NHẤT hai nguồn khác nhau ở pha tra cứu. */
+const LAY_TRANG: Record<NguonHoSo, (q: TraCuuTrangQuery) => Promise<string>> = {
+  dvc: traCuuHoSoHtml,
+  tdt: traCuuTdtHtml,
+};
+
 /**
- * Tra cứu hồ sơ đã nộp (`GET /tthc/ho-so/search`), trả bảng ĐÃ BÓC sẵn — khớp cách
- * `taiXmlHoSo`/`layTaiLieuDinhKem` trả dữ liệu đã xử lý, controller không còn phải biết tới
- * `parseBangHoSo`/hình dạng HTML của cổng nữa.
+ * Tra cứu hồ sơ đã nộp của MỘT nguồn, gộp đủ các trang, trả bảng ĐÃ BÓC sẵn.
+ *
+ * Một hàm cho cả hai nguồn thay vì hai bản chép: bản đầu tách riêng hàm cho ETAX, khác bản DVC đúng
+ * một định danh, nên `SIZE_MOI_TRANG` và cách nối `daBiThay` nằm ở hai nơi và đã bắt đầu lệch nhau.
+ * Cùng quy ước với `taiXmlHoSo`/`taiThongBao`/`layDanhSachThongBao`: phân nhánh bằng THAM SỐ `nguon`,
+ * không bằng tên hàm.
+ *
+ * `voiTuDangNhapLai` bọc TỪNG TRANG chứ không bọc cả vòng: phiên chết ở trang 5 mà bọc ngoài là
+ * chạy lại từ trang 1 — 4 trang đã lấy bị vứt rồi lấy lại, mỗi trang 1 captcha + 1 request qua
+ * pacer. Bọc trong còn tự lành cho ETAX: chính lượt POST tra cứu tái lập state bên cổng.
  */
-export async function traCuuHoSo(q: DvcTraCuuHoSoQuery): Promise<BangHoSoDaBoc> {
+export function traCuuHoSo(
+  q: DvcTraCuuHoSoQuery,
+  nguon: NguonHoSo = "dvc",
+): Promise<BangHoSoDaBoc> {
   const session = requireSession(q);
-  return voiTuDangNhapLai(q.key, session, () => traCuuHoSoMoiTrang(q));
+  return gopCacTrangHoSo(
+    async (page) => {
+      const html = await voiTuDangNhapLai(q.key, session, () =>
+        LAY_TRANG[nguon]({ ...q, page, size: SIZE_MOI_TRANG }),
+      );
+      // Chuẩn hoá tên cột NGAY Ở ĐÂY, trước khi trả cho vòng gộp — không phải sau khi gộp xong.
+      // `gopCacTrangHoSo` chống trùng bằng cột "Mã hồ sơ"; bảng ETAX thô gọi cột đó là "Mã giao
+      // dịch" nên tra ra -1, mọi dòng có mã rỗng, và cơ chế chống trùng câm hoàn toàn. Đo được:
+      // cổng lờ tham số `page` -> gộp 9 dòng cho 3 bản ghi thay vì dừng ở 3.
+      return {
+        bang: chuanHoaBangTheoNguon(parseBangHoSo(html), nguon),
+        phanTrang: bocPhanTrang(html),
+      };
+    },
+    { size: SIZE_MOI_TRANG, daBiThay: q.daBiThay },
+  );
 }
 
 /** Xin bao nhiêu bản ghi mỗi trang. Cổng mặc định 10; xin nhiều hơn để phần lớn khoảng ngày chỉ tốn
  * MỘT lượt (mỗi lượt là 1 captcha + 1 request). Cổng có ép về 10 thì vòng gộp vẫn lấy đủ. */
 const SIZE_MOI_TRANG = 100;
 
+
 /**
- * Lấy ĐỦ các trang kết quả rồi gộp lại.
+ * Cổng báo captcha sai ở tab Thuế điện tử bằng HTTP 400, không phải bằng mảnh HTML như tab Dịch vụ
+ * công — nên `laLoiCaptcha` (dò chữ trong HTML trả về) không bao giờ khớp ở nhánh này.
  *
- * Trước đây hàm này chỉ xin một lượt và đọc bảng trong đó — mà cổng chia trang mặc định 10 bản ghi,
- * nên mọi khoảng có hơn 10 hồ sơ âm thầm mất phần dư và lượt đồng bộ vẫn báo "xong, 0 lỗi".
- *
- * Ở đây CHỈ còn phần I/O (xin một trang, bóc HTML); mọi quyết định gộp/dừng/chống trùng nằm ở
- * `gopCacTrangHoSo` để test được không cần cổng thật — xem `__tests__/dvcGopTrang.test.ts`.
+ * Xét CẢ mã trạng thái lẫn câu chữ: 400 vì thiếu tham số mà cứ thử lại captcha là đốt ba lượt gọi
+ * cổng cho một lỗi không bao giờ tự khỏi.
  */
-function traCuuHoSoMoiTrang(q: DvcTraCuuHoSoQuery): Promise<BangHoSoDaBoc> {
-  return gopCacTrangHoSo(
-    async (page) => {
-      const html = await traCuuHoSoHtml({ ...q, page, size: SIZE_MOI_TRANG });
-      return { bang: parseBangHoSo(html), phanTrang: bocPhanTrang(html) };
-    },
-    { size: SIZE_MOI_TRANG, daBiThay: q.daBiThay },
-  );
+export function laLoiCaptchaTdt(err: unknown): boolean {
+  return err instanceof DvcHttpError && err.status === 400 && laLoiCaptcha(err.message);
 }
 
-/** Referer XHR của trang chi tiết hồ sơ — cả `downloadhoso` lẫn `data-tai-lieu-dkem` đều gọi từ đây. */
-function chiTietHoSoUrl(maHoSo: string): string {
-  return `${DVC_BASE_URL}/tchs/files/detail/${encodeURIComponent(maHoSo)}?loai=`;
+/** Gửi MỘT trang tra cứu tab Thuế điện tử. */
+async function guiTraCuuTdt(
+  session: DvcSession,
+  q: TraCuuTrangQuery,
+  captcha: string,
+): Promise<string> {
+  const body = new URLSearchParams({
+    // Cổng đòi CSRF ở CẢ thân request lẫn header cho endpoint này; tab Dịch vụ công chỉ cần header.
+    _csrf: session.csrfToken,
+    page: String(q.page),
+    size: String(q.size),
+    maToKhai_tdt: q.maToKhai ?? "",
+    maGiaoDichTthc_tdt: q.maHoSo ?? "",
+    tuNgay_tdt: toDvcDate(q.tuNgay),
+    denNgay_tdt: toDvcDate(q.denNgay),
+    scope_tdt2: q.scope ?? "SELF",
+    mstUyQuyen_tdt2: q.mstUyQuyen ?? "",
+    captcha,
+    btnSearch_tdt: "",
+  });
+
+  const response = await dvcSend("/tchs/thuedientu", session, {
+    method: "POST",
+    headers: {
+      Accept: "text/html-partial",
+      "Content-Type": "application/x-www-form-urlencoded",
+      Referer: `${DVC_BASE_URL}/tchs`,
+      Origin: DVC_ORIGIN,
+      "HX-Request": "true",
+      "HX-Current-URL": `${DVC_BASE_URL}/tchs`,
+      "HX-Target": "bangKetQuaTraCuu_tdt",
+      "HX-Trigger": "form_search_tdt",
+      [session.csrfHeader]: session.csrfToken,
+    },
+    body: body.toString(),
+  });
+
+  session.nguonTraCuuCuoi = "tdt";
+  return response.text();
+}
+
+/** Một trang tra cứu ETAX, tự lấy + giải captcha, thử lại `SO_LAN_THU_CAPTCHA` lần khi đọc sai mã. */
+async function traCuuTdtHtml(q: TraCuuTrangQuery): Promise<string> {
+  const session = requireSession(q);
+
+  // Người gọi tự truyền mã -> gửi thẳng, không tự lấy captcha (giữ đúng hợp đồng đã ghi ở
+  // `DvcTraCuuHoSoQuery.captcha`; bản đầu bỏ sót nhánh này).
+  if (q.captcha) return guiTraCuuTdt(session, q, q.captcha);
+
+  for (let attempt = 1; attempt <= SO_LAN_THU_CAPTCHA; attempt++) {
+    try {
+      const cap = await getTchsCaptcha(q);
+      if (!cap.answer) {
+        throw new Error("Không thể tự động giải mã captcha trang Thuế điện tử.");
+      }
+      const html = await guiTraCuuTdt(session, q, cap.answer);
+      // Cổng CÓ THỂ trả 200 kèm mảnh báo lỗi captcha thay vì 400 — nhánh Dịch vụ công đã phải
+      // phòng đúng chuyện này. Không kiểm thì mảnh lỗi bóc ra bảng rỗng, cả đoạn ETAX biến mất mà
+      // lịch sử vẫn ghi "xong, 0 lỗi"; tệ hơn, `nguonTraCuuCuoi` đã bị đặt thành "tdt" ở
+      // `guiTraCuuTdt` nên cửa kiểm tải file cũng bị lừa theo.
+      if (laLoiCaptcha(html)) throw new Error("Mã captcha trang Thuế điện tử không đúng.");
+      return html;
+    } catch (err) {
+      // Cùng chính sách với nhánh Dịch vụ công: captcha sai thì thử lại, lỗi TẠM THỜI (timeout,
+      // chập mạng, 5xx) cũng thử lại, chỉ lỗi chắc chắn hỏng lại mới ném ngay. Bản đầu chỉ thử lại
+      // đúng lỗi captcha, nên một cú timeout lẻ giết cả đoạn — mà mất một đoạn là mất trọn nguồn.
+      // 400 mà KHÔNG phải captcha (vd thiếu tham số) thì thử lại chỉ đốt thêm hai lượt gọi cổng
+      // cho một lỗi không bao giờ tự khỏi — đúng cái `laLoiCaptchaTdt` sinh ra để phân biệt.
+      if (err instanceof DvcHttpError && err.status === 400 && !laLoiCaptchaTdt(err)) throw err;
+      const dangThuLai = laLoiCaptchaTdt(err) || !khongNenThuLai(err);
+      if (!dangThuLai || attempt === SO_LAN_THU_CAPTCHA) throw err;
+    }
+  }
+  // Không tới được: nhánh catch luôn ném ở lượt cuối. Giữ để thoả kiểu trả về.
+  throw new Error("Tra cứu Thuế điện tử thất bại.");
+}
+
+
+
+/**
+ * Endpoint của từng nguồn. Gom một bảng thay vì rải `if (nguon === "tdt")` ở ba hàm tải, vì hai
+ * nửa của hợp đồng phải đi cùng nhau: lượt tải TDT chỉ chạy khi Referer CŨNG mang `?loai=ETAX`.
+ * Tách rời là kiểu sửa một chỗ rồi cổng từ chối bằng lỗi không nói lên điều gì.
+ */
+const DUONG_DAN: Record<
+  NguonHoSo,
+  { loaiChiTiet: string; taiHoSo: string; taiThongBao: string }
+> = {
+  dvc: {
+    loaiChiTiet: "",
+    taiHoSo: "/tchs/downloadhoso",
+    taiThongBao: "/tchs/downloadthongbao",
+  },
+  tdt: {
+    loaiChiTiet: "ETAX",
+    taiHoSo: "/tchs/downloadhoso-tdt?loaiTraCuu=ETAX",
+    taiThongBao: "/tchs/downloadthongbao-tdt?loaiTraCuu=ETAX",
+  },
+};
+
+/** Path trang chi tiết hồ sơ (tương đối, để đưa thẳng vào `dvcSend`). */
+export function pathChiTiet(maHoSo: string, nguon: NguonHoSo): string {
+  return `/tchs/files/detail/${encodeURIComponent(maHoSo)}?loai=${DUONG_DAN[nguon].loaiChiTiet}`;
+}
+
+/** Cùng chỗ nhưng dạng URL đầy đủ — cổng đòi đúng chuỗi này làm `Referer` cho cả ba lượt tải file. */
+export function duongDanChiTiet(maHoSo: string, nguon: NguonHoSo): string {
+  return `${DVC_BASE_URL}${pathChiTiet(maHoSo, nguon)}`;
+}
+
+export function duongDanTaiHoSo(nguon: NguonHoSo): string {
+  return DUONG_DAN[nguon].taiHoSo;
+}
+
+export function duongDanTaiThongBao(nguon: NguonHoSo): string {
+  return DUONG_DAN[nguon].taiThongBao;
 }
 
 export interface DvcTepTaiVe {
@@ -1010,19 +1193,47 @@ async function docTepTuResponse(
  * KHÔNG phải trang `/tchs/files/detail/{maHoSo}` (đó là trang xem chi tiết, trả HTML) — đây
  * mới là request XHR thật sự trả file, trang kia gọi nó khi người dùng bấm nút tải trên đó.
  */
-export async function taiXmlHoSo(p: DvcPhien, maHoSo: string): Promise<DvcTepTaiVe> {
-  const session = requireSession(p);
-  return voiTuDangNhapLai(p.key, session, () => taiXmlHoSoThuc(session, maHoSo));
+/**
+ * Bảo đảm phiên đã tra cứu ETAX trước khi chạm tài liệu ETAX — tra cứu lại đúng một hồ sơ nếu chưa.
+ *
+ * Cần vì cửa kiểm `chanThieuTraCuuTdt` một mình thì CHẶN CHẾT đường tải theo yêu cầu: không handler
+ * nào của controller tra cứu cổng cả (`GET /dvc/ho-so` đọc DB), nên phiên của người dùng không bao
+ * giờ có `nguonTraCuuCuoi === "tdt"`. Hồ sơ ETAX chưa kịp cache — vd lượt đồng bộ bị thay giữa
+ * chừng — sẽ vĩnh viễn không tải được, chỉ nhận một câu lỗi nói về bất biến nội bộ.
+ *
+ * Trong lượt đồng bộ thì hàm này KHÔNG tốn gì: `dongBoMotDoan` vừa tra cứu xong nên cờ đã đúng.
+ * Chỉ đường cache-miss của người dùng mới trả giá 1 captcha + 1 request.
+ */
+async function baoDamPhienTdt(p: DvcPhien, maHoSo: string, nguon: NguonHoSo): Promise<void> {
+  if (nguon !== "tdt") return;
+  if (requireSession(p).nguonTraCuuCuoi === "tdt") return;
+  // Lọc theo đúng mã hồ sơ nên chỉ một trang; khoảng ngày phủ trọn nguồn vì ta không biết ngày nộp.
+  await traCuuHoSo({ ...p, maHoSo, ...KHOANG_TDT }, "tdt");
 }
 
-async function taiXmlHoSoThuc(session: DvcSession, maHoSo: string): Promise<DvcTepTaiVe> {
-  const response = await dvcSend("/tchs/downloadhoso", session, {
+export async function taiXmlHoSo(
+  p: DvcPhien,
+  maHoSo: string,
+  nguon: NguonHoSo,
+): Promise<DvcTepTaiVe> {
+  await baoDamPhienTdt(p, maHoSo, nguon);
+  const session = requireSession(p);
+  return voiTuDangNhapLai(p.key, session, () => taiXmlHoSoThuc(session, maHoSo, nguon));
+}
+
+async function taiXmlHoSoThuc(
+  session: DvcSession,
+  maHoSo: string,
+  nguon: NguonHoSo,
+): Promise<DvcTepTaiVe> {
+  chanThieuTraCuuTdt(session, nguon);
+  const response = await dvcSend(duongDanTaiHoSo(nguon), session, {
     method: "POST",
     headers: {
       Accept: "*/*",
       "Content-Type": "application/json",
       "X-Requested-With": "XMLHttpRequest",
-      Referer: chiTietHoSoUrl(maHoSo),
+      Referer: duongDanChiTiet(maHoSo, nguon),
       [session.csrfHeader]: session.csrfToken,
     },
     body: JSON.stringify({ maHoSo }),
@@ -1072,7 +1283,10 @@ async function layTaiLieuDinhKemThuc(session: DvcSession, maHoSo: string): Promi
       Accept: "*/*",
       "Content-Type": "application/json",
       "X-Requested-With": "XMLHttpRequest",
-      Referer: chiTietHoSoUrl(maHoSo),
+      // Gắn cứng `dvc`: trang chi tiết của nguồn TDT KHÔNG có khối "Tệp đính kèm" nào, nên hàm
+      // này chưa bao giờ có việc để làm với hồ sơ TDT. Thêm tham số `nguon` ở đây chỉ là mở một
+      // đường gọi không dùng được.
+      Referer: duongDanChiTiet(maHoSo, "dvc"),
       [session.csrfHeader]: session.csrfToken,
     },
     body: JSON.stringify({ maHso: maHoSo }),
@@ -1093,45 +1307,60 @@ export async function taiThongBao(
   p: DvcPhien,
   maHoSo: string,
   idTbao: string,
+  nguon: NguonHoSo,
 ): Promise<DvcTepTaiVe> {
+  await baoDamPhienTdt(p, maHoSo, nguon);
   const session = requireSession(p);
-  return voiTuDangNhapLai(p.key, session, () => taiThongBaoThuc(session, maHoSo, idTbao));
+  return voiTuDangNhapLai(p.key, session, () => taiThongBaoThuc(session, maHoSo, idTbao, nguon));
 }
 
 async function taiThongBaoThuc(
   session: DvcSession,
   maHoSo: string,
   idTbao: string,
+  nguon: NguonHoSo,
 ): Promise<DvcTepTaiVe> {
-  const response = await dvcSend("/tchs/downloadthongbao", session, {
+  chanThieuTraCuuTdt(session, nguon);
+  // Gỡ tiền tố khoá cache trước khi gửi lên cổng — xem `parseThongBaoTdt`.
+  const idGuiCong = idTbao.startsWith("tdt:") ? idTbao.slice(4) : idTbao;
+  const response = await dvcSend(duongDanTaiThongBao(nguon), session, {
     method: "POST",
     headers: {
       Accept: "*/*",
       "Content-Type": "application/json",
       "X-Requested-With": "XMLHttpRequest",
-      Referer: chiTietHoSoUrl(maHoSo),
+      Referer: duongDanChiTiet(maHoSo, nguon),
       [session.csrfHeader]: session.csrfToken,
     },
     // `idTbao` dài tới 17 chữ số, VƯỢT `Number.MAX_SAFE_INTEGER` (2^53 ~ 16 chữ số) — từng ép
     // `Number(idTbao)` ở đây và làm tròn sai chữ số cuối (vd ...687 -> ...688) khiến cổng nhận
     // nhầm ID và báo "Tải file thất bại." (đối chiếu request thật của cổng: chấp nhận idTbao
     // dạng CHUỖI). Gửi thẳng chuỗi, không ép số, để giữ nguyên từng chữ số.
-    body: JSON.stringify({ idTbao, loaiTBao: "" }),
+    body: JSON.stringify({ idTbao: idGuiCong, loaiTBao: "" }),
   });
 
-  return docTepTuResponse(response, `thong-bao-${idTbao}.xml`, "application/xml");
+  // Mặc định theo NGUỒN: ETAX trả một gói ZIP nhiều thông báo, đặt tên `.xml` là người dùng tải về
+  // một file zip mang đuôi sai. Header/`fileType` cổng gửi vẫn được ưu tiên nếu có.
+  return nguon === "tdt"
+    ? docTepTuResponse(response, `thong-bao-${idGuiCong}.zip`, "application/zip")
+    : docTepTuResponse(response, `thong-bao-${idGuiCong}.xml`, "application/xml");
 }
 
 /**
  * Trang chi tiết hồ sơ (`GET /tchs/files/detail/{maHoSo}`) — chứa "Danh sách thông báo" dưới
  * dạng HTML. Cổng vốn chỉ dùng URL này làm Referer cho `taiXmlHoSo`/`layTaiLieuDinhKem`/
- * `taiThongBao` (`chiTietHoSoUrl`) — hàm này lần đầu THỰC SỰ tải trang đó về.
+ * `taiThongBao` (`duongDanChiTiet`) — hàm này lần đầu THỰC SỰ tải trang đó về.
  */
-async function layChiTietHoSoHtml(p: DvcPhien, maHoSo: string): Promise<string> {
+async function layChiTietHoSoHtml(
+  p: DvcPhien,
+  maHoSo: string,
+  nguon: NguonHoSo,
+): Promise<string> {
   const session = requireSession(p);
+  chanThieuTraCuuTdt(session, nguon);
 
   const response = await dvcSend(
-    `/tchs/files/detail/${encodeURIComponent(maHoSo)}?loai=`,
+    pathChiTiet(maHoSo, nguon),
     session,
     {
       headers: {
@@ -1149,8 +1378,15 @@ async function layChiTietHoSoHtml(p: DvcPhien, maHoSo: string): Promise<string> 
  * Danh sách thông báo của một hồ sơ (bóc từ modal `#modalThongBao` trong trang chi tiết hồ sơ,
  * xem `parseDanhSachThongBao`) — cột "Thông báo".
  */
-export async function layDanhSachThongBao(p: DvcPhien, maHoSo: string): Promise<ThongBaoDaBoc[]> {
+export async function layDanhSachThongBao(
+  p: DvcPhien,
+  maHoSo: string,
+  nguon: NguonHoSo,
+): Promise<ThongBaoDaBoc[]> {
+  await baoDamPhienTdt(p, maHoSo, nguon);
   const session = requireSession(p);
-  const html = await voiTuDangNhapLai(p.key, session, () => layChiTietHoSoHtml(p, maHoSo));
-  return parseDanhSachThongBao(html);
+  const html = await voiTuDangNhapLai(p.key, session, () => layChiTietHoSoHtml(p, maHoSo, nguon));
+  // Hai nguồn khác nhau về CẤU TRÚC chứ không chỉ markup, nên hai bộ bóc: DVC liệt kê từng thông
+  // báo trong modal, ETAX chỉ có một link tải cả gói. Xem `parseThongBaoTdt`.
+  return nguon === "tdt" ? parseThongBaoTdt(html) : parseDanhSachThongBao(html);
 }

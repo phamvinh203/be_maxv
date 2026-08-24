@@ -608,6 +608,13 @@ model hrm_nhan_vien {
 model dvc_ho_so {
   ma_ho_so String @id @db.VarChar(64) // "Mã hồ sơ" bên cổng (FE hiện là cột "Mã giao dịch")
 
+  /// Nguồn lấy hồ sơ trên cổng: "dvc" (tab Dịch vụ công, nộp từ 01/07/2025) hoặc "tdt" (tab Thuế
+  /// điện tử, nộp trước mốc đó). Phải LƯU vì lượt "Tải file" sau này gọi endpoint khác nhau theo
+  /// nguồn — xem `DUONG_DAN` ở `gdt-dvc.service.ts`; đoán lại từ `ngay_nop` là mời một lớp suy
+  /// diễn nữa vào chỗ đã có sẵn câu trả lời.
+  /// Mặc định "dvc": mọi dòng lưu trước khi có cột này đều đến từ tab Dịch vụ công.
+  nguon String @default("dvc") @db.VarChar(8)
+
   ten_tthc     String? @db.VarChar(512) // Tên TTHC
   to_khai      String? @db.VarChar(512) // Tờ khai / phụ lục
   ky_tinh_thue String? @db.VarChar(32)
@@ -704,7 +711,7 @@ model dvc_tai_lieu {
 model dvc_dong_bo_log {
   id String @id @db.VarChar(64)
 
-  loai    String @db.VarChar(32) // khớp TAB_DVC.value: to-khai-dvc | to-khai-thue-dien-tu | giay-nop-tien
+  loai    String @db.VarChar(32) // khớp TAB_DVC.value: to-khai-dvc | giay-nop-tien
   tu_ngay DateTime
   den_ngay DateTime
 

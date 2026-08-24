@@ -42,8 +42,8 @@ import {
 } from "../api/dvc";
 import { getErrorMessage } from "../../../lib/errors";
 
-/** Loại giấy tờ DUY NHẤT đã có backend đồng bộ thật — hai tab còn lại (Tờ khai Thuế điện tử, Giấy
- * nộp tiền) chưa có tích hợp cổng nào phía sau, giữ trong danh sách nhưng khóa lại. */
+/** Loại giấy tờ DUY NHẤT đã có backend đồng bộ thật — "Giấy nộp tiền" chưa có tích hợp cổng nào
+ * phía sau, giữ trong danh sách nhưng khóa lại. */
 const LOAI_DA_HO_TRO = "to-khai-dvc";
 
 /**
