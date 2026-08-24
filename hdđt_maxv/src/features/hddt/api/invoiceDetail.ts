@@ -1,6 +1,13 @@
 import { toast } from "react-toastify";
 import { apiFetch, apiFetchBlob, apiFetchText } from "../../../lib/http";
 import { getErrorMessage } from "../../../lib/errors";
+import {
+  batDauToastNen,
+  capNhatToastNen,
+  ketThucToastNen,
+  nghiMs,
+  MAX_POLL_NEN_HONG,
+} from "../../../lib/toastChayNen";
 import { buildInvoiceParams } from "./gdt";
 import type { InvoiceDirection, InvoiceQuery } from "../types";
 
@@ -181,7 +188,6 @@ export function getDetailRunStatus(direction: InvoiceDirection): Promise<DetailR
 }
 
 const DETAIL_POLL_INTERVAL_MS = 1500;
-const sleepMs = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 const DETAIL_DIR_LABEL: Record<InvoiceDirection, string> = {
   purchase: "mua vào",
   sold: "bán ra",
@@ -204,7 +210,8 @@ export async function pollDetailRunToast(
 ): Promise<boolean> {
   const dirLabel = DETAIL_DIR_LABEL[direction];
   const query: InvoiceQuery = { tuNgay: range.tuNgay, denNgay: range.denNgay };
-  const toastId = toast.loading(`Đang tải chi tiết ${dirLabel}…`);
+  const toastId = batDauToastNen(`Đang tải chi tiết ${dirLabel}…`);
+  let fails = 0;
   try {
     let status = await startDetailRun(direction, gdtToken, query);
     for (;;) {
@@ -214,19 +221,27 @@ export async function pollDetailRunToast(
         toast.dismiss(toastId);
         return false;
       }
-      toast.update(toastId, {
-        render:
-          status.total > 0
-            ? `Đang tải chi tiết ${dirLabel} ${status.done}/${status.total}${
-                status.err > 0 ? ` (${status.err} lỗi)` : ""
-              }…`
-            : `Đang kiểm tra chi tiết ${dirLabel}…`,
-      });
+      capNhatToastNen(
+        toastId,
+        status.total > 0
+          ? `Đang tải chi tiết ${dirLabel} ${status.done}/${status.total}${
+              status.err > 0 ? ` (${status.err} lỗi)` : ""
+            }…`
+          : `Đang kiểm tra chi tiết ${dirLabel}…`,
+      );
       if (!status.active) break;
-      await sleepMs(DETAIL_POLL_INTERVAL_MS);
-      status = await getDetailRunStatus(direction);
+      await nghiMs(DETAIL_POLL_INTERVAL_MS);
+      try {
+        status = await getDetailRunStatus(direction);
+        fails = 0;
+      } catch (e) {
+        // Dung sai nhịp poll — vòng này trước đây KHÔNG có, nên một nhịp mạng chập là báo đỏ và bỏ
+        // theo dõi trong khi BE vẫn chạy tiếp. Hai vòng poll anh em đã có; đây là bản bị sót.
+        fails += 1;
+        if (fails >= MAX_POLL_NEN_HONG) throw e;
+      }
     }
-    toast.update(toastId, {
+    ketThucToastNen(toastId, {
       render: status.authExpired
         ? `Token Thuế điện tử hết hạn — đã tải chi tiết ${dirLabel} ${status.ok}/${status.total}. Đăng nhập lại rồi bấm tải tiếp.`
         : status.total === 0
@@ -235,15 +250,13 @@ export async function pollDetailRunToast(
               status.err > 0 ? ` (${status.err} lỗi)` : ""
             }.`,
       type: status.authExpired || status.err > 0 ? "warning" : "success",
-      isLoading: false,
       autoClose: 4000,
     });
     return status.authExpired ?? false;
   } catch (e) {
-    toast.update(toastId, {
+    ketThucToastNen(toastId, {
       render: getErrorMessage(e, `Không tải được chi tiết ${dirLabel}.`),
       type: "error",
-      isLoading: false,
       autoClose: 4000,
     });
     return false;

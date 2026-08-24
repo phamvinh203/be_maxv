@@ -3,7 +3,7 @@ import * as DvcService from "../../../services/client/dich_vu_cong/gdt-dvc.servi
 import * as DvcDongBo from "../../../services/client/dich_vu_cong/dvc-dong-bo.service";
 import { sysPrisma } from "../../../config/db.sys";
 import { accessibleDonViWhere } from "../../../helpers/access";
-import { resolveTenantDb } from "../../../helpers/resolveTenantDb";
+import { resolveTenantDb, resolveTenantDbName } from "../../../helpers/resolveTenantDb";
 // Dùng lại module crypto của HĐĐT: file đó CỐ Ý không đụng Prisma/HĐĐT gì (chỉ AES-256-GCM
 // thuần trên chuỗi), nên tái dùng được cho cột `dvcPassword*` mà không cần chép lại.
 import { decryptGdtPassword, encryptGdtPassword } from "../../../services/client/hddt/gdtCredential";
@@ -11,19 +11,12 @@ import { layChiTietToKhai } from "../../../services/client/dich_vu_cong/toKhaiXm
 
 type KetQuaDocCache<T> = { ok: true; giaTri: T } | { ok: false; message: string };
 
-/**
- * Mã lỗi cho FE biết khóa phiên này ĐÃ CHẾT HẲN (tự đăng nhập lại cũng không cứu được) để bỏ nó đi.
- *
- * Trả mã máy đọc được thay vì để FE dò câu chữ tiếng Việt: khóa chết mà FE cứ giữ thì mỗi thao tác
- * lại kích một lượt phục hồi vô ích — sửa câu thông báo là FE lặng lẽ hết nhận ra.
- */
-const MA_LOI_TU_DANG_NHAP_HONG = "DVC_AUTO_LOGIN_FAILED";
 
 /** Thân phản hồi lỗi dùng chung cho các handler DVC — kèm `code` khi phiên hết đường cứu. */
 function thanLoi(err: unknown, macDinh: string): { message: string; code?: string } {
   const message = DvcService.toUserMessage(err, macDinh);
   return err instanceof DvcService.DvcAutoLoginFailedError
-    ? { message, code: MA_LOI_TU_DANG_NHAP_HONG }
+    ? { message, code: DvcService.MA_LOI_TU_DANG_NHAP_HONG }
     : { message };
 }
 
@@ -48,7 +41,9 @@ async function docCacheHoacGoiCong<T>(opts: {
   const phien = phienDvc(opts.request, opts.key);
   if (!phien) return { ok: false, message: opts.thieuKeyMessage };
 
-  const giaTri = await voiPhienTuPhucHoi(opts.request, phien, () => opts.goiCong(phien));
+  const giaTri = await voiPhienTuPhucHoi(nguCanhTuRequest(opts.request), phien, () =>
+    opts.goiCong(phien),
+  );
   await opts.ghiCache(giaTri);
   return { ok: true, giaTri };
 }
@@ -125,7 +120,17 @@ type DvcLoginBody = Partial<DvcService.DvcLoginRequest>;
  * tách chung: hai luồng lưu vào cột khác nhau (`gdtPassword*` vs `dvcUsername`+`dvcPassword*`),
  * tách chung giờ phải thêm tham số chọn cột — đợi có luồng thứ ba mới đáng tách.
  */
-async function activeCompanyForDvc(request: FastifyRequest): Promise<{
+/** Ba trường duy nhất của `request.user` mà `activeCompanyForDvc` cần — rút ra thành kiểu riêng để
+ * lượt chạy nền truyền được ba chuỗi thay vì giữ nguyên object request, xem `NguCanhPhucHoi`. */
+type NguoiDungDvc = { donViId?: string | null; userId: string; role: string };
+
+const nguoiDungCuaRequest = (request: FastifyRequest): NguoiDungDvc => ({
+  donViId: request.user?.donViId,
+  userId: request.user.userId,
+  role: request.user.role,
+});
+
+async function activeCompanyForDvc(u: NguoiDungDvc): Promise<{
   id: string;
   maSoThue: string;
   dvcUsername: string | null;
@@ -133,9 +138,9 @@ async function activeCompanyForDvc(request: FastifyRequest): Promise<{
   dvcPasswordIv: string | null;
   dvcPasswordTag: string | null;
 } | null> {
-  const donViId = request.user?.donViId;
+  const donViId = u.donViId;
   if (!donViId) return null;
-  const scope = accessibleDonViWhere(request.user.userId, request.user.role);
+  const scope = accessibleDonViWhere(u.userId, u.role);
   if (!scope) return null;
 
   return sysPrisma.donVi.findFirst({
@@ -181,20 +186,41 @@ function matKhauDvcDaGiaiMa(
  * Khác `getCredential` (trả về cho FE điền sẵn form, có username là đủ): ở đây thiếu MỘT trong hai
  * là không tự đăng nhập ngầm được, nên đòi đủ cả cặp.
  */
-async function taiKhoanDvcDaLuu(request: FastifyRequest): Promise<DvcService.DvcCredential | null> {
-  const active = await activeCompanyForDvc(request);
+async function taiKhoanDvcDaLuu(u: NguoiDungDvc): Promise<DvcService.DvcCredential | null> {
+  const active = await activeCompanyForDvc(u);
   if (!active?.dvcUsername) return null;
   const matKhau = matKhauDvcDaGiaiMa(active);
   return matKhau ? { tenDN: active.dvcUsername, matKhau } : null;
 }
 
 /**
+ * Thứ `voiPhienTuPhucHoi` cần từ tầng request — TÁCH RA khỏi chính `request` để lượt chạy nền
+ * (`dongBo`) không phải giữ nguyên object request sống suốt vài phút sau khi đã trả response.
+ * Cùng lý lẽ `startUpdateRun` bên HĐĐT rút sẵn `dbName`/`gdtToken` trước khi mở lượt nền.
+ *
+ * `layTaiKhoan` là THUNK chứ không phải giá trị: các handler đọc-cache gọi `voiPhienTuPhucHoi` cho
+ * mọi lượt, mà hầu hết trúng cache và không bao giờ cần tới tài khoản — giải mã sẵn mỗi lượt là
+ * tốn công vô ích.
+ */
+interface NguCanhPhucHoi {
+  layTaiKhoan: () => Promise<DvcService.DvcCredential | null>;
+  log: FastifyRequest["log"];
+}
+
+function nguCanhTuRequest(request: FastifyRequest): NguCanhPhucHoi {
+  // Chụp BA CHUỖI ra ngay tại đây, không đóng gói `request` vào thunk: closure này bị lượt chạy nền
+  // giữ suốt vài phút sau khi response đã đi, mà `request` kéo theo cả `raw`/headers/body.
+  const u = nguoiDungCuaRequest(request);
+  return { layTaiKhoan: () => taiKhoanDvcDaLuu(u), log: request.log };
+}
+
+/**
  * Bọc quanh MỘT thao tác cần phiên cổng: phiên RAM mất hẳn (`DvcSessionExpiredError`) thì tự mở
  * phiên mới + đăng nhập ngầm bằng tài khoản đã lưu rồi thử lại ĐÚNG một lần.
  *
- * VÌ SAO NẰM Ở CONTROLLER, không nhét thẳng vào service như `voiTuDangNhapLai`: chỉ ở đây mới có
- * `request` để biết người dùng là ai và công ty đang chọn là công ty nào — tức là chỉ ở đây mới đọc
- * được tài khoản đã lưu ĐÚNG chủ. Service không được tự suy tài khoản từ `key`, xem chú thích ở
+ * VÌ SAO NẰM Ở CONTROLLER, không nhét thẳng vào service như `voiTuDangNhapLai`: chỉ ở đây mới biết
+ * người dùng là ai và công ty đang chọn là công ty nào — tức là chỉ ở đây mới đọc được tài khoản đã
+ * lưu ĐÚNG chủ. Service không được tự suy tài khoản từ `key`, xem chú thích ở
  * `DvcService.phucHoiPhienDaMat`.
  *
  * Bổ sung cho `voiTuDangNhapLai` trong service chứ không thay thế: bên đó lo phiên CÒN SỐNG bị cổng
@@ -204,7 +230,7 @@ async function taiKhoanDvcDaLuu(request: FastifyRequest): Promise<DvcService.Dvc
  * quen thuộc, không nuốt lỗi thành một thông báo khó hiểu hơn.
  */
 async function voiPhienTuPhucHoi<T>(
-  request: FastifyRequest,
+  ng: NguCanhPhucHoi,
   phien: DvcService.DvcPhien,
   thaoTac: () => Promise<T>,
 ): Promise<T> {
@@ -213,13 +239,13 @@ async function voiPhienTuPhucHoi<T>(
   } catch (err) {
     if (!(err instanceof DvcService.DvcSessionExpiredError)) throw err;
 
-    const cred = await taiKhoanDvcDaLuu(request);
+    const cred = await ng.layTaiKhoan();
     if (!cred) {
-      request.log.info("[dvc] phiên đã mất nhưng chưa lưu tài khoản DVC -> không tự đăng nhập lại");
+      ng.log.info("[dvc] phiên đã mất nhưng chưa lưu tài khoản DVC -> không tự đăng nhập lại");
       throw err;
     }
 
-    request.log.info("[dvc] phiên đã mất -> tự mở phiên mới + đăng nhập lại bằng tài khoản đã lưu");
+    ng.log.info("[dvc] phiên đã mất -> tự mở phiên mới + đăng nhập lại bằng tài khoản đã lưu");
     await DvcService.phucHoiPhienDaMat(phien, cred);
     return thaoTac();
   }
@@ -239,7 +265,7 @@ async function voiPhienTuPhucHoi<T>(
  * ty đang chọn) — cùng thiết kế `GET /gdt/credential` bên `hddt/gdt.controller.ts`.
  */
 export async function getCredential(request: FastifyRequest, reply: FastifyReply) {
-  const active = await activeCompanyForDvc(request);
+  const active = await activeCompanyForDvc(nguoiDungCuaRequest(request));
   return reply.send({
     username: active?.dvcUsername ?? null,
     password: matKhauDvcDaGiaiMa(active),
@@ -290,7 +316,7 @@ export async function login(
     // ô tên đăng nhập trước khi bấm). Không rõ quy ước (`mstTuTen === null`) thì vẫn lưu, vì tên
     // đăng nhập cổng DVC không đảm bảo luôn đúng "<MST>-ql". Lỗi lưu KHÔNG làm hỏng đăng nhập
     // (kết quả đã có trong tay), chỉ là lần sau không dùng lại được.
-    const active = await activeCompanyForDvc(request);
+    const active = await activeCompanyForDvc(nguoiDungCuaRequest(request));
     const mstTuTen = mstTuTenDangNhapDvc(body.tenDN);
     if (active && (mstTuTen === null || mstTuTen === active.maSoThue)) {
       const blob = encryptGdtPassword(body.matKhau);
@@ -355,7 +381,7 @@ export async function traCuuHoSo(
 
 /**
  * POST /dvc/dong-bo — chạy một lượt "Đồng bộ" tờ khai (Dịch vụ công): gọi cổng thật (cần `key` phiên
- * ĐÃ đăng nhập), lưu hồ sơ + tài liệu vào DB tenant, trả về dòng lịch sử vừa ghi.
+ * ĐÃ đăng nhập), lưu hồ sơ + tài liệu vào DB tenant, trả về tiến độ lượt vừa mở.
  */
 export async function dongBo(
   request: FastifyRequest<{ Body: { key?: string; tuNgay?: string; denNgay?: string } }>,
@@ -373,20 +399,42 @@ export async function dongBo(
     return reply.status(400).send({ message: "Chưa chọn công ty để đồng bộ Dịch vụ công." });
   }
 
-  const tenantDb = await resolveTenantDb(request);
-  try {
-    // Phiên RAM hết hạn (>30 phút không thao tác) hoặc mất do BE restart -> tự đăng nhập lại ngầm
-    // rồi chạy lại NGUYÊN lượt đồng bộ. Chạy lại an toàn: `dongBoHoSo` ném lỗi phiên ngay ở bước tra
-    // cứu ĐẦU TIÊN, trước mọi thao tác ghi DB (dòng `dvc_dong_bo_log` ghi ở cuối), nên không có bản
-    // ghi thừa hay lượt đồng bộ nửa vời nào bị bỏ lại.
-    const log = await voiPhienTuPhucHoi(request, phien, () =>
-      DvcDongBo.dongBoHoSo(tenantDb, { phien, tuNgay, denNgay }),
-    );
-    return reply.send(log);
-  } catch (err) {
-    request.log.error(err);
-    return reply.status(400).send(thanLoi(err, "Đồng bộ dữ liệu Dịch vụ công thất bại."));
-  }
+  // `dbName` chứ KHÔNG phải client: lượt nền chạy hàng phút, giữ một `PrismaClient` suốt ngần ấy là
+  // để sweeper idle-10' của `tenantClient` đóng pool giữa chừng. `dongBoHoSo` tự gọi lại
+  // `getTenantDb` ở mỗi lần chạm DB — xem docblock `resolveTenantDbName`.
+  const dbName = await resolveTenantDbName(request);
+  // Rút sẵn ngữ cảnh TRƯỚC khi mở lượt nền, cùng lý do (xem `NguCanhPhucHoi`).
+  const nguCanh = nguCanhTuRequest(request);
+
+  // KHÔNG await: mở lượt nền rồi trả tiến độ ngay -> FE poll `/dong-bo/tien-do`.
+  const tienDo = DvcDongBo.batDauDongBoRun(phien.donViId, (st, daBiThay) =>
+    DvcDongBo.dongBoHoSo(dbName, {
+      phien,
+      tuNgay,
+      denNgay,
+      tienDo: st,
+      daBiThay,
+      // Phiên RAM hết hạn (>30 phút không thao tác) hoặc mất do BE restart -> tự đăng nhập lại
+      // ngầm rồi thử lại. CHỈ bọc pha tra cứu, xem `voiPhucHoi` ở `DongBoHoSoParams`.
+      voiPhucHoi: (thaoTac) => voiPhienTuPhucHoi(nguCanh, phien, thaoTac),
+    }),
+  );
+
+  return reply.send(tienDo);
+}
+
+/**
+ * GET /dvc/dong-bo/tien-do — tiến độ lượt đồng bộ đang chạy của CÔNG TY ĐANG CHỌN.
+ *
+ * `null` khi công ty này chưa từng chạy lượt nào. Khóa lượt là `donViId` lấy từ `request.user`, nên
+ * không có đường nào xem được lượt của công ty khác — cùng cách cô lập với `DvcPhien`.
+ *
+ * Dùng: vòng poll của FE, và lúc mở lại trang để NỐI LẠI lượt đang chạy.
+ */
+export async function tienDoDongBo(request: FastifyRequest, reply: FastifyReply) {
+  const donViId = request.user?.donViId;
+  if (!donViId) return reply.status(400).send({ message: "Chưa chọn công ty." });
+  return reply.send(DvcDongBo.docTienDoDongBo(donViId));
 }
 
 /** GET /dvc/dong-bo/lich-su — lịch sử các lượt đồng bộ (mới nhất trước). */
@@ -508,7 +556,7 @@ export async function taiLieuDinhKem(
   }
 
   try {
-    const data = await voiPhienTuPhucHoi(request, phien, () =>
+    const data = await voiPhienTuPhucHoi(nguCanhTuRequest(request), phien, () =>
       DvcService.layTaiLieuDinhKem(phien, maHoSo),
     );
     return reply.send(data);

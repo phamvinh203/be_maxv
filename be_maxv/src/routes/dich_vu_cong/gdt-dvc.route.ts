@@ -4,6 +4,7 @@ import {
   chiTietToKhai,
   danhSachThongBao,
   dongBo,
+  tienDoDongBo,
   getCredential,
   lichSuDongBo,
   login,
@@ -82,6 +83,11 @@ export default async function (fastify: FastifyInstance) {
   fastify.post("/dong-bo", {
     preHandler: guard,
     handler: dongBo,
+  });
+
+  fastify.get("/dong-bo/tien-do", {
+    preHandler: guard,
+    handler: tienDoDongBo,
   });
 
   fastify.get("/dong-bo/lich-su", {

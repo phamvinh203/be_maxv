@@ -111,6 +111,10 @@ export async function traCuuHoSoDvc(params: DvcTraCuuHoSoParams): Promise<DvcBan
   return apiFetch<DvcBangHoSo>(`/dvc/ho-so?${qsBoQuaRong(params).toString()}`);
 }
 
+/** Khóa cache của bảng lịch sử đồng bộ — để cạnh fetcher vì cả `DialogDongBo` (chủ sở hữu bảng)
+ * lẫn `DvcPage` (nơi theo dõi lượt nền) đều phải làm mới nó. */
+export const QUERY_KEY_LICH_SU_DVC = ["dvc", "dong-bo", "lich-su"];
+
 /** Một lượt bấm nút "Đồng bộ" đã chạy — khớp 1-1 bảng `dvc_dong_bo_log` (snake_case), xem
  * `DialogDongBo`. */
 export interface DvcDongBoLog {
@@ -136,16 +140,52 @@ export interface DvcDongBoParams {
 }
 
 /**
- * POST /api/v1/dvc/dong-bo → dòng lịch sử vừa ghi (`DvcDongBoLog`).
+ * Tiến độ MỘT lượt đồng bộ chạy nền ở BE — khớp `DvcDongBoTienDo` bên `dvc-dong-bo.service.ts`.
  *
- * Chạy ĐỒNG BỘ phía BE (blocking) — có thể mất một lúc nếu nhiều hồ sơ mới, xem
- * `dvc-dong-bo.service.ts`. Dùng: `DialogDongBo` (nút "Đồng bộ").
+ * `tongHoSo === 0` nghĩa là BE còn đang tra cứu cổng, CHƯA biết mẫu số -> thanh tiến độ phải chạy
+ * vô định, không được vẽ 0%.
  */
-export async function dongBoDvc(params: DvcDongBoParams): Promise<DvcDongBoLog> {
-  return apiFetch<DvcDongBoLog>("/dvc/dong-bo", {
+export interface DvcDongBoTienDo {
+  active: boolean;
+  tongHoSo: number;
+  /** Ba bộ đếm này cộng lại là số hồ sơ đã xử lý xong — tử số thanh tiến độ, xem `ToastTienDoDongBo`. */
+  daCoSan: number;
+  dongBoXong: number;
+  loi: number;
+  maHoSoDangLam: string;
+  /** Số hồ sơ cổng khai có mà lượt này không lấy về được — >0 thì toast phải báo VÀNG, không
+   * được hiện "Đồng bộ xong" màu xanh. Xem `DvcDongBoTienDo` bên BE. */
+  thieuHoSo: number;
+  /** Định danh lượt — `theoDoiDongBoDvc` dùng để biết mình còn bám đúng lượt hay không. */
+  startedAt: number;
+  error?: string;
+  /** `DVC_AUTO_LOGIN_FAILED` khi khóa phiên chết hẳn — xem `boKhoaNeuPhienChet` bên `DvcPage`. */
+  code?: string;
+}
+
+/**
+ * POST /api/v1/dvc/dong-bo → BẮT ĐẦU lượt đồng bộ chạy nền, trả tiến độ ngay (~50ms).
+ *
+ * KHÔNG còn blocking như trước: từ khi mọi call cổng đi qua pacer, một khoảng vài chục hồ sơ mất
+ * hàng phút — quá ngưỡng timeout của reverse proxy. Theo dõi tiếp bằng `layTienDoDongBoDvc`, xem
+ * `theoDoiDongBoDvc`. Dùng: `DialogDongBo` (nút "Đồng bộ").
+ */
+export async function dongBoDvc(params: DvcDongBoParams): Promise<DvcDongBoTienDo> {
+  return apiFetch<DvcDongBoTienDo>("/dvc/dong-bo", {
     method: "POST",
     body: JSON.stringify(params),
   });
+}
+
+/**
+ * GET /api/v1/dvc/dong-bo/tien-do → tiến độ lượt đang chạy của công ty đang chọn; `null` nếu công
+ * ty này chưa từng chạy lượt nào.
+ *
+ * KHÔNG cần khóa phiên cổng: chỉ đọc trạng thái trong RAM của BE. Dùng: vòng poll, và lúc mở lại
+ * trang để NỐI LẠI lượt đang chạy.
+ */
+export async function layTienDoDongBoDvc(): Promise<DvcDongBoTienDo | null> {
+  return apiFetch<DvcDongBoTienDo | null>("/dvc/dong-bo/tien-do");
 }
 
 /** GET /api/v1/dvc/dong-bo/lich-su → lịch sử đồng bộ (mới nhất trước). Dùng: `DialogDongBo`. */

@@ -4,6 +4,7 @@ import {
   startUpdateRunWith,
   getUpdateRunStatus,
 } from "../services/client/hddt/gdt.service";
+import { tick, deferred } from "./_helpers";
 
 /**
  * Test VÒNG ĐỜI lượt "Cập nhật từ Thuế điện tử" chạy nền — dùng `work` giả nên KHÔNG đụng GDT/DB.
@@ -11,16 +12,7 @@ import {
  *   npx tsx --test src/__tests__/gdtUpdateRun.test.ts
  */
 
-/** Promise mở được từ bên ngoài — để test giữ lượt ở trạng thái đang chạy. */
-function deferred() {
-  let resolve!: () => void;
-  const promise = new Promise<void>((res) => {
-    resolve = res;
-  });
-  return { promise, resolve };
-}
 
-const tick = () => new Promise((r) => setTimeout(r, 10));
 
 test("lượt xong -> active=false, phase rỗng, có finishedAt", async () => {
   const key = "test-tenant-done";

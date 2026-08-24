@@ -30,6 +30,7 @@ import {
   reportRateLimited as pacerReportRateLimited,
   getIntervalMs as pacerIntervalMs,
 } from "./gdtPacer";
+import { taoKhoLuotChayNen } from "../../shared/luotChayNen";
 
 /** "yyyy-MM-dd" (input FE) -> "dd/MM/yyyy" (định dạng GDT yêu cầu trong tham số `search`). */
 function toGdtDate(isoDate: string): string {
@@ -2048,9 +2049,16 @@ export async function fetchAndSaveInvoicesInRange(
 // ============================================================
 
 /** Tiến độ theo (MST + chiều): mỗi tab hóa đơn 1 lượt riêng, 2 tab chạy song song được. */
-const updateRuns = new Map<string, UpdateRunStatus>();
-/** "Thế hệ" hiện tại của mỗi khóa — lượt mới bump lên để lượt cũ tự thoát khi kết thúc. */
-const updateRunGen = new Map<string, number>();
+const khoUpdateRun = taoKhoLuotChayNen<UpdateRunStatus>({
+  loiMacDinh: "Lỗi khi cập nhật từ Thuế điện tử.",
+  khiDong: (st) => {
+    st.phase = "";
+  },
+  // Log chẩn đoán riêng của luồng này; trả `void` để kho tự suy `error` như thường.
+  khiLoi: (err) => {
+    console.error("[DEBUG-CAPNHAT] Lượt cập nhật lỗi tổng thể:", err);
+  },
+});
 const updateRunKey = (tenantKey: string, direction: "purchase" | "sold") =>
   `${tenantKey}:${direction}`;
 
@@ -2059,7 +2067,7 @@ export function getUpdateRunStatus(
   tenantKey: string,
   direction: "purchase" | "sold",
 ): UpdateRunStatus | null {
-  return updateRuns.get(updateRunKey(tenantKey, direction)) ?? null;
+  return khoUpdateRun.doc(updateRunKey(tenantKey, direction));
 }
 
 /**
@@ -2068,6 +2076,9 @@ export function getUpdateRunStatus(
  * Tách khỏi phần gọi GDT (nhận `work` như tham số) vì đây là chỗ dễ sai nhất — thay lượt, đè
  * trạng thái của lượt mới, treo `active` vĩnh viễn — và tách ra thì test được mà không cần
  * token GDT lẫn DB (xem `src/__tests__/gdtUpdateRun.test.ts`).
+ *
+ * Bản thân vòng đời nay nằm ở `taoKhoLuotChayNen` (dùng chung với đồng bộ Dịch vụ công); hàm này
+ * chỉ còn khai hình dạng tiến độ RIÊNG của hóa đơn, phần còn lại là cấu hình của kho.
  *
  * Bấm lại khi đang chạy -> lượt mới THAY lượt cũ (khác `startSyncRun` vốn trả lại lượt đang chạy):
  * người dùng thường đổi bộ lọc rồi bấm lại, phải chạy theo bộ lọc mới.
@@ -2078,44 +2089,21 @@ export function startUpdateRunWith(
   work: (st: UpdateRunStatus, isStale: () => boolean) => Promise<void>,
 ): UpdateRunStatus {
   const key = updateRunKey(tenantKey, direction);
-  const gen = (updateRunGen.get(key) ?? 0) + 1;
-  updateRunGen.set(key, gen);
-
-  const status: UpdateRunStatus = {
-    active: true,
-    phase: "list",
-    page: 0,
-    rows: 0,
-    saved: 0,
-    total: 0,
-    source: "",
-    partial: false,
-    message: "",
-    detail: { total: 0, done: 0, ok: 0, err: 0 },
-    startedAt: Date.now(),
-  };
-  updateRuns.set(key, status);
-
-  /** Lượt này đã bị một lượt MỚI thay thế -> không được đụng vào trạng thái chung nữa. */
-  const isStale = () => updateRunGen.get(key) !== gen;
-
-  void (async () => {
-    try {
-      await work(status, isStale);
-    } catch (err) {
-      status.error = err instanceof Error ? err.message : "Lỗi khi cập nhật từ Thuế điện tử.";
-      console.error(`[DEBUG-CAPNHAT] Lượt ${key} lỗi tổng thể: ${status.error}`);
-    } finally {
-      // Chỉ đóng lượt nếu vẫn là lượt hiện tại (không đè trạng thái của lượt mới đã thay thế).
-      if (!isStale()) {
-        status.active = false;
-        status.phase = "";
-        status.finishedAt = Date.now();
-      }
-    }
-  })();
-
-  return status;
+  return khoUpdateRun.batDau(
+    key,
+    () => ({
+      phase: "list",
+      page: 0,
+      rows: 0,
+      saved: 0,
+      total: 0,
+      source: "",
+      partial: false,
+      message: "",
+      detail: { total: 0, done: 0, ok: 0, err: 0 },
+    }),
+    work,
+  );
 }
 
 /**

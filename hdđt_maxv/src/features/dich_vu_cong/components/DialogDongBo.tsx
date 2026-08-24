@@ -34,6 +34,8 @@ import { currentMonthRange, formatDateVN, formatDateTimeVN } from "../../hddt/da
 import {
   dongBoDvc,
   layLichSuDongBoDvc,
+  QUERY_KEY_LICH_SU_DVC,
+  type DvcDongBoTienDo,
   xoaLichSuDongBoDvc,
   xoaTatCaLichSuDongBoDvc,
   type DvcDongBoLog,
@@ -65,7 +67,6 @@ function nhanLoai(loai: string): string {
   return TAB_DVC.find((muc) => muc.value === loai)?.label ?? loai;
 }
 
-const QUERY_KEY_LICH_SU = ["dvc", "dong-bo", "lich-su"];
 
 interface Props {
   open: boolean;
@@ -76,6 +77,15 @@ interface Props {
   /** Báo lên `DvcPage` khi lượt đồng bộ hỏng, để nơi đó bỏ khóa phiên nếu BE nói phiên chết hẳn —
    * xem `boKhoaNeuPhienChet`. Dialog không tự giữ khóa nên không tự bỏ được. */
   onPhienChet?: (err: unknown) => void;
+  /**
+   * Bàn giao lượt vừa mở cho `DvcPage` theo dõi (toast tiến độ góc dưới phải).
+   *
+   * Dialog KHÔNG tự theo dõi: vòng poll phải sống cả khi dialog đã đóng, và nó cần biết công ty
+   * đang chọn để dừng khi người dùng đổi công ty giữa chừng — hai thứ chỉ `DvcPage` có.
+   */
+  onDaBatDauDongBo: (tienDo: DvcDongBoTienDo) => void;
+  /** Có lượt đồng bộ nền đang chạy hay không — để khóa nút, tránh bấm phát nữa đè lượt đang chạy. */
+  dangDongBoNen?: boolean;
 }
 
 /**
@@ -85,7 +95,14 @@ interface Props {
  * Tách hẳn khỏi ô tìm kiếm ở `DvcPage`: tìm kiếm đọc thẳng dữ liệu đã lưu (nhanh, không cần đăng
  * nhập cổng), còn đồng bộ mới là lượt gọi cổng thật — gộp chung thì mỗi lần lọc lại phải chờ cổng.
  */
-export default function DialogDongBo({ open, onClose, dvcKey, onPhienChet }: Props) {
+export default function DialogDongBo({
+  open,
+  onClose,
+  dvcKey,
+  onPhienChet,
+  onDaBatDauDongBo,
+  dangDongBoNen,
+}: Props) {
   const [loai, setLoai] = useState(TAB_DVC[0]!.value);
   const [range, setRange] = useState(currentMonthRange);
   const [loiForm, setLoiForm] = useState("");
@@ -98,29 +115,26 @@ export default function DialogDongBo({ open, onClose, dvcKey, onPhienChet }: Pro
 
   // `enabled: open` — dialog đóng thì khỏi fetch, mở lại luôn thấy lịch sử mới nhất.
   const lichSuQuery = useQuery({
-    queryKey: QUERY_KEY_LICH_SU,
+    queryKey: QUERY_KEY_LICH_SU_DVC,
     queryFn: layLichSuDongBoDvc,
     enabled: open,
   });
   const lichSu = lichSuQuery.data ?? [];
   const dangTaiLichSu = lichSuQuery.isLoading;
 
-  const lamMoiLichSu = () => queryClient.invalidateQueries({ queryKey: QUERY_KEY_LICH_SU });
+  const lamMoiLichSu = () => queryClient.invalidateQueries({ queryKey: QUERY_KEY_LICH_SU_DVC });
 
+  // Lượt chạy NỀN: mutation này chỉ MỞ lượt rồi trả tiến độ ngay (~50ms), không đợi đồng bộ xong.
+  // Kết quả cuối đến qua toast tiến độ do `DvcPage` theo dõi — nên ở đây không có toast "xong" nữa.
   const dongBoMutation = useMutation({
     mutationFn: (vars: { tuNgay: string; denNgay: string }) =>
       dongBoDvc({ key: dvcKey!, tuNgay: vars.tuNgay, denNgay: vars.denNgay }),
-    onSuccess: (log) => {
-      void lamMoiLichSu();
-      toast.success(
-        log.trang_thai === "done"
-          ? `Đồng bộ xong: ${log.dong_bo_xong} hồ sơ mới, ${log.da_co_san} đã có sẵn.`
-          : `Đồng bộ xong nhưng còn ${log.loi} hồ sơ lỗi — sẽ tự bù ở lượt sau.`,
-      );
+    onSuccess: (tienDo) => {
+      onDaBatDauDongBo(tienDo);
     },
     onError: (err) => {
       onPhienChet?.(err);
-      toast.error(getErrorMessage(err, "Đồng bộ dữ liệu Dịch vụ công thất bại."));
+      toast.error(getErrorMessage(err, "Không mở được lượt đồng bộ Dịch vụ công."));
     },
   });
 
@@ -189,7 +203,9 @@ export default function DialogDongBo({ open, onClose, dvcKey, onPhienChet }: Pro
     setChoXoaTatCa(false);
   };
 
-  const dangDongBo = dongBoMutation.isPending;
+  // Gộp "đang mở lượt" (vài chục ms) với "lượt nền đang chạy" (hàng phút): với người dùng thì cả
+  // hai đều là "đang đồng bộ, đừng bấm nữa".
+  const dangDongBo = dongBoMutation.isPending || !!dangDongBoNen;
 
   return (
     <Dialog open={open} onClose={onClose} fullWidth maxWidth="lg" scroll="paper">

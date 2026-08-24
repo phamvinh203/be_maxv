@@ -12,6 +12,8 @@ import {
   laLoiCaptcha,
   parseBangHoSo,
   parseDanhSachThongBao,
+  bocPhanTrang,
+  gopCacTrangHoSo,
   type BangHoSoDaBoc,
   type ThongBaoDaBoc,
 } from "./hoSoHtml";
@@ -101,6 +103,17 @@ class DvcWrongCredentialError extends Error {}
  * Tự đăng nhập lại (khi cổng đá phiên giữa chừng) đã thử hết lượt mà vẫn không xong — phiên RAM đã
  * bị xóa, bắt buộc người dùng mở lại dialog và đăng nhập tay.
  */
+/**
+ * Mã lỗi cho FE biết khóa phiên này ĐÃ CHẾT HẲN (tự đăng nhập lại cũng không cứu được) để bỏ nó đi.
+ *
+ * Trả mã máy đọc được thay vì để FE dò câu chữ tiếng Việt: khóa chết mà FE cứ giữ thì mỗi thao tác
+ * lại kích một lượt phục hồi vô ích — sửa câu thông báo là FE lặng lẽ hết nhận ra.
+ *
+ * Ở CẠNH lớp lỗi nó mô tả, không ở controller: nay có hai chỗ cần gắn mã (thân phản hồi lỗi của
+ * handler, và ô tiến độ của lượt chạy nền), mà cả hai đều bắt cùng một lớp lỗi này.
+ */
+export const MA_LOI_TU_DANG_NHAP_HONG = "DVC_AUTO_LOGIN_FAILED";
+
 export class DvcAutoLoginFailedError extends Error {
   constructor(chiTietLoiCuoi?: string) {
     super(
@@ -743,11 +756,25 @@ export interface DvcTraCuuHoSoQuery extends DvcPhien {
   /** `SELF` = hồ sơ của chính đơn vị. Cổng còn giá trị khác cho luồng ủy quyền. */
   scope?: string;
   mstUyQuyen?: string;
+  /** Lượt đã bị lượt mới thay thế -> dừng vòng lặp trang. Pha tra cứu là phần TỐN REQUEST CỔNG
+   * NHẤT (mỗi trang 1 captcha + 1 search), bỏ qua nó là để cả lượt vô ích chạy tới cùng. */
+  daBiThay?: () => boolean;
+}
+
+/**
+ * Query kèm số trang — CHỈ dùng nội bộ giữa `traCuuHoSoMoiTrang` và `guiTraCuuHoSo`.
+ *
+ * Tách khỏi `DvcTraCuuHoSoQuery` để `page`/`size` không lộ ra mặt ngoài: `traCuuHoSoMoiTrang` luôn
+ * ghi đè hai trường đó, nên người gọi đặt `size: 10` sẽ lặng lẽ nhận 100 mà không có gì báo.
+ */
+interface TraCuuTrangQuery extends DvcTraCuuHoSoQuery {
+  page: number;
+  size: number;
 }
 
 async function guiTraCuuHoSo(
   session: DvcSession,
-  q: DvcTraCuuHoSoQuery,
+  q: TraCuuTrangQuery,
   captcha: string,
 ): Promise<string> {
   const params = new URLSearchParams({
@@ -760,6 +787,10 @@ async function guiTraCuuHoSo(
     scope_tdt1: q.scope ?? "SELF",
     mstUyQuyen_tdt1: q.mstUyQuyen ?? "",
     captcha,
+    // Cổng mặc định `page=1&size=10` khi thiếu — đúng hai tham số `onChangePage(page, size)` trong
+    // trang /tchs đặt khi người dùng bấm số trang. Không gửi là chỉ bao giờ nhận được trang đầu.
+    page: String(q.page),
+    size: String(q.size),
   });
 
   const response = await dvcSend(`/ho-so/search?${params.toString()}`, session, {
@@ -805,7 +836,7 @@ function khongNenThuLai(err: unknown): boolean {
  * Hết số lần thử là NÉM LỖI, không trả HTML báo sai mã ra ngoài. Gặp lỗi thuộc nhóm
  * `khongNenThuLai` thì ném ra ngay, không dùng hết số lần thử.
  */
-async function traCuuHoSoHtml(q: DvcTraCuuHoSoQuery): Promise<string> {
+async function traCuuHoSoHtml(q: TraCuuTrangQuery): Promise<string> {
   const session = requireSession(q);
 
   if (q.captcha) {
@@ -848,8 +879,30 @@ async function traCuuHoSoHtml(q: DvcTraCuuHoSoQuery): Promise<string> {
  */
 export async function traCuuHoSo(q: DvcTraCuuHoSoQuery): Promise<BangHoSoDaBoc> {
   const session = requireSession(q);
-  const html = await voiTuDangNhapLai(q.key, session, () => traCuuHoSoHtml(q));
-  return parseBangHoSo(html);
+  return voiTuDangNhapLai(q.key, session, () => traCuuHoSoMoiTrang(q));
+}
+
+/** Xin bao nhiêu bản ghi mỗi trang. Cổng mặc định 10; xin nhiều hơn để phần lớn khoảng ngày chỉ tốn
+ * MỘT lượt (mỗi lượt là 1 captcha + 1 request). Cổng có ép về 10 thì vòng gộp vẫn lấy đủ. */
+const SIZE_MOI_TRANG = 100;
+
+/**
+ * Lấy ĐỦ các trang kết quả rồi gộp lại.
+ *
+ * Trước đây hàm này chỉ xin một lượt và đọc bảng trong đó — mà cổng chia trang mặc định 10 bản ghi,
+ * nên mọi khoảng có hơn 10 hồ sơ âm thầm mất phần dư và lượt đồng bộ vẫn báo "xong, 0 lỗi".
+ *
+ * Ở đây CHỈ còn phần I/O (xin một trang, bóc HTML); mọi quyết định gộp/dừng/chống trùng nằm ở
+ * `gopCacTrangHoSo` để test được không cần cổng thật — xem `__tests__/dvcGopTrang.test.ts`.
+ */
+function traCuuHoSoMoiTrang(q: DvcTraCuuHoSoQuery): Promise<BangHoSoDaBoc> {
+  return gopCacTrangHoSo(
+    async (page) => {
+      const html = await traCuuHoSoHtml({ ...q, page, size: SIZE_MOI_TRANG });
+      return { bang: parseBangHoSo(html), phanTrang: bocPhanTrang(html) };
+    },
+    { size: SIZE_MOI_TRANG, daBiThay: q.daBiThay },
+  );
 }
 
 /** Referer XHR của trang chi tiết hồ sơ — cả `downloadhoso` lẫn `data-tai-lieu-dkem` đều gọi từ đây. */
