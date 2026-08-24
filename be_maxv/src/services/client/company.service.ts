@@ -33,13 +33,18 @@ export async function registerCompany(input: RegisterCompanyArgs) {
   const { ownerId, tenCongTy, maSoThue, diaChi, sdt, loaiHinhKinhDoanh } =
     input;
 
-  // Đếm MST hiện có + kiểm tra MST trùng.
+  // Đếm MST hiện có + kiểm tra MST trùng (kèm email chủ tài khoản đã đăng ký MST đó, để báo cụ thể).
   const [existingCount, mstExists] = await Promise.all([
     sysPrisma.donVi.count({ where: { ownerId } }),
-    sysPrisma.donVi.findUnique({ where: { maSoThue } }),
+    sysPrisma.donVi.findUnique({
+      where: { maSoThue },
+      select: { owner: { select: { email: true } } },
+    }),
   ]);
 
-  if (mstExists) throw new ConflictError(MESSAGES.COMPANY.MST_TAKEN);
+  if (mstExists) {
+    throw new ConflictError(MESSAGES.COMPANY.MST_TAKEN(mstExists.owner.email));
+  }
   await assertMstLimit(ownerId, existingCount); // trần MST (override ?? gói)
 
   const donVi = await sysPrisma.donVi.create({

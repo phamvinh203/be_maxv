@@ -33,7 +33,8 @@ export const MESSAGES = {
     NO_ACCESS: 'Bạn không có quyền truy cập công ty này',
     USER_NOT_FOUND: 'Người dùng không tồn tại',
     USER_HAS_COMPANY: 'Người dùng này đã có công ty',
-    MST_TAKEN: 'Mã số thuế đã được đăng ký',
+    MST_TAKEN: (email: string) =>
+      `Mã số thuế đã được đăng ký tại email: ${email}`,
     NOT_FOUND: 'Công ty không tồn tại',
     RETRY_NOT_FAILED: 'Chỉ cấp lại DB được cho công ty ở trạng thái FAILED',
     SUSPEND_NOT_READY: 'Chỉ tạm khóa được công ty đang hoạt động (READY)',
