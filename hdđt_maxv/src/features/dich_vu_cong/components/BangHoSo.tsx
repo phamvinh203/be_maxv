@@ -1,3 +1,4 @@
+import Box from "@mui/material/Box";
 import Paper from "@mui/material/Paper";
 import Table from "@mui/material/Table";
 import TableBody from "@mui/material/TableBody";
@@ -67,6 +68,29 @@ function chuanHoaTieuDe(s: string): string {
  * phải tìm đúng cột nguồn qua `headers` (tên), vì `cot` có thêm cột STT và các
  * cột nút bấm mà cổng không có, nên không thể giả định cùng vị trí.
  */
+/**
+ * Style CẮT DÒNG, đặt lên chính phần tử chứa chữ — KHÔNG đặt lên `TableCell`.
+ *
+ * `-webkit-line-clamp` đếm *dòng chữ* của khối mang nó. Cột "Tờ khai / Phụ lục" bọc nội dung trong
+ * `Link component="button"`, mà một nút là hộp inline nguyên khối — với ô làm khối clamp thì nó chỉ
+ * là MỘT dòng, nên không cắt gì cả và `overflow: hidden` của ô xén ngang thân chữ, không có "…".
+ * Đặt lên phần tử trong cùng thì đúng cho cả ô chữ thuần lẫn ô có nút.
+ */
+const CAT_DONG = {
+  display: "-webkit-box",
+  WebkitBoxOrient: "vertical" as const,
+  WebkitLineClamp: 2,
+  overflow: "hidden",
+};
+
+/** Style của Ô: mặc định `nowrap` vì phần lớn cột là số tiền/ngày/mã — cho chúng xuống dòng chỉ làm
+ * dòng so le mà chẳng hẹp thêm bao nhiêu. Cột khai `rongToiDa` thì chặn bề rộng và cho xuống dòng. */
+function styleO(c?: CotBang) {
+  return c?.rongToiDa
+    ? { maxWidth: c.rongToiDa, whiteSpace: "normal" as const }
+    : { whiteSpace: "nowrap" as const };
+}
+
 export default function BangHoSo({
   cot,
   headers = [],
@@ -144,17 +168,32 @@ export default function BangHoSo({
                       const bamDuoc = c?.clickable && onXemToKhai && maGiaoDich && gia;
 
                       return (
-                        <TableCell key={j} align={canLe(j)} sx={{ whiteSpace: "nowrap" }}>
+                        <TableCell
+                          key={j}
+                          align={canLe(j)}
+                          sx={styleO(c)}
+                          // Chữ bị `line-clamp` cắt vẫn xem được bằng cách rê chuột. Chỉ gắn cho ô
+                          // co hẹp: gắn cho mọi ô là tooltip nhảy loạn khi rê ngang bảng.
+                          title={c?.rongToiDa ? gia : undefined}
+                        >
                           {bamDuoc ? (
                             <Link
                               component="button"
                               type="button"
                               underline="hover"
                               onClick={() => onXemToKhai(maGiaoDich)}
-                              sx={{ font: "inherit", textAlign: "left" }}
+                              sx={{
+                                font: "inherit",
+                                textAlign: "left",
+                                ...(c?.rongToiDa ? CAT_DONG : null),
+                              }}
                             >
                               {gia}
                             </Link>
+                          ) : c?.rongToiDa ? (
+                            <Box component="span" sx={CAT_DONG}>
+                              {gia}
+                            </Box>
                           ) : (
                             gia
                           )}
