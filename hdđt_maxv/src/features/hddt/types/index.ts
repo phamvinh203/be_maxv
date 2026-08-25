@@ -35,6 +35,11 @@ export interface GdtSavedPassword {
 /** "purchase" = hóa đơn đầu vào (mua vào), "sold" = hóa đơn đầu ra (bán ra). Khớp path BE `/gdt/invoices/<direction>`. */
 export type InvoiceDirection = "purchase" | "sold";
 
+/**
+ * Query gửi lên server (`GET /gdt/invoices/:direction/saved`). CHỈ còn field mà server thật sự lọc
+ * được. Hiện chỉ khoảng ngày được gửi để đọc toàn bộ hóa đơn trong kỳ; mọi field còn lại lọc phía
+ * client trong `InvoiceListTabs`, nên panel và icon header đều có thể áp sống mà không gọi lại BE.
+ */
 export interface InvoiceQuery {
   /** yyyy-MM-dd — bắt buộc */
   tuNgay: string;
@@ -49,6 +54,40 @@ export interface InvoiceQuery {
   soHd?: string;
   /** Cursor phân trang từ lần gọi trước */
   state?: string;
+}
+
+/**
+ * Giá trị lọc theo cột qua icon ở header bảng — 100% lọc PHÍA CLIENT trên dữ liệu bảng đang có
+ * (không gửi lên server, khác `InvoiceQuery`), vì bảng đã tải toàn bộ hóa đơn trong khoảng ngày về
+ * một lần rồi — gõ tiếp vào các ô này không cần vòng qua BE nữa. Xem `matchesOverviewFilters`/
+ * `matchesDetailHeaderFilters` ở `InvoiceListTabs`.
+ */
+export interface InvoiceColumnFilterValues {
+  tenDoiTac?: string;
+  diaChiDoiTac?: string;
+  maNt?: string;
+  /** Gõ tự do khớp NHÃN hiển thị của "Trạng thái tải" (vd "lỗi", "chưa tải") — KHÔNG phải mã thô. */
+  ttTai?: string;
+  /**
+   * Gõ tự do khớp NHÃN "Trạng thái hóa đơn"/"Kết quả kiểm tra" (vd "hủy" khớp "Hóa đơn đã bị hủy")
+   * — CHỈ lọc hiển thị phía client, tách khỏi `InvoiceFilterValues.trangThaiHd`/`ketQuaHd` (mã chính
+   * xác từ panel "Bộ lọc", còn gửi lên BE để giới hạn lượt "Tải chi tiết"/"Cập nhật", xem
+   * `buildGdtRunQuery`). 2 tiêu chí này CỘNG THÊM (AND) vào lọc mã chính xác, không thay thế.
+   */
+  trangThaiHdText?: string;
+  ketQuaHdText?: string;
+  tuTienChuaThue?: string;
+  denTienChuaThue?: string;
+  tuTienThue?: string;
+  denTienThue?: string;
+  tuCktm?: string;
+  denCktm?: string;
+  tuPhi?: string;
+  denPhi?: string;
+  tuTongTt?: string;
+  denTongTt?: string;
+  tuTyGia?: string;
+  denTyGia?: string;
 }
 
 /**

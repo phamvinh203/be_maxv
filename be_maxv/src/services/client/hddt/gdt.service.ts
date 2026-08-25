@@ -1108,8 +1108,15 @@ function mapSavedRow(row: Record<string, unknown>, extras?: SavedDetailExtras): 
 /**
  * Dựng `where` đọc hóa đơn đã lưu: khoảng ngày lập + các field khớp query (trạng thái, kết quả,
  * mẫu số, ký hiệu, số, MST đối tác). Gom 1 chỗ để đọc danh sách và đọc chi tiết dùng chung điều kiện.
+ *
+ * CHỈ giữ khoảng ngày (bắt buộc — quyết định query nào chạm DB) + 6 field gốc đã có trước tính năng
+ * "icon lọc theo cột". Tên/địa chỉ đối tác, đơn vị tiền tệ, trạng thái tải, khoảng tiền/tỷ giá đã
+ * CHUYỂN VỀ lọc phía client (`matchesOverviewFilters`/`matchesDetailHeaderFilters` ở
+ * `InvoiceListTabs.tsx`): bảng đọc TOÀN BỘ hóa đơn trong khoảng ngày về client một lần (không phân
+ * trang server), nên gõ tiếp vào các ô lọc đó không cần vòng qua BE nữa — dữ liệu đã có sẵn ở màn
+ * hình. Xem lịch sử ở git nếu cần khôi phục where phía server cho các field đó.
  */
-function buildSavedWhere(
+export function buildSavedWhere(
   direction: "purchase" | "sold",
   query: PurchaseInvoiceQuery | SoldInvoiceQuery,
 ) {
@@ -1118,21 +1125,25 @@ function buildSavedWhere(
       ? (query as PurchaseInvoiceQuery).mstNguoiBan
       : (query as SoldInvoiceQuery).mstNguoiMua;
   // Field MST đối tác khác tên theo chiều: mua vào lọc người bán (nbmst), bán ra lọc người mua (nmmst).
+  // contains (không khớp tuyệt đối): ô lọc chạy SỐNG theo từng ký tự gõ (xem ColumnFilterButton) —
+  // khớp tuyệt đối bắt gõ xong cả chuỗi mới ra kết quả, ngược với kỳ vọng "gõ tới đâu ra tới đó".
   const partnerWhere = partnerMst
     ? direction === "purchase"
-      ? { nbmst: partnerMst }
-      : { nmmst: partnerMst }
+      ? { nbmst: { contains: partnerMst, mode: "insensitive" as const } }
+      : { nmmst: { contains: partnerMst, mode: "insensitive" as const } }
     : {};
   return {
     tdlap: {
       gte: vnDayStart(query.tuNgay),
       lte: vnDayEnd(query.denNgay),
     },
+    // trangThaiHd/ketQuaHd chọn từ dropdown (không phải gõ tự do) -> giữ khớp tuyệt đối.
     ...(query.trangThaiHd ? { tthai: query.trangThaiHd } : {}),
     ...(query.ketQuaHd ? { ttxly: query.ketQuaHd } : {}),
-    ...(query.mauHd ? { khmshdon: query.mauHd } : {}),
-    ...(query.soSeri ? { khhdon: query.soSeri } : {}),
-    ...(query.soHd ? { shdon: query.soHd } : {}),
+    // Các field gõ tự do còn lại -> contains, cùng lý do với partnerWhere ở trên.
+    ...(query.mauHd ? { khmshdon: { contains: query.mauHd, mode: "insensitive" as const } } : {}),
+    ...(query.soSeri ? { khhdon: { contains: query.soSeri, mode: "insensitive" as const } } : {}),
+    ...(query.soHd ? { shdon: { contains: query.soHd, mode: "insensitive" as const } } : {}),
     ...partnerWhere,
   };
 }
