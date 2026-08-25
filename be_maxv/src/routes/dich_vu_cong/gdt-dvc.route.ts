@@ -17,6 +17,7 @@ import {
   xoaTatCaLichSuDongBo,
 } from "../../controllers/client/dich_vu_cong/gdt-dvc.controller";
 import { requireModule } from "../../services/shared/modules.service";
+import gntRoutes from "./giay_nop_tien/gnt.route";
 
 /**
  * Proxy cổng Dịch vụ công thuế. Cả các route đều yêu cầu JWT app + gói có module `dvc`
@@ -104,4 +105,6 @@ export default async function (fastify: FastifyInstance) {
     preHandler: guard,
     handler: xoaTatCaLichSuDongBo,
   });
+
+  await fastify.register(gntRoutes);
 }
