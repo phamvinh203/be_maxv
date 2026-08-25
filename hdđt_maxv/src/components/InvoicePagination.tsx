@@ -23,8 +23,9 @@ interface Props {
 }
 
 /**
- * Thanh phân trang cho bảng hóa đơn — bọc MUI TablePagination với nhãn tiếng Việt,
- * mặc định 20 dòng/trang (chọn được 20/50/100). Phân trang phía client trên dữ liệu đã tải.
+ * Thanh phân trang cho bảng dữ liệu — bọc MUI TablePagination với nhãn tiếng Việt, mặc định 20
+ * dòng/trang (chọn được 20/50/100). Phân trang phía client trên dữ liệu đã tải (không gọi lại
+ * server khi lật trang). Dùng chung nhiều module (hddt + dich_vu_cong) nên đặt ở `src/components`.
  */
 export default function InvoicePagination({
   count,

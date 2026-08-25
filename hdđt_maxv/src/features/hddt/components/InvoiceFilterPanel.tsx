@@ -21,26 +21,25 @@ import CloudSyncRounded from "@mui/icons-material/CloudSyncRounded";
 import { TRANG_THAI_HD_OPTIONS, KET_QUA_KIEM_TRA_OPTIONS } from "../api/gdt";
 import type { InvoiceDirection, InvoiceFilterValues } from "../types";
 
-const EMPTY_FILTERS: InvoiceFilterValues = {
-  tuNgay: "",
-  denNgay: "",
-  mstDoiTac: "",
-  trangThaiHd: "",
-  ketQuaHd: "",
-  mauHd: "",
-  soSeri: "",
-  soHd: "",
-};
-
 interface Props {
   direction: InvoiceDirection;
-  /** Đang đọc dữ liệu từ DB (nút "Tìm kiếm"). */
+  /** Đang đọc dữ liệu từ DB (nút "Áp dụng khoảng ngày"). */
   dbLoading: boolean;
   /** Đang tra cứu + lưu từ GDT (nút "Cập nhật từ Thuế điện tử"). */
   gdtLoading: boolean;
-  /** Giá trị khởi tạo bộ lọc (mặc định = tháng hiện tại) — cũng là giá trị "Bỏ tìm kiếm" trả về. */
-  initialValues?: InvoiceFilterValues;
-  /** Đọc dữ liệu đã lưu từ DB theo bộ lọc. */
+  /**
+   * Giá trị đang hiển thị trên form — CHA sở hữu (controlled), không tự giữ state nội bộ nữa. Bắt
+   * buộc phải vậy vì 6 field ở đây (MST, ký hiệu, số HD, trạng thái, kết quả kiểm tra) giờ CŨNG sửa
+   * được qua icon lọc ở header bảng — nếu panel giữ bản sao riêng thì bấm icon xong mở panel lên
+   * vẫn thấy trống, và bấm "Tìm kiếm" ở panel sẽ vô tình xóa mất lọc vừa đặt qua icon.
+   */
+  values: InvoiceFilterValues;
+  /**
+   * Gọi theo TỪNG field (không phải cả object) — để cha biết field nào vừa đổi mà quyết định áp
+   * sống ngay (mọi field trừ ngày, xem `InvoiceListTabs`) hay chỉ cập nhật form chờ bấm nút.
+   */
+  onFieldChange: (key: keyof InvoiceFilterValues, value: string) => void;
+  /** Đọc dữ liệu đã lưu từ DB theo khoảng ngày; các field còn lại đã áp sống qua `onFieldChange`. */
   onSearch: (values: InvoiceFilterValues) => void;
   /** Tra cứu GDT + lưu vào DB rồi nạp lại theo bộ lọc. */
   onFetchGdt: (values: InvoiceFilterValues) => void;
@@ -52,28 +51,23 @@ export default function InvoiceFilterPanel({
   direction,
   dbLoading,
   gdtLoading,
-  initialValues = EMPTY_FILTERS,
+  values,
+  onFieldChange,
   onSearch,
   onFetchGdt,
   onReset,
 }: Props) {
   const [expanded, setExpanded] = useState(true);
-  const [values, setValues] = useState<InvoiceFilterValues>(initialValues);
 
   const busy = dbLoading || gdtLoading;
 
   const setField =
     (key: keyof InvoiceFilterValues) => (e: React.ChangeEvent<HTMLInputElement>) => {
-      setValues((prev) => ({ ...prev, [key]: e.target.value }));
+      onFieldChange(key, e.target.value);
     };
 
   const partnerLabel = direction === "purchase" ? "MST người bán" : "MST người mua";
   const cccdLabel = direction === "purchase" ? "CCCD người bán" : "CCCD người mua";
-
-  const handleReset = () => {
-    setValues(initialValues);
-    onReset();
-  };
 
   return (
     <Paper variant="outlined" sx={{ mb: 2 }}>
@@ -207,7 +201,7 @@ export default function InvoiceFilterPanel({
               disabled={busy}
               onClick={() => onSearch(values)}
             >
-              {dbLoading ? <CircularProgress size={20} color="inherit" /> : "Tìm kiếm"}
+              {dbLoading ? <CircularProgress size={20} color="inherit" /> : "Áp dụng khoảng ngày"}
             </Button>
             <Button
               variant="outlined"
@@ -224,7 +218,7 @@ export default function InvoiceFilterPanel({
               startIcon={<RestartAltRounded />}
               sx={{ textTransform: "none" }}
               disabled={busy}
-              onClick={handleReset}
+              onClick={onReset}
             >
               Bỏ tìm kiếm
             </Button>

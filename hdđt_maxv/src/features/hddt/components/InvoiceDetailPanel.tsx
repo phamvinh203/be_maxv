@@ -11,8 +11,9 @@ import TableContainer from "@mui/material/TableContainer";
 import Typography from "@mui/material/Typography";
 import CircularProgress from "@mui/material/CircularProgress";
 import InboxRounded from "@mui/icons-material/InboxRounded";
-import InvoicePagination, { DEFAULT_ROWS_PER_PAGE } from "./InvoicePagination";
-import { clampPage } from "../pagination";
+import InvoicePagination, { DEFAULT_ROWS_PER_PAGE } from "../../../components/InvoicePagination";
+import { clampPage } from "../../../utils/pagination";
+import { columnDividerSx } from "../../../utils/tableStyles";
 import {
   detailColumns,
   invoiceRowFill,
@@ -45,13 +46,23 @@ function CenteredState({ children }: { children: ReactNode }) {
 }
 
 interface Props {
-  /** Các dòng chi tiết (đã bung hàng hóa) của TẤT CẢ hóa đơn trong khoảng đang xem. */
+  /** Các dòng chi tiết (đã bung hàng hóa) của TẤT CẢ hóa đơn trong khoảng đang xem — ĐÃ lọc/sắp
+   * xếp xong ở `InvoiceListTabs` (bảng này chỉ hiển thị + tự phân trang). */
   rows: DetailRow[];
   /** Chiều hóa đơn — quyết định cột đối tác (mua vào: người bán; bán ra: người mua). */
   direction: InvoiceDirection;
   loading: boolean;
   /** Lỗi đọc chi tiết đã lưu. */
   error: string;
+  /**
+   * Icon SẮP XẾP cạnh tên cột — cha sở hữu toàn bộ state (sort/filter), bảng này chỉ vẽ chỗ đứng
+   * theo `col.key` + truyền kèm `col.header` (để popover hiện đúng tên cột thật, không phải label
+   * gõ tay lệch chữ). `undefined` = không có icon nào (cột không sort được).
+   */
+  renderHeaderExtra?: (colKey: string, header: string) => ReactNode;
+  /** Ô lọc dòng CỐ ĐỊNH ngay dưới header — cùng nguyên tắc `renderHeaderExtra` nhưng không cần
+   * `header` (ô input không hiện lại tên cột). `undefined`/không truyền = không có dòng lọc nào. */
+  renderHeaderInputExtra?: (colKey: string) => ReactNode;
 }
 
 /**
@@ -59,7 +70,14 @@ interface Props {
  * Hiển thị tất cả dòng hàng hóa của mọi hóa đơn đã tải chi tiết trong khoảng đang xem.
  * Cột khai ở `templates/detailColumns` — dùng chung với sheet Excel "Chi tiết".
  */
-export default function InvoiceDetailPanel({ rows, direction, loading, error }: Props) {
+export default function InvoiceDetailPanel({
+  rows,
+  direction,
+  loading,
+  error,
+  renderHeaderExtra,
+  renderHeaderInputExtra,
+}: Props) {
   // Phân trang phía client (độc lập với tab "Tổng quát"): dùng chung InvoicePagination.
   const [page, setPage] = useState(0);
   const [rowsPerPage, setRowsPerPage] = useState(DEFAULT_ROWS_PER_PAGE);
@@ -101,15 +119,30 @@ export default function InvoiceDetailPanel({ rows, direction, loading, error }: 
   return (
     <>
       <TableContainer component={Paper} variant="outlined" sx={{ overflowX: "auto" }}>
-        <Table size="small" sx={{ "& td, & th": { whiteSpace: "nowrap" } }}>
+        <Table
+          size="small"
+          sx={(theme) => columnDividerSx(theme, { whiteSpace: "nowrap" })}
+        >
           <TableHead>
             <TableRow sx={{ "& th": { fontWeight: 700, bgcolor: "action.hover" } }}>
               {columns.map((col) => (
                 <TableCell key={col.key} align={col.align}>
                   {col.header}
+                  {renderHeaderExtra?.(col.key, col.header)}
                 </TableCell>
               ))}
             </TableRow>
+            {renderHeaderInputExtra && (
+              // Dòng lọc CỐ ĐỊNH dưới header — thay popover cũ, luôn hiện sẵn 1 ô/cột (rỗng nếu cột
+              // không lọc được).
+              <TableRow sx={{ "& th": { bgcolor: "action.hover", py: 0.25 } }}>
+                {columns.map((col) => (
+                  <TableCell key={col.key} align={col.align}>
+                    {renderHeaderInputExtra(col.key)}
+                  </TableCell>
+                ))}
+              </TableRow>
+            )}
           </TableHead>
           <TableBody>
             {/* Hàng tổng đứng NGAY DƯỚI tiêu đề. `rows` (toàn bộ dòng khớp bộ lọc), KHÔNG phải

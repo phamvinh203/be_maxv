@@ -47,7 +47,9 @@ import {
 import { useAuth } from "../../auth/useAuth";
 import { toast } from "react-toastify";
 import type {
+  DetailRow,
   DisplayRow,
+  InvoiceColumnFilterValues,
   InvoiceDirection,
   InvoiceFilterValues,
   InvoiceQuery,
@@ -66,13 +68,34 @@ import {
   totalsRow,
 } from "../templates";
 import InvoiceFilterPanel from "./InvoiceFilterPanel";
+import ColumnFilterButton, {
+  LIVE_APPLY_MS as PANEL_LIVE_APPLY_MS,
+  type SortKind,
+} from "../../../components/ColumnFilterButton";
+import { applySort, fieldOf, type SortState } from "../columnSort";
+import {
+  TRANG_THAI_HD_OPTIONS,
+  KET_QUA_KIEM_TRA_OPTIONS,
+  trangThaiHdLabel,
+  ketQuaKiemTraLabel,
+} from "../api/gdt";
+import { tinhChatLabel } from "../invoiceView";
+import {
+  containsText,
+  inNumRange,
+  parseRangeInput,
+  formatRangeInput,
+  RANGE_INPUT_HINT,
+} from "../../../utils/columnFilterText";
+import ColumnFilterInput from "../../../components/ColumnFilterInput";
 import InvoiceDetailPanel from "./InvoiceDetailPanel";
 import InvoiceViewDialog from "./InvoiceViewDialog";
 import HoaDonLienQuanDialog from "./HoaDonLienQuanDialog";
 import ExportFileDialog from "./ExportFileDialog";
 import DownloadOriginalDialog from "./DownloadOriginalDialog";
-import InvoicePagination, { DEFAULT_ROWS_PER_PAGE } from "./InvoicePagination";
-import { clampPage } from "../pagination";
+import InvoicePagination, { DEFAULT_ROWS_PER_PAGE } from "../../../components/InvoicePagination";
+import { clampPage } from "../../../utils/pagination";
+import { columnDividerSx } from "../../../utils/tableStyles";
 import { currentMonthRange } from "../dateUtils";
 import { getErrorMessage } from "../../../lib/errors";
 
@@ -81,6 +104,26 @@ interface InvoiceTablePanelProps {
   /** Tab này đang được xem — chỉ tự nạp DB khi active để không tốn request cho tab ẩn. */
   active: boolean;
 }
+
+/** Khoảng "Từ - Đến" cho 1 cột số — vẫn giữ nguyên state 2 đầu này (dù ô nhập giờ chỉ còn 1 input
+ * cú pháp "a-b", xem `parseRangeInput`) để tái dùng nguyên `inNumRange`/`detailRangeFilters`. */
+interface ColumnRangeValue {
+  from: string;
+  to: string;
+}
+// Tham chiếu ỔN ĐỊNH (không tạo mảng mới mỗi lần) cho nhánh "tab Chi tiết đang ẩn" của
+// `detailRows`/`filteredDetailRows`/`sortedDetailRows` — xem chú thích ở `detailRows`.
+const EMPTY_DETAIL_ROWS: DetailRow[] = [];
+
+/** Đặc tả sort + ô lọc dòng cố định cho 1 cột — DÙNG CHUNG giữa icon header (chỉ đọc `sortKind`, ẩn
+ * hẳn nếu `undefined` cả 2 field) và dòng input cố định dưới header (chỉ đọc `input`) để không phải
+ * liệt kê từng `colKey` trong 2 switch riêng (xem `overviewColumnFilterSpec`/`detailColumnFilterSpec`
+ * và `renderSharedColumnFilterSpec` cho ~10 cột giống nhau giữa 2 bảng). */
+interface ColumnFilterSpec {
+  sortKind?: SortKind;
+  input?: ReactNode;
+}
+const NOT_FILTERABLE: ColumnFilterSpec = {};
 
 type ResultTab = "tong-quat" | "chi-tiet";
 
@@ -101,17 +144,210 @@ function defaultMonthFilters(): InvoiceFilterValues {
   };
 }
 
+/**
+ * Query gửi server CHỈ còn khoảng ngày — thứ DUY NHẤT quyết định query nào chạm DB. Mọi field lọc
+ * khác (mauHd, soSeri, soHd, MST/tên/địa chỉ đối tác, trạng thái, kết quả kiểm tra, tiền tệ, trạng
+ * thái tải, khoảng tiền/tỷ giá) lọc PHÍA CLIENT qua `matchesOverviewFilters`/
+ * `matchesDetailHeaderFilters` — bảng đã tải toàn bộ hóa đơn trong khoảng ngày về một lần, gõ thêm
+ * vào các ô lọc đó không cần vòng qua BE nữa.
+ */
 function buildQuery(filters: InvoiceFilterValues): InvoiceQuery {
+  return { tuNgay: filters.tuNgay, denNgay: filters.denNgay };
+}
+
+/**
+ * Query cho các lượt CHẠY NỀN gọi GDT THẬT (nút "Tải chi tiết" / "Cập nhật từ Thuế điện tử") — khác
+ * `buildQuery` ở trên (chỉ khoảng ngày, dùng cho luồng ĐỌC DB). Hai lượt này tốn hạn ngạch cổng thuế
+ * (rate-limit) nên PHẢI giữ đúng bộ lọc user đang xem, không được quét cả khoảng ngày mỗi lần bấm —
+ * `InvoiceFilterValues` gồm đúng các field server còn lọc được (`buildSavedWhere` bên BE); field lọc
+ * riêng theo cột (tên/địa chỉ đối tác, khoảng tiền...) vẫn 100% phía client như trước, không gửi lên.
+ */
+function buildGdtRunQuery(filters: InvoiceFilterValues): InvoiceQuery {
+  return filters;
+}
+
+/** Nhãn "Trạng thái tải" DÙNG ĐỂ LỌC — khác `ttTaiLabel` (cho ô hiển thị/Excel, "chưa tải" trả ""
+ * vì ô đó không có chữ): thêm nhãn "Chưa tải" để gõ tìm được cả nhóm hóa đơn chưa tải chi tiết. */
+function ttTaiSearchLabel(v?: string): string {
+  return v === "OK" ? "OK" : v === "error" ? "Lỗi" : "Chưa tải";
+}
+
+/**
+ * Nhãn gõ vào khớp DUY NHẤT 1 lựa chọn trong `options` -> trả mã (`value`) đó; khớp 0 hoặc ≥2 lựa
+ * chọn (gõ chưa đủ rõ, hoặc rỗng) -> trả "". Dùng để GIỚI HẠN LƯỢT GDT NỀN theo đúng 1 mã khi người
+ * dùng gõ đủ rõ ràng ở ô "Trạng thái hóa đơn"/"Kết quả kiểm tra" (xem `buildGdtRunQuery`) — KHÔNG
+ * dùng cho lọc hiển thị (bảng lọc rộng hơn, qua `containsText` trực tiếp trên nhãn, xem
+ * `matchesCommonFilters`).
+ */
+function resolveUniqueOptionCode(
+  needle: string,
+  options: readonly { value: string; label: string }[],
+): string {
+  if (!needle.trim()) return "";
+  const hits = options.filter((o) => o.value && containsText(o.label, needle));
+  return hits.length === 1 ? hits[0].value : "";
+}
+
+const STATUS_LABEL_HINT =
+  'Gõ khớp TÊN hiển thị (vd "hủy", "đạt"). Khớp đúng 1 lựa chọn sẽ tự thu hẹp cả lượt "Tải chi tiết"/"Cập nhật từ Thuế điện tử" theo đúng lựa chọn đó.';
+
+/**
+ * Cột CHỈ có ở bảng Chi tiết (mã VT, số lượng, đơn giá, tiền dòng hàng...) — không có cột DB tương
+ * ứng nên lọc riêng qua `detailTextFilters`/`detailRangeFilters` (xem `detailColumnFilterSpec`).
+ * Mọi cột trong 2 danh sách này đều theo ĐÚNG 1 khuôn (đọc `detailXxxFilters[key]`, ghi qua
+ * `setDetailText`/`setDetailRange` bằng chính `key`) nên gom vào set thay vì 1 case riêng/cột —
+ * cột nào có xử lý khác khuôn chung (kyHieu, ngày, tinhChat có hint riêng) vẫn giữ case riêng.
+ */
+const DETAIL_ONLY_RANGE_KEYS = new Set([
+  "soLuong",
+  "gia",
+  "tlCktm",
+  "tienChuaThue",
+  "thueDong",
+  "tienSauThueDong",
+  "tienChuaThueVnd",
+  "thueVnd",
+  "tienSauThueVnd",
+  "tienCk",
+  "tongCk",
+  "tongPhi",
+  "tongTtVnd",
+]);
+const DETAIL_ONLY_TEXT_KEYS = new Set([
+  "maVt",
+  "tenHang",
+  "dvt",
+  "thueSuat",
+  "ghiChu1",
+  "hinhThucTt",
+  "bienSoXe",
+  "websiteNb",
+  "msttcgp",
+  "urlTraCuu",
+  "dliu",
+  "timGoogle",
+  "mccqt",
+]);
+
+/** Dựng đặc tả cho 1 cột số dạng khoảng — DÙNG CHUNG cho mọi cột range (tiền, tỷ giá, số lượng, đơn
+ * giá...) ở cả 2 bảng, chỉ khác nguồn `tu`/`den` và nơi ghi lại (`onApply`). */
+function rangeFilterSpec(
+  tu: string | undefined,
+  den: string | undefined,
+  onApply: (tu: string | undefined, den: string | undefined) => void,
+): ColumnFilterSpec {
   return {
-    tuNgay: filters.tuNgay,
-    denNgay: filters.denNgay,
-    mstDoiTac: filters.mstDoiTac || undefined,
-    trangThaiHd: filters.trangThaiHd || undefined,
-    ketQuaHd: filters.ketQuaHd || undefined,
-    mauHd: filters.mauHd || undefined,
-    soSeri: filters.soSeri || undefined,
-    soHd: filters.soHd || undefined,
+    sortKind: "number",
+    input: (
+      <ColumnFilterInput
+        value={formatRangeInput(tu, den)}
+        onApply={(v) => {
+          const parsed = parseRangeInput(v);
+          onApply(parsed.tu || undefined, parsed.den || undefined);
+        }}
+        hint={RANGE_INPUT_HINT}
+      />
+    ),
   };
+}
+
+/** Dựng đặc tả cho 1 cột lọc TEXT thường (contains, không phân biệt hoa-thường) — DÙNG CHUNG cho mọi
+ * cột text ở cả 2 bảng, chỉ khác nguồn `value`/`onApply`. */
+function textFilterSpec(
+  value: string,
+  onApply: (v: string) => void,
+  opts?: { hint?: string; placeholder?: string; sortKind?: SortKind },
+): ColumnFilterSpec {
+  return {
+    sortKind: opts?.sortKind ?? "text",
+    input: (
+      <ColumnFilterInput value={value} onApply={onApply} hint={opts?.hint} placeholder={opts?.placeholder} />
+    ),
+  };
+}
+
+/** Field lọc chung cho cả `DisplayRow` (bảng Tổng quát) lẫn `DetailRow` (bảng Chi tiết) — 2 kiểu
+ * này đặt tên field bên bán/bên mua/tổng tiền/tỷ giá giống hệt nhau nên gộp 1 type dùng chung.
+ * `tongTt`/`tyGia` khai `?:` (dù `DisplayRow.tongTt` luôn có) để nhận được cả 2 kiểu row. */
+interface CommonFilterRow {
+  mauHd: string;
+  soHd: string;
+  sellerMst: string;
+  sellerTen: string;
+  sellerDiaChi: string;
+  buyerMst: string;
+  buyerTen: string;
+  buyerDiaChi: string;
+  maNt: string;
+  trangThaiHd: string;
+  ketQuaKt: string;
+  tongTt?: number;
+  tyGia?: number;
+}
+
+/**
+ * Phần tiêu chí lọc THEO CỘT giống hệt nhau giữa bảng Tổng quát và bảng Chi tiết (panel "Bộ lọc" +
+ * icon header, trừ `soSeri`/`kyHieu` tên field khác nhau nên nhận qua tham số riêng, và `ttTai` +
+ * 4 khoảng tiền chỉ bảng Tổng quát mới có). `direction` quyết định field nào là "đối tác" (mua vào:
+ * bên bán; bán ra: bên mua), đúng logic `buildSavedWhere` cũ bên BE trước khi chuyển sang client.
+ */
+function matchesCommonFilters(
+  r: CommonFilterRow,
+  soSeriValue: string,
+  direction: InvoiceDirection,
+  f: InvoiceFilterValues,
+  c: InvoiceColumnFilterValues,
+): boolean {
+  const partnerMst = direction === "purchase" ? r.sellerMst : r.buyerMst;
+  const partnerTen = direction === "purchase" ? r.sellerTen : r.buyerTen;
+  const partnerDiaChi = direction === "purchase" ? r.sellerDiaChi : r.buyerDiaChi;
+  return (
+    containsText(r.mauHd, f.mauHd) &&
+    containsText(soSeriValue, f.soSeri) &&
+    containsText(r.soHd, f.soHd) &&
+    containsText(partnerMst, f.mstDoiTac) &&
+    containsText(partnerTen, c.tenDoiTac ?? "") &&
+    containsText(partnerDiaChi, c.diaChiDoiTac ?? "") &&
+    containsText(r.maNt, c.maNt ?? "") &&
+    // Mã chính xác từ panel "Bộ lọc" (dropdown, cũng là tiêu chí gửi lên BE cho lượt GDT nền).
+    (!f.trangThaiHd || r.trangThaiHd === f.trangThaiHd) &&
+    (!f.ketQuaHd || r.ketQuaKt === f.ketQuaHd) &&
+    // Gõ tự do khớp NHÃN từ ô input dòng cố định — CỘNG THÊM vào tiêu chí mã chính xác ở trên,
+    // không thay thế (xem chú thích `InvoiceColumnFilterValues.trangThaiHdText`).
+    containsText(trangThaiHdLabel(r.trangThaiHd), c.trangThaiHdText ?? "") &&
+    containsText(ketQuaKiemTraLabel(r.ketQuaKt), c.ketQuaHdText ?? "") &&
+    inNumRange(r.tongTt, c.tuTongTt, c.denTongTt) &&
+    inNumRange(r.tyGia, c.tuTyGia, c.denTyGia)
+  );
+}
+
+/** Toàn bộ tiêu chí lọc THEO CỘT cho bảng TỔNG QUÁT — chạy client, ngay trên `DisplayRow` đã tải
+ * sẵn. Thêm `ttTai` + 4 khoảng tiền so với `matchesCommonFilters` (chỉ bảng này mới có). */
+function matchesOverviewFilters(
+  r: DisplayRow,
+  direction: InvoiceDirection,
+  f: InvoiceFilterValues,
+  c: InvoiceColumnFilterValues,
+): boolean {
+  return (
+    matchesCommonFilters(r, r.soSeri, direction, f, c) &&
+    containsText(ttTaiSearchLabel(r.ttTai), c.ttTai ?? "") &&
+    inNumRange(r.tienChuaThue, c.tuTienChuaThue, c.denTienChuaThue) &&
+    inNumRange(r.tienThue, c.tuTienThue, c.denTienThue) &&
+    inNumRange(r.cktm, c.tuCktm, c.denCktm) &&
+    inNumRange(r.phi, c.tuPhi, c.denPhi)
+  );
+}
+
+/** Tương đương `matchesOverviewFilters` nhưng cho bảng CHI TIẾT (`DetailRow`) — field tên khác đôi
+ * chỗ (vd `kyHieu` thay `soSeri`) và KHÔNG có `ttTai` (mọi dòng ở đây chắc chắn đã tải chi tiết). */
+function matchesDetailHeaderFilters(
+  r: DetailRow,
+  direction: InvoiceDirection,
+  f: InvoiceFilterValues,
+  c: InvoiceColumnFilterValues,
+): boolean {
+  return matchesCommonFilters(r, r.kyHieu, direction, f, c);
 }
 
 /**
@@ -167,11 +403,39 @@ function InvoiceTablePanel({ direction, active }: InvoiceTablePanelProps) {
     runIdRef.current += 1;
   }, [currentCompanyId]);
 
-  // Bộ lọc mặc định (ổn định) cho form + reset; và bộ lọc "đã áp dụng" quyết định query key.
+  // Bộ lọc mặc định (ổn định) cho form + reset. CHỈ tuNgay/denNgay trong đây đi tới server (quyết
+  // định query key, xem `buildQuery`) — các field còn lại (mauHd, soSeri, soHd, mstDoiTac, trạng
+  // thái, kết quả kiểm tra) lọc PHÍA CLIENT qua `matchesOverviewFilters`/`matchesDetailHeaderFilters`,
+  // vì bảng đã tải toàn bộ hóa đơn trong khoảng ngày về một lần rồi (không cần vòng qua BE để lọc
+  // tiếp trên dữ liệu đã có sẵn ở màn hình).
   const [defaultFilters] = useState(defaultMonthFilters);
   const [appliedFilters, setAppliedFilters] = useState(defaultFilters);
+  // Giá trị ĐANG GÕ trên panel "Bộ lọc" (controlled) — tách khỏi `appliedFilters` (chỉ đổi khi bấm
+  // Tìm kiếm/icon) để gõ dở không kích lọc lại liên tục. `patchAppliedFilters` ghi cả 2 để icon
+  // header và panel luôn khớp nhau.
+  const [filterDraft, setFilterDraft] = useState(defaultFilters);
+  // Lọc theo icon ở header cột (tên/địa chỉ đối tác, tiền tệ, trạng thái tải, khoảng tiền/tỷ giá) —
+  // 100% phía client, tách khỏi `appliedFilters` chỉ để panel "Bộ lọc" và icon cột không tranh nhau
+  // ghi đè state của nhau (2 UI, 1 concern khác nhau).
+  const [columnFilters, setColumnFilters] = useState<InvoiceColumnFilterValues>({});
+  // "Tên hàng hóa, dịch vụ" lọc phía client — field này không có cột riêng trong DB (nằm trong JSON
+  // `detail` của hóa đơn đã Tải chi tiết) nên không thể lọc ở server dù muốn.
+  const [tenHangFilter, setTenHangFilter] = useState("");
+  // Sắp xếp — 100% phía client vì cả 2 bảng đã tải TOÀN BỘ dữ liệu khớp bộ lọc (không phân trang
+  // server, xem `getSavedInvoices`/`getSavedInvoiceDetails`) nên sort trên `rows`/`detailRows` luôn
+  // đúng trên toàn bộ dữ liệu, không chỉ trang đang xem. Tách riêng theo bảng vì 2 bảng khác cột.
+  const [overviewSort, setOverviewSort] = useState<SortState>(null);
+  const [detailSort, setDetailSort] = useState<SortState>(null);
+  // Lọc CLIENT cho các cột CHỈ có ở bảng Chi tiết (mã VT, số lượng, đơn giá, ghi chú...) — không có
+  // cột DB tương ứng ở `vct50view`/`vct60view` (chỉ nằm trong JSON `detail`). Key = `col.key` của
+  // bảng Chi tiết.
+  const [detailTextFilters, setDetailTextFilters] = useState<Record<string, string>>({});
+  const [detailRangeFilters, setDetailRangeFilters] = useState<Record<string, ColumnRangeValue>>(
+    {},
+  );
 
-  // useQuery tự fetch DB khi tab active + khi bộ lọc đã áp dụng đổi.
+  // useQuery tự fetch DB khi tab active + khi khoảng ngày đổi (field lọc còn lại không kích refetch
+  // -> `buildQuery` chỉ đọc tuNgay/denNgay, xem chú thích ở đó).
   const savedQuery = useSavedInvoicesQuery(direction, buildQuery(appliedFilters), active);
   // Chi tiết chỉ nạp khi tab "Chi tiết" đang mở (dữ liệu nặng, khỏi tốn request khi chưa xem).
   const savedDetailsQuery = useSavedDetailsQuery(
@@ -195,14 +459,30 @@ function InvoiceTablePanel({ direction, active }: InvoiceTablePanelProps) {
     () => buildReplacedByMap(savedQuery.data?.thayThe ?? []),
     [savedQuery.data],
   );
+  // Tách lọc khỏi sắp xếp (giống `filteredDetailRows`/`sortedDetailRows` bên dưới) — gộp chung 1
+  // memo sẽ khiến MỖI LẦN bấm đổi chiều sắp xếp cũng chạy lại toàn bộ map `toDisplayRow` + lọc qua
+  // `matchesOverviewFilters` (hàng nghìn hóa đơn), dù dữ liệu/bộ lọc không đổi gì.
+  const filteredRows = useMemo(() => {
+    const mapped = (savedQuery.data?.datas ?? []).map((r) => toDisplayRow(r, direction, replacedBy));
+    const needle = tenHangFilter.trim().toLowerCase();
+    return mapped.filter(
+      (r) =>
+        (!needle || r.tenHang?.toLowerCase().includes(needle)) &&
+        matchesOverviewFilters(r, direction, appliedFilters, columnFilters),
+    );
+  }, [savedQuery.data, direction, replacedBy, tenHangFilter, appliedFilters, columnFilters]);
   const rows = useMemo(
-    () => (savedQuery.data?.datas ?? []).map((r) => toDisplayRow(r, direction, replacedBy)),
-    [savedQuery.data, direction, replacedBy],
+    () => applySort(filteredRows, overviewSort),
+    [filteredRows, overviewSort],
   );
   // Số thứ tự hóa đơn lấy từ BẢNG TỔNG QUÁT (`rows`), tra theo khóa định danh chứ không theo vị trí:
   // hai bảng là hai truy vấn riêng, cùng sắp theo ngày lập nên thứ tự giữa các hóa đơn CÙNG NGÀY
   // không được đảm bảo trùng nhau. Cột "Tên file hóa đơn" đọc số này nên ghép sai là chỉ nhầm file.
   const detailRows = useMemo(() => {
+    // Tab "Chi tiết" đang ẩn -> khỏi flatMap hàng chục nghìn dòng hàng (`sortedDetailRows` chỉ dùng
+    // khi tab này mở). `savedDetailsQuery.data` vẫn còn trong cache (staleTime 5 phút) sau khi rời
+    // tab, và `rows` đổi theo MỌI thao tác sort/lọc ở bảng Tổng quát -> không gate thì tính lại vô ích.
+    if (resultTab !== "chi-tiet") return EMPTY_DETAIL_ROWS;
     const sttOf = invoiceSttMap(rows);
     const details = savedDetailsQuery.data ?? [];
     return details.flatMap((d) => {
@@ -212,7 +492,36 @@ function InvoiceTablePanel({ direction, active }: InvoiceTablePanelProps) {
     });
     // `danhMucNccQuery.data` PHẢI nằm trong deps: danh mục về sau lần render đầu, không tính lại thì
     // cột "URL tra cứu" kẹt ở URL dự phòng của registry FE cho tới khi có thứ khác kích render.
-  }, [savedDetailsQuery.data, rows, replacedBy, danhMucNccQuery.data]);
+  }, [resultTab, savedDetailsQuery.data, rows, replacedBy, danhMucNccQuery.data]);
+  // Lọc CLIENT các cột chỉ có ở bảng Chi tiết rồi sắp xếp — TRƯỚC khi đưa vào `InvoiceDetailPanel`
+  // (bảng đó chỉ hiển thị + tự phân trang, không biết gì về filter/sort).
+  const filteredDetailRows = useMemo(() => {
+    // Chuẩn hóa needle 1 LẦN ở đây (không phải mỗi dòng bên trong `.every`) — cùng lý do đã hoisted
+    // `tenHangFilter`'s needle ra ngoài `.filter()` phía trên.
+    const textEntries = Object.entries(detailTextFilters)
+      .filter(([, v]) => v.trim())
+      .map(([key, v]) => [key, v.trim().toLowerCase()] as const);
+    const rangeEntries = Object.entries(detailRangeFilters).filter(([, v]) => v.from || v.to);
+    return detailRows.filter((r) => {
+      if (!matchesDetailHeaderFilters(r, direction, appliedFilters, columnFilters)) return false;
+      const rec = r as unknown as Record<string, unknown>;
+      const textOk = textEntries.every(([key, needle]) => {
+        const val = fieldOf(rec, key);
+        if (val == null) return false;
+        // "Tính chất" gõ khớp NHÃN hiển thị (vd "khuyến mại"), không phải mã thô "1".."4".
+        const hay = key === "tinhChat" ? tinhChatLabel(String(val)) : String(val);
+        return hay.toLowerCase().includes(needle);
+      });
+      if (!textOk) return false;
+      return rangeEntries.every(([key, range]) =>
+        inNumRange(Number(fieldOf(rec, key)), range.from, range.to),
+      );
+    });
+  }, [detailRows, detailTextFilters, detailRangeFilters, direction, appliedFilters, columnFilters]);
+  const sortedDetailRows = useMemo(
+    () => applySort(filteredDetailRows, detailSort),
+    [filteredDetailRows, detailSort],
+  );
   // Cộng trên TOÀN BỘ `rows` nên phải nhớ kết quả: component render lại theo mỗi tick chọn dòng, mỗi
   // lần lật trang và mỗi nhịp poll của lượt "Cập nhật"/"Tải chi tiết", chứ không chỉ khi rows đổi.
   const tong = useMemo(() => tongCotSo(columns, rows), [columns, rows]);
@@ -222,14 +531,119 @@ function InvoiceTablePanel({ direction, active }: InvoiceTablePanelProps) {
 
   const dbLoading = savedQuery.isFetching;
   const searched = savedQuery.isFetched;
+  // 1 timer/field (KHÔNG dùng chung 1 ref cho cả panel) — nếu chỉ 1 ref, gõ field A rồi đổi sang gõ
+  // field B trong lúc A còn đang chờ debounce sẽ HỦY LUÔN commit của A (giá trị A vẫn hiện trên ô
+  // nhưng không bao giờ vào `appliedFilters`), mà không có cảnh báo gì cho người dùng.
+  const panelLiveTimersRef = useRef<Partial<Record<keyof InvoiceFilterValues, ReturnType<typeof setTimeout>>>>(
+    {},
+  );
+
+  /** Không truyền `key` = hủy TOÀN BỘ field đang chờ debounce (dùng khi thay cả bộ lọc cùng lúc). */
+  const cancelPanelLiveApply = (key?: keyof InvoiceFilterValues) => {
+    const timers = panelLiveTimersRef.current;
+    if (key) {
+      const t = timers[key];
+      if (!t) return;
+      clearTimeout(t);
+      delete timers[key];
+      return;
+    }
+    (Object.values(timers) as Array<ReturnType<typeof setTimeout>>).forEach((t) => clearTimeout(t));
+    panelLiveTimersRef.current = {};
+  };
+
+  /** Lọc/khoảng đổi -> về trang 1 + bỏ hóa đơn đang chọn (id cũ có thể không còn trong danh sách
+   * mới, hoặc vừa bị lọc khỏi danh sách) — dùng chung cho mọi nơi đổi bộ lọc bên dưới. */
+  const resetPageAndSelection = () => {
+    setPage(0);
+    setSelectedId(null);
+  };
 
   /** Áp bộ lọc mới -> dừng vòng poll cũ (nếu có) rồi đổi query key để useQuery đọc lại DB. */
   const applyFilters = (filters: InvoiceFilterValues) => {
+    cancelPanelLiveApply();
     runIdRef.current += 1; // dừng poll cũ để không nhầm tiến độ của khoảng đã đổi
-    setPage(0);
-    setSelectedId(null); // khoảng/bộ lọc đổi -> bỏ chọn (id cũ có thể không còn trong danh sách)
+    resetPageAndSelection();
+    setFilterDraft(filters);
     setAppliedFilters(filters);
   };
+
+  /**
+   * Áp 1 lọc theo cột (icon ở header) — lọc PHÍA CLIENT (xem `matchesOverviewFilters`), không đụng
+   * server nên KHÔNG cần bump `runIdRef` như `applyFilters` (không có poll/query nào bị lệch vì nó).
+   */
+  const applyColumnFilter = (patch: Partial<InvoiceColumnFilterValues>) => {
+    resetPageAndSelection();
+    setColumnFilters((prev) => ({ ...prev, ...patch }));
+  };
+
+  /**
+   * Gõ tự do ở ô "Trạng thái hóa đơn"/"Kết quả kiểm tra" (dòng input cố định) — HAI việc: (1) ghi
+   * text vào `columnFilters` để lọc HIỂN THỊ rộng theo nhãn (`matchesCommonFilters`); (2) nếu text
+   * khớp DUY NHẤT 1 mã (`resolveUniqueOptionCode`), thu hẹp THÊM `appliedFilters` (mã chính xác) để
+   * lượt "Tải chi tiết"/"Cập nhật từ Thuế điện tử" cũng lọc đúng (xem `buildGdtRunQuery`) — gõ chưa
+   * đủ rõ thì lượt nền tạm bỏ qua tiêu chí này (không lọc sai). CỐ Ý không ghi `filterDraft` như
+   * `patchAppliedFilters`: dropdown panel "Bộ lọc" không nên nhảy theo mỗi ký tự gõ ở đây.
+   */
+  const applyStatusLabelFilter = (
+    key: "trangThaiHd" | "ketQuaHd",
+    textKey: "trangThaiHdText" | "ketQuaHdText",
+    options: readonly { value: string; label: string }[],
+    text: string,
+  ) => {
+    resetPageAndSelection();
+    setColumnFilters((prev) => ({ ...prev, [textKey]: text || undefined }));
+    setAppliedFilters((prev) => ({ ...prev, [key]: resolveUniqueOptionCode(text, options) }));
+  };
+
+  /**
+   * Sửa 1 field của `appliedFilters` từ icon header (vd cột "Số hóa đơn") — ghi vào ĐÚNG state mà
+   * panel "Bộ lọc" đang dùng, để 2 UI luôn khớp nhau thay vì có 2 nơi giữ 2 bản sao của cùng 1 giá
+   * trị lọc (panel mở lên vẫn thấy đúng giá trị vừa đặt qua icon, và ngược lại). Cũng lọc phía
+   * client (chỉ tuNgay/denNgay còn đi tới server, xem `buildQuery`) nên không bump `runIdRef`. Chỉ
+   * hủy timer debounce của ĐÚNG (các) field trong `patch` — field khác đang gõ dở trên panel (vd
+   * "Số hóa đơn") không liên quan tới icon cột vừa bấm (vd "Mẫu hóa đơn") thì không được đụng tới.
+   */
+  const patchAppliedFilters = (patch: Partial<InvoiceFilterValues>) => {
+    (Object.keys(patch) as Array<keyof InvoiceFilterValues>).forEach((k) => cancelPanelLiveApply(k));
+    resetPageAndSelection();
+    setAppliedFilters((prev) => ({ ...prev, ...patch }));
+    setFilterDraft((prev) => ({ ...prev, ...patch })); // panel hiện đúng giá trị vừa đặt qua icon
+  };
+
+  /**
+   * 1 field trên panel "Bộ lọc" vừa đổi. `tuNgay`/`denNgay` CHỈ cập nhật form — đổi khoảng ngày kéo
+   * theo gọi server nên phải chờ bấm "Tìm kiếm"/"Cập nhật từ Thuế điện tử" (`applyFilters`), không
+   * áp sống được. Các field còn lại lọc phía client (xem `matchesOverviewFilters`) nên áp sống luôn,
+   * giống icon ở header: select là lựa chọn RỜI RẠC -> áp ngay; text đang gõ liên tục -> debounce.
+   */
+  const handlePanelFieldChange = (key: keyof InvoiceFilterValues, value: string) => {
+    setFilterDraft((prev) => ({ ...prev, [key]: value }));
+    if (key === "tuNgay" || key === "denNgay") return;
+
+    // Chỉ hủy timer của ĐÚNG field này (không đụng field khác đang chờ debounce riêng của nó).
+    cancelPanelLiveApply(key);
+    const commit = () => {
+      delete panelLiveTimersRef.current[key];
+      resetPageAndSelection();
+      setAppliedFilters((prev) => ({ ...prev, [key]: value }));
+      // Panel chọn ĐÚNG 1 trạng thái/kết quả (mã chính xác) -> bỏ luôn text đang gõ dở ở ô lọc dòng
+      // cố định của CHÍNH field đó (nếu có): 2 tiêu chí khác nhau AND với nhau (xem
+      // `matchesCommonFilters`) nên còn sót lại 1 text KHÔNG khớp nhãn của mã vừa chọn sẽ làm bảng ra
+      // 0 kết quả mà không rõ lý do. Panel là lựa chọn CHỦ ĐỘNG/rõ ràng hơn -> panel thắng.
+      if (key === "trangThaiHd") setColumnFilters((prev) => ({ ...prev, trangThaiHdText: undefined }));
+      if (key === "ketQuaHd") setColumnFilters((prev) => ({ ...prev, ketQuaHdText: undefined }));
+    };
+    if (key === "trangThaiHd" || key === "ketQuaHd") {
+      commit();
+    } else {
+      panelLiveTimersRef.current[key] = setTimeout(commit, PANEL_LIVE_APPLY_MS);
+    }
+  };
+  useEffect(() => {
+    // Dọn mọi hẹn giờ khi đổi tab/công ty giữa lúc đang gõ — tránh setState mồ côi sau khi unmount.
+    return () => cancelPanelLiveApply();
+  }, [currentCompanyId]);
 
   // Đổi công ty -> bỏ hóa đơn đang chọn (id thuộc tenant cũ) và đóng dialog. Điều chỉnh state NGAY
   // trong render theo mẫu "lưu giá trị trước" của React (tránh setState trong effect gây render dây
@@ -411,7 +825,7 @@ function InvoiceTablePanel({ direction, active }: InvoiceTablePanelProps) {
     void (async () => {
       let started: UpdateRunStatus;
       try {
-        started = await startUpdateRun(direction, gdtToken, buildQuery(filters));
+        started = await startUpdateRun(direction, gdtToken, buildGdtRunQuery(filters));
       } catch (e) {
         console.error("[DEBUG-CAPNHAT][FE] LỖI khởi động lượt cập nhật:", e);
         toast.error(getErrorMessage(e, "Không bắt đầu được lượt cập nhật."));
@@ -449,10 +863,10 @@ function InvoiceTablePanel({ direction, active }: InvoiceTablePanelProps) {
   /** Nút "Tải chi tiết" — chạy tải chi tiết ngầm ở BE cho khoảng đang lọc (không lấy list mới). */
   const handleDownloadDetails = () => {
     const gdtToken = requireGdtToken((token) =>
-      void pollDetailRun(token, buildQuery(appliedFilters), runIdRef.current),
+      void pollDetailRun(token, buildGdtRunQuery(appliedFilters), runIdRef.current),
     );
     if (!gdtToken) return;
-    void pollDetailRun(gdtToken, buildQuery(appliedFilters), runIdRef.current);
+    void pollDetailRun(gdtToken, buildGdtRunQuery(appliedFilters), runIdRef.current);
   };
 
   /**
@@ -489,6 +903,182 @@ function InvoiceTablePanel({ direction, active }: InvoiceTablePanelProps) {
       setDangTai(null);
     }
   };
+
+  /**
+   * ~10 cột LỌC/SẮP-XẾP giống hệt nhau giữa 2 bảng (mauHd, số HD, MST/tên/địa chỉ đối tác, tổng
+   * thanh toán, tỷ giá, ghi chú/ngày liên quan, trạng thái, kết quả kiểm tra) — gom 1 chỗ để
+   * `overviewColumnFilterSpec`/`detailColumnFilterSpec` khỏi tự tay đồng bộ khi 1 trong các field
+   * này đổi cách lọc/sort. Trả `undefined` nếu `colKey` không thuộc nhóm này -> nơi gọi tự xử lý
+   * tiếp cột riêng của bảng đó (vd `soSeri`/`kyHieu` tên field khác nhau, `ngayLap`/`ngayHd`/
+   * `ngayKy`, `maNt` khác nhau ở gợi ý "VND", các cột chỉ có ở bảng Chi tiết...).
+   */
+  const renderSharedColumnFilterSpec = (colKey: string): ColumnFilterSpec | undefined => {
+    switch (colKey) {
+      case "mauHd":
+        return textFilterSpec(appliedFilters.mauHd, (v) => patchAppliedFilters({ mauHd: v }));
+      case "soHd":
+        return textFilterSpec(appliedFilters.soHd, (v) => patchAppliedFilters({ soHd: v }), { sortKind: "number" });
+      case "sellerMst":
+      case "buyerMst":
+        return textFilterSpec(appliedFilters.mstDoiTac, (v) => patchAppliedFilters({ mstDoiTac: v }));
+      case "sellerTen":
+      case "buyerTen":
+        return textFilterSpec(columnFilters.tenDoiTac ?? "", (v) => applyColumnFilter({ tenDoiTac: v || undefined }));
+      case "tongTt":
+        return rangeFilterSpec(columnFilters.tuTongTt, columnFilters.denTongTt, (tu, den) =>
+          applyColumnFilter({ tuTongTt: tu, denTongTt: den }),
+        );
+      case "tyGia":
+        return rangeFilterSpec(columnFilters.tuTyGia, columnFilters.denTyGia, (tu, den) =>
+          applyColumnFilter({ tuTyGia: tu, denTyGia: den }),
+        );
+      case "ghiChuLienQuan":
+      case "ghiChuDacBiet":
+        return { sortKind: "text" };
+      case "ngayLienQuan":
+        return { sortKind: "date" };
+      case "trangThaiHd":
+        return textFilterSpec(
+          columnFilters.trangThaiHdText ?? "",
+          (v) => applyStatusLabelFilter("trangThaiHd", "trangThaiHdText", TRANG_THAI_HD_OPTIONS, v),
+          { hint: STATUS_LABEL_HINT },
+        );
+      case "ketQuaKt":
+        return textFilterSpec(
+          columnFilters.ketQuaHdText ?? "",
+          (v) => applyStatusLabelFilter("ketQuaHd", "ketQuaHdText", KET_QUA_KIEM_TRA_OPTIONS, v),
+          { hint: STATUS_LABEL_HINT },
+        );
+      case "sellerDiaChi":
+      case "buyerDiaChi":
+        return textFilterSpec(columnFilters.diaChiDoiTac ?? "", (v) => applyColumnFilter({ diaChiDoiTac: v || undefined }));
+      case "maNt":
+        return textFilterSpec(columnFilters.maNt ?? "", (v) => applyColumnFilter({ maNt: v || undefined }), {
+          placeholder: "VND",
+        });
+      default:
+        return undefined;
+    }
+  };
+
+  /**
+   * Đặc tả sort + ô lọc của bảng TỔNG QUÁT theo `colKey` — dùng chung cho CẢ icon header (chỉ đọc
+   * `sortKind`) LẪN dòng input cố định dưới header (chỉ đọc `input`), xem `renderHeaderFilter`/
+   * `renderFilterInput`. `key` đổi tên theo chiều (sellerTen/buyerTen, sellerDiaChi/buyerDiaChi —
+   * xem `dauVao.ts`/`dauRa.ts`) nên khai cả 2 biến thể cùng trỏ về 1 field lọc chung. Các field đã
+   * có ở panel "Bộ lọc" (MST, ký hiệu, số HD, trạng thái, kết quả kiểm tra) ghi qua
+   * `patchAppliedFilters` — CÙNG state với panel, không phải bản sao riêng — nên panel và ô lọc dòng
+   * cố định luôn khớp nhau.
+   */
+  const overviewColumnFilterSpec = (colKey: string): ColumnFilterSpec => {
+    const shared = renderSharedColumnFilterSpec(colKey);
+    if (shared) return shared;
+    switch (colKey) {
+      case "ttTai":
+        return textFilterSpec(columnFilters.ttTai ?? "", (v) => applyColumnFilter({ ttTai: v || undefined }), {
+          placeholder: "OK / Lỗi / Chưa tải",
+        });
+      case "soSeri":
+        return textFilterSpec(appliedFilters.soSeri, (v) => patchAppliedFilters({ soSeri: v }));
+      case "ngayLap":
+        return { sortKind: "date" };
+      case "tenHang":
+        return textFilterSpec(tenHangFilter, setTenHangFilter, {
+          hint: "Chỉ tìm trong hóa đơn đã Tải chi tiết (dữ liệu đang hiện trên bảng).",
+        });
+      case "tienChuaThue":
+        return rangeFilterSpec(columnFilters.tuTienChuaThue, columnFilters.denTienChuaThue, (tu, den) =>
+          applyColumnFilter({ tuTienChuaThue: tu, denTienChuaThue: den }),
+        );
+      case "tienThue":
+        return rangeFilterSpec(columnFilters.tuTienThue, columnFilters.denTienThue, (tu, den) =>
+          applyColumnFilter({ tuTienThue: tu, denTienThue: den }),
+        );
+      case "cktm":
+        return rangeFilterSpec(columnFilters.tuCktm, columnFilters.denCktm, (tu, den) =>
+          applyColumnFilter({ tuCktm: tu, denCktm: den }),
+        );
+      case "phi":
+        return rangeFilterSpec(columnFilters.tuPhi, columnFilters.denPhi, (tu, den) =>
+          applyColumnFilter({ tuPhi: tu, denPhi: den }),
+        );
+      default:
+        return NOT_FILTERABLE; // stt/chon/lienQuan/xemHoaDon/taiFile/taiGoc/tenFile — nút thao tác
+    }
+  };
+
+  /** Icon SẮP XẾP cạnh tên cột (mọi cột dữ liệu, trừ cột thao tác/số thứ tự) — lọc đã chuyển hết
+   * xuống dòng input cố định (`renderFilterInput`), icon giờ chỉ còn tăng/giảm. */
+  const renderHeaderFilter = (colKey: string, header: string): ReactNode => {
+    const { sortKind } = overviewColumnFilterSpec(colKey);
+    if (!sortKind) return null;
+    return (
+      <ColumnFilterButton
+        label={header}
+        sortKind={sortKind}
+        sortDir={overviewSort?.key === colKey ? overviewSort.dir : null}
+        onSort={(dir) => setOverviewSort(dir ? { key: colKey, dir } : null)}
+      />
+    );
+  };
+
+  /** Ô lọc dòng cố định dưới header của bảng TỔNG QUÁT — `null` nếu cột không lọc được. */
+  const renderFilterInput = (colKey: string): ReactNode => overviewColumnFilterSpec(colKey).input ?? null;
+
+  const setDetailText = (key: string, v: string) => setDetailTextFilters((prev) => ({ ...prev, [key]: v }));
+  const setDetailRange = (key: string, v: ColumnRangeValue) => setDetailRangeFilters((prev) => ({ ...prev, [key]: v }));
+
+  /**
+   * Đặc tả sort + ô lọc của bảng CHI TIẾT theo `colKey` (cùng vai trò `overviewColumnFilterSpec`).
+   * Cột trùng ý nghĩa với bảng Tổng quát (MST, ký hiệu, số HD, trạng thái, kết quả kiểm tra, tên/địa
+   * chỉ đối tác, tiền tệ, tổng tiền thanh toán, tỷ giá) lọc qua CÙNG state client (`appliedFilters`/
+   * `columnFilters`, xem `matchesDetailHeaderFilters`) nên khớp tự nhiên với bảng Tổng quát. Cột CHỈ
+   * có ở bảng này (mã VT, số lượng, đơn giá, tiền dòng hàng, ghi chú...) không có cột DB tương ứng
+   * -> lọc riêng qua `detailTextFilters`/`detailRangeFilters`.
+   */
+  const detailColumnFilterSpec = (colKey: string): ColumnFilterSpec => {
+    const shared = renderSharedColumnFilterSpec(colKey);
+    if (shared) return shared;
+    switch (colKey) {
+      case "kyHieu":
+        return textFilterSpec(appliedFilters.soSeri, (v) => patchAppliedFilters({ soSeri: v }));
+      case "ngayHd":
+      case "ngayKy":
+      case "ngayCqtKy":
+        return { sortKind: "date" };
+      case "tinhChat":
+        return textFilterSpec(detailTextFilters.tinhChat ?? "", (v) => setDetailText("tinhChat", v), {
+          hint: 'Gõ khớp TÊN hiển thị (vd "khuyến mại"), không phải mã thô.',
+        });
+    }
+    if (DETAIL_ONLY_RANGE_KEYS.has(colKey)) {
+      const v = detailRangeFilters[colKey];
+      return rangeFilterSpec(v?.from, v?.to, (tu, den) =>
+        setDetailRange(colKey, { from: tu ?? "", to: den ?? "" }),
+      );
+    }
+    if (DETAIL_ONLY_TEXT_KEYS.has(colKey)) {
+      return textFilterSpec(detailTextFilters[colKey] ?? "", (v) => setDetailText(colKey, v));
+    }
+    return NOT_FILTERABLE; // tenFile — computed, không sort/lọc
+  };
+
+  /** Icon SẮP XẾP cạnh tên cột của bảng CHI TIẾT — cùng vai trò `renderHeaderFilter`. */
+  const renderDetailHeaderFilter = (colKey: string, header: string): ReactNode => {
+    const { sortKind } = detailColumnFilterSpec(colKey);
+    if (!sortKind) return null;
+    return (
+      <ColumnFilterButton
+        label={header}
+        sortKind={sortKind}
+        sortDir={detailSort?.key === colKey ? detailSort.dir : null}
+        onSort={(dir) => setDetailSort(dir ? { key: colKey, dir } : null)}
+      />
+    );
+  };
+
+  /** Ô lọc dòng cố định dưới header của bảng CHI TIẾT — `null` nếu cột không lọc được. */
+  const renderDetailFilterInput = (colKey: string): ReactNode => detailColumnFilterSpec(colKey).input ?? null;
 
   /**
    * Nội dung ô của CỤM CỘT THAO TÁC — những cột `webOnly` mà template chỉ khai chỗ đứng, còn nút bấm
@@ -607,10 +1197,21 @@ function InvoiceTablePanel({ direction, active }: InvoiceTablePanelProps) {
         direction={direction}
         dbLoading={dbLoading}
         gdtLoading={updateRunning || detailRunning}
-        initialValues={defaultFilters}
+        values={filterDraft}
+        onFieldChange={handlePanelFieldChange}
         onSearch={applyFilters}
         onFetchGdt={handleFetchGdt}
-        onReset={() => applyFilters(defaultFilters)}
+        onReset={() => {
+          setFilterDraft(defaultFilters);
+          applyFilters(defaultFilters);
+          // "Bỏ tìm kiếm" đưa bảng về đúng trạng thái mặc định -> dọn luôn lọc/sắp xếp theo cột.
+          setColumnFilters({});
+          setTenHangFilter("");
+          setOverviewSort(null);
+          setDetailSort(null);
+          setDetailTextFilters({});
+          setDetailRangeFilters({});
+        }}
       />
 
       {/* Lỗi đọc DB là trạng thái kéo dài -> để inline; các thông báo sự kiện (lưu/tải/lỗi thao
@@ -676,7 +1277,7 @@ function InvoiceTablePanel({ direction, active }: InvoiceTablePanelProps) {
 
       {resultTab === "chi-tiet" ? (
         <InvoiceDetailPanel
-          rows={detailRows}
+          rows={sortedDetailRows}
           direction={direction}
           loading={savedDetailsQuery.isLoading}
           error={
@@ -684,16 +1285,31 @@ function InvoiceTablePanel({ direction, active }: InvoiceTablePanelProps) {
               ? getErrorMessage(savedDetailsQuery.error, "Không đọc được chi tiết đã lưu.")
               : ""
           }
+          renderHeaderExtra={renderDetailHeaderFilter}
+          renderHeaderInputExtra={renderDetailFilterInput}
         />
       ) : (
       <>
       <TableContainer component={Paper} variant="outlined" sx={{ overflowX: "auto" }}>
-        <Table size="small" sx={{ "& td, & th": { whiteSpace: "nowrap" } }}>
+        <Table
+          size="small"
+          sx={(theme) => columnDividerSx(theme, { whiteSpace: "nowrap" })}
+        >
           <TableHead>
             <TableRow sx={{ "& th": { fontWeight: 700, bgcolor: "action.hover" } }}>
               {columns.map((col) => (
                 <TableCell key={col.key} align={col.align}>
                   {col.header}
+                  {renderHeaderFilter(col.key, col.header)}
+                </TableCell>
+              ))}
+            </TableRow>
+            {/* Dòng lọc CỐ ĐỊNH dưới header — thay popover cũ, luôn hiện sẵn 1 ô/cột (rỗng nếu cột
+                không lọc được, xem `overviewColumnFilterSpec`). */}
+            <TableRow sx={{ "& th": { bgcolor: "action.hover", py: 0.25 } }}>
+              {columns.map((col) => (
+                <TableCell key={col.key} align={col.align}>
+                  {renderFilterInput(col.key)}
                 </TableCell>
               ))}
             </TableRow>
