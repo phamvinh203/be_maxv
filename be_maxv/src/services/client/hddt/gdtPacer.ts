@@ -27,7 +27,7 @@
  * `list` và `detail` vẫn dùng CHUNG một hàng đợi tuần tự — không tăng tải lên GDT so với bản đầu.
  * Riêng `xml` có hàng đợi riêng: xem `LANE_QUEUE` / `QUEUE_CONCURRENCY`.
  */
-export type Lane = "list" | "detail" | "xml" | "dvc";
+export type Lane = "list" | "detail" | "xml" | "dvc" | "etax-gnt";
 
 /**
  * Làn `xml` (tải hóa đơn XML gốc, `export-xml`) có HÀNG ĐỢI RIÊNG, tách khỏi hàng đợi chung của
@@ -38,7 +38,7 @@ export type Lane = "list" | "detail" | "xml" | "dvc";
  * tốn ~3 giây và cần một call cho MỖI hóa đơn — 500 hóa đơn tuần tự là 25 phút. Cho làn này hàng
  * đợi riêng vừa để chạy song song được, vừa để lượt xuất không phải xếp sau cả trăm call đồng bộ.
  */
-type QueueName = "main" | "xml" | "dvc";
+type QueueName = "main" | "xml" | "dvc" | "etax-gnt";
 
 /**
  * Hàng đợi của từng làn. `list`/`detail` dùng chung — ràng buộc "đừng dội GDT" của chúng là một.
@@ -46,12 +46,18 @@ type QueueName = "main" | "xml" | "dvc";
  * `dvc` có hàng đợi RIÊNG vì đó là host khác (dichvucong.gdt.gov.vn, không phải hoadondientu):
  * xếp chung thì một lượt đồng bộ HĐĐT hàng trăm call sẽ chặn đứng thao tác Dịch vụ công, mà hai
  * cổng chẳng liên quan gì tới rate-limit của nhau.
+ *
+ * `etax-gnt` cũng có hàng đợi RIÊNG cùng lý do `dvc`, cộng thêm: đây là MỘT host thứ BA
+ * (thuedientu.gdt.gov.vn, khác cả `dichvucong.gdt.gov.vn` lẫn hoadondientu) — xếp chung với `dvc`
+ * thì một lượt đồng bộ Giấy nộp tiền dài sẽ chặn đứng thao tác Tờ khai của cùng công ty dù hai
+ * host không liên quan gì tới rate-limit của nhau, xem `gdt-etax-gnt.service.ts`.
  */
 const LANE_QUEUE: Record<Lane, QueueName> = {
   list: "main",
   detail: "main",
   xml: "xml",
   dvc: "dvc",
+  "etax-gnt": "etax-gnt",
 };
 
 /**
@@ -64,11 +70,14 @@ const LANE_QUEUE: Record<Lane, QueueName> = {
  * `dvc`  = 1 và KHÔNG được nâng: mọi call Dịch vụ công của một công ty dùng CHUNG một phiên, và
  *   `dvcSend` ghi lại cookie cổng xoay vòng vào chính phiên đó sau mỗi lượt. Hai call song song là
  *   hai lượt cùng đọc-ghi một bộ cookie — tuần tự ở đây là ràng buộc ĐÚNG SAI, không phải lịch sự.
+ * `etax-gnt` = 1, cùng lý do `dvc`: `EtaxGntSession` cũng giữ một bộ cookie + trạng thái
+ *   `dse_processorId` xoay vòng theo TỪNG bước pipeline (xem `gdt-etax-gnt.service.ts`) — hai call
+ *   song song sẽ giẫm lên nhau, gọi sai thứ tự trong phiên.
  *
  * Khóa là union `QueueName` chứ không phải `string`: thêm hàng đợi mới mà quên khai số này thì LỖI
  * BIÊN DỊCH, thay vì âm thầm chạy với 1 và biểu hiện thành "sao lượt này chậm thế".
  */
-const QUEUE_CONCURRENCY: Record<QueueName, number> = { main: 1, xml: 2, dvc: 1 };
+const QUEUE_CONCURRENCY: Record<QueueName, number> = { main: 1, xml: 2, dvc: 1, "etax-gnt": 1 };
 
 interface QueueItem {
   /** Làn của task — quyết định phải giãn bao lâu trước khi chạy. */
@@ -118,8 +127,14 @@ function getPacer(key: string): Pacer {
   let p = pacers.get(key);
   if (!p) {
     p = {
-      queues: { main: newQueue(), xml: newQueue(), dvc: newQueue() },
-      intervalMs: { list: START_MS, detail: START_MS, xml: START_MS, dvc: START_MS },
+      queues: { main: newQueue(), xml: newQueue(), dvc: newQueue(), "etax-gnt": newQueue() },
+      intervalMs: {
+        list: START_MS,
+        detail: START_MS,
+        xml: START_MS,
+        dvc: START_MS,
+        "etax-gnt": START_MS,
+      },
     };
     pacers.set(key, p);
   }
