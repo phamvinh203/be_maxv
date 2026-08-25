@@ -42,9 +42,9 @@ import {
 } from "../api/dvc";
 import { getErrorMessage } from "../../../lib/errors";
 
-/** Loại giấy tờ DUY NHẤT đã có backend đồng bộ thật — "Giấy nộp tiền" chưa có tích hợp cổng nào
- * phía sau, giữ trong danh sách nhưng khóa lại. */
-const LOAI_DA_HO_TRO = "to-khai-dvc";
+/** Hai loại giấy tờ đã có backend đồng bộ thật — xem `dvc-dong-bo.service.ts` (tờ khai) và
+ * `giay_nop_tien/dvc-gnt-dong-bo.service.ts` (giấy nộp tiền). */
+const LOAI_DA_HO_TRO = new Set(["to-khai-dvc", "giay-nop-tien"]);
 
 /**
  * Tiêu đề bảng lịch sử kèm cách căn — gắn `align` NGAY TẠI cột thay vì suy từ so khớp chuỗi
@@ -128,7 +128,7 @@ export default function DialogDongBo({
   // Kết quả cuối đến qua toast tiến độ do `DvcPage` theo dõi — nên ở đây không có toast "xong" nữa.
   const dongBoMutation = useMutation({
     mutationFn: (vars: { tuNgay: string; denNgay: string }) =>
-      dongBoDvc({ key: dvcKey!, tuNgay: vars.tuNgay, denNgay: vars.denNgay }),
+      dongBoDvc({ key: dvcKey!, tuNgay: vars.tuNgay, denNgay: vars.denNgay, loai }),
     onSuccess: (tienDo) => {
       onDaBatDauDongBo(tienDo);
     },
@@ -171,7 +171,7 @@ export default function DialogDongBo({
       setLoiForm("Từ ngày phải trước hoặc bằng Đến ngày.");
       return;
     }
-    if (loai !== LOAI_DA_HO_TRO) {
+    if (!LOAI_DA_HO_TRO.has(loai)) {
       setLoiForm("Loại giấy tờ này chưa hỗ trợ đồng bộ.");
       return;
     }
@@ -240,9 +240,9 @@ export default function DialogDongBo({
             onChange={(e) => setLoai(e.target.value)}
           >
             {TAB_DVC.map((muc) => (
-              <MenuItem key={muc.value} value={muc.value} disabled={muc.value !== LOAI_DA_HO_TRO}>
+              <MenuItem key={muc.value} value={muc.value} disabled={!LOAI_DA_HO_TRO.has(muc.value)}>
                 {muc.label}
-                {muc.value !== LOAI_DA_HO_TRO ? " (chưa hỗ trợ)" : ""}
+                {!LOAI_DA_HO_TRO.has(muc.value) ? " (chưa hỗ trợ)" : ""}
               </MenuItem>
             ))}
           </TextField>
