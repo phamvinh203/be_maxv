@@ -56,6 +56,8 @@ interface Props {
    * dialog "Xem tờ khai". Bỏ trống, dòng không có `maHoSo`, hoặc ô rỗng thì hiện như text thường.
    */
   onXemToKhai?: (maHoSo: string) => void;
+  /** Cột đóng vai trò định danh dòng — mặc định `"maGiaoDich"`, xem `TabDvc.khoaMaGiaoDich`. */
+  khoaMaGiaoDich?: string;
 }
 
 /** Icon cho từng cột hành động, theo `key` khai trong `config.ts`. Chưa có ở đây = icon ẩn. */
@@ -128,6 +130,7 @@ export default function BangHoSo({
   onAction,
   dangChayAction,
   onXemToKhai,
+  khoaMaGiaoDich = "maGiaoDich",
 }: Props) {
   const [sort, setSort] = useState<SortState>(null);
   /** Text đang gõ ở dòng lọc cố định, theo `col.key`. Cột tiền (`format: "money"`) diễn giải qua
@@ -163,11 +166,11 @@ export default function BangHoSo({
       ),
     [cot, headers],
   );
-  const idxMaGiaoDich = cot.findIndex((c) => c.key === "maGiaoDich");
+  const idxMaGiaoDich = cot.findIndex((c) => c.key === khoaMaGiaoDich);
   if (idxMaGiaoDich === -1 && cot.some((c) => c.action)) {
-    // Có cột hành động nhưng không tìm thấy cột "maGiaoDich" để lấy mã hồ sơ — mọi icon sẽ bị
-    // khóa (không rõ dòng nào). Cảnh báo ngay thay vì để lỗi im lặng nếu key "maGiaoDich" đổi.
-    console.warn('BangHoSo: có cột action nhưng thiếu cột key "maGiaoDich" để lấy mã hồ sơ.');
+    // Có cột hành động nhưng không tìm thấy cột định danh dòng để lấy mã hồ sơ — mọi icon sẽ bị
+    // khóa (không rõ dòng nào). Cảnh báo ngay thay vì để lỗi im lặng nếu key đổi/khai sai.
+    console.warn(`BangHoSo: có cột action nhưng thiếu cột key "${khoaMaGiaoDich}" để lấy mã hồ sơ.`);
   }
 
   /** Giá trị THÔ (chưa format) của 1 ô — dùng để LỌC/SẮP XẾP, khác `layO` bên dưới (dùng để HIỂN

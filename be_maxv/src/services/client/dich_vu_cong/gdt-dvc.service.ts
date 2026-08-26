@@ -1296,6 +1296,28 @@ async function layTaiLieuDinhKemThuc(session: DvcSession, maHoSo: string): Promi
 }
 
 /**
+ * Xin VÉ SSO để nhảy sang một dịch vụ khác của cổng thuế (vd `thuedientu.gdt.gov.vn/etaxnnt`) —
+ * dùng phiên DVC ĐÃ ĐĂNG NHẬP, KHÔNG cần tài khoản/captcha riêng. Xem spec mục 2.1
+ * (docs/superpowers/specs/2026-08-25-dvc-giay-nop-tien-etax-design.md): trang `dich-vu-khac` của
+ * cổng gọi đúng endpoint này (`connectSSO`) trước khi nhúng iframe sang dịch vụ đích.
+ *
+ * Trả THÔ body response — hình dạng (JSON hay text) chưa xác nhận lúc viết hàm này, nên việc bóc
+ * URL vé nằm ở `giay_nop_tien/etaxGntHtml.ts` (module lá, test được không cần cổng thật) thay vì
+ * ở đây. Đặt tên chung "dịch vụ khác" chứ không riêng GNT: endpoint này của cổng dùng chung cho MỌI
+ * mục ở trang `dich-vu-khac`, không riêng gì GNT — module khác dùng lại được hàm này thẳng.
+ *
+ * `module`: mã dịch vụ đích trên cổng (vd `"330410"` = Tra cứu GNT doanh nghiệp).
+ */
+export async function xinVeSsoDichVuKhac(phien: DvcPhien, module: string): Promise<string> {
+  const session = requireSession(phien);
+  const res = await dvcSend(`/sso/redirect-to-service?module=${encodeURIComponent(module)}`, session, {
+    method: "POST",
+    headers: { [session.csrfHeader]: session.csrfToken },
+  });
+  return res.text();
+}
+
+/**
  * Tải file của một thông báo (`POST /tthc/tchs/downloadthongbao`) — cột "Thông báo", tham số
  * `idTbao` lấy từ dòng đang bấm trong danh sách thông báo (xem `layChiTietHoSoHtml`).
  *

@@ -28,6 +28,8 @@ import {
   QUERY_KEY_LICH_SU_DVC,
   type DvcDongBoTienDo,
 } from "../../features/dich_vu_cong/api/dvc";
+import { traCuuGiayNopTienDvc } from "../../features/dich_vu_cong/giay_nop_tien/api";
+import { taiFileGiayNopTien } from "../../features/dich_vu_cong/giay_nop_tien/taiFileGiayNopTien";
 import { theoDoiDongBoDvc, dangBamLuot } from "../../features/dich_vu_cong/theoDoiDongBoDvc";
 import {
   MA_LOI_DVC_PHIEN_CHET,
@@ -109,13 +111,20 @@ export default function DvcPage() {
 
   const traCuuMutation = useMutation({
     // `mst` không gửi lên API — chỉ đi kèm để `onSuccess` biết kết quả này của công ty nào.
-    mutationFn: (vars: { mst: string; values: BoLocHoSoValues }) =>
-      traCuuHoSoDvc({
-        tuNgay: vars.values.tuNgay,
-        denNgay: vars.values.denNgay,
-        maHoSo: vars.values.hoSo,
-        maToKhai: vars.values.loaiHoSo,
-      }),
+    mutationFn: (vars: { mst: string; loai: string; values: BoLocHoSoValues }) =>
+      vars.loai === "giay-nop-tien"
+        ? traCuuGiayNopTienDvc({
+            tuNgay: vars.values.tuNgay,
+            denNgay: vars.values.denNgay,
+            maGiaoDich: vars.values.hoSo,
+            soGnt: vars.values.loaiHoSo,
+          })
+        : traCuuHoSoDvc({
+            tuNgay: vars.values.tuNgay,
+            denNgay: vars.values.denNgay,
+            maHoSo: vars.values.hoSo,
+            maToKhai: vars.values.loaiHoSo,
+          }),
     onSuccess: (res, vars) => {
       setMstKetQua(vars.mst);
       if (res.rows.length === 0) {
@@ -145,7 +154,7 @@ export default function DvcPage() {
    */
   const handleSearch = (values: BoLocHoSoValues) => {
     if (!activeMst) return;
-    traCuuMutation.mutate({ mst: activeMst, values });
+    traCuuMutation.mutate({ mst: activeMst, loai: tab, values });
   };
 
   /** Lưu phiên vừa đăng nhập vào ĐÚNG MST đang chọn — xem chú thích ở `dvcKeyTheoMst`. */
@@ -254,9 +263,13 @@ export default function DvcPage() {
   // nhập cổng — thiếu key chỉ hỏng khi CẦN gọi cổng thật, lúc đó BE tự trả lỗi rõ ràng.
   const handleTaiFile = async (maHoSo: string) => {
     setDangChayAction({ key: "taiFile", maHoSo });
-    const toastId = toast.loading(`Đang tải file hồ sơ ${maHoSo}…`);
+    const toastId = toast.loading(`Đang tải file ${maHoSo}…`);
     try {
-      await taiFileHoSo(dvcKey, maHoSo);
+      if (tab === "giay-nop-tien") {
+        await taiFileGiayNopTien(dvcKey, maHoSo);
+      } else {
+        await taiFileHoSo(dvcKey, maHoSo);
+      }
       toast.update(toastId, {
         render: `Đã tải file hồ sơ ${maHoSo}.`,
         type: "success",
@@ -396,6 +409,7 @@ export default function DvcPage() {
           onAction={handleAction}
           dangChayAction={dangChayAction}
           onXemToKhai={setToKhaiMaHoSo}
+          khoaMaGiaoDich={dangMo.khoaMaGiaoDich}
         />
       </Box>
 

@@ -8,12 +8,13 @@ import { resolveTenantDb, resolveTenantDbName } from "../../../helpers/resolveTe
 // thuần trên chuỗi), nên tái dùng được cho cột `dvcPassword*` mà không cần chép lại.
 import { decryptGdtPassword, encryptGdtPassword } from "../../../services/client/hddt/gdtCredential";
 import { layChiTietToKhai } from "../../../services/client/dich_vu_cong/toKhaiXml";
+import * as DvcGnt from "../../../services/client/dich_vu_cong/giay_nop_tien/dvc-gnt-dong-bo.service";
 
 type KetQuaDocCache<T> = { ok: true; giaTri: T } | { ok: false; message: string };
 
 
 /** Thân phản hồi lỗi dùng chung cho các handler DVC — kèm `code` khi phiên hết đường cứu. */
-function thanLoi(err: unknown, macDinh: string): { message: string; code?: string } {
+export function thanLoi(err: unknown, macDinh: string): { message: string; code?: string } {
   const message = DvcService.toUserMessage(err, macDinh);
   return err instanceof DvcService.DvcAutoLoginFailedError
     ? { message, code: DvcService.MA_LOI_TU_DANG_NHAP_HONG }
@@ -56,7 +57,7 @@ async function docCacheHoacGoiCong<T>(opts: {
  * `key` — nếu suy thì `key` lại trở thành thứ tự cấp quyền, đúng cái `requireSession` sinh ra để
  * chặn (xem `DvcPhien` bên `gdt-dvc.service.ts`).
  */
-function phienDvc(request: FastifyRequest, key: string | undefined): DvcService.DvcPhien | null {
+export function phienDvc(request: FastifyRequest, key: string | undefined): DvcService.DvcPhien | null {
   const donViId = request.user?.donViId;
   return key && donViId ? { key, donViId } : null;
 }
@@ -202,12 +203,12 @@ async function taiKhoanDvcDaLuu(u: NguoiDungDvc): Promise<DvcService.DvcCredenti
  * mọi lượt, mà hầu hết trúng cache và không bao giờ cần tới tài khoản — giải mã sẵn mỗi lượt là
  * tốn công vô ích.
  */
-interface NguCanhPhucHoi {
+export interface NguCanhPhucHoi {
   layTaiKhoan: () => Promise<DvcService.DvcCredential | null>;
   log: FastifyRequest["log"];
 }
 
-function nguCanhTuRequest(request: FastifyRequest): NguCanhPhucHoi {
+export function nguCanhTuRequest(request: FastifyRequest): NguCanhPhucHoi {
   // Chụp BA CHUỖI ra ngay tại đây, không đóng gói `request` vào thunk: closure này bị lượt chạy nền
   // giữ suốt vài phút sau khi response đã đi, mà `request` kéo theo cả `raw`/headers/body.
   const u = nguoiDungCuaRequest(request);
@@ -229,7 +230,7 @@ function nguCanhTuRequest(request: FastifyRequest): NguCanhPhucHoi {
  * Chưa lưu tài khoản -> ném lại nguyên lỗi cũ để người dùng vẫn thấy thông báo "đăng nhập lại"
  * quen thuộc, không nuốt lỗi thành một thông báo khó hiểu hơn.
  */
-async function voiPhienTuPhucHoi<T>(
+export async function voiPhienTuPhucHoi<T>(
   ng: NguCanhPhucHoi,
   phien: DvcService.DvcPhien,
   thaoTac: () => Promise<T>,
@@ -380,11 +381,17 @@ export async function traCuuHoSo(
 }
 
 /**
- * POST /dvc/dong-bo — chạy một lượt "Đồng bộ" tờ khai (Dịch vụ công): gọi cổng thật (cần `key` phiên
- * ĐÃ đăng nhập), lưu hồ sơ + tài liệu vào DB tenant, trả về tiến độ lượt vừa mở.
+ * POST /dvc/dong-bo — chạy một lượt "Đồng bộ" (Dịch vụ công hoặc Giấy nộp tiền, xem `body.loai`):
+ * gọi cổng thật (cần `key` phiên ĐÃ đăng nhập), lưu hồ sơ/GNT + tài liệu vào DB tenant, trả về tiến
+ * độ lượt vừa mở.
+ *
+ * TÁI DÙNG cùng một hạ tầng lượt-chạy-nền (`DvcDongBo.batDauDongBoRun`, khóa = `donViId`) cho CẢ
+ * HAI loại — một công ty chỉ chạy một lượt "Đồng bộ" tại một thời điểm dù đang đồng bộ loại nào,
+ * khớp đúng UI hiện có (một nút "Đồng bộ", một toast tiến độ). Xem spec
+ * docs/superpowers/specs/2026-08-25-dvc-giay-nop-tien-etax-design.md mục 3.1.
  */
 export async function dongBo(
-  request: FastifyRequest<{ Body: { key?: string; tuNgay?: string; denNgay?: string } }>,
+  request: FastifyRequest<{ Body: { key?: string; tuNgay?: string; denNgay?: string; loai?: string } }>,
   reply: FastifyReply,
 ) {
   const body = request.body;
@@ -405,19 +412,29 @@ export async function dongBo(
   const dbName = await resolveTenantDbName(request);
   // Rút sẵn ngữ cảnh TRƯỚC khi mở lượt nền, cùng lý do (xem `NguCanhPhucHoi`).
   const nguCanh = nguCanhTuRequest(request);
+  const loai = body.loai === "giay-nop-tien" ? "giay-nop-tien" : "to-khai-dvc";
 
   // KHÔNG await: mở lượt nền rồi trả tiến độ ngay -> FE poll `/dong-bo/tien-do`.
   const tienDo = DvcDongBo.batDauDongBoRun(phien.donViId, (st, daBiThay) =>
-    DvcDongBo.dongBoHoSo(dbName, {
-      phien,
-      tuNgay,
-      denNgay,
-      tienDo: st,
-      daBiThay,
-      // Phiên RAM hết hạn (>30 phút không thao tác) hoặc mất do BE restart -> tự đăng nhập lại
-      // ngầm rồi thử lại. CHỈ bọc pha tra cứu, xem `voiPhucHoi` ở `DongBoHoSoParams`.
-      voiPhucHoi: (thaoTac) => voiPhienTuPhucHoi(nguCanh, phien, thaoTac),
-    }),
+    loai === "giay-nop-tien"
+      ? DvcGnt.dongBoGiayNopTien(dbName, {
+          phien,
+          donViId: phien.donViId,
+          tuNgay,
+          denNgay,
+          tienDo: st,
+          daBiThay,
+        })
+      : DvcDongBo.dongBoHoSo(dbName, {
+          phien,
+          tuNgay,
+          denNgay,
+          tienDo: st,
+          daBiThay,
+          // Phiên RAM hết hạn (>30 phút không thao tác) hoặc mất do BE restart -> tự đăng nhập lại
+          // ngầm rồi thử lại. CHỈ bọc pha tra cứu, xem `voiPhucHoi` ở `DongBoHoSoParams`.
+          voiPhucHoi: (thaoTac) => voiPhienTuPhucHoi(nguCanh, phien, thaoTac),
+        }),
   );
 
   return reply.send(tienDo);

@@ -150,6 +150,12 @@ export interface TabDvc {
   nhanBoLoc: NhanBoLoc;
   /** Cột bảng kết quả — mọi tab đều phải khai. */
   cotBang: CotBang[];
+  /**
+   * Cột nào đóng vai trò định danh dòng (giá trị gửi cho `onAction`/`onXemToKhai` ở `BangHoSo`) —
+   * mặc định `"maGiaoDich"` nếu bỏ trống. Tab Giấy nộp tiền không có cột `key: "maGiaoDich"`, dùng
+   * `soThamChieu` thay thế (PK `dvc_giay_nop_tien.so_tham_chieu`).
+   */
+  khoaMaGiaoDich?: string;
 }
 
 /**
@@ -181,5 +187,6 @@ export const TAB_DVC: TabDvc[] = [
       denNgay: "Đến ngày",
     },
     cotBang: COT_GIAY_NOP_TIEN,
+    khoaMaGiaoDich: "soThamChieu",
   },
 ];

@@ -4,7 +4,7 @@ import { apiFetch, apiFetchBlob } from "../../../lib/http";
  * này (tra cứu, tải file, tải thông báo…), kể cả các field CHỈ CẦN KHI CẦN (vd `key`, xem
  * `DvcHoSoDaDongBoParams`). Nhận `object` (không phải `Record<string, ...>`) để nhận thẳng các
  * interface tham số (`DvcTraCuuHoSoParams`…) mà khỏi phải ép kiểu ở nơi gọi. */
-function qsBoQuaRong(params: object): URLSearchParams {
+export function qsBoQuaRong(params: object): URLSearchParams {
   const qs = new URLSearchParams();
   for (const [k, v] of Object.entries(params)) {
     if (typeof v === "string" && v) qs.set(k, v);
@@ -137,6 +137,8 @@ export interface DvcDongBoParams {
   /** `yyyy-mm-dd`. */
   tuNgay: string;
   denNgay: string;
+  /** Khớp `TAB_DVC[].value` — BE mặc định `"to-khai-dvc"` nếu bỏ trống, xem `gdt-dvc.controller.ts`. */
+  loai: string;
 }
 
 /**

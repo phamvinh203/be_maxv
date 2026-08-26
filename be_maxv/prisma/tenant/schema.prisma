@@ -728,3 +728,41 @@ model dvc_dong_bo_log {
 
   @@index([created_at])
 }
+
+/// Một Giấy nộp tiền (GNT) đã đồng bộ từ cổng eTax GNT (thuedientu.gdt.gov.vn) — xem spec
+/// docs/superpowers/specs/2026-08-25-dvc-giay-nop-tien-etax-design.md.
+model dvc_giay_nop_tien {
+  /// "Số tham chiếu / Mã giao dịch" — PK, dùng làm định danh dòng cho FE (khớp cột hiển thị,
+  /// xem `BangHoSo.khoaMaGiaoDich`). Giả định UNIQUE dựa trên tên cột cổng ("... / Mã giao dịch")
+  /// — xác minh lại khi có dữ liệu thật, xem mục 7.3 của spec.
+  so_tham_chieu String @id @db.VarChar(64)
+
+  /// "id chứng từ" nội bộ cổng — dùng gọi bước detail/download (xem `taiPdfGnt`). KHÔNG lộ ra FE.
+  ctu_id String @unique @db.VarChar(64)
+
+  so_giay_nop_tien String? @db.VarChar(128)
+  so_tien Decimal? @db.Decimal(18, 2)
+  loai_tien String? @db.VarChar(8)
+  trang_thai String? @db.VarChar(254)
+  so_chung_tu String? @db.VarChar(128)
+  ngay_lap_gnt String? @db.VarChar(32)
+  /// Suy từ "Ngày lập GNT" (best-effort) CHỈ để lọc/sắp theo khoảng ngày — cột nào đúng nhất trong
+  /// 4 cột ngày của GNT (lập/gửi/nộp thuế/nộp DS chi tiết) cần xác minh, xem mục 7.6 của spec.
+  ngay_nop_date DateTime? @db.Date
+  ngan_hang String? @db.VarChar(254)
+  tai_khoan_ngan_hang String? @db.VarChar(64)
+
+  /// PDF cache — mẫu giống `dvc_ho_so.xml_to_khai_bin`, null = chưa tải.
+  file_pdf_bin Bytes?
+  content_type String? @db.VarChar(128)
+  ten_file String? @db.VarChar(254)
+
+  /// Nguyên dòng cổng trả ({tiêu đề cột: giá trị}) — cổng thêm cột không cần migration.
+  raw Json
+  da_dong_bo Boolean @default(false)
+
+  datetime0 DateTime @default(now())
+  datetime2 DateTime @updatedAt
+
+  @@index([ngay_nop_date])
+}
