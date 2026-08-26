@@ -1,5 +1,5 @@
-import type { CtTagTncn05, DvcTncn05XuatRow } from "./api/dvc";
-import { formatDateVN } from "../hddt/dateUtils";
+import type { CtTagTncn05, DvcTncn05XuatRow } from "../api/dvc";
+import { formatDateVN } from "../../hddt/dateUtils";
 import {
   buildDvcChiTieuWorkbookBuffer,
   tachKyKeKhai,

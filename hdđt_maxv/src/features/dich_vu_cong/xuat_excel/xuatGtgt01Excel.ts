@@ -1,4 +1,4 @@
-import type { CtTagGtgt01, DvcGtgt01XuatRow } from "./api/dvc";
+import type { CtTagGtgt01, DvcGtgt01XuatRow } from "../api/dvc";
 import {
   buildDvcChiTieuWorkbookBuffer,
   tachKyKeKhai,

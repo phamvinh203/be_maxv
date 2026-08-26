@@ -1,4 +1,4 @@
-import { CELL_BORDER, HEADER_FILL, HEADER_HEIGHT } from "../hddt/exportXlsx";
+import { CELL_BORDER, HEADER_FILL, HEADER_HEIGHT } from "../../hddt/exportXlsx";
 
 export interface CotDau<Row> {
   header: string;

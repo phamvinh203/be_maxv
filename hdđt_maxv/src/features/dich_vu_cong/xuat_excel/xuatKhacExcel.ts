@@ -1,4 +1,4 @@
-import type { DvcKhacXuatRow } from "./api/dvc";
+import type { DvcKhacXuatRow } from "../api/dvc";
 import { buildDvcChiTieuWorkbookBuffer, type CotDau } from "./xuatChiTieuExcel";
 
 const COT_DAU: CotDau<DvcKhacXuatRow>[] = [
