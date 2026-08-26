@@ -396,10 +396,60 @@ export interface DvcChiTietTncn05 {
   ct: Partial<Record<CtTagTncn05, number | null>>;
 }
 
+export type CtTagQtt05 =
+  | "ct16"
+  | "ct17"
+  | "ct18"
+  | "ct19"
+  | "ct20"
+  | "ct21"
+  | "ct22"
+  | "ct23"
+  | "ct24"
+  | "ct25"
+  | "ct26"
+  | "ct27"
+  | "ct28"
+  | "ct29"
+  | "ct30"
+  | "ct31"
+  | "ct32"
+  | "ct33"
+  | "ct34"
+  | "ct35"
+  | "ct36"
+  | "ct37"
+  | "ct38"
+  | "ct39"
+  | "ct40"
+  | "ct41";
+
+export interface DvcChiTietToKhaiChung {
+  tenTKhai: string;
+  moTaBMau: string;
+  kyTinhThue: string;
+  laLanDau: boolean;
+  soLanBoSung: number;
+  tenNNT: string;
+  mst: string;
+  nguoiKy: string;
+  ngayKy: string | null;
+  kyDienTuBoi: string | null;
+  ngayKyDienTu: string | null;
+  ngayLap: string | null;
+  loaiTKhai: string | null;
+}
+
+export interface DvcChiTietQtt05 extends DvcChiTietToKhaiChung {
+  ct: Partial<Record<CtTagQtt05, number | null>>;
+}
+
 /** Kết quả bóc XML tờ khai của một hồ sơ, xem `layChiTietToKhai` bên BE. */
 export type DvcChiTietToKhai =
   | { loai: "gtgt01"; duLieu: DvcChiTietGtgt01; xmlTho: string }
   | { loai: "tncn05"; duLieu: DvcChiTietTncn05; xmlTho: string }
+  | { loai: "qtt05"; duLieu: DvcChiTietQtt05; xmlTho: string }
+  | { loai: "tndn03"; duLieu: DvcChiTietTndn03; xmlTho: string }
   | { loai: "raw"; chiTieu: DvcChiTieuToKhai[]; xmlTho: string };
 
 /**
@@ -430,4 +480,166 @@ export interface DvcThongBaoFileParams extends DvcHoSoDaDongBoParams {
 export function taiThongBaoDvc({ key, maHoSo, idTbao }: DvcThongBaoFileParams): Promise<Blob> {
   const qs = qsBoQuaRong({ key, maHoSo, idTbao });
   return apiFetchBlob(`/dvc/ho-so/thong-bao/file?${qs.toString()}`);
+}
+
+export interface DvcGtgt01XuatRow {
+  maHoSo: string;
+  tenTKhai: string;
+  kyKeKhai: string;
+  lanNop: string;
+  tieuMucHachToan: string;
+  trangThai: string;
+  ct: Partial<Record<CtTagGtgt01, number | null>>;
+}
+
+export interface DvcXuatKhoangNgayParams {
+  tuNgay?: string;
+  denNgay?: string;
+}
+
+export function layDsGtgt01DeXuat(params: DvcXuatKhoangNgayParams): Promise<DvcGtgt01XuatRow[]> {
+  return apiFetch<DvcGtgt01XuatRow[]>(`/dvc/ho-so/xuat-gtgt01?${qsBoQuaRong(params).toString()}`);
+}
+
+export interface DvcQtt05XuatRow {
+  maHoSo: string;
+  tenTKhai: string;
+  kyKeKhai: string;
+  lanNop: string;
+  ngayLap: string;
+  ngayKy: string;
+  loaiToKhai: string;
+  trangThai: string;
+  ct: Partial<Record<CtTagQtt05, number | null>>;
+}
+
+export function layDsQtt05DeXuat(params: DvcXuatKhoangNgayParams): Promise<DvcQtt05XuatRow[]> {
+  return apiFetch<DvcQtt05XuatRow[]>(`/dvc/ho-so/xuat-qtt05?${qsBoQuaRong(params).toString()}`);
+}
+
+export interface DvcTncn05XuatRow {
+  maHoSo: string;
+  tenTKhai: string;
+  kyKeKhai: string;
+  lanNop: string;
+  ngayLap: string;
+  ngayKy: string;
+  loaiToKhai: string;
+  trangThai: string;
+  ct: Partial<Record<CtTagTncn05, number | null>>;
+}
+
+export function layDsTncn05DeXuat(params: DvcXuatKhoangNgayParams): Promise<DvcTncn05XuatRow[]> {
+  return apiFetch<DvcTncn05XuatRow[]>(`/dvc/ho-so/xuat-tncn05?${qsBoQuaRong(params).toString()}`);
+}
+
+export type CtTagTndn03 =
+  | "ctA1"
+  | "ctB1"
+  | "ctB2"
+  | "ctB3"
+  | "ctB4"
+  | "ctB5"
+  | "ctB6"
+  | "ctB7"
+  | "ctB8"
+  | "ctB9"
+  | "ctB10"
+  | "ctB11"
+  | "ctB12"
+  | "ctB13"
+  | "ctB14"
+  | "ctB15"
+  | "ctC1"
+  | "ctC2"
+  | "ctC3"
+  | "ctC3a"
+  | "ctC3b"
+  | "ctC4"
+  | "ctC5"
+  | "ctC6"
+  | "ctC7"
+  | "ctC8"
+  | "ctC8a"
+  | "ctC9"
+  | "ctC10"
+  | "ctC11"
+  | "ctC12"
+  | "ctC13"
+  | "ctC14"
+  | "ctC15"
+  | "ctC16"
+  | "ctC17"
+  | "ctD1"
+  | "ctD2"
+  | "ctD3"
+  | "ctD4"
+  | "ctD5"
+  | "ctD6"
+  | "ctD7"
+  | "ctD8"
+  | "ctE"
+  | "ctE1"
+  | "ctE2"
+  | "ctE3"
+  | "ctE4"
+  | "ctE5"
+  | "ctE6"
+  | "ctG"
+  | "ctG1"
+  | "ctG2"
+  | "ctG3"
+  | "ctG4"
+  | "ctG5"
+  | "ctH1"
+  | "ctH2"
+  | "ctH3"
+  | "ctI"
+  | "ctI1"
+  | "ctI2";
+
+export interface DvcChiTietTndn03 extends DvcChiTietToKhaiChung {
+  ct: Partial<Record<CtTagTndn03, number | null>>;
+}
+
+export interface DvcTndn03XuatRow {
+  maHoSo: string;
+  tenTKhai: string;
+  kyKeKhai: string;
+  lanNop: string;
+  ngayLap: string;
+  loaiToKhai: string;
+  trangThai: string;
+  ct: Partial<Record<CtTagTndn03, number | null>>;
+}
+
+export function layDsTndn03DeXuat(params: DvcXuatKhoangNgayParams): Promise<DvcTndn03XuatRow[]> {
+  return apiFetch<DvcTndn03XuatRow[]>(`/dvc/ho-so/xuat-tndn03?${qsBoQuaRong(params).toString()}`);
+}
+
+export interface DvcKhacXuatRow {
+  stt: number;
+  maHoSo: string;
+  toKhai: string;
+  kyTinhThue: string;
+  loaiToKhai: string;
+  lanNop: string;
+  lanBoSung: string;
+  ngayNop: string;
+  noiNop: string;
+  trangThai: string;
+}
+
+export function layDsKhacDeXuat(params: DvcXuatKhoangNgayParams): Promise<DvcKhacXuatRow[]> {
+  return apiFetch<DvcKhacXuatRow[]>(`/dvc/ho-so/xuat-khac?${qsBoQuaRong(params).toString()}`);
+}
+
+export interface DvcXmlXuatRow {
+  maHoSo: string;
+  fileName: string;
+  xml: string;
+}
+
+export function layDsXmlDeXuat(params: DvcXuatKhoangNgayParams): Promise<DvcXmlXuatRow[]> {
+  return apiFetch<DvcXmlXuatRow[]>(`/dvc/ho-so/xuat-xml?${qsBoQuaRong(params).toString()}`);
 }

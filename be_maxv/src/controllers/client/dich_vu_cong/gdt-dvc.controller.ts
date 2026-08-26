@@ -1,4 +1,5 @@
 import { FastifyReply, FastifyRequest } from "fastify";
+import type { PrismaClient } from "../../../generated/tenant";
 import * as DvcService from "../../../services/client/dich_vu_cong/gdt-dvc.service";
 import * as DvcDongBo from "../../../services/client/dich_vu_cong/dvc-dong-bo.service";
 import { sysPrisma } from "../../../config/db.sys";
@@ -379,6 +380,58 @@ export async function traCuuHoSo(
     });
   }
 }
+
+type DvcXuatKhoangNgayQuery = { tuNgay?: string; denNgay?: string };
+
+function xuatHandler<Row>(
+  layDs: (tenantDb: PrismaClient, boLoc: DvcXuatKhoangNgayQuery) => Promise<Row[]>,
+  loiMacDinh: string,
+) {
+  return async function (
+    request: FastifyRequest<{ Querystring: DvcXuatKhoangNgayQuery }>,
+    reply: FastifyReply,
+  ) {
+    const q = request.query;
+    const tenantDb = await resolveTenantDb(request);
+
+    try {
+      const rows = await layDs(tenantDb, { tuNgay: q?.tuNgay, denNgay: q?.denNgay });
+      return reply.send(rows);
+    } catch (err) {
+      request.log.error(err);
+      return reply.status(400).send({
+        message: err instanceof Error ? err.message : loiMacDinh,
+      });
+    }
+  };
+}
+
+export const xuatGtgt01 = xuatHandler(
+  DvcDongBo.layDsToKhaiGtgt01DaLuu,
+  "Không lấy được dữ liệu hồ sơ 01/GTGT.",
+);
+
+export const xuatQtt05 = xuatHandler(
+  DvcDongBo.layDsToKhaiQtt05DaLuu,
+  "Không lấy được dữ liệu hồ sơ 05/QTT-TNCN.",
+);
+
+export const xuatTncn05 = xuatHandler(
+  DvcDongBo.layDsToKhaiTncn05DaLuu,
+  "Không lấy được dữ liệu hồ sơ 05/KK-TNCN.",
+);
+
+export const xuatTndn03 = xuatHandler(
+  DvcDongBo.layDsToKhaiTndn03DaLuu,
+  "Không lấy được dữ liệu hồ sơ 03/TNDN.",
+);
+
+export const xuatKhac = xuatHandler(
+  DvcDongBo.layDsToKhaiKhacDaLuu,
+  "Không lấy được dữ liệu hồ sơ khác.",
+);
+
+export const xuatXml = xuatHandler(DvcDongBo.layDsXmlToKhaiDaLuu, "Không lấy được danh sách file XML.");
 
 /**
  * POST /dvc/dong-bo — chạy một lượt "Đồng bộ" (Dịch vụ công hoặc Giấy nộp tiền, xem `body.loai`):

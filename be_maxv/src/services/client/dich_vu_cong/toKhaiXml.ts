@@ -132,20 +132,30 @@ type CtTagGtgt01 =
 /** Khớp thẻ dạng `<ctNN>`/`<ctNNa>` (chữ số, tùy chọn một chữ cái) — hẹp hơn `RE_THE_LA` phía trên
  * để KHÔNG dính các thẻ khác cũng bắt đầu bằng "ct" nhưng không phải chỉ tiêu số tiền (vd thẻ địa
  * chỉ `ct11a_phuongXa_ma` trong `Header`). */
-const RE_CT_GTGT01 = /<(ct\d+[a-z]?)>([^<]*)<\/\1>/g;
+const RE_CT_SO = /<(ct\d+[a-z]?)>([^<]*)<\/\1>/g;
 
-/** Quét MỘT LƯỢT toàn bộ thẻ chỉ tiêu (`ctNN`) có trong xml — thẻ nào không xuất hiện thì đơn
+/** Khớp thẻ chỉ tiêu dạng CHỮ+SỐ `<ctA1>`/`<ctB13>`/`<ctC3a>` — quy ước tag riêng của mẫu 03/TNDN
+ * (mã chỉ tiêu đánh theo nhóm chữ cái A/B/C..I, khác hẳn dải số liên tục của `RE_CT_SO`). Dùng tại:
+ * `layChiTietTndn03()` ngay bên dưới (truyền làm tham số `regex` cho `layMoiCt`). */
+const RE_CT_CHU = /<(ct[A-Z]\d*[a-z]?)>([^<]*)<\/\1>/g;
+
+/** Quét MỘT LƯỢT toàn bộ thẻ khớp `regex` (mặc định `RE_CT_SO`) có trong xml, giữ lại thẻ nào
+ * `giuLai(tag)` chấp nhận, trả về `{ [tag]: giá trị số | null }`. Thẻ không xuất hiện thì đơn
  * giản KHÔNG có mặt trong object trả về (đọc ra `undefined`, FE coi như "chưa có dữ liệu" giống hệt
  * `null`), khác `layMoiTheLa` ở chỗ CÓ giữ lại chỉ tiêu bằng 0 (mẫu in luôn hiện cả ô bằng 0).
  *
  * `giuLai` lọc theo dải mã hợp lệ của TỪNG mẫu (01/GTGT nhận tất, 05/KK-TNCN chỉ [16]..[32]) — mẫu
- * này có thẻ `ctNN` trùng tên mẫu kia, không lọc thì một xml lạ lọt vào sẽ dựng nên chỉ tiêu ma. */
+ * này có thẻ `ctNN` trùng tên mẫu kia, không lọc thì một xml lạ lọt vào sẽ dựng nên chỉ tiêu ma.
+ *
+ * Dùng tại: `layChiTietGtgt01()`, `layChiTietTncn05()`, `layChiTietQtt05()`, `layChiTietTndn03()`
+ * — bốn hàm bóc chỉ tiêu theo từng mẫu tờ khai, cùng trong file này. */
 function layMoiCt<T extends string>(
   xml: string,
   giuLai: (tag: string) => boolean = () => true,
+  regex: RegExp = RE_CT_SO,
 ): Partial<Record<T, number | null>> {
   const out: Partial<Record<T, number | null>> = {};
-  for (const m of xml.matchAll(RE_CT_GTGT01)) {
+  for (const m of xml.matchAll(regex)) {
     const tag = m[1]!;
     if (!giuLai(tag)) continue;
     const text = htmlToText(m[2] ?? "");
@@ -159,7 +169,8 @@ function layMoiCt<T extends string>(
 }
 
 /** "Q"+"2/2026" -> "Quý 2 năm 2026"; "T"+"7/2026" -> "Tháng 7 năm 2026"; "N"+"2026" -> "Năm 2026".
- * Kiểu kỳ khác (hoặc thiếu dữ liệu) -> trả nguyên `kyKKhai` thô, không đoán liều. */
+ * Kiểu kỳ khác (hoặc thiếu dữ liệu) -> trả nguyên `kyKKhai` thô, không đoán liều. Dùng tại:
+ * `thongTinChungToKhai()` ngay bên dưới (dựng field `kyTinhThue`), nội bộ file này. */
 function nhanKyTinhThue(kieuKy: string | null, kyKKhai: string | null): string {
   if (!kyKKhai) return "";
   if (kieuKy === "Q") {
@@ -170,7 +181,7 @@ function nhanKyTinhThue(kieuKy: string | null, kyKKhai: string | null): string {
     const [thang, nam] = kyKKhai.split("/");
     return thang && nam ? `Tháng ${thang} năm ${nam}` : kyKKhai;
   }
-  if (kieuKy === "N") return `Năm ${kyKKhai}`;
+  if (kieuKy === "Y" || kieuKy === "N") return `Năm ${kyKKhai}`;
   return kyKKhai;
 }
 
@@ -188,6 +199,10 @@ function kyDienTuBoi(xml: string): string | null {
  * hàm này thay vì chép lại — trước đây mỗi mẫu chép một bản KÈM CẢ đoạn ghi chú "đã đối chiếu",
  * nên bản thứ hai chỉ là lời khẳng định đi mượn; mẫu thứ ba sẽ mượn tiếp và bản nào lệch trước thì
  * thành nói dối.
+ *
+ * Interface + hàm dựng (`thongTinChungToKhai()` bên dưới) dùng tại: `layChiTietGtgt01()`,
+ * `layChiTietTncn05()`, `layChiTietQtt05()`, `layChiTietTndn03()` — cả bốn hàm bóc chỉ tiêu theo
+ * mẫu (cùng file này) đều spread kết quả hàm này làm phần đầu, rồi thêm field riêng của mẫu mình.
  */
 interface ThongTinChungToKhai {
   tenTKhai: string;
@@ -201,6 +216,8 @@ interface ThongTinChungToKhai {
   nguoiKy: string;
   /** `yyyy-mm-dd` thô — FE tự format thành "Ngày DD tháng MM năm YYYY". */
   ngayKy: string | null;
+  ngayLap: string | null;
+  loaiTKhai: string | null;
   /** Tên rút từ chứng thư số ký hồ sơ (`kyDienTuBoi`) — `null` nếu không tìm thấy. */
   kyDienTuBoi: string | null;
   /** ISO datetime thô của `<SigningTime>` — `null` nếu không tìm thấy. */
@@ -225,16 +242,20 @@ function thongTinChungToKhai(
     mst: oBang(bang, "mst") ?? "",
     nguoiKy: oBang(bang, "nguoiKy") ?? "",
     ngayKy: oBang(bang, "ngayKy"),
+    ngayLap: oTheDauTien(bang, "ngayLapTKhai", "ngayLap", "ngayLapToKhai"),
+    loaiTKhai: oBang(bang, "loaiTKhai"),
     kyDienTuBoi: kyDienTuBoi(xml),
     ngayKyDienTu: oBang(bang, "SigningTime"),
   };
 }
 
 /** Dữ liệu đã bóc cho mẫu 01/GTGT — đủ để `ToKhaiGtgt01Form` bên FE dựng lại ĐÚNG layout mẫu in
- * (quốc hiệu, khối thông tin NNT, bảng chỉ tiêu, khối ký) thay vì chỉ liệt kê nhãn/giá trị phẳng. */
+ * (quốc hiệu, khối thông tin NNT, bảng chỉ tiêu, khối ký) thay vì chỉ liệt kê nhãn/giá trị phẳng.
+ * Dùng tại: `dvc-dong-bo.service.ts` (kiểu trường `ct` của `DvcGtgt01XuatRow`). */
 export interface ChiTietGtgt01 extends ThongTinChungToKhai {
   tenNganhNghe: string;
   tenCQTNoiNop: string;
+  tieuMucHachToan: string | null;
   /** `{ ct22: 29826193, ct23a: 0, ... }` — thẻ vắng mặt (`undefined`) hoặc `null` đều nghĩa là
    * không có dữ liệu, FE hiện ô trống thay vì "0" sai lệch. */
   ct: Partial<Record<CtTagGtgt01, number | null>>;
@@ -248,6 +269,7 @@ function layChiTietGtgt01(xml: string, tenTKhai: string): ChiTietGtgt01 {
     ...thongTinChungToKhai(xml, bang, tenTKhai, "TỜ KHAI THUẾ GIÁ TRỊ GIA TĂNG (Mẫu số 01/GTGT)"),
     tenNganhNghe: oBang(bang, "ten_NganhNghe") ?? "",
     tenCQTNoiNop: oBang(bang, "tenCQTNoiNop") ?? "",
+    tieuMucHachToan: oBang(bang, "tieuMucHachToan"),
     ct: layMoiCt<CtTagGtgt01>(xml),
   };
 }
@@ -314,6 +336,17 @@ function oTheDauTien(bang: Map<string, string>, ...tags: string[]): string | nul
   return null;
 }
 
+/** Dựng predicate cho `layMoiCt`: chấp nhận thẻ dạng số thuần `ctNN` (không hậu tố chữ) nếu `NN`
+ * nằm trong `[tu, den]`. Dùng tại: `layChiTietTncn05()` (dải [16,32]) và `layChiTietQtt05()` (dải
+ * [16,41]) ngay bên dưới — hai mẫu cùng quy ước đánh số nhưng khác dải mã chỉ tiêu hợp lệ. */
+function giuLaiCtSoTrongDai(tu: number, den: number): (tag: string) => boolean {
+  return (tag) => {
+    if (!/^ct\d+$/.test(tag)) return false;
+    const so = Number(tag.slice(2));
+    return so >= tu && so <= den;
+  };
+}
+
 /** Dữ liệu đã bóc cho mẫu 05/KK-TNCN — đủ để `ToKhaiTNCN05Form` bên FE dựng lại mẫu in. */
 export interface ChiTietTncn05 extends ThongTinChungToKhai {
   diaChi: string;
@@ -375,11 +408,224 @@ function layChiTietTncn05(xml: string, tenTKhai: string): ChiTietTncn05 {
       (oTheDauTien(bang, "phanBoThue", "coPhanBo") ?? "").trim().toLowerCase(),
     ),
     // Chỉ nhận `ctNN` KHÔNG hậu tố chữ, trong dải [16]..[32] — đúng dải mã chỉ tiêu của mẫu này.
-    ct: layMoiCt<CtTagTncn05>(xml, (tag) => {
-      if (!/^ct\d+$/.test(tag)) return false;
-      const so = Number(tag.slice(2));
-      return so >= 16 && so <= 32;
-    }),
+    ct: layMoiCt<CtTagTncn05>(xml, giuLaiCtSoTrongDai(16, 32)),
+  };
+}
+
+/** Mã chỉ tiêu hợp lệ trên mẫu in 05/QTT-TNCN, dải [16]..[41] không hậu tố chữ — mirror phía FE là
+ * `CtTagQtt05` trong `api/dvc.ts`. Dùng tại: field `ct` của `ChiTietQtt05` ngay bên dưới. */
+type CtTagQtt05 =
+  | "ct16"
+  | "ct17"
+  | "ct18"
+  | "ct19"
+  | "ct20"
+  | "ct21"
+  | "ct22"
+  | "ct23"
+  | "ct24"
+  | "ct25"
+  | "ct26"
+  | "ct27"
+  | "ct28"
+  | "ct29"
+  | "ct30"
+  | "ct31"
+  | "ct32"
+  | "ct33"
+  | "ct34"
+  | "ct35"
+  | "ct36"
+  | "ct37"
+  | "ct38"
+  | "ct39"
+  | "ct40"
+  | "ct41";
+
+/** Dữ liệu đã bóc cho mẫu 05/QTT-TNCN — chưa có form mẫu in riêng, FE (`ToKhaiXmlDialog.tsx`) hiện
+ * dạng bảng chỉ tiêu thô qua `hangChiTieuTho()`. Dùng tại: `dvc-dong-bo.service.ts` (kiểu trường
+ * `ct` của `DvcQtt05XuatRow`), và nhánh `"qtt05"` của `ChiTietToKhai` bên dưới. */
+export interface ChiTietQtt05 extends ThongTinChungToKhai {
+  ct: Partial<Record<CtTagQtt05, number | null>>;
+}
+
+/** Bóc mẫu 05/QTT-TNCN: dựng phần chung qua `thongTinChungToKhai()` rồi quét chỉ tiêu `ct16`..`ct41`
+ * qua `layMoiCt()` + `giuLaiCtSoTrongDai(16, 41)`. Dùng tại: `layChiTietToKhai()` bên dưới, nhánh
+ * `loai === "qtt05"`. */
+function layChiTietQtt05(xml: string, tenTKhai: string): ChiTietQtt05 {
+  const bang = bangTheLa(xml);
+  return {
+    ...thongTinChungToKhai(
+      xml,
+      bang,
+      tenTKhai,
+      "TỜ KHAI QUYẾT TOÁN THUẾ THU NHẬP CÁ NHÂN (Mẫu số 05/QTT-TNCN)",
+    ),
+    ct: layMoiCt<CtTagQtt05>(xml, giuLaiCtSoTrongDai(16, 41)),
+  };
+}
+
+/** Mã chỉ tiêu hợp lệ trên mẫu in 03/TNDN, đánh theo NHÓM CHỮ A/B/C/D/E/G/H/I (không có F), mỗi
+ * nhóm tự đánh số riêng — mirror phía FE là `CtTagTndn03` trong `api/dvc.ts`. Dùng tại: allow-list
+ * `CT_TNDN03_HOP_LE` và field `ct` của `ChiTietTndn03`, cả hai ngay bên dưới. */
+type CtTagTndn03 =
+  | "ctA1"
+  | "ctB1"
+  | "ctB2"
+  | "ctB3"
+  | "ctB4"
+  | "ctB5"
+  | "ctB6"
+  | "ctB7"
+  | "ctB8"
+  | "ctB9"
+  | "ctB10"
+  | "ctB11"
+  | "ctB12"
+  | "ctB13"
+  | "ctB14"
+  | "ctB15"
+  | "ctC1"
+  | "ctC2"
+  | "ctC3"
+  | "ctC3a"
+  | "ctC3b"
+  | "ctC4"
+  | "ctC5"
+  | "ctC6"
+  | "ctC7"
+  | "ctC8"
+  | "ctC8a"
+  | "ctC9"
+  | "ctC10"
+  | "ctC11"
+  | "ctC12"
+  | "ctC13"
+  | "ctC14"
+  | "ctC15"
+  | "ctC16"
+  | "ctC17"
+  | "ctD1"
+  | "ctD2"
+  | "ctD3"
+  | "ctD4"
+  | "ctD5"
+  | "ctD6"
+  | "ctD7"
+  | "ctD8"
+  | "ctE"
+  | "ctE1"
+  | "ctE2"
+  | "ctE3"
+  | "ctE4"
+  | "ctE5"
+  | "ctE6"
+  | "ctG"
+  | "ctG1"
+  | "ctG2"
+  | "ctG3"
+  | "ctG4"
+  | "ctG5"
+  | "ctH1"
+  | "ctH2"
+  | "ctH3"
+  | "ctI"
+  | "ctI1"
+  | "ctI2";
+
+/** Allow-list mọi tag `ct[A-Z]...` hợp lệ của 03/TNDN — liệt kê tường minh (không chỉ lọc theo hình
+ * dạng `RE_CT_CHU`) để chặn thẻ lạ của một biến thể XML chưa từng gặp lọt vào export thành cột
+ * không nhãn. CỐ Ý không có "ctC7": XML không có thẻ `<ctC7>` trần, xem `layChiTietTndn03()` bên
+ * dưới. Dùng tại: `layChiTietTndn03()` (truyền làm `giuLai` cho `layMoiCt`). */
+const CT_TNDN03_HOP_LE = new Set<CtTagTndn03>([
+  "ctA1",
+  "ctB1",
+  "ctB2",
+  "ctB3",
+  "ctB4",
+  "ctB5",
+  "ctB6",
+  "ctB7",
+  "ctB8",
+  "ctB9",
+  "ctB10",
+  "ctB11",
+  "ctB12",
+  "ctB13",
+  "ctB14",
+  "ctB15",
+  "ctC1",
+  "ctC2",
+  "ctC3",
+  "ctC3a",
+  "ctC3b",
+  "ctC4",
+  "ctC5",
+  "ctC6",
+  "ctC8",
+  "ctC8a",
+  "ctC9",
+  "ctC10",
+  "ctC11",
+  "ctC12",
+  "ctC13",
+  "ctC14",
+  "ctC15",
+  "ctC16",
+  "ctC17",
+  "ctD1",
+  "ctD2",
+  "ctD3",
+  "ctD4",
+  "ctD5",
+  "ctD6",
+  "ctD7",
+  "ctD8",
+  "ctE",
+  "ctE1",
+  "ctE2",
+  "ctE3",
+  "ctE4",
+  "ctE5",
+  "ctE6",
+  "ctG",
+  "ctG1",
+  "ctG2",
+  "ctG3",
+  "ctG4",
+  "ctG5",
+  "ctH1",
+  "ctH2",
+  "ctH3",
+  "ctI",
+  "ctI1",
+  "ctI2",
+]);
+
+/** Dữ liệu đã bóc cho mẫu 03/TNDN — chưa có form mẫu in riêng, FE (`ToKhaiXmlDialog.tsx`) hiện dạng
+ * bảng chỉ tiêu thô qua `hangChiTieuTho()`. Dùng tại: `dvc-dong-bo.service.ts` (kiểu trường `ct`
+ * của `DvcTndn03XuatRow`), và nhánh `"tndn03"` của `ChiTietToKhai` bên dưới. */
+export interface ChiTietTndn03 extends ThongTinChungToKhai {
+  ct: Partial<Record<CtTagTndn03, number | null>>;
+}
+
+/** Bóc mẫu 03/TNDN: dựng phần chung qua `thongTinChungToKhai()`, quét 62 chỉ tiêu `ctA1`..`ctI2`
+ * qua `layMoiCt()` với `RE_CT_CHU` + allow-list `CT_TNDN03_HOP_LE`, rồi đọc riêng `ctC7` (không qua
+ * vòng quét chung vì XML lưu số ở thẻ `<ctC7_thuNhap>`, không có thẻ `<ctC7>` trần). Dùng tại:
+ * `layChiTietToKhai()` bên dưới, nhánh `loai === "tndn03"`. */
+function layChiTietTndn03(xml: string, tenTKhai: string): ChiTietTndn03 {
+  const bang = bangTheLa(xml);
+  const ct = layMoiCt<CtTagTndn03>(xml, (tag) => CT_TNDN03_HOP_LE.has(tag as CtTagTndn03), RE_CT_CHU);
+
+  const c7 = oBang(bang, "ctC7_thuNhap");
+  if (c7 !== null) {
+    const so = Number(c7);
+    ct.ctC7 = Number.isFinite(so) ? so : null;
+  }
+
+  return {
+    ...thongTinChungToKhai(xml, bang, tenTKhai, "TỜ KHAI QUYẾT TOÁN THUẾ THU NHẬP DOANH NGHIỆP (Mẫu số 03/TNDN)"),
+    ct,
   };
 }
 
@@ -398,6 +644,19 @@ export type ChiTietToKhai =
       xmlTho: string;
     }
   | {
+      /** Mẫu 05/QTT-TNCN (quyết toán cuối năm) — KHÁC "tncn05" (khấu trừ theo kỳ) dù cùng nhóm TNCN.
+       * FE hiện dạng bảng chỉ tiêu thô (chưa có form mẫu in riêng như hai loại trên). */
+      loai: "qtt05";
+      duLieu: ChiTietQtt05;
+      xmlTho: string;
+    }
+  | {
+      /** Mẫu 03/TNDN (quyết toán thuế TNDN) — FE hiện dạng bảng chỉ tiêu thô, cùng cách "qtt05". */
+      loai: "tndn03";
+      duLieu: ChiTietTndn03;
+      xmlTho: string;
+    }
+  | {
       /** Mẫu KHÁC (chưa biết layout) -> liệt kê thẳng tên thẻ XML thô (`layMoiTheLa`), FE hiện
        * kèm cảnh báo "chưa có nhãn". Không bao giờ "không đọc được", chỉ chưa đẹp. */
       loai: "raw";
@@ -405,22 +664,40 @@ export type ChiTietToKhai =
       xmlTho: string;
     };
 
+/** Mọi mẫu tờ khai ĐÃ CÓ layout riêng (khác `"raw"`, nhánh dự phòng của `ChiTietToKhai`) — tách
+ * thành alias vì lặp lại ở cả `MAU_THEO_MA_TKHAI`/`MAU_THEO_CHUOI`/`doTenMau` ngay bên dưới. */
+type MauDaBietLayout = Exclude<ChiTietToKhai["loai"], "raw">;
+
 /** Mã mẫu cổng gán (`<maTKhai>`) -> layout. Nguồn CHẮC CHẮN nhất vì là mã máy, không phải chữ tự
  * do. Thêm mẫu mới có mã đã đối chiếu: thêm đúng một dòng ở đây. */
-const MAU_THEO_MA_TKHAI: Record<string, "gtgt01" | "tncn05"> = { "842": "gtgt01" };
+const MAU_THEO_MA_TKHAI: Record<string, MauDaBietLayout> = {
+  "842": "gtgt01",
+  "892": "tndn03",
+};
 
 /** Dò mã mẫu trong một chuỗi tự do (ô cột "Tờ khai" hoặc tiêu đề trong XML).
  *
  * Có `\b` hai đầu chứ không `includes`: cột "Tờ khai / Phụ lục" đúng như tên gọi CÓ THỂ liệt kê
  * nhiều thứ, và so chuỗi trần thì bất kỳ đoạn văn nào lỡ nhắc tới mã mẫu cũng khớp. */
-const MAU_THEO_CHUOI: [RegExp, "gtgt01" | "tncn05"][] = [
+const MAU_THEO_CHUOI: [RegExp, MauDaBietLayout][] = [
   [/\b01\/GTGT\b/i, "gtgt01"],
   [/\b05\/KK-TNCN\b/i, "tncn05"],
+  [/\b05\/QTT-TNCN\b/i, "qtt05"],
+  [/\b03\/TNDN\b/i, "tndn03"],
 ];
 
-function doTenMau(chuoi: string | null | undefined): "gtgt01" | "tncn05" | null {
+function doTenMau(chuoi: string | null | undefined): MauDaBietLayout | null {
   if (!chuoi) return null;
   return MAU_THEO_CHUOI.find(([re]) => re.test(chuoi))?.[1] ?? null;
+}
+
+/** Đọc thẳng `<tenTKhai>` thô, KHÔNG phụ thuộc mẫu đã nhận diện được hay chưa — khác
+ * `layChiTietToKhai()` (chỉ trả `tenTKhai` bên trong `duLieu` của nhánh mẫu ĐÃ biết layout). Dùng
+ * tại: `dvc-dong-bo.service.ts` trong `layDsToKhaiTndn03DaLuu()`, cho các hồ sơ "Bộ báo cáo tài
+ * chính..." nộp kèm quyết toán 03/TNDN — mẫu BCTC rơi vào nhánh "raw" nên không đọc được `tenTKhai`
+ * qua đường `chiTiet.duLieu` như các dòng 03/TNDN thật. */
+export function layTenTKhaiTho(xml: string): string {
+  return oThe(xml, "tenTKhai") ?? "";
 }
 
 /**
@@ -449,6 +726,12 @@ export function layChiTietToKhai(xml: string, maMauHoSo?: string | null): ChiTie
   }
   if (loai === "tncn05") {
     return { loai, duLieu: layChiTietTncn05(xml, tenTKhai), xmlTho: xml };
+  }
+  if (loai === "qtt05") {
+    return { loai, duLieu: layChiTietQtt05(xml, tenTKhai), xmlTho: xml };
+  }
+  if (loai === "tndn03") {
+    return { loai, duLieu: layChiTietTndn03(xml, tenTKhai), xmlTho: xml };
   }
   return { loai: "raw", chiTieu: layMoiTheLa(xml), xmlTho: xml };
 }
