@@ -90,7 +90,7 @@ interface SheetOptions<T> {
 /**
  * Thêm 1 sheet có tiêu đề IN ĐẬM + nền + freeze + auto-filter, GIÃN DÒNG (chiều cao hàng thoáng) vào
  * workbook. Lõi dùng chung cho sheet Tổng quát và Chi tiết.
- * Cột `webOnly` (checkbox "Chọn", đèn "T. thái tải") bị loại — chỉ có nghĩa trên màn hình.
+ * Cột `webOnly` (đèn "T. thái tải", các nút thao tác…) bị loại — chỉ có nghĩa trên màn hình.
  */
 function addStyledSheet<T>(
   wb: Workbook,

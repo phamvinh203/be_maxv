@@ -14,6 +14,7 @@ import {
   TOTAL_TEXT_ARGB,
   TRANG_THAI_HD_FILL,
   WARNING_FILL,
+  columnCellSx,
   type ExcelCellStyle,
   type InvoiceColumn,
 } from "./types";
@@ -49,21 +50,32 @@ function argbToCss(argb: string): string {
 }
 
 /**
- * Hàng TỔNG: chữ đỏ, in đậm, gạch dưới đậm để tách hẳn khỏi vùng dữ liệu bên dưới. Không tô nền —
- * hàng dữ liệu kế nó có thể đang có màu trạng thái, thêm nền nữa là rối.
+ * Hàng TỔNG: chữ đỏ, in đậm, gạch dưới đậm để tách hẳn khỏi vùng dữ liệu bên dưới; nền
+ * `background.paper` PHẢI đục vì hàng này dính (`position: sticky`) — dữ liệu cuộn qua bên dưới mà
+ * nền trong suốt thì sẽ nhìn xuyên qua được, chữ chồng lên nhau.
+ *
+ * `stickyTop` = chiều cao thật của hàng tiêu đề đang dính phía trên nó (đo bằng `useElementHeight`
+ * ở nơi gọi, xem `InvoiceListTabs`/`InvoiceDetailPanel`) — hàng tổng dính NGAY DƯỚI mép hàng tiêu
+ * đề, không hardcode px vì tiêu đề có thể 1 hay 2 dòng tùy `webWidth` của bộ cột.
  */
-const TOTAL_ROW_SX: SxProps<Theme> = {
-  "& td": {
-    color: argbToCss(TOTAL_TEXT_ARGB),
-    fontWeight: 700,
-    borderBottom: "2px solid",
-    borderBottomColor: "divider",
-  },
-};
+function totalRowSx(stickyTop: number): SxProps<Theme> {
+  return {
+    position: "sticky",
+    top: stickyTop,
+    zIndex: 1,
+    "& td": {
+      color: argbToCss(TOTAL_TEXT_ARGB),
+      fontWeight: 700,
+      borderBottom: "2px solid",
+      borderBottomColor: "divider",
+      bgcolor: "background.paper",
+    },
+  };
+}
 
 /**
- * Hàng tổng ĐẦU bảng web (ngay dưới hàng tiêu đề). Đặt trên đầu để thấy ngay khi mở bảng, không phải
- * cuộn xuống cuối.
+ * Hàng tổng ĐẦU bảng web (ngay dưới hàng tiêu đề) — DÍNH lại khi cuộn dọc, ngay dưới hàng tiêu đề
+ * cũng đang dính (`stickyHeader` của MUI), nên luôn thấy được dù cuộn xuống dòng thứ mấy.
  *
  * NHẬN SẴN `tong` (từ `tongCotSo`) chứ không tự cộng: phép cộng chạy qua TOÀN BỘ hàng của bảng — chi
  * tiết một tháng là hàng chục nghìn dòng × 8 cột tiền — còn component thì render lại theo mọi state
@@ -73,12 +85,26 @@ const TOTAL_ROW_SX: SxProps<Theme> = {
  * Là HÀM trả `ReactNode` chứ không phải component — cùng thành ngữ với `renderCell`/`ttTaiCell`, và
  * nhờ vậy file này giữ nguyên vai trò "kho hàm render", không lẫn component (fast-refresh).
  */
-export function totalsRow<T>(columns: InvoiceColumn<T>[], tong: Map<string, number>): ReactNode {
+export function totalsRow<T>(
+  columns: InvoiceColumn<T>[],
+  tong: Map<string, number>,
+  stickyTop: number,
+): ReactNode {
+  // Nhãn gộp (colSpan) từ cột đầu tới ngay trước cột `total` đầu tiên — các cột đó vốn trống ở hàng
+  // này (không có số liệu). Gộp thay vì nhét vào riêng cột đầu: cột đầu thường là STT, `webWidth`
+  // hẹp của nó (canh cho số 1-2 chữ số) không đủ chỗ cho "TỔNG CỘNG", chữ sẽ bị bẻ ngang giữa từ.
+  const firstTotalIdx = columns.findIndex((c) => c.total);
+  // `Math.max(…, 1)`: nếu 1 ngày nào đó cột `total` đầu tiên rơi đúng vị trí 0 (hiện chưa xảy ra —
+  // cột 0 luôn là STT/mauHd), `colSpan={0}` là HTML không hợp lệ; span tối thiểu 1 tránh vỡ bảng.
+  const labelSpan = firstTotalIdx === -1 ? columns.length : Math.max(firstTotalIdx, 1);
   return (
-    <TableRow sx={TOTAL_ROW_SX}>
-      {columns.map((col, i) => (
-        <TableCell key={col.key} align={col.align}>
-          {i === 0 ? TOTAL_ROW_LABEL : tong.has(col.key) ? formatMoney(tong.get(col.key)) : ""}
+    <TableRow sx={totalRowSx(stickyTop)}>
+      <TableCell colSpan={labelSpan} sx={{ whiteSpace: "nowrap" }}>
+        {TOTAL_ROW_LABEL}
+      </TableCell>
+      {columns.slice(labelSpan).map((col) => (
+        <TableCell key={col.key} align={col.align} sx={columnCellSx(col)}>
+          {tong.has(col.key) ? formatMoney(tong.get(col.key)) : ""}
         </TableCell>
       ))}
     </TableRow>

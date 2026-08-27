@@ -14,8 +14,11 @@ import InboxRounded from "@mui/icons-material/InboxRounded";
 import InvoicePagination, { DEFAULT_ROWS_PER_PAGE } from "../../../components/InvoicePagination";
 import { clampPage } from "../../../utils/pagination";
 import { columnDividerSx } from "../../../utils/tableStyles";
+import { useElementHeight } from "../hooks/useElementHeight";
 import {
+  columnCellSx,
   detailColumns,
+  headerAlign,
   invoiceRowFill,
   renderCell,
   rowFillSx,
@@ -82,6 +85,9 @@ export default function InvoiceDetailPanel({
   const [page, setPage] = useState(0);
   const [rowsPerPage, setRowsPerPage] = useState(DEFAULT_ROWS_PER_PAGE);
   const columns = useMemo(() => detailColumns(direction), [direction]);
+  // Chiều cao thật của hàng tiêu đề (1 hay 2 dòng tùy `webWidth`) -> canh `top` cho hàng tổng dính
+  // ngay dưới nó, xem `totalsRow`.
+  const [headerRowRef, headerRowHeight] = useElementHeight<HTMLTableRowElement>();
   // Cộng trên TOÀN BỘ `rows` (hàng chục nghìn dòng hàng × 8 cột tiền) nên phải nhớ kết quả: bảng này
   // render lại theo mọi nhịp poll của lượt "Tải chi tiết", chứ không chỉ khi dữ liệu đổi.
   const tong = useMemo(() => tongCotSo(columns, rows), [columns, rows]);
@@ -118,15 +124,16 @@ export default function InvoiceDetailPanel({
 
   return (
     <>
-      <TableContainer component={Paper} variant="outlined" sx={{ overflowX: "auto" }}>
+      <TableContainer component={Paper} variant="outlined" sx={{ maxHeight: 520, overflowX: "auto" }}>
         <Table
           size="small"
-          sx={(theme) => columnDividerSx(theme, { whiteSpace: "nowrap" })}
+          stickyHeader
+          sx={(theme) => columnDividerSx(theme)}
         >
           <TableHead>
-            <TableRow sx={{ "& th": { fontWeight: 700, bgcolor: "action.hover" } }}>
+            <TableRow ref={headerRowRef} sx={{ "& th": { fontWeight: 700, bgcolor: "action.hover" } }}>
               {columns.map((col) => (
-                <TableCell key={col.key} align={col.align}>
+                <TableCell key={col.key} align={headerAlign(col)} sx={columnCellSx(col)}>
                   {col.header}
                   {renderHeaderExtra?.(col.key, col.header)}
                 </TableCell>
@@ -134,10 +141,12 @@ export default function InvoiceDetailPanel({
             </TableRow>
             {renderHeaderInputExtra && (
               // Dòng lọc CỐ ĐỊNH dưới header — thay popover cũ, luôn hiện sẵn 1 ô/cột (rỗng nếu cột
-              // không lọc được).
+              // không lọc được). `position: "static"` để BỎ hiệu ứng dính-khi-cuộn-dọc mà `stickyHeader`
+              // áp cho MỌI ô trong `TableHead` — chỉ dòng tiêu đề dính, dòng lọc cuộn theo thân bảng
+              // (cùng cách `BangHoSo.tsx` bên Dịch vụ công đang làm).
               <TableRow sx={{ "& th": { bgcolor: "action.hover", py: 0.25 } }}>
                 {columns.map((col) => (
-                  <TableCell key={col.key} align={col.align}>
+                  <TableCell key={col.key} align={col.align} sx={{ position: "static", ...columnCellSx(col) }}>
                     {renderHeaderInputExtra(col.key)}
                   </TableCell>
                 ))}
@@ -148,14 +157,14 @@ export default function InvoiceDetailPanel({
             {/* Hàng tổng đứng NGAY DƯỚI tiêu đề. `rows` (toàn bộ dòng khớp bộ lọc), KHÔNG phải
                 `pagedRows`: đây là tổng của cả bảng nên không đổi khi lật trang — cũng là con số
                 nằm ở sheet Excel. */}
-            {totalsRow(columns, tong)}
+            {totalsRow(columns, tong, headerRowHeight)}
             {pagedRows.map((r, i) => {
               const stt = safePage * rowsPerPage + i + 1;
               return (
                 // Tô cả hàng theo trạng thái/cảnh báo — CÙNG bảng màu với sheet Excel "Chi tiết".
                 <TableRow key={stt} hover sx={rowFillSx(invoiceRowFill(r))}>
                   {columns.map((col) => (
-                    <TableCell key={col.key} align={col.align}>
+                    <TableCell key={col.key} align={col.align} sx={columnCellSx(col)}>
                       {renderCell(col, r, stt)}
                     </TableCell>
                   ))}
