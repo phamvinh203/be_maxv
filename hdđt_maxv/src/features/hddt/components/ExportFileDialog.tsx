@@ -43,10 +43,13 @@ interface Props {
 }
 
 /**
- * Dialog "Xuất file Excel tổng hợp + hóa đơn": xuất CẢ 2 CHIỀU (mua vào + bán ra) vào cấu trúc
- * `<MST người nhập>/<khoảng ngày>/{purchase,sold}/{html,xml,pdf}` + 2 file Excel tổng hợp, ghi vào thư
- * mục người dùng chọn (File System Access — Chrome/Edge). Chỉ cho xuất khi CẢ 2 chiều đã "đồng bộ hoàn
- * thành" (mọi HĐ có chi tiết). Mở từ tab Hóa đơn.
+ * Dialog "Xuất file Excel tổng hợp + hóa đơn": ghi vào cấu trúc
+ * `<MST người nhập>/<khoảng ngày>/{purchase,sold}/{html,xml,pdf}` + file Excel tổng hợp, vào thư mục
+ * người dùng chọn (File System Access — Chrome/Edge). Mở từ tab Hóa đơn.
+ *
+ * Excel là bảng kê PER-CHIỀU nên có 2 ô tick riêng (mua vào / bán ra) — cần bảng kê bên nào chỉ tải
+ * bên đó. File TỪNG TỜ (html/xml/pdf) thì vẫn xuất cả 2 chiều. Gate "đồng bộ hoàn thành" bám đúng
+ * phạm vi đã tick, không bắt chờ chiều mà lượt này không đụng tới.
  *
  * HTML/PDF dựng từ chi tiết đã lưu (không cần mạng ngoài); riêng XML là BẢN GỐC ĐÃ KÝ SỐ tải từ cổng
  * thuế nên tick XML thì bắt buộc có token GDT của MST đang chọn.
@@ -64,7 +67,8 @@ export default function ExportFileDialog({ open, onClose, defaultRange }: Props)
     html: true,
     xml: true,
     pdf: true,
-    excel: true,
+    excelPurchase: true,
+    excelSold: true,
   });
   const [dir, setDir] = useState<FsDirHandle | null>(null);
   const [exporting, setExporting] = useState(false);
@@ -78,19 +82,42 @@ export default function ExportFileDialog({ open, onClose, defaultRange }: Props)
     }),
     [range.tuNgay, range.denNgay, loai],
   );
+  // Chạy CẢ 2 chiều bất kể ô tick — bật/tắt checkbox chỉ đổi phạm vi gate bên dưới, không phải lý do
+  // để fetch lại.
   const purchaseComplete = useDetailCompleteQuery("purchase", query, open);
   const soldComplete = useDetailCompleteQuery("sold", query, open);
-  const pData = purchaseComplete.data;
-  const sData = soldComplete.data;
 
-  // anyFormat = có tick file TỪNG hóa đơn (html/xml/pdf); anySelected gồm cả Excel tổng hợp — chỉ tick
-  // Excel cũng đủ để xuất (tải mỗi bảng kê, không kèm file hóa đơn).
+  // anyFormat = có tick file TỪNG hóa đơn (html/xml/pdf); anyExcel = có tick ít nhất 1 bảng kê Excel.
+  // Chỉ tick Excel cũng đủ để xuất (tải mỗi bảng kê, không kèm file hóa đơn).
   const anyFormat = formats.html || formats.xml || formats.pdf;
-  const anySelected = anyFormat || formats.excel;
+  const anyExcel = formats.excelPurchase || formats.excelSold;
+  const anySelected = anyFormat || anyExcel;
   const hasRange = !!range.tuNgay && !!range.denNgay;
-  const bothLoaded = !!pData && !!sData;
-  const synced = bothLoaded && pData.missing === 0 && sData.missing === 0;
-  const totalInvoices = (pData?.total ?? 0) + (sData?.total ?? 0);
+
+  // Chiều nào THỰC SỰ bị đụng tới trong lượt này: file từng tờ luôn ghi CẢ 2 chiều, còn Excel chỉ ghi
+  // chiều được tick. Gate đồng bộ + đếm số hóa đơn bám đúng phạm vi đó — đừng bắt người chỉ cần Excel
+  // mua vào phải chờ chiều bán ra đồng bộ xong, cũng đừng để chiều không dùng tới làm bật nút.
+  const needed = [
+    { label: "Mua vào", need: anyFormat || formats.excelPurchase, res: purchaseComplete },
+    { label: "Bán ra", need: anyFormat || formats.excelSold, res: soldComplete },
+  ].filter((d) => d.need);
+  const neededLoaded = needed.length > 0 && needed.every((d) => !!d.res.data);
+  // Dựng sẵn chuỗi cảnh báo ở đây để JSX khỏi phải đọc lại `data` (đã lọc theo missing > 0).
+  const missingLines = needed
+    .filter((d) => (d.res.data?.missing ?? 0) > 0)
+    .map((d) => `${d.label}: ${d.res.data?.missing}/${d.res.data?.total}`);
+  const synced = neededLoaded && missingLines.length === 0;
+  const totalInvoices = needed.reduce((s, d) => s + (d.res.data?.total ?? 0), 0);
+  const loadFailed = needed.find((d) => d.res.isError);
+
+  // Nhãn phạm vi Excel dùng chung cho mọi câu tổng kết — tránh mỗi chỗ tự ghép một kiểu.
+  const excelScope =
+    formats.excelPurchase && formats.excelSold
+      ? "mua vào + bán ra"
+      : formats.excelPurchase
+        ? "mua vào"
+        : "bán ra";
+
   // XML gốc tải từ cổng thuế -> thiếu token thì chặn ngay, đừng để chạy rồi hỏng từng hóa đơn một.
   const needsGdtLogin = formats.xml && !gdtToken;
   const canExport =
@@ -159,14 +186,15 @@ export default function ExportFileDialog({ open, onClose, defaultRange }: Props)
         res.mergedPdf > 0
           ? ` Kèm 1 file PDF gộp ${res.mergedPdf} hóa đơn (đứng đầu thư mục pdf/).`
           : "";
-      // "+ Excel" chỉ đúng khi có tick Excel — đừng nhắc Excel khi người dùng chỉ tải file hóa đơn.
-      const excelNote = formats.excel ? " + Excel tổng hợp" : "";
+      // Nói ĐÚNG bảng kê nào vừa ghi: tick 1 chiều mà báo trống trơn "Excel tổng hợp" thì người dùng
+      // đi tìm cả file của chiều kia. Không tick Excel thì không nhắc tới Excel.
+      const excelNote = anyExcel ? ` + Excel tổng hợp (${excelScope})` : "";
       // Chỉ tick Excel (không html/xml/pdf) -> không ghi file hóa đơn nào, nên câu tổng kết nói theo
       // Excel thay vì "đã xuất N hóa đơn". Nhánh lỗi (res.err > 0) chỉ xảy ra khi có file hóa đơn, nên
       // ở đó luôn có "hóa đơn".
       const okSummary = anyFormat
         ? `Đã xuất ${res.ok} hóa đơn (2 chiều)${excelNote} vào thư mục "${dir.name}".${fixedNote}${noXmlNote}${mergedNote}`
-        : `Đã xuất Excel tổng hợp (2 chiều) vào thư mục "${dir.name}".`;
+        : `Đã xuất Excel tổng hợp (${excelScope}) vào thư mục "${dir.name}".`;
       toast.update(toastId, {
         render:
           res.err > 0
@@ -204,11 +232,11 @@ export default function ExportFileDialog({ open, onClose, defaultRange }: Props)
       </DialogTitle>
       <DialogContent dividers>
         <Alert severity="info" sx={{ mb: 2 }}>
-          Xuất CẢ 2 chiều (mua vào + bán ra) trong khoảng đã đồng bộ hoàn thành. Cấu trúc:{" "}
-          <b>{activeMst ?? "MST"}</b> / <b>khoảng ngày</b> / {"{purchase, sold}"} /{" "}
-          {"{html, xml, pdf}"} + 2 file Excel tổng hợp — mỗi phần xuất theo ô tick bên dưới. File XML
-          là <b>bản gốc đã ký số</b> tải trực tiếp từ Thuế điện tử. Phần mềm cần chút thời gian để
-          render PDF và tải XML.
+          Cấu trúc thư mục: <b>{activeMst ?? "MST"}</b> / <b>khoảng ngày</b> / {"{purchase, sold}"} /{" "}
+          {"{html, xml, pdf}"}, kèm file Excel tổng hợp đặt ngay ở thư mục khoảng ngày. Mỗi phần chỉ
+          xuất khi được tick bên dưới — <b>Excel tách riêng theo chiều</b>, còn file từng hóa đơn thì
+          xuất cả 2 chiều. File XML là <b>bản gốc đã ký số</b> tải trực tiếp từ Thuế điện tử. Phần
+          mềm cần chút thời gian để render PDF và tải XML.
         </Alert>
 
         {!canPick && (
@@ -262,11 +290,17 @@ export default function ExportFileDialog({ open, onClose, defaultRange }: Props)
           />
         </Stack>
 
-        <FormLabel sx={{ fontWeight: 600, fontSize: 14 }}>Bảng kê tổng hợp</FormLabel>
-        <FormGroup sx={{ mb: 1.5, mt: 0.5 }}>
+        <FormLabel sx={{ fontWeight: 600, fontSize: 14 }}>Bảng kê tổng hợp (Excel)</FormLabel>
+        <FormGroup row sx={{ mb: 1.5, mt: 0.5 }}>
           <FormControlLabel
-            control={<Checkbox checked={formats.excel} onChange={() => toggle("excel")} />}
-            label="Excel tổng hợp (mua vào + bán ra)"
+            control={
+              <Checkbox checked={formats.excelPurchase} onChange={() => toggle("excelPurchase")} />
+            }
+            label="Excel hóa đơn mua vào"
+          />
+          <FormControlLabel
+            control={<Checkbox checked={formats.excelSold} onChange={() => toggle("excelSold")} />}
+            label="Excel hóa đơn bán ra"
           />
         </FormGroup>
 
@@ -301,23 +335,26 @@ export default function ExportFileDialog({ open, onClose, defaultRange }: Props)
           </Typography>
         </Stack>
 
-        {(purchaseComplete.isError || soldComplete.isError) && (
-          <Alert severity="error" sx={{ mt: 1 }}>
-            {getErrorMessage(
-              purchaseComplete.error ?? soldComplete.error,
-              "Không kiểm tra được trạng thái đồng bộ.",
-            )}
-          </Alert>
-        )}
-        {bothLoaded && !synced && (
+        {!anySelected && (
           <Alert severity="warning" sx={{ mt: 1 }}>
-            Còn hóa đơn chưa tải chi tiết — Mua vào: {pData.missing}/{pData.total}, Bán ra:{" "}
-            {sData.missing}/{sData.total}. Hãy đồng bộ hoàn thành cả 2 chiều trước khi xuất.
+            Chưa chọn nội dung cần xuất — tick ít nhất 1 ô Excel hoặc 1 định dạng file hóa đơn.
           </Alert>
         )}
-        {bothLoaded && synced && totalInvoices === 0 && (
+        {loadFailed && (
+          <Alert severity="error" sx={{ mt: 1 }}>
+            {getErrorMessage(loadFailed.res.error, "Không kiểm tra được trạng thái đồng bộ.")}
+          </Alert>
+        )}
+        {neededLoaded && !synced && (
+          <Alert severity="warning" sx={{ mt: 1 }}>
+            Còn hóa đơn chưa tải chi tiết — {missingLines.join(", ")}. Hãy đồng bộ hoàn thành trước
+            khi xuất.
+          </Alert>
+        )}
+        {neededLoaded && synced && totalInvoices === 0 && (
           <Alert severity="info" sx={{ mt: 1 }}>
-            Không có hóa đơn nào trong khoảng đã chọn.
+            Không có hóa đơn nào trong khoảng đã chọn
+            {needed.length === 1 ? ` (chiều ${needed[0].label.toLowerCase()})` : ""}.
           </Alert>
         )}
       </DialogContent>
