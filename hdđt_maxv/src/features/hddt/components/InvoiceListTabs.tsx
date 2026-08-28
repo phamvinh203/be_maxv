@@ -13,7 +13,6 @@ import Tab from "@mui/material/Tab";
 import Paper from "@mui/material/Paper";
 import Stack from "@mui/material/Stack";
 import Button from "@mui/material/Button";
-import Checkbox from "@mui/material/Checkbox";
 import IconButton from "@mui/material/IconButton";
 import Tooltip from "@mui/material/Tooltip";
 import Table from "@mui/material/Table";
@@ -31,6 +30,7 @@ import FileDownloadRounded from "@mui/icons-material/FileDownloadRounded";
 import CloudDownloadRounded from "@mui/icons-material/CloudDownloadRounded";
 import VisibilityRounded from "@mui/icons-material/VisibilityRounded";
 import AccountTreeRounded from "@mui/icons-material/AccountTreeRounded";
+import { useElementHeight } from "../hooks/useElementHeight";
 import { useActiveGdtToken } from "../gdtSession/useActiveGdtToken";
 import { useGdtSession } from "../gdtSession/useGdtSession";
 import DialogLoginHddt from "../../../components/dialogLoginHddt";
@@ -60,6 +60,8 @@ import { toDisplayRow } from "../invoiceRow";
 import { buildReplacedByMap, toDetailRows } from "../detailRow";
 import { invoiceKey, invoiceSttMap } from "../invoiceFileName";
 import {
+  columnCellSx,
+  headerAlign,
   invoiceRowFill,
   overviewColumns,
   renderCell,
@@ -362,11 +364,14 @@ function InvoiceTablePanel({ direction, active }: InvoiceTablePanelProps) {
   const { setGdtToken } = useGdtSession();
   // Cột đối tác đổi theo chiều (mua vào: người bán; bán ra: người mua) -> tính theo direction.
   const columns = useMemo(() => overviewColumns(direction), [direction]);
+  // Chiều cao thật của hàng tiêu đề (1 hay 2 dòng tùy `webWidth`) -> canh `top` cho hàng tổng dính
+  // ngay dưới nó, xem `totalsRow`.
+  const [headerRowRef, headerRowHeight] = useElementHeight<HTMLTableRowElement>();
   const qc = useQueryClient();
   const [resultTab, setResultTab] = useState<ResultTab>("tong-quat");
   const [page, setPage] = useState(0);
   const [rowsPerPage, setRowsPerPage] = useState(DEFAULT_ROWS_PER_PAGE);
-  // Hóa đơn đang chọn (checkbox cột "Chọn") để bật nút "Xem hóa đơn"; null = chưa chọn.
+  // Hóa đơn đang mở trong dialog "Xem hóa đơn"; null = không có dialog nào đang mở.
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [viewOpen, setViewOpen] = useState(false);
   /** Hóa đơn + loại file đang tải ở cụm cột thao tác; null = không có lượt nào chạy. */
@@ -1003,7 +1008,7 @@ function InvoiceTablePanel({ direction, active }: InvoiceTablePanelProps) {
           applyColumnFilter({ tuPhi: tu, denPhi: den }),
         );
       default:
-        return NOT_FILTERABLE; // stt/chon/lienQuan/xemHoaDon/taiFile/taiGoc/tenFile — nút thao tác
+        return NOT_FILTERABLE; // stt/lienQuan/xemHoaDon/taiFile/taiGoc/tenFile — nút thao tác
     }
   };
 
@@ -1138,20 +1143,9 @@ function InvoiceTablePanel({ direction, active }: InvoiceTablePanelProps) {
           </Tooltip>
         );
       }
-      case "chon":
-        return (
-          <Checkbox
-            size="small"
-            sx={{ p: 0 }}
-            checked={selectedId === r.id}
-            onChange={(e) => setSelectedId(e.target.checked ? r.id : null)}
-            slotProps={{ input: { "aria-label": `Chọn hóa đơn ${r.soHd}` } }}
-          />
-        );
       case "xemHoaDon":
-        // Mở thẳng hóa đơn của ĐÚNG hàng này, khỏi phải cuộn ngược lên nút ở đầu bảng. Vẫn đi qua
-        // `selectedId` (nguồn duy nhất của dialog) nên checkbox cùng hàng tự tích theo — bảng không
-        // bao giờ chỉ vào hai hóa đơn khác nhau.
+        // `selectedId` là nguồn DUY NHẤT cho biết dialog đang mở hóa đơn nào — set kèm mở dialog
+        // trong cùng một lượt bấm, tránh trạng thái lệch (dialog trỏ khác hàng vừa bấm).
         return (
           <Tooltip title="Xem hóa đơn">
             <IconButton
@@ -1237,20 +1231,6 @@ function InvoiceTablePanel({ direction, active }: InvoiceTablePanelProps) {
         </Tabs>
 
         <Stack direction="row" spacing={1}>
-          {resultTab === "tong-quat" && (
-            <Button
-              variant="outlined"
-              size="small"
-              startIcon={<VisibilityRounded fontSize="small" />}
-              sx={{ textTransform: "none", whiteSpace: "nowrap" }}
-              disabled={!selectedId}
-              onClick={() => setViewOpen(true)}
-            >
-              Xem hóa đơn
-            </Button>
-            
-          )}
-
           <Button
             variant="contained"
             size="small"
@@ -1290,25 +1270,29 @@ function InvoiceTablePanel({ direction, active }: InvoiceTablePanelProps) {
         />
       ) : (
       <>
-      <TableContainer component={Paper} variant="outlined" sx={{ overflowX: "auto" }}>
+      <TableContainer component={Paper} variant="outlined" sx={{ maxHeight: 520, overflowX: "auto" }}>
         <Table
           size="small"
-          sx={(theme) => columnDividerSx(theme, { whiteSpace: "nowrap" })}
+          stickyHeader
+          sx={(theme) => columnDividerSx(theme)}
         >
           <TableHead>
-            <TableRow sx={{ "& th": { fontWeight: 700, bgcolor: "action.hover" } }}>
+            <TableRow ref={headerRowRef} sx={{ "& th": { fontWeight: 700, bgcolor: "action.hover" } }}>
               {columns.map((col) => (
-                <TableCell key={col.key} align={col.align}>
+                <TableCell key={col.key} align={headerAlign(col)} sx={columnCellSx(col)}>
                   {col.header}
                   {renderHeaderFilter(col.key, col.header)}
                 </TableCell>
               ))}
             </TableRow>
             {/* Dòng lọc CỐ ĐỊNH dưới header — thay popover cũ, luôn hiện sẵn 1 ô/cột (rỗng nếu cột
-                không lọc được, xem `overviewColumnFilterSpec`). */}
+                không lọc được, xem `overviewColumnFilterSpec`). `position: "static"` để BỎ hiệu ứng
+                dính-khi-cuộn-dọc mà `stickyHeader` áp cho MỌI ô trong `TableHead` — chỉ dòng tiêu đề
+                dính, dòng lọc cuộn theo thân bảng (không thì 2 dòng cùng dính ở top:0 đè chữ lên nhau,
+                cùng cách `BangHoSo.tsx` bên Dịch vụ công đang làm). */}
             <TableRow sx={{ "& th": { bgcolor: "action.hover", py: 0.25 } }}>
               {columns.map((col) => (
-                <TableCell key={col.key} align={col.align}>
+                <TableCell key={col.key} align={col.align} sx={{ position: "static", ...columnCellSx(col) }}>
                   {renderFilterInput(col.key)}
                 </TableCell>
               ))}
@@ -1320,7 +1304,7 @@ function InvoiceTablePanel({ direction, active }: InvoiceTablePanelProps) {
               {/* Hàng tổng đứng NGAY DƯỚI tiêu đề. `rows` (toàn bộ hóa đơn khớp bộ lọc), KHÔNG phải
                   `pagedRows`: đây là tổng của cả bảng nên không đổi khi lật trang — cũng là con số
                   nằm ở sheet Excel. */}
-              {totalsRow(columns, tong)}
+              {totalsRow(columns, tong, headerRowHeight)}
               {pagedRows.map((r, i) => {
                 const stt = safePage * rowsPerPage + i + 1;
                 return (
@@ -1334,7 +1318,7 @@ function InvoiceTablePanel({ direction, active }: InvoiceTablePanelProps) {
                     sx={rowFillSx(invoiceRowFill(r))}
                   >
                     {columns.map((col) => (
-                      <TableCell key={col.key} align={col.align}>
+                      <TableCell key={col.key} align={col.align} sx={columnCellSx(col)}>
                         {oThaoTac(col.key, r, stt) ?? renderCell(col, r, stt)}
                       </TableCell>
                     ))}

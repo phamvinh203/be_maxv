@@ -15,6 +15,12 @@ import {
   traCuuHoSo,
   xoaLichSuDongBo,
   xoaTatCaLichSuDongBo,
+  xuatGtgt01,
+  xuatKhac,
+  xuatQtt05,
+  xuatTncn05,
+  xuatTndn03,
+  xuatXml,
 } from "../../controllers/client/dich_vu_cong/gdt-dvc.controller";
 import { requireModule } from "../../services/shared/modules.service";
 import gntRoutes from "./giay_nop_tien/gnt.route";
@@ -54,6 +60,36 @@ export default async function (fastify: FastifyInstance) {
   fastify.get("/ho-so/to-khai-chi-tiet", {
     preHandler: guard,
     handler: chiTietToKhai,
+  });
+
+  fastify.get("/ho-so/xuat-gtgt01", {
+    preHandler: guard,
+    handler: xuatGtgt01,
+  });
+
+  fastify.get("/ho-so/xuat-qtt05", {
+    preHandler: guard,
+    handler: xuatQtt05,
+  });
+
+  fastify.get("/ho-so/xuat-tncn05", {
+    preHandler: guard,
+    handler: xuatTncn05,
+  });
+
+  fastify.get("/ho-so/xuat-tndn03", {
+    preHandler: guard,
+    handler: xuatTndn03,
+  });
+
+  fastify.get("/ho-so/xuat-khac", {
+    preHandler: guard,
+    handler: xuatKhac,
+  });
+
+  fastify.get("/ho-so/xuat-xml", {
+    preHandler: guard,
+    handler: xuatXml,
   });
 
   fastify.get("/ho-so/tai-lieu-dkem", {

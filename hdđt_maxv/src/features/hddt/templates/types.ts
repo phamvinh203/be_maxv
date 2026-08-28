@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import type { SxProps, Theme } from "@mui/material/styles";
 import { formatMoney } from "../format";
 
 /** Kiểu tô 1 hàng Excel. Màu dạng ARGB 8 ký tự của exceljs ("FF" + RRGGBB). */
@@ -42,8 +43,15 @@ export interface InvoiceColumn<T> {
   key: string;
   /** Tiêu đề: hàng 1 của sheet Excel, dòng tiêu đề CSV, `<TableCell>` đầu bảng web. */
   header: string;
-  /** Độ rộng cột Excel (đơn vị ký tự). Bỏ trống = để Excel tự co; kênh web và CSV không đọc. */
+  /** Độ rộng cột Excel (đơn vị ký tự). Bỏ trống = để Excel tự co; kênh web (xem `webWidth`) và CSV
+   * không đọc field này. */
   width?: number;
+  /**
+   * Độ rộng cột trên web (đơn vị px) — ĐỘC LẬP với `width` (Excel), xem `columnCellSx`: có set thì
+   * ép độ rộng cố định + xuống dòng khi nội dung dài hơn cột; bỏ trống thì cột tự co theo nội dung
+   * (`nowrap`) như khi chưa có field này. Kênh Excel/CSV không đọc.
+   */
+  webWidth?: number;
   /** Căn lề ô trên web. Kênh file không đọc. */
   align?: "right" | "center";
   /** numFmt kiểu Excel cho cột số (vd "#,##0"). Có numFmt = cột số, web tự gọi `formatMoney`. */
@@ -79,6 +87,28 @@ export function renderCell<T>(col: InvoiceColumn<T>, row: T, stt: number): React
   const v = col.value(row, stt);
   if (col.numFmt) return typeof v === "number" ? formatMoney(v) : "";
   return v ?? NO_DATA_YET;
+}
+
+/**
+ * `sx` cho `<TableCell>` co đúng theo `webWidth` đã khai — ép độ rộng cố định + cho chữ xuống dòng
+ * khi nội dung dài hơn cột. Dùng cho MỌI hàng của bảng (header, dòng lọc, dòng dữ liệu, dòng tổng)
+ * để cột không bị lệch nhau giữa các hàng.
+ * Cột không khai `webWidth` -> giữ `nowrap`, tự co theo nội dung như trước khi có field này.
+ */
+export function columnCellSx<T>(col: InvoiceColumn<T>): SxProps<Theme> {
+  if (!col.webWidth) return { whiteSpace: "nowrap" };
+  const px = col.webWidth;
+  return { width: px, minWidth: px, maxWidth: px, whiteSpace: "normal", wordBreak: "break-word" };
+}
+
+/**
+ * Căn lề cho Ô TIÊU ĐỀ — khác `col.align` (dành cho Ô DỮ LIỆU). `align: "right"` canh số liệu là
+ * đúng quy ước, nhưng áp thẳng lên tiêu đề nhiều chữ thì một khi tiêu đề xuống dòng (có `webWidth`),
+ * dòng ngắn hơn bị dạt sang phải theo từng dòng, đọc lởm chởm. Bỏ "right" cho tiêu đề — giữ "center"
+ * vì canh giữa nhiều dòng vẫn cân đối, không bị lỗi này.
+ */
+export function headerAlign<T>(col: InvoiceColumn<T>): "center" | undefined {
+  return col.align === "center" ? "center" : undefined;
 }
 
 

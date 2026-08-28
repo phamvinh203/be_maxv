@@ -17,8 +17,8 @@ import type { ExcelCellStyle } from "./templates/types";
 import type { DetailRow, DisplayRow, InvoiceDirection } from "./types";
 
 // Trang trí sheet — không gắn với cột nào nên thuộc về file này, không thuộc template cột.
-const HEADER_FILL = "FFDDE6F2"; // xanh nhạt
-const HEADER_HEIGHT = 40; // đủ cho tiêu đề dài xuống dòng ở các cột hẹp
+export const HEADER_FILL = "FFDDE6F2"; // xanh nhạt
+export const HEADER_HEIGHT = 40; // đủ cho tiêu đề dài xuống dòng ở các cột hẹp
 /** Chiều cao các hàng KHÔNG có `wrapText` (hàng tổng) — hàng dữ liệu để Excel tự co, xem bên dưới. */
 const ROW_HEIGHT = 20;
 
@@ -36,7 +36,7 @@ const ROW_HEIGHT = 20;
 const DATA_ALIGNMENT = { vertical: "top", wrapText: true } as const;
 
 /** Viền mảnh 4 cạnh — dùng cho ô tiêu đề và mọi ô dữ liệu. */
-const CELL_BORDER = {
+export const CELL_BORDER = {
   top: { style: "thin" },
   left: { style: "thin" },
   bottom: { style: "thin" },
@@ -90,7 +90,7 @@ interface SheetOptions<T> {
 /**
  * Thêm 1 sheet có tiêu đề IN ĐẬM + nền + freeze + auto-filter, GIÃN DÒNG (chiều cao hàng thoáng) vào
  * workbook. Lõi dùng chung cho sheet Tổng quát và Chi tiết.
- * Cột `webOnly` (checkbox "Chọn", đèn "T. thái tải") bị loại — chỉ có nghĩa trên màn hình.
+ * Cột `webOnly` (đèn "T. thái tải", các nút thao tác…) bị loại — chỉ có nghĩa trên màn hình.
  */
 function addStyledSheet<T>(
   wb: Workbook,

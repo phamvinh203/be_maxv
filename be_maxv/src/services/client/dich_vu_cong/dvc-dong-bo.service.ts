@@ -9,7 +9,15 @@ import { chiaDoanTheoNguon, type DoanTraCuu } from "./nguonTheoNgay";
 import * as DvcService from "./gdt-dvc.service";
 import type { DvcTepTaiVe } from "./gdt-dvc.service";
 import { chuanHoaMime, doanContentType } from "./gdt-dvc.service";
-import { layChiTieuToKhaiGtgt } from "./toKhaiXml";
+import {
+  layChiTietToKhai,
+  layChiTieuToKhaiGtgt,
+  layTenTKhaiTho,
+  type ChiTietGtgt01,
+  type ChiTietQtt05,
+  type ChiTietTncn05,
+  type ChiTietTndn03,
+} from "./toKhaiXml";
 import { taoKhoLuotChayNen, type LuotChayNen } from "../../shared/luotChayNen";
 import { getTenantDb } from "../../../helpers/tenantClient";
 
@@ -717,6 +725,307 @@ export async function timHoSoDaDongBo(
 
   const rows = banDay.map((dong) => headers.map((h) => String(dong[h] ?? "")));
   return { headers, rows };
+}
+
+const CHON_COT_HO_SO_THEO_MAU = {
+  ma_ho_so: true,
+  to_khai: true,
+  ky_tinh_thue: true,
+  lan_nop: true,
+  trang_thai: true,
+  xml_to_khai_bin: true,
+  content_type: true,
+  xml_to_khai: true,
+  ten_file_xml: true,
+} as const;
+
+type HoSoTheoMauDaLuu = Prisma.dvc_ho_soGetPayload<{ select: typeof CHON_COT_HO_SO_THEO_MAU }>;
+
+async function layHoSoTheoMauTrongKhoang(
+  tenantDb: PrismaClient,
+  locMau: Prisma.dvc_ho_soWhereInput,
+  boLoc: { tuNgay?: string; denNgay?: string },
+): Promise<HoSoTheoMauDaLuu[]> {
+  const where: Prisma.dvc_ho_soWhereInput = { ...locMau };
+  if (boLoc.tuNgay || boLoc.denNgay) {
+    where.ngay_nop_date = {
+      ...(boLoc.tuNgay ? { gte: new Date(`${boLoc.tuNgay}T00:00:00`) } : {}),
+      ...(boLoc.denNgay ? { lte: new Date(`${boLoc.denNgay}T23:59:59`) } : {}),
+    };
+  }
+  return tenantDb.dvc_ho_so.findMany({
+    where,
+    orderBy: { ngay_nop_date: "desc" },
+    take: MAX_KET_QUA_TIM_KIEM,
+    select: CHON_COT_HO_SO_THEO_MAU,
+  });
+}
+
+export interface DvcGtgt01XuatRow {
+  maHoSo: string;
+  tenTKhai: string;
+  kyKeKhai: string;
+  lanNop: string;
+  tieuMucHachToan: string;
+  trangThai: string;
+  ct: ChiTietGtgt01["ct"];
+}
+
+export async function layDsToKhaiGtgt01DaLuu(
+  tenantDb: PrismaClient,
+  boLoc: { tuNgay?: string; denNgay?: string },
+): Promise<DvcGtgt01XuatRow[]> {
+  const daLuu = await layHoSoTheoMauTrongKhoang(
+    tenantDb,
+    { to_khai: { contains: "01/GTGT", mode: "insensitive" } },
+    boLoc,
+  );
+
+  return daLuu.map((h) => {
+    const xml = xmlToKhaiDangChuoi(h);
+    const chiTiet = xml ? layChiTietToKhai(xml, h.to_khai) : null;
+    const gtgt01 = chiTiet?.loai === "gtgt01" ? chiTiet.duLieu : null;
+    return {
+      maHoSo: h.ma_ho_so,
+      tenTKhai: gtgt01?.tenTKhai ?? "",
+      kyKeKhai: h.ky_tinh_thue ?? "",
+      lanNop: h.lan_nop ?? "",
+      tieuMucHachToan: gtgt01?.tieuMucHachToan ?? "",
+      trangThai: h.trang_thai ?? "",
+      ct: gtgt01?.ct ?? {},
+    };
+  });
+}
+
+export interface DvcQtt05XuatRow {
+  maHoSo: string;
+  tenTKhai: string;
+  kyKeKhai: string;
+  lanNop: string;
+  ngayLap: string;
+  ngayKy: string;
+  loaiToKhai: string;
+  trangThai: string;
+  ct: ChiTietQtt05["ct"];
+}
+
+export async function layDsToKhaiQtt05DaLuu(
+  tenantDb: PrismaClient,
+  boLoc: { tuNgay?: string; denNgay?: string },
+): Promise<DvcQtt05XuatRow[]> {
+  const daLuu = await layHoSoTheoMauTrongKhoang(
+    tenantDb,
+    { to_khai: { contains: "05/QTT-TNCN", mode: "insensitive" } },
+    boLoc,
+  );
+
+  return daLuu.map((h) => {
+    const xml = xmlToKhaiDangChuoi(h);
+    const chiTiet = xml ? layChiTietToKhai(xml, h.to_khai) : null;
+    const qtt05 = chiTiet?.loai === "qtt05" ? chiTiet.duLieu : null;
+    return {
+      maHoSo: h.ma_ho_so,
+      tenTKhai: qtt05?.tenTKhai ?? "",
+      kyKeKhai: h.ky_tinh_thue ?? "",
+      lanNop: h.lan_nop ?? "",
+      ngayLap: qtt05?.ngayLap ?? "",
+      ngayKy: qtt05?.ngayKy ?? "",
+      loaiToKhai: qtt05?.loaiTKhai ?? "",
+      trangThai: h.trang_thai ?? "",
+      ct: qtt05?.ct ?? {},
+    };
+  });
+}
+
+export interface DvcTncn05XuatRow {
+  maHoSo: string;
+  tenTKhai: string;
+  kyKeKhai: string;
+  lanNop: string;
+  ngayLap: string;
+  ngayKy: string;
+  loaiToKhai: string;
+  trangThai: string;
+  ct: ChiTietTncn05["ct"];
+}
+
+export async function layDsToKhaiTncn05DaLuu(
+  tenantDb: PrismaClient,
+  boLoc: { tuNgay?: string; denNgay?: string },
+): Promise<DvcTncn05XuatRow[]> {
+  const daLuu = await layHoSoTheoMauTrongKhoang(
+    tenantDb,
+    { to_khai: { contains: "05/KK-TNCN", mode: "insensitive" } },
+    boLoc,
+  );
+
+  return daLuu.map((h) => {
+    const xml = xmlToKhaiDangChuoi(h);
+    const chiTiet = xml ? layChiTietToKhai(xml, h.to_khai) : null;
+    const tncn05 = chiTiet?.loai === "tncn05" ? chiTiet.duLieu : null;
+    return {
+      maHoSo: h.ma_ho_so,
+      tenTKhai: tncn05?.tenTKhai ?? "",
+      kyKeKhai: h.ky_tinh_thue ?? "",
+      lanNop: h.lan_nop ?? "",
+      ngayLap: tncn05?.ngayLap ?? "",
+      ngayKy: tncn05?.ngayKy ?? "",
+      loaiToKhai: tncn05?.loaiTKhai ?? "",
+      trangThai: h.trang_thai ?? "",
+      ct: tncn05?.ct ?? {},
+    };
+  });
+}
+
+export interface DvcTndn03XuatRow {
+  maHoSo: string;
+  tenTKhai: string;
+  kyKeKhai: string;
+  lanNop: string;
+  ngayLap: string;
+  loaiToKhai: string;
+  trangThai: string;
+  ct: ChiTietTndn03["ct"];
+}
+
+export async function layDsToKhaiTndn03DaLuu(
+  tenantDb: PrismaClient,
+  boLoc: { tuNgay?: string; denNgay?: string },
+): Promise<DvcTndn03XuatRow[]> {
+  const daLuu = await layHoSoTheoMauTrongKhoang(
+    tenantDb,
+    {
+      OR: [
+        { to_khai: { contains: "03/TNDN", mode: "insensitive" } },
+        { to_khai: { contains: "Báo cáo tài chính", mode: "insensitive" } },
+      ],
+    },
+    boLoc,
+  );
+
+  return daLuu.map((h) => {
+    const xml = xmlToKhaiDangChuoi(h);
+    const chiTiet = xml ? layChiTietToKhai(xml, h.to_khai) : null;
+    const tndn03 = chiTiet?.loai === "tndn03" ? chiTiet.duLieu : null;
+    return {
+      maHoSo: h.ma_ho_so,
+      tenTKhai: tndn03?.tenTKhai ?? (xml ? layTenTKhaiTho(xml) : ""),
+      kyKeKhai: h.ky_tinh_thue ?? "",
+      lanNop: h.lan_nop ?? "",
+      ngayLap: tndn03?.ngayLap ?? "",
+      loaiToKhai: tndn03?.loaiTKhai ?? "",
+      trangThai: h.trang_thai ?? "",
+      ct: tndn03?.ct ?? {},
+    };
+  });
+}
+
+const CHUOI_DA_CO_FILE_RIENG = [
+  "01/GTGT",
+  "05/QTT-TNCN",
+  "05/KK-TNCN",
+  "03/TNDN",
+  "Báo cáo tài chính",
+];
+
+export interface DvcKhacXuatRow {
+  stt: number;
+  maHoSo: string;
+  toKhai: string;
+  kyTinhThue: string;
+  loaiToKhai: string;
+  lanNop: string;
+  lanBoSung: string;
+  ngayNop: string;
+  noiNop: string;
+  trangThai: string;
+}
+
+export async function layDsToKhaiKhacDaLuu(
+  tenantDb: PrismaClient,
+  boLoc: { tuNgay?: string; denNgay?: string },
+): Promise<DvcKhacXuatRow[]> {
+  const where: Prisma.dvc_ho_soWhereInput = {
+    NOT: CHUOI_DA_CO_FILE_RIENG.map((chuoi) => ({
+      to_khai: { contains: chuoi, mode: "insensitive" as const },
+    })),
+  };
+  if (boLoc.tuNgay || boLoc.denNgay) {
+    where.ngay_nop_date = {
+      ...(boLoc.tuNgay ? { gte: new Date(`${boLoc.tuNgay}T00:00:00`) } : {}),
+      ...(boLoc.denNgay ? { lte: new Date(`${boLoc.denNgay}T23:59:59`) } : {}),
+    };
+  }
+
+  const daLuu = await tenantDb.dvc_ho_so.findMany({
+    where,
+    orderBy: { ngay_nop_date: "desc" },
+    take: MAX_KET_QUA_TIM_KIEM,
+    select: {
+      ma_ho_so: true,
+      to_khai: true,
+      ky_tinh_thue: true,
+      loai_to_khai: true,
+      lan_nop: true,
+      lan_bo_sung: true,
+      ngay_nop: true,
+      noi_nop: true,
+      trang_thai: true,
+    },
+  });
+
+  return daLuu.map((h, i) => ({
+    stt: i + 1,
+    maHoSo: h.ma_ho_so,
+    toKhai: h.to_khai ?? "",
+    kyTinhThue: h.ky_tinh_thue ?? "",
+    loaiToKhai: h.loai_to_khai ?? "",
+    lanNop: h.lan_nop ?? "",
+    lanBoSung: h.lan_bo_sung ?? "",
+    ngayNop: h.ngay_nop ?? "",
+    noiNop: h.noi_nop ?? "",
+    trangThai: h.trang_thai ?? "",
+  }));
+}
+
+export interface DvcXmlXuatRow {
+  maHoSo: string;
+  fileName: string;
+  xml: string;
+}
+
+export async function layDsXmlToKhaiDaLuu(
+  tenantDb: PrismaClient,
+  boLoc: { tuNgay?: string; denNgay?: string },
+): Promise<DvcXmlXuatRow[]> {
+  const where: Prisma.dvc_ho_soWhereInput = {};
+  if (boLoc.tuNgay || boLoc.denNgay) {
+    where.ngay_nop_date = {
+      ...(boLoc.tuNgay ? { gte: new Date(`${boLoc.tuNgay}T00:00:00`) } : {}),
+      ...(boLoc.denNgay ? { lte: new Date(`${boLoc.denNgay}T23:59:59`) } : {}),
+    };
+  }
+
+  const daLuu = await tenantDb.dvc_ho_so.findMany({
+    where,
+    orderBy: { ngay_nop_date: "desc" },
+    take: MAX_KET_QUA_TIM_KIEM,
+    select: {
+      ma_ho_so: true,
+      xml_to_khai_bin: true,
+      content_type: true,
+      xml_to_khai: true,
+      ten_file_xml: true,
+    },
+  });
+
+  const out: DvcXmlXuatRow[] = [];
+  for (const h of daLuu) {
+    const xml = xmlToKhaiDangChuoi(h);
+    if (!xml) continue;
+    out.push({ maHoSo: h.ma_ho_so, fileName: h.ten_file_xml || `${h.ma_ho_so}.xml`, xml });
+  }
+  return out;
 }
 
 // ============================================================

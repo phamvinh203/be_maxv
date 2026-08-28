@@ -5,6 +5,7 @@ import DialogContent from "@mui/material/DialogContent";
 import DialogActions from "@mui/material/DialogActions";
 import Alert from "@mui/material/Alert";
 import Button from "@mui/material/Button";
+import CircularProgress from "@mui/material/CircularProgress";
 import IconButton from "@mui/material/IconButton";
 import Stack from "@mui/material/Stack";
 import TextField from "@mui/material/TextField";
@@ -17,13 +18,99 @@ import { toast } from "react-toastify";
 import {
   pickDirectory,
   supportsDirectoryPicker,
+  writeFile,
   type FsDirHandle,
 } from "../../../lib/fileSystemAccess";
 import { getErrorMessage } from "../../../lib/errors";
+import { useActiveCompanyMst } from "../../auth/useActiveCompanyMst";
+import {
+  layDsGtgt01DeXuat,
+  layDsKhacDeXuat,
+  layDsQtt05DeXuat,
+  layDsTncn05DeXuat,
+  layDsTndn03DeXuat,
+  layDsXmlDeXuat,
+  type DvcXuatKhoangNgayParams,
+} from "../api/dvc";
+import { buildGtgt01WorkbookBuffer, gtgt01WorkbookFilename } from "../xuat_excel/xuatGtgt01Excel";
+import { buildQtt05WorkbookBuffer, qtt05WorkbookFilename } from "../xuat_excel/xuatQtt05Excel";
+import { buildTncn05WorkbookBuffer, tncn05WorkbookFilename } from "../xuat_excel/xuatTncn05Excel";
+import { buildTndn03WorkbookBuffer, tndn03WorkbookFilename } from "../xuat_excel/xuatTndn03Excel";
+import { buildKhacWorkbookBuffer, khacWorkbookFilename } from "../xuat_excel/xuatKhacExcel";
 
 interface Props {
   open: boolean;
   onClose: () => void;
+}
+
+const THU_MUC_THONG_KE = "Thống kê tờ khai";
+
+const THU_MUC_XML = "Tờ khai XML";
+
+interface KetQuaXuatMot {
+  nhan: string;
+  fileName: string;
+  soHoSo: number;
+}
+
+interface XuatFileParams {
+  dir: FsDirHandle;
+  mst: string;
+  tuNgay: string;
+  denNgay: string;
+}
+
+interface KhaiLoaiXuat {
+  nhan: string;
+  layBuffer: (
+    params: DvcXuatKhoangNgayParams,
+  ) => Promise<{ buffer: ArrayBuffer; soHoSo: number } | null>;
+  filename: (mst: string) => string;
+}
+
+function khaiLoaiXuat<Row>(
+  nhan: string,
+  layDs: (params: DvcXuatKhoangNgayParams) => Promise<Row[]>,
+  build: (rows: Row[]) => Promise<ArrayBuffer>,
+  filename: (mst: string) => string,
+): KhaiLoaiXuat {
+  return {
+    nhan,
+    filename,
+    layBuffer: async (params) => {
+      const rows = await layDs(params);
+      if (rows.length === 0) return null;
+      return { buffer: await build(rows), soHoSo: rows.length };
+    },
+  };
+}
+
+const CAC_LOAI_XUAT: KhaiLoaiXuat[] = [
+  khaiLoaiXuat("01/GTGT", layDsGtgt01DeXuat, buildGtgt01WorkbookBuffer, gtgt01WorkbookFilename),
+  khaiLoaiXuat("05/QTT-TNCN", layDsQtt05DeXuat, buildQtt05WorkbookBuffer, qtt05WorkbookFilename),
+  khaiLoaiXuat("05/KK-TNCN", layDsTncn05DeXuat, buildTncn05WorkbookBuffer, tncn05WorkbookFilename),
+  khaiLoaiXuat("03/TNDN", layDsTndn03DeXuat, buildTndn03WorkbookBuffer, tndn03WorkbookFilename),
+  khaiLoaiXuat("Khác", layDsKhacDeXuat, buildKhacWorkbookBuffer, khacWorkbookFilename),
+];
+
+async function xuatMotLoai(p: XuatFileParams, khai: KhaiLoaiXuat): Promise<KetQuaXuatMot> {
+  const fileName = khai.filename(p.mst);
+  const ket = await khai.layBuffer(p);
+  if (ket) await writeFile(p.dir, fileName, ket.buffer);
+  return { nhan: khai.nhan, fileName, soHoSo: ket?.soHoSo ?? 0 };
+}
+
+const CO_LO_GHI_XML = 25;
+
+async function xuatXmlHangLoat(dirGoc: FsDirHandle, tuNgay: string, denNgay: string): Promise<number> {
+  const rows = await layDsXmlDeXuat({ tuNgay, denNgay });
+  if (rows.length === 0) return 0;
+  const xmlDir = await dirGoc.getDirectoryHandle(THU_MUC_XML, { create: true });
+  for (let i = 0; i < rows.length; i += CO_LO_GHI_XML) {
+    const lo = rows.slice(i, i + CO_LO_GHI_XML);
+    await Promise.all(lo.map((row) => writeFile(xmlDir, row.fileName, row.xml)));
+  }
+  return rows.length;
 }
 
 /**
@@ -37,10 +124,13 @@ export default function XuatFileDvcDialog({ open, onClose }: Props) {
   const [tuNgay, setTuNgay] = useState("");
   const [denNgay, setDenNgay] = useState("");
   const [dir, setDir] = useState<FsDirHandle | null>(null);
+  const [dangXuat, setDangXuat] = useState(false);
+
+  const activeMst = useActiveCompanyMst();
 
   // Firefox và Safari chưa có File System Access API — không chọn thư mục được.
   const canPick = supportsDirectoryPicker();
-  const canExport = !!tuNgay && !!denNgay && !!dir;
+  const canExport = !!tuNgay && !!denNgay && !!dir && !!activeMst && !dangXuat;
 
   const chonThuMuc = async () => {
     try {
@@ -51,13 +141,29 @@ export default function XuatFileDvcDialog({ open, onClose }: Props) {
     }
   };
 
-  /**
-   * Chưa xuất được gì: `be_maxv/src/services/client/dich_vu_cong/gdt-dvc.service.ts`
-   * còn rỗng nên không có nguồn dữ liệu. Phần chọn thư mục thì chạy thật, khi
-   * có API chỉ cần thay thân hàm này.
-   */
-  const xuatFile = () => {
-    toast.info("Xuất file đối soát Dịch vụ công đang được phát triển.");
+  const xuatFile = async () => {
+    if (!dir || !activeMst) return;
+    setDangXuat(true);
+    try {
+      const thuMucDich = await dir.getDirectoryHandle(THU_MUC_THONG_KE, { create: true });
+      const p = { dir: thuMucDich, mst: activeMst, tuNgay, denNgay };
+      const [ketQua, soXml] = await Promise.all([
+        Promise.all(CAC_LOAI_XUAT.map((khai) => xuatMotLoai(p, khai))),
+        xuatXmlHangLoat(dir, tuNgay, denNgay),
+      ]);
+      const daGhi = ketQua.filter((k) => k.soHoSo > 0);
+      if (daGhi.length === 0 && soXml === 0) {
+        const dsNhan = CAC_LOAI_XUAT.map((k) => k.nhan).join(", ");
+        toast.info(`Không có hồ sơ nào (${dsNhan}) trong khoảng ngày đã chọn.`);
+        return;
+      }
+
+      toast.success(`Đã xuất excel thống kê đối soát Dịch vụ công và tờ khai xml. `);
+    } catch (e) {
+      toast.error(getErrorMessage(e, "Xuất file đối soát Dịch vụ công thất bại."));
+    } finally {
+      setDangXuat(false);
+    }
   };
 
   return (
@@ -85,6 +191,12 @@ export default function XuatFileDvcDialog({ open, onClose }: Props) {
           <Alert severity="warning" sx={{ mb: 2 }}>
             Trình duyệt hiện tại không hỗ trợ chọn thư mục để lưu. Vui lòng dùng
             Chrome hoặc Edge.
+          </Alert>
+        )}
+
+        {!activeMst && (
+          <Alert severity="warning" sx={{ mb: 2 }}>
+            Chưa chọn công ty (mã số thuế) nên chưa xuất được file.
           </Alert>
         )}
 
@@ -141,12 +253,12 @@ export default function XuatFileDvcDialog({ open, onClose }: Props) {
         </Button>
         <Button
           variant="contained"
-          startIcon={<FileDownloadRounded />}
-          onClick={xuatFile}
+          startIcon={dangXuat ? <CircularProgress size={16} color="inherit" /> : <FileDownloadRounded />}
+          onClick={() => void xuatFile()}
           disabled={!canExport}
           sx={{ textTransform: "none" }}
         >
-          Xuất file
+          {dangXuat ? "Đang xuất…" : "Xuất file"}
         </Button>
       </DialogActions>
     </Dialog>
