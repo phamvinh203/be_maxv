@@ -93,8 +93,10 @@ export interface ExportFormats {
   html: boolean;
   xml: boolean;
   pdf: boolean;
-  /** Bảng kê Excel tổng hợp 2 chiều (mua vào + bán ra). Độc lập với file từng hóa đơn ở trên. */
-  excel: boolean;
+  /** Bảng kê Excel tổng hợp chiều MUA VÀO. Độc lập với file từng hóa đơn ở trên. */
+  excelPurchase: boolean;
+  /** Bảng kê Excel tổng hợp chiều BÁN RA. Độc lập với file từng hóa đơn ở trên. */
+  excelSold: boolean;
 }
 
 /** Tiến độ lượt xuất — phân biệt pha chính với các vòng vá lại hóa đơn còn thiếu file. */
@@ -310,14 +312,22 @@ function noOriginalXmlNote(states: TaskState[], range: ExportRange): string {
  *   <MST người nhập>/<khoảng ngày>/
  *     purchase/{html,xml,pdf}/<ký hiệu>-<số HĐ>.<ext>
  *     sold/{html,xml,pdf}/...
- *     Tong-hop-dau-vao-<khoảng>.xlsx
- *     Tong-hop-dau-ra-<khoảng>.xlsx
- * Bỏ qua + đếm lỗi từng hóa đơn (không kẹt cả lượt). Trả số liệu tổng kết để FE toast.
+ *     Tong-hop-dau-vao-<khoảng>.xlsx   (chỉ khi tick Excel mua vào)
+ *     Tong-hop-dau-ra-<khoảng>.xlsx    (chỉ khi tick Excel bán ra)
+ * File TỪNG TỜ (html/xml/pdf) luôn xuất cả 2 chiều; riêng Excel tách theo chiều nên có thể chỉ ra 1
+ * file. Bỏ qua + đếm lỗi từng hóa đơn (không kẹt cả lượt). Trả số liệu tổng kết để FE toast.
  */
 export async function exportInvoiceBundle(opts: ExportBundleOptions): Promise<ExportBundleResult> {
   const { mst, tenDonVi, query, range, formats, dir, gdtToken, onProgress } = opts;
   const directions: InvoiceDirection[] = ["purchase", "sold"];
   const anyFormat = formats.html || formats.xml || formats.pdf;
+  // Excel là bảng kê PER-CHIỀU nên có ô tick riêng từng chiều — cần bảng kê bên nào thì chỉ ghi bên đó.
+  const wantsExcel = (d: InvoiceDirection) =>
+    d === "purchase" ? formats.excelPurchase : formats.excelSold;
+  const anyExcel = formats.excelPurchase || formats.excelSold;
+  // Chiều nào thực sự phải ĐỌC dữ liệu: file từng tờ luôn ghi cả 2 chiều, nhưng nếu chỉ tick Excel thì
+  // chiều không được tick chẳng sinh file nào — đọc chi tiết của nó là phí công (có thể vài nghìn HĐ).
+  const activeDirections = directions.filter((d) => anyFormat || wantsExcel(d));
   // Hai dòng "MST:" / "Công ty:" đầu sheet Tổng quát. Dựng Ở ĐÂY (một chỗ) để 2 file Excel của lượt
   // xuất ghi giống nhau; thiếu tên (chưa nạp xong danh sách công ty) thì còn MST vẫn nhận ra đơn vị.
   const donVi = { mst, tenCongTy: tenDonVi ?? "" };
@@ -336,11 +346,12 @@ export async function exportInvoiceBundle(opts: ExportBundleOptions): Promise<Ex
 
   // Danh mục NCC — quyết định URL tra cứu thật cho cột "URL tra cứu" của sheet Chi tiết. Đọc SONG
   // SONG với dữ liệu hóa đơn; hỏng thì `toDetailRows` tự lùi về registry FE nên không chặn cả lượt xuất.
-  const danhMucNcc = getDanhMucTraCuuGoc().catch(() => undefined);
+  // Chỉ sheet Chi tiết của Excel dùng tới -> lượt chỉ tải HTML/XML/PDF khỏi bắn thêm 1 request thừa.
+  const danhMucNcc = anyExcel ? getDanhMucTraCuuGoc().catch(() => undefined) : undefined;
 
   // Đọc dữ liệu 2 chiều (song song) trước để biết tổng số HĐ cho progress.
   const perDir = await Promise.all(
-    directions.map(async (direction) => {
+    activeDirections.map(async (direction) => {
       const [saved, details] = await Promise.all([
         getSavedInvoices(direction, query),
         getSavedDetails(direction, query),
@@ -371,9 +382,9 @@ export async function exportInvoiceBundle(opts: ExportBundleOptions): Promise<Ex
     // Cần cho CẢ Excel lẫn tên file từng hóa đơn, nên tính kể cả khi không tick Excel.
     const sttOf = invoiceSttMap(overviewRows);
 
-    // Excel tổng hợp giờ là lựa chọn RIÊNG (ô tick "Excel tổng hợp"): trước đây luôn ghi kèm, nay chỉ
-    // ghi khi người dùng tick — cho phép chỉ tải Excel, hoặc chỉ tải file hóa đơn mà không kèm Excel.
-    if (formats.excel) {
+    // Excel tổng hợp là lựa chọn RIÊNG CHO TỪNG CHIỀU (2 ô tick): cho phép chỉ tải bảng kê mua vào
+    // (hoặc chỉ bán ra), hoặc chỉ tải file hóa đơn mà không kèm Excel nào.
+    if (wantsExcel(direction)) {
       const nccs = await danhMucNcc;
       const detailRows = details.flatMap((d) =>
         toDetailRows(d, sttOf.get(detailInvoiceKey(d)) ?? 0, replacedBy, nccs),
@@ -622,7 +633,7 @@ export async function exportInvoiceBundle(opts: ExportBundleOptions): Promise<Ex
   // ngốn bộ nhớ với lượt vài nghìn hóa đơn) thì phần việc chính vẫn còn nguyên, chỉ thiếu file gộp.
   let mergedPdf = 0;
   if (formats.pdf) {
-    for (const direction of directions) {
+    for (const direction of activeDirections) {
       const group = states
         .filter((s) => s.direction === direction && s.pdfDir)
         .sort((a, b) => a.stt - b.stt); // xếp theo đúng thứ tự bảng Tổng quát
