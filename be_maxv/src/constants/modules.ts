@@ -6,7 +6,7 @@
  * nào khác ở backend. Quyền lưu trong `SubscriptionPlan.features` (kiểu `Json`)
  * nên thêm module KHÔNG cần migration.
  */
-export const MODULE_KEYS = ['hrm', 'accounting', 'dvc'] as const;
+export const MODULE_KEYS = ['hrm', 'accounting', 'dvc', 'tokhai'] as const;
 
 export type ModuleKey = (typeof MODULE_KEYS)[number];
 
