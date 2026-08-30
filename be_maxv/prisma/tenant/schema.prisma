@@ -766,3 +766,39 @@ model dvc_giay_nop_tien {
 
   @@index([ngay_nop_date])
 }
+
+// ============================================================
+//  TỜ KHAI › ĐÁNH DẤU HÓA ĐƠN THUỘC KỲ KÊ KHAI
+// ============================================================
+
+/// Hóa đơn nào được kê khai vào kỳ nào — CHỈ lưu QUYẾT ĐỊNH, không chép số liệu hóa đơn.
+///
+/// Cố ý không có cột tiền/tên đối tác: mọi số đọc thẳng từ `vct50view`/`vct60view` lúc hiển thị.
+/// Chép sang đây sẽ tạo bản thứ hai của cùng một hóa đơn, mà hóa đơn BỊ THAY THẾ / ĐIỀU CHỈNH /
+/// HỦY sau khi đã kê khai là chuyện thường xuyên — bản chép nằm im với số cũ và không ai thấy.
+/// Giữ dạng đánh dấu thì lượt xem sau luôn ra số mới nhất, và phát hiện được "hóa đơn đã kê khai
+/// nay bị thay thế".
+///
+/// Khóa chính `[hoa_don_id, chieu]`: một hóa đơn thuộc ĐÚNG một kỳ. Kê khai lại vào kỳ khác thì
+/// ghi đè dòng cũ, không sinh dòng thứ hai (tránh một hóa đơn nằm ở hai kỳ, kê khai trùng).
+/// `chieu` nằm trong khóa vì id do GDT cấp chỉ duy nhất trong phạm vi một chiều.
+model tokhai_ky_hoa_don {
+  hoa_don_id String @db.VarChar(64)
+  chieu      String @db.VarChar(8) // purchase (mua vào) | sold (bán ra)
+
+  nam     Int
+  ky_loai String @db.VarChar(8) // thang | quy
+  ky_so   Int // 1..12 (tháng) hoặc 1..4 (quý)
+
+  /// Cột "Kê khai/không kê khai" trên bảng kê. Mặc định true khi vừa gán kỳ; kế toán đổi được.
+  ke_khai Boolean @default(true)
+  /// Cột "Chỉ tiêu tăng giảm" — để trống cho tới khi kế toán chọn.
+  chi_tieu_tang_giam String? @db.VarChar(32)
+  ghi_chu            String? @db.VarChar(512)
+
+  datetime0 DateTime @default(now())
+  datetime2 DateTime @updatedAt
+
+  @@id([hoa_don_id, chieu])
+  @@index([nam, ky_loai, ky_so])
+}

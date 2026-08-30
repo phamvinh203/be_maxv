@@ -18,6 +18,7 @@ import { khachHangRoutes } from './accounting/banHang/khachHang.route';
 import { hoaDonBanHangRoutes } from './accounting/banHang/hoaDonBanHang.route';
 import gdtRoutes from './hddt/gdt.route';
 import gdtDvcRoutes from './dich_vu_cong/gdt-dvc.route';
+import toKhaiRoutes from './to_khai/keKhaiKy.route';
 
 export async function registerRoutes(app: FastifyInstance) {
   await app.register(authRoutes, { prefix: '/api/v1/auth' });
@@ -47,4 +48,7 @@ export async function registerRoutes(app: FastifyInstance) {
 
   // dịch vụ công (proxy cổng dichvucong.gdt.gov.vn)
   await app.register(gdtDvcRoutes, { prefix: '/api/v1/dvc' });
+
+  // tờ khai (gán hóa đơn vào kỳ kê khai — chỉ đọc DB, không gọi cổng thuế)
+  await app.register(toKhaiRoutes, { prefix: '/api/v1/to-khai' });
 }
