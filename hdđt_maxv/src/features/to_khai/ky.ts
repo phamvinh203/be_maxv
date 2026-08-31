@@ -11,6 +11,8 @@ export interface Ky {
 
 /** Một dòng bảng kê: hóa đơn gốc + phần thuộc về kỳ kê khai. */
 export interface ToKhaiRow extends DisplayRow {
+  /** Chiều của hóa đơn — cần để gọi API sửa quyết định (id GDT chỉ duy nhất trong một chiều). */
+  chieu: InvoiceDirection;
   /** Cột "Kê khai/không kê khai" — quyết định của kế toán, lưu ở `tokhai_ky_hoa_don`. */
   keKhai: boolean;
   /** Cột "Chỉ tiêu tăng giảm" — rỗng cho tới khi kế toán chọn. */

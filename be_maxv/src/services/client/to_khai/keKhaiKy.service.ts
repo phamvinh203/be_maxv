@@ -84,6 +84,67 @@ export async function danhDauKy(db: PrismaClient, ky: Ky): Promise<KetQuaDanhDau
   return ketQua;
 }
 
+/** Ba giá trị hợp lệ của cột "Chỉ tiêu tăng giảm"; rỗng = kế toán chưa chọn, hoặc xóa lựa chọn cũ. */
+export type ChiTieuTangGiam = "" | "tang" | "giam";
+
+const DAI_TOI_DA_GHI_CHU = 512;
+
+/** Phần quyết định của kế toán cho MỘT hóa đơn. Field vắng mặt = không đổi, khác field rỗng. */
+export interface QuyetDinhKeKhai {
+  keKhai?: boolean;
+  chiTieuTangGiam?: ChiTieuTangGiam;
+  ghiChu?: string;
+}
+
+/**
+ * Lọc payload PATCH từ FE — cửa DUY NHẤT dữ liệu người dùng đi vào bảng quyết định, nên không tin
+ * gì cả: khóa lạ, giá trị sai kiểu, chuỗi quá dài đều bị bỏ. Hai cột này quyết định hóa đơn nào
+ * vào tờ khai, sai một dòng là số thuế sai.
+ *
+ * Giữ ngữ nghĩa "vắng mặt = không đổi": chỉ field CÓ TRONG payload và hợp lệ mới xuất hiện ở kết
+ * quả, nhờ đó `capNhatQuyetDinh` không vô tình ghi đè cột người dùng không hề chạm tới.
+ */
+export function locQuyetDinh(raw: unknown): QuyetDinhKeKhai {
+  if (!raw || typeof raw !== "object") return {};
+  const o = raw as Record<string, unknown>;
+  const out: QuyetDinhKeKhai = {};
+
+  if (typeof o.keKhai === "boolean") out.keKhai = o.keKhai;
+  if (o.chiTieuTangGiam === "" || o.chiTieuTangGiam === "tang" || o.chiTieuTangGiam === "giam") {
+    out.chiTieuTangGiam = o.chiTieuTangGiam;
+  }
+  if (typeof o.ghiChu === "string") out.ghiChu = o.ghiChu.slice(0, DAI_TOI_DA_GHI_CHU);
+  return out;
+}
+
+/**
+ * Sửa quyết định của MỘT hóa đơn.
+ *
+ * Chỉ `update` chứ không `upsert`: hóa đơn chưa được gán kỳ thì không có quyết định nào để sửa —
+ * tạo dòng ở đây sẽ sinh bản ghi thiếu kỳ, lọt vào bảng kê của mọi kỳ sau này. Không tìm thấy
+ * dòng thì Prisma ném, controller trả lỗi cho người dùng thấy.
+ *
+ * Chuỗi rỗng lưu thành `null` để cột trống trong DB chỉ có một dạng duy nhất.
+ */
+export async function capNhatQuyetDinh(
+  db: PrismaClient,
+  hoaDonId: string,
+  chieu: Chieu,
+  quyetDinh: QuyetDinhKeKhai,
+): Promise<void> {
+  if (Object.keys(quyetDinh).length === 0) return;
+  await db.tokhai_ky_hoa_don.update({
+    where: { hoa_don_id_chieu: { hoa_don_id: hoaDonId, chieu } },
+    data: {
+      ...(quyetDinh.keKhai === undefined ? {} : { ke_khai: quyetDinh.keKhai }),
+      ...(quyetDinh.chiTieuTangGiam === undefined
+        ? {}
+        : { chi_tieu_tang_giam: quyetDinh.chiTieuTangGiam || null }),
+      ...(quyetDinh.ghiChu === undefined ? {} : { ghi_chu: quyetDinh.ghiChu || null }),
+    },
+  });
+}
+
 /** Một dòng bảng kê: hóa đơn gốc + hai cột quyết định của kế toán. */
 export interface DongBangKe extends Record<string, unknown> {
   keKhai: boolean;

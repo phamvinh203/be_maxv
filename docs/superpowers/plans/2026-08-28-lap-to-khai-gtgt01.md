@@ -1229,7 +1229,7 @@ Màn `/to-khai` hiện có hai tab bảng kê. Thêm tab thứ ba cho tờ khai,
 
 - [ ] **Step 1: Lớp gọi API + hook** — theo đúng khuôn `api/toKhai.ts` và `api/toKhaiQueries.ts` đã có: khóa query gắn `currentCompanyId`, mutation `invalidateQueries` theo `toKhaiKeys.byCompany`.
 
-- [ ] **Step 2: Editor** — dựng bảng từ `HANG_GTGT01` (Task 6). Ba kiểu ô phân biệt bằng thị giác: máy tính (nền xám, sửa được), người nhập (viền nổi: [22] [23a] [24a] [37] [38] [39a] [40b] [42]), đã sửa tay (gạch cam, hover hiện "Máy tính: …").
+- [ ] **Step 2: Editor** — dựng bảng từ `HANG_GTGT01` (Task 6), đặt trong khổ giấy hẹp căn giữa (xem Step 3). Ba kiểu ô phân biệt bằng thị giác: máy tính (nền xám, sửa được), người nhập (viền nổi: [22] [23a] [24a] [37] [38] [39a] [40b] [42]), đã sửa tay (gạch cam, hover hiện "Máy tính: …").
 
 Ba cảnh báo phải có trên đầu editor:
 
@@ -1253,7 +1253,47 @@ Ba cảnh báo phải có trên đầu editor:
 )}
 ```
 
-- [ ] **Step 3: Thêm tab** vào `ToKhaiInvoiceTabs` — `<Tab value="to-khai" label="Tờ khai 01/GTGT" />`, dùng chung `ky` từ query string.
+- [ ] **Step 3: Thêm tab + bố cục riêng cho tab tờ khai**
+
+Bảng kê và mẫu in có nhu cầu bố cục **ngược nhau**: bảng cần tràn ngang (26 cột, cuộn ngang), mẫu in cần khổ hẹp căn giữa. Để mẫu in tràn theo khung bảng, lại nằm dưới cả `ChonKyPanel` dạng `Paper` viền, thì nó trông như bị kẹp. Ba điều chỉnh:
+
+1. **`ChonKyPanel` chỉ hiện đầy đủ ở hai tab bảng kê.** Sang tab tờ khai thu thành một dòng chữ.
+2. **Mẫu in bọc trong khổ giấy hẹp căn giữa** — `max-width: 820px`, nền `surface`, không tràn theo khung bảng.
+3. **Thanh hành động nằm cùng dòng với kỳ**, không thành hàng nút rời phía dưới.
+
+```tsx
+// ToKhaiInvoiceTabs.tsx
+const [tab, setTab] = useState<InvoiceDirection | "to-khai">("purchase");
+const laToKhai = tab === "to-khai";
+
+// Panel đầy đủ chỉ cho hai tab bảng kê; tab tờ khai dùng dòng gọn bên trong editor.
+{!laToKhai && <ChonKyPanel ky={ky} onChange={doiKy} />}
+
+<Tabs value={tab} onChange={(_e, v) => setTab(v)} sx={{ mb: 2 }}>
+  <Tab value="purchase" label="Hóa đơn mua vào" sx={{ textTransform: "none" }} />
+  <Tab value="sold" label="Hóa đơn bán ra" sx={{ textTransform: "none" }} />
+  <Tab value="to-khai" label="Tờ khai 01/GTGT" sx={{ textTransform: "none" }} />
+</Tabs>
+```
+
+```tsx
+// ToKhaiGtgt01Editor.tsx — dòng kỳ gọn + thanh hành động, rồi khổ giấy
+<Stack direction="row" spacing={2} sx={{ alignItems: "center", mb: 2 }}>
+  <Typography variant="body2" color="text.secondary">Kỳ {nhanKy(ky)}</Typography>
+  <Button size="small" onClick={onDoiKy} sx={{ textTransform: "none" }}>Đổi kỳ</Button>
+  <Stack direction="row" spacing={1} sx={{ ml: "auto" }}>
+    {/* Tính lại · Lưu nháp · Chốt · Xuất Excel */}
+  </Stack>
+</Stack>
+
+<Box sx={{ maxWidth: 820, mx: "auto" }}>
+  <Paper variant="outlined" sx={{ p: 3 }}>
+    {/* mẫu in 01/GTGT dựng từ HANG_GTGT01 */}
+  </Paper>
+</Box>
+```
+
+"Đổi kỳ" mở lại `ChonKyPanel` dạng popover hoặc chuyển về tab bảng kê — cách nào cũng được, miễn không dựng khối chọn kỳ cố định trên đầu mẫu in.
 
 - [ ] **Step 4: Kiểm chứng**
 

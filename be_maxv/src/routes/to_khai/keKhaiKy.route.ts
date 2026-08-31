@@ -2,6 +2,7 @@ import { FastifyInstance } from "fastify";
 import {
   bangKeTheoKy,
   keKhaiKy,
+  suaQuyetDinh,
 } from "../../controllers/client/to_khai/keKhaiKy.controller";
 import { requireModule } from "../../services/shared/modules.service";
 
@@ -17,4 +18,5 @@ export default async function (fastify: FastifyInstance) {
 
   fastify.post("/ke-khai", { preHandler: guard, handler: keKhaiKy });
   fastify.get("/hoa-don", { preHandler: guard, handler: bangKeTheoKy });
+  fastify.patch("/hoa-don/:chieu/:id", { preHandler: guard, handler: suaQuyetDinh });
 }

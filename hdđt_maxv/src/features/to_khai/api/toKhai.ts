@@ -34,3 +34,28 @@ export async function postKeKhai(ky: Ky): Promise<KetQuaKeKhai> {
 export async function getBangKe(ky: Ky, chieu: InvoiceDirection): Promise<BangKeResult> {
   return apiFetch<BangKeResult>(`/to-khai/hoa-don?${kyToQuery(ky)}&chieu=${chieu}`);
 }
+
+/** Giá trị cột "Chỉ tiêu tăng giảm"; rỗng = chưa chọn. */
+export type ChiTieuTangGiam = "" | "tang" | "giam";
+
+/** Phần quyết định của kế toán cho một hóa đơn — field vắng mặt nghĩa là KHÔNG đổi. */
+export interface QuyetDinhKeKhai {
+  keKhai?: boolean;
+  chiTieuTangGiam?: ChiTieuTangGiam;
+  ghiChu?: string;
+}
+
+/**
+ * Sửa quyết định kê khai của MỘT hóa đơn. Không gửi kỳ: hóa đơn đã thuộc kỳ nào thì quyết định
+ * gắn với kỳ đó; đổi kỳ là việc của lượt "Kê khai".
+ */
+export async function patchQuyetDinh(
+  chieu: InvoiceDirection,
+  id: string,
+  quyetDinh: QuyetDinhKeKhai,
+): Promise<void> {
+  await apiFetch<{ ok: true }>(`/to-khai/hoa-don/${chieu}/${encodeURIComponent(id)}`, {
+    method: "PATCH",
+    body: JSON.stringify(quyetDinh),
+  });
+}

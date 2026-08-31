@@ -80,3 +80,32 @@ export async function bangKeTheoKy(
     });
   }
 }
+
+/**
+ * PATCH /to-khai/hoa-don/:chieu/:id — sửa quyết định kê khai của MỘT hóa đơn (cột "Kê khai/không
+ * kê khai" và "Chỉ tiêu tăng giảm" trên bảng kê).
+ *
+ * Không nhận kỳ: hóa đơn đã thuộc kỳ nào thì quyết định gắn với kỳ đó, đổi kỳ là việc của lượt
+ * "Kê khai". Hóa đơn chưa gán kỳ -> `capNhatQuyetDinh` ném, trả 400 kèm lý do.
+ */
+export async function suaQuyetDinh(
+  request: FastifyRequest<{ Params: { chieu?: string; id?: string }; Body: unknown }>,
+  reply: FastifyReply,
+) {
+  const db = await resolveTenantDb(request);
+  try {
+    const chieu = docChieu(request.params.chieu);
+    const id = String(request.params.id ?? "");
+    if (!id) throw new Error("Thiếu id hóa đơn.");
+    await KeKhai.capNhatQuyetDinh(db, id, chieu, KeKhai.locQuyetDinh(request.body));
+    return reply.send({ ok: true });
+  } catch (err) {
+    request.log.error(err);
+    return reply.status(400).send({
+      message:
+        err instanceof Error && err.message
+          ? err.message
+          : "Không lưu được thay đổi trên bảng kê.",
+    });
+  }
+}

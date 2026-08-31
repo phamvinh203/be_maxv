@@ -73,6 +73,9 @@ function BangKeMotChieu({ ky, direction, active }: BangProps) {
     const nhan = nhanKy(ky);
     return (bangKe.data?.datas ?? []).map((r) => ({
       ...toDisplayRow(r, direction, replacedBy),
+      // `chieu` đi kèm từng dòng để ô sửa quyết định gọi đúng endpoint — id GDT chỉ duy nhất
+      // trong phạm vi một chiều, thiếu nó là sửa nhầm hóa đơn cùng id ở chiều kia.
+      chieu: direction,
       keKhai: r.keKhai,
       chiTieuTangGiam: r.chiTieuTangGiam,
       nam: String(ky.nam),

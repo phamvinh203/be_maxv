@@ -19,6 +19,7 @@ import { formatDateVN } from "../../hddt/dateUtils";
 import { numericText } from "../../hddt/format";
 import { invoiceFileBase } from "../../hddt/invoiceFileName";
 import type { ToKhaiRow } from "../ky";
+import { oChiTieuTangGiamCell, oKeKhaiCell } from "./quyetDinhCell";
 import {
   MONEY2_FMT,
   RATE_FMT,
@@ -86,12 +87,14 @@ export function overviewDauRa(): InvoiceColumn<ToKhaiRow>[] {
     },
     {
       // Hai cột nghiệp vụ đọc từ bảng đánh dấu `tokhai_ky_hoa_don` — lượt "Kê khai" ghi vào đó.
-      // Chỗ cho kế toán SỬA hai cột này làm ở lát sau; hiện chỉ hiển thị.
+      // Sửa được ngay tại dòng qua `cell` (xem `components/OQuyetDinh.tsx`); `value` vẫn giữ để
+      // file Excel xuất ra có chữ thay vì ô trống.
       key: "chiTieuTangGiam",
       header: "Chỉ tiêu tăng giảm",
       width: 18,
       webWidth: 140,
       value: (r) => r.chiTieuTangGiam,
+      cell: (r) => oChiTieuTangGiamCell(r),
     },
     {
       key: "keKhai",
@@ -99,6 +102,7 @@ export function overviewDauRa(): InvoiceColumn<ToKhaiRow>[] {
       width: 20,
       webWidth: 155,
       value: (r) => (r.keKhai ? "Kê khai" : "Không kê khai"),
+      cell: (r) => oKeKhaiCell(r),
     },
     {
       key: "buyerMst",

@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "../../auth/useAuth";
-import { getBangKe, postKeKhai } from "./toKhai";
+import { getBangKe, patchQuyetDinh, postKeKhai, type QuyetDinhKeKhai } from "./toKhai";
 import type { Ky } from "../ky";
 import type { InvoiceDirection } from "../../hddt/types";
 
@@ -32,6 +32,22 @@ export function useKeKhaiMutation() {
   const { currentCompanyId } = useAuth();
   return useMutation({
     mutationFn: (ky: Ky) => postKeKhai(ky),
+    onSuccess: () => qc.invalidateQueries({ queryKey: toKhaiKeys.byCompany(currentCompanyId) }),
+  });
+}
+
+/**
+ * Sửa quyết định kê khai của một dòng trên bảng kê.
+ *
+ * Làm mới cả prefix của mô-đun thay vì chỉ bảng kê đang xem: hai cột này là đầu vào của lượt tính
+ * tờ khai, nên bản tờ khai đã lập của kỳ cũng phải được coi là cũ sau khi đổi.
+ */
+export function useSuaQuyetDinhMutation() {
+  const qc = useQueryClient();
+  const { currentCompanyId } = useAuth();
+  return useMutation({
+    mutationFn: (v: { chieu: InvoiceDirection; id: string; quyetDinh: QuyetDinhKeKhai }) =>
+      patchQuyetDinh(v.chieu, v.id, v.quyetDinh),
     onSuccess: () => qc.invalidateQueries({ queryKey: toKhaiKeys.byCompany(currentCompanyId) }),
   });
 }
