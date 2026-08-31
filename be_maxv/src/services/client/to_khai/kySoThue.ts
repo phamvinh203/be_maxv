@@ -51,3 +51,15 @@ export function khoangCuaKy(ky: Ky): { tuNgay: string; denNgay: string } {
 export function nhanKy(ky: Ky): string {
   return `${ky.kyLoai === "thang" ? "T" : "Q"}${ky.kySo}/${ky.nam}`;
 }
+
+/**
+ * Kỳ liền trước, cùng loại kỳ. Dùng để nối chỉ tiêu [22] "thuế còn được khấu trừ kỳ trước chuyển
+ * sang" = [43] của bản đã chốt kỳ này.
+ *
+ * Kỳ đầu năm lùi về kỳ CUỐI của năm trước (T1 -> T12 năm trước, Q1 -> Q4 năm trước) — quên nhánh
+ * này thì số khấu trừ chuyển kỳ đứt đoạn đúng chỗ giao năm.
+ */
+export function kyLienTruoc(ky: Ky): Ky {
+  if (ky.kySo > 1) return { ...ky, kySo: ky.kySo - 1 };
+  return { nam: ky.nam - 1, kyLoai: ky.kyLoai, kySo: soKyToiDa(ky.kyLoai) };
+}

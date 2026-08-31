@@ -802,3 +802,49 @@ model tokhai_ky_hoa_don {
   @@id([hoa_don_id, chieu])
   @@index([nam, ky_loai, ky_so])
 }
+
+/// Một bản tờ khai 01/GTGT do phần mềm lập cho MỘT kỳ tính thuế.
+///
+/// Nguồn số liệu là BẢNG KÊ CỦA KỲ (hóa đơn đã gán kỳ ở `tokhai_ky_hoa_don` và kế toán để
+/// `ke_khai = true`), không phải mọi hóa đơn rơi vào khoảng ngày.
+///
+/// `nhap` = mở lại là tính lại từ bảng kê (đồng bộ thêm hóa đơn thì số tự cập nhật, ô đã ghi đè
+/// giữ nguyên); `chot` = đóng băng số đã nộp, muốn sửa phải mở khóa.
+model tokhai_gtgt01 {
+  nam     Int
+  ky_loai String @db.VarChar(8) // thang | quy
+  ky_so   Int // 1..12 (tháng) hoặc 1..4 (quý)
+
+  trang_thai String @default("nhap") @db.VarChar(16) // nhap | chot
+
+  /// Bộ chỉ tiêu CUỐI — số đem đi nộp: { ct22, ct23, ..., ct43 }.
+  ct Json
+  /// Số máy tự tính, giữ nguyên kể cả sau khi kế toán ghi đè — để trả lời "máy ra bao nhiêu".
+  ct_may Json
+  /// Ô kế toán sửa tay + lý do: { ct25: { gia: 1234, lyDo: "..." } }. Lượt tính lại KHÔNG xóa.
+  ghi_de Json
+
+  /// Bản sao ba khóa cùng tên trong `ct`, bóc ra cột để truy vấn: `ct43` cho kỳ sau nối [22],
+  /// `ct40`/`ct22` cho bảng danh sách kỳ. Ghi cùng lượt với `ct`, không có đường sửa riêng.
+  ct22 Decimal @default(0) @db.Decimal(18, 2)
+  ct40 Decimal @default(0) @db.Decimal(18, 2)
+  ct43 Decimal @default(0) @db.Decimal(18, 2)
+
+  /// [22] lấy ở đâu ra: ky_truoc (ct43 của bản đã chốt kỳ liền trước) | nhap_tay.
+  nguon_ct22 String @default("nhap_tay") @db.VarChar(16)
+
+  so_hd_ban Int @default(0)
+  so_hd_mua Int @default(0)
+  /// Số hóa đơn kế toán đã đánh "Không kê khai" — nhìn bản tờ khai là biết đã loại bao nhiêu tờ,
+  /// khỏi phải mở lại bảng kê để đếm.
+  so_hd_khong_ke_khai Int @default(0)
+  /// Hóa đơn BÁN RA thiếu `detail` nên chưa tách được thuế suất; bản đáng tin phải là 0.
+  hd_thieu_detail Int @default(0)
+
+  tinh_luc DateTime?
+
+  datetime0 DateTime @default(now())
+  datetime2 DateTime @updatedAt
+
+  @@id([nam, ky_loai, ky_so])
+}

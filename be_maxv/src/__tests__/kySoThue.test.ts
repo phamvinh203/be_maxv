@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { khoangCuaKy, kyHopLe, nhanKy } from "../services/client/to_khai/kySoThue";
+import { khoangCuaKy, kyHopLe, kyLienTruoc, nhanKy } from "../services/client/to_khai/kySoThue";
 
 /** npx tsx --test src/__tests__/kySoThue.test.ts */
 
@@ -56,4 +56,31 @@ test("kỳ ngoài biên bị chặn", () => {
 test("nhãn kỳ", () => {
   assert.equal(nhanKy({ nam: 2026, kyLoai: "thang", kySo: 7 }), "T7/2026");
   assert.equal(nhanKy({ nam: 2026, kyLoai: "quy", kySo: 3 }), "Q3/2026");
+});
+
+test("kỳ liền trước trong cùng năm", () => {
+  assert.deepEqual(kyLienTruoc({ nam: 2026, kyLoai: "thang", kySo: 7 }), {
+    nam: 2026,
+    kyLoai: "thang",
+    kySo: 6,
+  });
+  assert.deepEqual(kyLienTruoc({ nam: 2026, kyLoai: "quy", kySo: 3 }), {
+    nam: 2026,
+    kyLoai: "quy",
+    kySo: 2,
+  });
+});
+
+test("kỳ đầu năm lùi về kỳ cuối năm trước", () => {
+  // Nối [22] của T1 phải lấy [43] của T12 NĂM TRƯỚC — sai chỗ này là số khấu trừ chuyển kỳ đứt đoạn.
+  assert.deepEqual(kyLienTruoc({ nam: 2026, kyLoai: "thang", kySo: 1 }), {
+    nam: 2025,
+    kyLoai: "thang",
+    kySo: 12,
+  });
+  assert.deepEqual(kyLienTruoc({ nam: 2026, kyLoai: "quy", kySo: 1 }), {
+    nam: 2025,
+    kyLoai: "quy",
+    kySo: 4,
+  });
 });
