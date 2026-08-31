@@ -18,7 +18,7 @@ import { khachHangRoutes } from './accounting/banHang/khachHang.route';
 import { hoaDonBanHangRoutes } from './accounting/banHang/hoaDonBanHang.route';
 import gdtRoutes from './hddt/gdt.route';
 import gdtDvcRoutes from './dich_vu_cong/gdt-dvc.route';
-import toKhaiRoutes from './to_khai/keKhaiKy.route';
+import toKhaiRoutes from './to_khai/toKhai.route';
 
 export async function registerRoutes(app: FastifyInstance) {
   await app.register(authRoutes, { prefix: '/api/v1/auth' });

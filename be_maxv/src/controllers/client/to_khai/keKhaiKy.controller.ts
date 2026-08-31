@@ -1,37 +1,8 @@
 import type { FastifyReply, FastifyRequest } from "fastify";
 import { resolveTenantDb } from "../../../helpers/resolveTenantDb";
 import * as KeKhai from "../../../services/client/to_khai/keKhaiKy.service";
-import { kyHopLe, nhanKy, type Ky, type KyLoai } from "../../../services/client/to_khai/kySoThue";
-
-interface KyInput {
-  nam?: number | string;
-  kyLoai?: string;
-  kySo?: number | string;
-}
-
-/**
- * Đọc kỳ từ body/query rồi KIỂM BIÊN ngay — kỳ sai (tháng 13, quý 5, năm 1900) phải dừng trước khi
- * chạm DB, không thì `khoangCuaKy` sẽ dựng ra khoảng ngày vô nghĩa và quét nhầm hóa đơn.
- */
-function docKy(raw: KyInput): Ky {
-  const ky: Ky = {
-    nam: Number(raw.nam),
-    kyLoai: String(raw.kyLoai) as KyLoai,
-    kySo: Number(raw.kySo),
-  };
-  if (!kyHopLe(ky)) {
-    throw new Error("Kỳ kê khai không hợp lệ (kiểm tra lại loại kỳ, số kỳ và năm).");
-  }
-  return ky;
-}
-
-function docChieu(raw: unknown): KeKhai.Chieu {
-  const chieu = String(raw ?? "");
-  if (chieu !== "purchase" && chieu !== "sold") {
-    throw new Error("Chiều hóa đơn không hợp lệ (chỉ nhận purchase hoặc sold).");
-  }
-  return chieu;
-}
+import { nhanKy } from "../../../services/client/to_khai/kySoThue";
+import { docChieu, docKy, type KyInput } from "./docThamSo";
 
 /**
  * POST /to-khai/ke-khai — gán mọi hóa đơn có ngày lập trong kỳ vào kỳ đó (cả hai chiều).
