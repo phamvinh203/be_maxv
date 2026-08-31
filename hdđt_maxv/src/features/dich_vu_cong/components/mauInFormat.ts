@@ -40,8 +40,6 @@ export function fmtNgayGio(iso: string | null): string {
   return gio ? `${p.d}/${p.m}/${p.y} ${gio}` : `${p.d}/${p.m}/${p.y}`;
 }
 
-/** `"ct24a"` -> `"24a"` — số trong ngoặc `[NN]` trên mẫu SUY từ tên thẻ, không khai tay, để nhãn và
- * số không bao giờ lệch nhau. */
-export function maChiTieu(tag: string): string {
-  return tag.slice(2);
-}
+/** `maChiTieu` chuyển sang `_shared/to_khai/gtgt01Layout.ts` khi màn lập tờ khai cũng cần — re-export
+ * lại ở đây để mọi chỗ đang import từ file này không phải sửa. */
+export { maChiTieu } from "../../_shared/to_khai/gtgt01Layout";
