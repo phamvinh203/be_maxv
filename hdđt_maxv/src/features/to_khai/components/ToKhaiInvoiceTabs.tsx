@@ -16,8 +16,10 @@ import Alert from "@mui/material/Alert";
 import CircularProgress from "@mui/material/CircularProgress";
 import InboxRounded from "@mui/icons-material/InboxRounded";
 import ChonKyPanel from "./ChonKyPanel";
+import ToKhaiGtgt01Editor from "./ToKhaiGtgt01Editor";
 import { overviewColumnsToKhai } from "../templates";
 import { useBangKeQuery } from "../api/toKhaiQueries";
+import { useBanToKhaiQuery } from "../api/gtgt01Queries";
 import { kyToQuery, kyTuQuery, nhanKy, type Ky, type ToKhaiRow } from "../ky";
 import { toDisplayRow } from "../../hddt/invoiceRow";
 import { buildReplacedByMap } from "../../hddt/detailRow";
@@ -163,26 +165,41 @@ function BangKeMotChieu({ ky, direction, active }: BangProps) {
   );
 }
 
+/** Ba tab của màn: hai bảng kê theo chiều + tờ khai của kỳ. */
+type TabToKhai = InvoiceDirection | "to-khai";
+
 /**
- * Hai tab "Mua vào" / "Bán ra" của màn Tờ khai, cùng thói quen với màn Hóa đơn điện tử.
+ * Màn Tờ khai: hai tab bảng kê ("Mua vào" / "Bán ra", cùng thói quen với màn Hóa đơn điện tử) và
+ * tab "Tờ khai 01/GTGT".
  *
  * Kỳ sống trên QUERY STRING (`/to-khai?nam=2026&kyLoai=thang&kySo=7`) chứ không trong state: màn
- * Hóa đơn điện tử điều hướng sang đây kèm kỳ vừa kê khai, và người dùng bookmark/F5 vẫn ra đúng kỳ.
+ * Hóa đơn điện tử điều hướng sang đây kèm kỳ vừa kê khai, người dùng bookmark/F5 vẫn ra đúng kỳ,
+ * và cả ba tab dùng chung một kỳ mà không phải truyền qua lại.
  */
+
 export default function ToKhaiInvoiceTabs() {
   const [searchParams, setSearchParams] = useSearchParams();
   const ky = kyTuQuery(searchParams);
-  const [tab, setTab] = useState<InvoiceDirection>("purchase");
+  const [tab, setTab] = useState<TabToKhai>("purchase");
+  const laToKhai = tab === "to-khai";
 
   const doiKy = (moi: Ky) => setSearchParams(new URLSearchParams(kyToQuery(moi)));
 
+  const banToKhai = useBanToKhaiQuery(ky, laToKhai);
+
   return (
     <Box>
-      <ChonKyPanel ky={ky} onChange={doiKy} />
+      {/*
+        Khối chọn kỳ chỉ hiện ở hai tab BẢNG KÊ. Tab tờ khai dựng lại mẫu in khổ hẹp căn giữa —
+        đặt một khối chọn kỳ viền hộp ngay trên đầu nó làm tờ khai trông như bị kẹp; ở đó kỳ rút
+        còn một dòng chữ kèm nút "Đổi kỳ" (đưa về tab bảng kê).
+      */}
+      {!laToKhai && <ChonKyPanel ky={ky} onChange={doiKy} />}
 
-      <Tabs value={tab} onChange={(_e, v: InvoiceDirection) => setTab(v)} sx={{ mb: 2 }}>
+      <Tabs value={tab} onChange={(_e, v: TabToKhai) => setTab(v)} sx={{ mb: 2 }}>
         <Tab value="purchase" label="Hóa đơn mua vào" sx={{ textTransform: "none" }} />
         <Tab value="sold" label="Hóa đơn bán ra" sx={{ textTransform: "none" }} />
+        <Tab value="to-khai" label="Tờ khai 01/GTGT" sx={{ textTransform: "none" }} />
       </Tabs>
 
       {/* Mount cả hai chiều, ẩn tab không active bằng CSS — giữ số trang riêng từng chiều. */}
@@ -192,6 +209,20 @@ export default function ToKhaiInvoiceTabs() {
       <Box sx={{ display: tab === "sold" ? "block" : "none" }}>
         <BangKeMotChieu ky={ky} direction="sold" active={tab === "sold"} />
       </Box>
+      {laToKhai && (
+        <ToKhaiGtgt01Editor
+          ky={ky}
+          ban={banToKhai.data ?? null}
+          dangTai={banToKhai.isFetching}
+          // Kỳ chưa lập trả 404 — đó là trạng thái bình thường, hiện câu chỉ đường chứ không báo lỗi đỏ.
+          loi={
+            banToKhai.isError
+              ? getErrorMessage(banToKhai.error, "Kỳ này chưa có bản tờ khai nào.")
+              : null
+          }
+          onDoiKy={() => setTab("purchase")}
+        />
+      )}
     </Box>
   );
 }
