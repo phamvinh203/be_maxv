@@ -297,8 +297,15 @@ export default function ToKhaiGtgt01Editor({ ky, ban, onDoiKy, dangTai, loi }: P
             )}
             {ban.nguonCt22 === "nhap_tay" && (
               <Alert severity="info">
-                Chỉ tiêu [22] chưa nối được từ kỳ trước (kỳ trước chưa chốt trong phần mềm) — nhập
-                tay rồi bấm “Lưu nháp”.
+                Chỉ tiêu [22] chưa nối được từ kỳ trước (kỳ trước chưa lập tờ khai trong phần mềm) —
+                nhập tay rồi bấm “Lưu nháp”.
+              </Alert>
+            )}
+            {ban.nguonCt22 === "ky_truoc_nhap" && (
+              <Alert severity="warning">
+                Chỉ tiêu [22] lấy từ [43] của kỳ trước, nhưng kỳ trước còn là <b>bản nháp</b> — số
+                đó có thể đổi khi kỳ trước được tính lại. Chốt kỳ trước rồi tính lại kỳ này để số
+                đứng yên.
               </Alert>
             )}
           </Stack>

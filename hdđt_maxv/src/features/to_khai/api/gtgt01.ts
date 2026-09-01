@@ -42,7 +42,8 @@ export interface BanToKhai {
   /** Số máy tự tính — giữ để đối chiếu với ô đã sửa tay. */
   ctMay: Record<string, number>;
   ghiDe: Record<string, GhiDeItem>;
-  nguonCt22: "ky_truoc" | "nhap_tay";
+  /** [22] ở đâu ra: kỳ trước đã chốt | kỳ trước còn nháp (số có thể đổi) | nhập tay. */
+  nguonCt22: "ky_truoc" | "ky_truoc_nhap" | "nhap_tay";
   soHdBan: number;
   soHdMua: number;
   soHdKhongKeKhai: number;

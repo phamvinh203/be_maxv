@@ -15,6 +15,9 @@ import { tinhGtgt01, type CtGtgt01 } from "./tinhGtgt01";
 import { dungPhuLuc204, type PhuLuc204 } from "./phuLuc204";
 import type { Chieu } from "./keKhaiKy.service";
 
+/** Nguồn của chỉ tiêu [22]. `ky_truoc_nhap` = kỳ trước còn là bản nháp nên [43] còn có thể đổi. */
+export type NguonCt22 = "ky_truoc" | "ky_truoc_nhap" | "nhap_tay";
+
 export interface GhiDeItem {
   gia: number;
   lyDo?: string;
@@ -26,7 +29,8 @@ export interface BanToKhai {
   ct: CtGtgt01;
   ctMay: CtGtgt01;
   ghiDe: Record<string, GhiDeItem>;
-  nguonCt22: "ky_truoc" | "nhap_tay";
+  /** [22] ở đâu ra: nối từ kỳ trước ĐÃ CHỐT | từ kỳ trước còn NHÁP (số có thể đổi) | nhập tay. */
+  nguonCt22: NguonCt22;
   soHdBan: number;
   soHdMua: number;
   soHdKhongKeKhai: number;
@@ -113,16 +117,24 @@ async function docHoaDonCuaKy(
   return { rows, soLoai, soThieuDetail };
 }
 
-/** [22] của kỳ này = [43] của bản ĐÃ CHỐT kỳ liền trước; chưa có -> null (kế toán nhập tay). */
-export async function layCt22KyTruoc(db: PrismaClient, ky: Ky): Promise<number | null> {
+/**
+ * [22] của kỳ này = [43] của kỳ liền trước; chưa lập kỳ trước -> `null` (kế toán nhập tay).
+ *
+ * Nhận CẢ bản nháp, không chỉ bản đã chốt: kỳ trước thường còn là nháp khi kế toán làm kỳ này, mà
+ * bắt gõ tay một con số đã có sẵn trong máy là mời gõ sai. Đổi lại phải nói rõ nguồn — bản nháp
+ * còn tính lại được, [43] của nó có thể đổi, nên `daChot` đi kèm để màn hình cảnh báo.
+ */
+export async function layCt22KyTruoc(
+  db: PrismaClient,
+  ky: Ky,
+): Promise<{ gia: number; daChot: boolean } | null> {
   const truoc = kyLienTruoc(ky);
   const ban = await db.tokhai_gtgt01.findUnique({
     where: { nam_ky_loai_ky_so: { nam: truoc.nam, ky_loai: truoc.kyLoai, ky_so: truoc.kySo } },
     select: { trang_thai: true, ct43: true },
   });
-  // Chỉ nối từ bản ĐÃ CHỐT: bản nháp còn tính lại được, nối vào là số kỳ này chạy theo kỳ trước.
-  if (!ban || ban.trang_thai !== "chot") return null;
-  return Number(ban.ct43);
+  if (!ban) return null;
+  return { gia: Number(ban.ct43), daChot: ban.trang_thai === "chot" };
 }
 
 /**
@@ -147,18 +159,20 @@ export async function tinhVaLuu(db: PrismaClient, ky: Ky): Promise<BanToKhai> {
   const banRa = gomBanRa(ban.rows);
   const muaVao = gomMuaVao(mua.rows);
 
-  // [22]: ô kế toán đã ghi đè thắng; chưa ghi đè thì nối từ [43] kỳ trước đã chốt.
+  // [22]: ô kế toán đã ghi đè thắng; chưa ghi đè thì nối từ [43] kỳ trước (chốt hay nháp đều lấy,
+  // nguồn ghi lại ở `nguonCt22` để màn hình cảnh báo khi kỳ trước còn nháp).
   const ct22KyTruoc = ghiDe.ct22 ? null : await layCt22KyTruoc(db, ky);
   const nhapTay: Record<string, number> = {};
   for (const [khoa, item] of Object.entries(ghiDe)) nhapTay[khoa] = item.gia;
-  if (ct22KyTruoc !== null) nhapTay.ct22 = ct22KyTruoc;
+  if (ct22KyTruoc !== null) nhapTay.ct22 = ct22KyTruoc.gia;
 
   const ctMay = tinhGtgt01({ banRa: banRa.tong, muaVao, nhapTay: {} });
   const ct = tinhGtgt01({ banRa: banRa.tong, muaVao, nhapTay });
   // Ô ghi đè KHÔNG nằm trong công thức (vd [26] kế toán tự sửa) vẫn phải hiện đúng số đã sửa.
   for (const [khoa, item] of Object.entries(ghiDe)) ct[khoa] = item.gia;
 
-  const nguonCt22: "ky_truoc" | "nhap_tay" = ct22KyTruoc !== null ? "ky_truoc" : "nhap_tay";
+  const nguonCt22: NguonCt22 =
+    ct22KyTruoc === null ? "nhap_tay" : ct22KyTruoc.daChot ? "ky_truoc" : "ky_truoc_nhap";
   const soHdKhongKeKhai = ban.soLoai + mua.soLoai;
 
   // Phụ lục tính lại từ hóa đơn, NHƯNG hai ô mô tả hàng hóa giữ nguyên nếu kế toán đã sửa —
@@ -226,7 +240,10 @@ export async function docBan(db: PrismaClient, ky: Ky): Promise<BanToKhai | null
     ct: (row.ct ?? {}) as CtGtgt01,
     ctMay: (row.ct_may ?? {}) as CtGtgt01,
     ghiDe: locGhiDeHopLe(row.ghi_de),
-    nguonCt22: row.nguon_ct22 === "ky_truoc" ? "ky_truoc" : "nhap_tay",
+    nguonCt22:
+      row.nguon_ct22 === "ky_truoc" || row.nguon_ct22 === "ky_truoc_nhap"
+        ? row.nguon_ct22
+        : "nhap_tay",
     soHdBan: row.so_hd_ban,
     soHdMua: row.so_hd_mua,
     soHdKhongKeKhai: row.so_hd_khong_ke_khai,

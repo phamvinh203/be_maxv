@@ -358,6 +358,36 @@ Cùng lượt đối chiếu cũng xác nhận ánh xạ 8%: phụ lục ghi hà
 định **10%**, sau giảm **8%**; tờ khai chính kê vào [32] (dòng "chịu thuế suất 10%") với [33] là số
 thuế THỰC TẾ 8% — đúng bảng `O_THEO_NHAN` trong `gomHoaDonGtgt.ts`.
 
+### 11.4. Kết quả đối chiếu tờ khai thật — ĐÃ CHẠY 2026-08-31
+
+Đối chiếu bản tự lập với tờ khai 01/GTGT **đã nộp** của MST 0106861880 (Phát Thịnh), kỳ Q2/2026
+(file `01_GTGT_TT80_2026.xls` người dùng cung cấp): **20/27 chỉ tiêu khớp tuyệt đối**.
+
+Bảy chỉ tiêu lệch đến từ đúng hai nguyên nhân, không cái nào là lỗi tính toán:
+
+**a) Làm tròn 1 đồng ở [33], lan xuống 5 ô.** Ta cộng tiền thuế THỰC ghi trên ba hóa đơn
+(10.163.287 + 10.913.962 + 10.222.744 = 31.299.993); HTKK tính `391.249.917 × 8% = 31.299.993,36`
+rồi làm tròn lên 31.299.994. Sai số chảy theo công thức sang [28] → [35] → [36] → [40a] → [40].
+
+Giữ nguyên cách cộng thuế thực trên hóa đơn — đó mới là số phải kê. Muốn khớp tuyệt đối bản đã nộp
+thì sửa tay [33], ô sẽ có dấu ghi đè và tooltip ghi số máy tính.
+
+**b) [23] thiếu 20.000.** Kế toán khai [23] nhiều hơn tổng hóa đơn 20.000 đồng mà KHÔNG kèm thuế
+(nên [24] vẫn khớp). Khoản này không có trong dữ liệu hóa đơn điện tử — máy không suy được, và
+không nên đoán. Sửa tay khi cần.
+
+**Những chỗ khó nhất đều đúng:** loại hóa đơn `tthai=4` bị thay thế (117.751.551 — tính vào là kê
+khống), gộp 8% vào dòng [32]/[33] với số thuế thực, `[27]=[29]+[30]+[32]+[32a]`, `[40a]` sau khi
+trừ [22].
+
+**Cột "Kê khai/không kê khai" đã được kiểm chứng bằng ca thật:** hóa đơn phí ngân hàng MB
+(K26TMM 781145, thuế 72.000) mà kế toán không kê — đánh dấu "Không kê khai" rồi tính lại thì [24]
+từ 5.174.437 về đúng 5.102.437.
+
+**Về 11.1 (dấu hóa đơn điều chỉnh): VẪN CHƯA trả lời được.** Kỳ đối chiếu này không có hóa đơn điều
+chỉnh giảm nào (chỉ một hóa đơn `tthai=3` giá trị 0 bên mua vào). Giữ nguyên cách làm ở 11.1 cho
+tới khi gặp ca thật.
+
 ### 11.3. Nhãn thuế suất GDT còn mức nào ngoài bảng 7.4
 
 `detailRow.ts` đã gặp `KCT`, `KKKNT`, `\` và các mức số. Bảng ánh xạ xử lý được nhãn lạ (vào nhóm
