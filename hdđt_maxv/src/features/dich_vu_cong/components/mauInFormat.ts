@@ -10,15 +10,9 @@ import { vnDateParts } from "../../hddt/dateUtils";
  * bảng danh sách — xem chú thích từng hàm.
  */
 
-/** `105000000` -> "105.000.000"; `-1446670` -> "(1.446.670)" (âm hiện ngoặc, đúng quy ước mẫu in).
- * Giữ nguyên số 0 thay vì ẩn như `fmtMoney` của bảng danh sách — mẫu in luôn hiện đủ mọi ô, ô trống
- * trên mẫu nghĩa là "không có chỉ tiêu", khác hẳn "có mà bằng 0". */
-export function fmtSoTien(n: number | null | undefined): string {
-  if (n === null || n === undefined) return "";
-  if (n === 0) return "0";
-  const abs = Math.abs(n).toLocaleString("vi-VN");
-  return n < 0 ? `(${abs})` : abs;
-}
+/** `fmtSoTien` chuyển sang `_shared/to_khai/soTien.ts` khi màn lập tờ khai cũng cần (kèm hàm đọc
+ * ngược `docSoTien` cho ô nhập) — re-export lại ở đây để mọi chỗ đang import không phải sửa. */
+export { fmtSoTien } from "../../_shared/to_khai/soTien";
 
 /** "2025-10-29" -> "Ngày 29 tháng 10 năm 2025" — dựng trên `vnDateParts` (tách chuỗi thủ công,
  * KHÔNG qua `Date`) như mọi hàm đọc "ngày trên chứng từ" khác trong app, xem `dateUtils.ts`. */

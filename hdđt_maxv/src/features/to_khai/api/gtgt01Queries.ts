@@ -7,6 +7,7 @@ import {
   postDoiTrangThai,
   postTinh,
   putGhiDe,
+  putPhuLuc,
   type GhiDeItem,
 } from "./gtgt01";
 import type { Ky } from "../ky";
@@ -56,6 +57,16 @@ export function useLuuGhiDe() {
   const lamMoi = useLamMoi();
   return useMutation({
     mutationFn: (v: { ky: Ky; ghiDe: Record<string, GhiDeItem> }) => putGhiDe(v.ky, v.ghiDe),
+    onSuccess: lamMoi,
+  });
+}
+
+/** Sửa mô tả hàng hóa trên phụ lục giảm thuế. */
+export function useLuuPhuLuc() {
+  const lamMoi = useLamMoi();
+  return useMutation({
+    mutationFn: (v: { ky: Ky; ten: { muaVao?: string; banRa?: string } }) =>
+      putPhuLuc(v.ky, v.ten),
     onSuccess: lamMoi,
   });
 }

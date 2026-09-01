@@ -21,6 +21,75 @@ function tenFile(ky: Ky): string {
   return `ToKhai01GTGT_${nhanKy(ky).replace("/", "-")}.xlsx`;
 }
 
+/**
+ * Sheet thứ hai — phụ lục giảm thuế NQ 204/2025, chỉ thêm khi kỳ CÓ hàng 8%.
+ *
+ * Tách sheet riêng chứ không nối xuống dưới tờ khai chính: đây là hai biểu mẫu khác nhau, cơ quan
+ * thuế nhận hai tờ, và người soát cũng đọc từng tờ một.
+ */
+function themSheetPhuLuc(wb: ExcelJS.Workbook, ky: Ky, pl: NonNullable<BanToKhai["phuLuc"]>): void {
+  const ws = wb.addWorksheet("PL 204-2025");
+  const tieuDe = (cells: (string | number | null)[]) => {
+    const row = ws.addRow(cells);
+    row.eachCell((cell) => {
+      cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: HEADER_FILL } };
+      cell.border = CELL_BORDER;
+      cell.font = { bold: true };
+      cell.alignment = { vertical: "middle", horizontal: "center", wrapText: true };
+    });
+    row.height = HEADER_HEIGHT;
+  };
+  const duLieu = (cells: (string | number | null)[], cotSo: number[]) => {
+    const row = ws.addRow(cells);
+    row.eachCell((cell) => (cell.border = CELL_BORDER));
+    for (const i of cotSo) row.getCell(i).numFmt = "#,##0";
+  };
+
+  ws.addRow([`GIẢM THUẾ GIÁ TRỊ GIA TĂNG THEO NGHỊ QUYẾT SỐ 204/2025/QH15`]);
+  ws.addRow([`(Kèm theo Tờ khai thuế GTGT kỳ tính thuế ${nhanKy(ky)})`]);
+  ws.addRow([]);
+
+  ws.addRow(["I. Hàng hóa, dịch vụ mua vào trong kỳ được áp dụng thuế suất 8%"]).font = {
+    bold: true,
+  };
+  tieuDe(["Tên hàng hóa, dịch vụ", "Giá trị chưa thuế", "Thuế GTGT được khấu trừ"]);
+  duLieu([pl.muaVao.tenHang, pl.muaVao.giaTri, pl.muaVao.thue], [2, 3]);
+  ws.addRow([]);
+
+  ws.addRow(["II. Hàng hóa, dịch vụ bán ra trong kỳ"]).font = { bold: true };
+  tieuDe([
+    "Tên hàng hóa, dịch vụ",
+    "Giá trị chưa thuế",
+    "Thuế suất theo quy định",
+    "Thuế suất sau giảm",
+    "Thuế GTGT được giảm",
+  ]);
+  duLieu(
+    [
+      pl.banRa.tenHang,
+      pl.banRa.giaTri,
+      `${pl.banRa.thueSuatQuyDinh}%`,
+      `${pl.banRa.thueSuatSauGiam}%`,
+      pl.banRa.thueDuocGiam,
+    ],
+    [2, 5],
+  );
+  ws.addRow([]);
+
+  const dongIII = ws.addRow([
+    "III. Chênh lệch thuế GTGT của hàng hóa, dịch vụ bán ra và mua vào [09] = [08] - [06]",
+    pl.chenhLech,
+  ]);
+  dongIII.getCell(2).numFmt = "#,##0";
+  dongIII.font = { bold: true };
+
+  ws.getColumn(1).width = 60;
+  ws.getColumn(2).width = 22;
+  ws.getColumn(3).width = 22;
+  ws.getColumn(4).width = 18;
+  ws.getColumn(5).width = 22;
+}
+
 export async function xuatToKhaiGtgt01(ky: Ky, ban: BanToKhai): Promise<void> {
   const wb = new ExcelJS.Workbook();
   const ws = wb.addWorksheet("01-GTGT");
@@ -69,6 +138,8 @@ export async function xuatToKhaiGtgt01(ky: Ky, ban: BanToKhai): Promise<void> {
   ws.getColumn(3).width = 20;
   ws.getColumn(4).width = 20;
   ws.getColumn(5).width = 30;
+
+  if (ban.phuLuc) themSheetPhuLuc(wb, ky, ban.phuLuc);
 
   const buf = await wb.xlsx.writeBuffer();
   const blob = new Blob([buf], {

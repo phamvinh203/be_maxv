@@ -38,11 +38,28 @@ export interface HoaDonTreo {
   lyDo: string;
 }
 
+/**
+ * Số liệu của MỘT mức thuế suất, giữ nguyên theo nhãn gốc.
+ *
+ * Cần vì tờ khai chính gộp 8% chung dòng với 10% ([32]/[33]), trong khi phụ lục giảm thuế theo
+ * Nghị quyết 204/2025 lại phải khai RIÊNG nhóm 8% — không tách ở đây thì phụ lục không dựng được.
+ */
+export interface NhomThueSuat {
+  giaTri: number;
+  thue: number;
+  /** Số hóa đơn có ít nhất một dòng thuộc nhãn này. */
+  soHd: number;
+  /** Tên hàng gặp trong nhóm, đã khử trùng, giữ thứ tự xuất hiện — để mô tả hàng hóa ở phụ lục. */
+  tenHang: string[];
+}
+
 export interface KetQuaBanRa {
   tong: TongBanRa;
   treo: HoaDonTreo[];
   /** Nhóm `tthai=3` — ĐÃ cộng vào `tong`, tách ra đây chỉ để hiển thị và soát dấu. */
   dieuChinh: { soHd: number; giaTri: number; thue: number };
+  /** Số liệu theo TỪNG nhãn thuế suất (`"8%"`, `"10%"`, `"KCT"`…) — nguồn cho phụ lục giảm thuế. */
+  theoNhan: Record<string, NhomThueSuat>;
   soHd: number;
 }
 
@@ -50,6 +67,12 @@ export interface KetQuaMuaVao {
   ct23: number;
   ct24: number;
   treo: HoaDonTreo[];
+  /**
+   * Số liệu theo từng nhãn thuế suất. Chỉ có với hóa đơn ĐÃ tải chi tiết; hóa đơn thiếu `detail`
+   * vẫn được cộng vào `ct23`/`ct24` (mua vào chỉ cần tổng) nhưng không xuất hiện ở đây — nên tổng
+   * các nhãn có thể NHỎ HƠN `ct23`, đừng dùng nó để kiểm tra chéo.
+   */
+  theoNhan: Record<string, NhomThueSuat>;
   soHd: number;
 }
 
@@ -94,6 +117,53 @@ export const O_THEO_NHAN: Record<string, { giaTri: keyof TongBanRa; thue?: keyof
   KKKNT: { giaTri: "ct32a" },
 };
 
+/** Số tên hàng giữ lại mỗi nhãn — phụ lục chỉ cần một câu mô tả, giữ hết là ô dài vô tận. */
+const TEN_HANG_TOI_DA = 12;
+
+/**
+ * Tên hàng của các dòng thuộc một nhãn thuế suất, đọc từ `detail.hdhhdvu`.
+ *
+ * Mảng `thttltsuat` chỉ có tiền theo mức thuế, không có tên hàng — tên nằm ở mảng dòng hàng, mỗi
+ * dòng mang nhãn thuế suất riêng. Hóa đơn không có mảng dòng hàng (chỉ có tổng) -> không tên nào.
+ */
+function tenHangTheoNhan(detail: unknown, chuanHoa: (v: unknown) => string): Map<string, string[]> {
+  const ra = new Map<string, string[]>();
+  if (!detail || typeof detail !== "object") return ra;
+  const ds = (detail as Record<string, unknown>).hdhhdvu;
+  if (!Array.isArray(ds)) return ra;
+  for (const it of ds) {
+    const o = (it ?? {}) as Record<string, unknown>;
+    const nhan = chuanHoa(o.ltsuat ?? o.tsuat ?? o.thuesuat);
+    const ten = String(o.ten ?? o.tenhang ?? "").trim();
+    if (!nhan || !ten) continue;
+    const cu = ra.get(nhan) ?? [];
+    if (!cu.includes(ten)) cu.push(ten);
+    ra.set(nhan, cu);
+  }
+  return ra;
+}
+
+/** Cộng một nhóm vào bảng theo nhãn, khử trùng tên hàng và chặn trần độ dài. */
+function congVaoNhan(
+  bang: Record<string, NhomThueSuat>,
+  nhan: string,
+  giaTri: number,
+  thue: number,
+  tenHang: string[],
+): void {
+  const cu = bang[nhan] ?? { giaTri: 0, thue: 0, soHd: 0, tenHang: [] };
+  for (const t of tenHang) {
+    if (cu.tenHang.length >= TEN_HANG_TOI_DA) break;
+    if (!cu.tenHang.includes(t)) cu.tenHang.push(t);
+  }
+  bang[nhan] = {
+    giaTri: cu.giaTri + giaTri,
+    thue: cu.thue + thue,
+    soHd: cu.soHd + 1,
+    tenHang: cu.tenHang,
+  };
+}
+
 /** Các nhóm thuế suất của một hóa đơn; `null` = hóa đơn chưa có chi tiết. */
 function nhomThueSuat(detail: unknown): { nhan: string; thtien: number; tthue: number }[] | null {
   if (!detail || typeof detail !== "object") return null;
@@ -121,6 +191,7 @@ export function gomBanRa(rows: HoaDonGom[]): KetQuaBanRa {
   const tong: TongBanRa = { ct26: 0, ct29: 0, ct30: 0, ct31: 0, ct32: 0, ct32a: 0, ct33: 0 };
   const treo: HoaDonTreo[] = [];
   const dieuChinh = { soHd: 0, giaTri: 0, thue: 0 };
+  const theoNhan: Record<string, NhomThueSuat> = {};
   let soHd = 0;
 
   for (const hd of rows) {
@@ -138,6 +209,7 @@ export function gomBanRa(rows: HoaDonGom[]): KetQuaBanRa {
       continue;
     }
 
+    const tenTheoNhan = tenHangTheoNhan(hd.detail, chuanHoaNhan);
     let coNhanLa = false;
     let giaTriHd = 0;
     let thueHd = 0;
@@ -151,6 +223,9 @@ export function gomBanRa(rows: HoaDonGom[]): KetQuaBanRa {
       const thue = g.tthue * heSo;
       tong[o.giaTri] += giaTri;
       if (o.thue) tong[o.thue] += thue;
+      // Giữ nguyên theo NHÃN GỐC bên cạnh việc rót vào ô: [32]/[33] gộp 8% với 10%, mà phụ lục
+      // giảm thuế cần riêng nhóm 8%.
+      congVaoNhan(theoNhan, g.nhan, giaTri, thue, tenTheoNhan.get(g.nhan) ?? []);
       giaTriHd += giaTri;
       thueHd += thue;
     }
@@ -166,7 +241,7 @@ export function gomBanRa(rows: HoaDonGom[]): KetQuaBanRa {
     }
   }
 
-  return { tong, treo, dieuChinh, soHd };
+  return { tong, treo, dieuChinh, theoNhan, soHd };
 }
 
 /**
@@ -175,6 +250,7 @@ export function gomBanRa(rows: HoaDonGom[]): KetQuaBanRa {
  */
 export function gomMuaVao(rows: HoaDonGom[]): KetQuaMuaVao {
   const treo: HoaDonTreo[] = [];
+  const theoNhan: Record<string, NhomThueSuat> = {};
   let ct23 = 0;
   let ct24 = 0;
   let soHd = 0;
@@ -189,7 +265,16 @@ export function gomMuaVao(rows: HoaDonGom[]): KetQuaMuaVao {
     ct23 += so(hd.tgtcthue) * heSo;
     ct24 += so(hd.tgtthue) * heSo;
     soHd += 1;
+
+    // Tách theo nhãn CHỈ để dựng phụ lục giảm thuế — hóa đơn chưa tải chi tiết vẫn tính vào
+    // ct23/ct24 ở trên, chỉ không góp mặt ở đây.
+    const nhom = nhomThueSuat(hd.detail);
+    if (nhom === null) continue;
+    const tenTheoNhan = tenHangTheoNhan(hd.detail, chuanHoaNhan);
+    for (const g of nhom) {
+      congVaoNhan(theoNhan, g.nhan, g.thtien * heSo, g.tthue * heSo, tenTheoNhan.get(g.nhan) ?? []);
+    }
   }
 
-  return { ct23, ct24, treo, soHd };
+  return { ct23, ct24, treo, theoNhan, soHd };
 }

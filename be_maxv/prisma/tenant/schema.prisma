@@ -833,6 +833,11 @@ model tokhai_gtgt01 {
   /// [22] lấy ở đâu ra: ky_truoc (ct43 của bản đã chốt kỳ liền trước) | nhap_tay.
   nguon_ct22 String @default("nhap_tay") @db.VarChar(16)
 
+  /// Phụ lục "Giảm thuế GTGT theo NQ 204/2025" của kỳ (nhóm hàng 8%) — nộp KÈM tờ khai chính khi
+  /// kỳ có hàng được giảm thuế. Số liệu tính lại mỗi lượt "Tính lại"; riêng hai ô mô tả hàng hóa
+  /// giữ nguyên nếu kế toán đã sửa. `null` = kỳ chưa tính hoặc không có hàng 8%.
+  phu_luc Json?
+
   so_hd_ban Int @default(0)
   so_hd_mua Int @default(0)
   /// Số hóa đơn kế toán đã đánh "Không kê khai" — nhìn bản tờ khai là biết đã loại bao nhiêu tờ,

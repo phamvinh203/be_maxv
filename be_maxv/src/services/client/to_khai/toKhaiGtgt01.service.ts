@@ -12,6 +12,7 @@ import type { PrismaClient, Prisma } from "../../../generated/tenant";
 import { kyLienTruoc, type Ky } from "./kySoThue";
 import { gomBanRa, gomMuaVao, type HoaDonGom, type HoaDonTreo } from "./gomHoaDonGtgt";
 import { tinhGtgt01, type CtGtgt01 } from "./tinhGtgt01";
+import { dungPhuLuc204, type PhuLuc204 } from "./phuLuc204";
 import type { Chieu } from "./keKhaiKy.service";
 
 export interface GhiDeItem {
@@ -32,6 +33,8 @@ export interface BanToKhai {
   hdThieuDetail: number;
   treo: HoaDonTreo[];
   dieuChinh: { soHd: number; giaTri: number; thue: number };
+  /** Phụ lục giảm thuế NQ 204/2025 của kỳ; `null` = kỳ không có hàng 8% nên không phải nộp. */
+  phuLuc: PhuLuc204 | null;
   tinhLuc: string | null;
 }
 
@@ -157,6 +160,18 @@ export async function tinhVaLuu(db: PrismaClient, ky: Ky): Promise<BanToKhai> {
 
   const nguonCt22: "ky_truoc" | "nhap_tay" = ct22KyTruoc !== null ? "ky_truoc" : "nhap_tay";
   const soHdKhongKeKhai = ban.soLoai + mua.soLoai;
+
+  // Phụ lục tính lại từ hóa đơn, NHƯNG hai ô mô tả hàng hóa giữ nguyên nếu kế toán đã sửa —
+  // họ biết gọi gọn thế nào cho cơ quan thuế dễ đọc, tính lại mà xóa mất là mất công gõ lại.
+  const phuLucMoi = dungPhuLuc204(banRa, muaVao);
+  const phuLucCu = (hienCo?.phu_luc ?? null) as PhuLuc204 | null;
+  const phuLuc: PhuLuc204 | null = phuLucMoi.rong
+    ? null
+    : {
+        ...phuLucMoi,
+        muaVao: { ...phuLucMoi.muaVao, tenHang: phuLucCu?.muaVao.tenHang || phuLucMoi.muaVao.tenHang },
+        banRa: { ...phuLucMoi.banRa, tenHang: phuLucCu?.banRa.tenHang || phuLucMoi.banRa.tenHang },
+      };
   const duLieu = {
     trang_thai: "nhap",
     ct: ct as Prisma.InputJsonValue,
@@ -172,6 +187,7 @@ export async function tinhVaLuu(db: PrismaClient, ky: Ky): Promise<BanToKhai> {
     so_hd_mua: muaVao.soHd,
     so_hd_khong_ke_khai: soHdKhongKeKhai,
     hd_thieu_detail: ban.soThieuDetail,
+    phu_luc: (phuLuc ?? null) as unknown as Prisma.InputJsonValue,
     tinh_luc: new Date(),
   };
 
@@ -194,6 +210,7 @@ export async function tinhVaLuu(db: PrismaClient, ky: Ky): Promise<BanToKhai> {
     hdThieuDetail: ban.soThieuDetail,
     treo: [...banRa.treo, ...muaVao.treo],
     dieuChinh: banRa.dieuChinh,
+    phuLuc,
     tinhLuc: luu.tinh_luc?.toISOString() ?? null,
   };
 }
@@ -218,6 +235,7 @@ export async function docBan(db: PrismaClient, ky: Ky): Promise<BanToKhai | null
     // bấm "Tính lại" sẽ có ngay.
     treo: [],
     dieuChinh: { soHd: 0, giaTri: 0, thue: 0 },
+    phuLuc: (row.phu_luc ?? null) as PhuLuc204 | null,
     tinhLuc: row.tinh_luc?.toISOString() ?? null,
   };
 }
@@ -240,6 +258,40 @@ export async function luuGhiDe(
     data: { ghi_de: locGhiDeHopLe(ghiDeMoi) as unknown as Prisma.InputJsonValue },
   });
   return tinhVaLuu(db, ky);
+}
+
+/**
+ * Sửa hai ô mô tả hàng hóa của phụ lục. Chỉ đụng `tenHang`, KHÔNG cho sửa số: số phải luôn khớp
+ * hóa đơn, muốn đổi thì sửa bảng kê rồi tính lại.
+ */
+export async function luuTenHangPhuLuc(
+  db: PrismaClient,
+  ky: Ky,
+  ten: { muaVao?: string; banRa?: string },
+): Promise<BanToKhai> {
+  const ban = await docBan(db, ky);
+  if (!ban) throw new ChuaCoBanError();
+  if (ban.trangThai === "chot") throw new BanDaChotError();
+  if (!ban.phuLuc) throw new Error("Kỳ này không có hàng được giảm thuế nên không có phụ lục.");
+
+  const CAT = 500;
+  const phuLuc: PhuLuc204 = {
+    ...ban.phuLuc,
+    muaVao: {
+      ...ban.phuLuc.muaVao,
+      tenHang: (ten.muaVao ?? ban.phuLuc.muaVao.tenHang).slice(0, CAT),
+    },
+    banRa: {
+      ...ban.phuLuc.banRa,
+      tenHang: (ten.banRa ?? ban.phuLuc.banRa.tenHang).slice(0, CAT),
+    },
+  };
+
+  await db.tokhai_gtgt01.update({
+    where: { nam_ky_loai_ky_so: { nam: ky.nam, ky_loai: ky.kyLoai, ky_so: ky.kySo } },
+    data: { phu_luc: phuLuc as unknown as Prisma.InputJsonValue },
+  });
+  return { ...ban, phuLuc };
 }
 
 export async function doiTrangThai(

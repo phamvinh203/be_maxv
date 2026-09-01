@@ -22,6 +22,9 @@ import { useDoiTrangThai, useLuuGhiDe, useTinhToKhai } from "../api/gtgt01Querie
 import type { BanToKhai, GhiDeItem } from "../api/gtgt01";
 import { nhanKy, type Ky } from "../ky";
 import { xuatToKhaiGtgt01 } from "../xuatToKhaiExcel";
+import { KHO_GIAY_TO_KHAI } from "../layout";
+import PhuLuc204Panel from "./PhuLuc204Panel";
+import { docSoTien, fmtSoTien } from "../../_shared/to_khai/soTien";
 import { getErrorMessage } from "../../../lib/errors";
 
 /**
@@ -31,9 +34,6 @@ import { getErrorMessage } from "../../../lib/errors";
  * như tờ giấy. Thanh kỳ ở đây cũng chỉ là một dòng chữ, không phải khối chọn kỳ như bên bảng kê —
  * dựng khối đó ngay trên đầu mẫu in làm tờ khai trông như bị kẹp.
  */
-
-/** Bề rộng khổ giấy — mẫu in không tràn theo khung bảng. */
-const KHO_GIAY = 860;
 
 /** Ô người dùng tự nhập — khớp `CT_NHAP_TAY` bên `tinhGtgt01.ts`. */
 const O_NHAP_TAY = new Set([
@@ -47,8 +47,6 @@ const O_NHAP_TAY = new Set([
   "ct40b",
   "ct42",
 ]);
-
-const fmt = new Intl.NumberFormat("vi-VN");
 
 interface Props {
   ky: Ky;
@@ -82,15 +80,25 @@ export default function ToKhaiGtgt01Editor({ ky, ban, onDoiKy, dangTai, loi }: P
   const bamLuu = () => {
     if (!ban) return;
     const ghiDe: Record<string, GhiDeItem> = { ...ban.ghiDe };
+    const oHong: string[] = [];
     for (const [tag, chuoi] of Object.entries(nhap)) {
-      // Bỏ dấu phân cách nghìn người dùng gõ vào; chuỗi rỗng nghĩa là xóa ô -> bỏ khỏi ghi đè.
-      const sach = chuoi.replace(/[^\d.-]/g, "");
-      if (sach === "") {
+      const gia = docSoTien(chuoi);
+      // Ô để trống = xóa ghi đè, giá trị quay về số máy tính (khác hẳn nhập số 0).
+      if (gia === null) {
         delete ghiDe[tag];
         continue;
       }
-      const gia = Number(sach);
-      if (Number.isFinite(gia)) ghiDe[tag] = { gia };
+      // Gõ sai (chữ, ký tự lạ) thì BÁO, không lặng lẽ bỏ qua — số trên tờ khai không được phép
+      // khác cái người dùng tưởng mình vừa nhập.
+      if (gia === undefined) {
+        oHong.push(`[${maChiTieu(tag)}]`);
+        continue;
+      }
+      ghiDe[tag] = { gia };
+    }
+    if (oHong.length > 0) {
+      toast.error(`Không đọc được số ở ô ${oHong.join(", ")} — kiểm tra lại rồi lưu.`);
+      return;
     }
     luu.mutate(
       { ky, ghiDe },
@@ -125,7 +133,9 @@ export default function ToKhaiGtgt01Editor({ ky, ban, onDoiKy, dangTai, loi }: P
     if (!tag) return <TableCell />;
     const daGhiDe = !!ban?.ghiDe[tag];
     const soMay = ban?.ctMay[tag];
-    const hienTai = tag in nhap ? nhap[tag] : (ban?.ct[tag] ?? "");
+    // Ô đang gõ dở giữ nguyên chuỗi người dùng (chèn dấu chấm giữa chừng làm nhảy con trỏ);
+    // ô còn lại hiện số đã định dạng `264.208.827` cho dễ đọc.
+    const hienTai = tag in nhap ? nhap[tag] : fmtSoTien(ban?.ct[tag]);
 
     return (
       <TableCell align="right" sx={{ verticalAlign: "top", whiteSpace: "nowrap" }}>
@@ -138,7 +148,7 @@ export default function ToKhaiGtgt01Editor({ ky, ban, onDoiKy, dangTai, loi }: P
           [{maChiTieu(tag)}]
         </Typography>
         <Tooltip
-          title={daGhiDe && soMay !== undefined ? `Máy tính: ${fmt.format(soMay)}` : ""}
+          title={daGhiDe && soMay !== undefined ? `Máy tính: ${fmtSoTien(soMay)}` : ""}
           placement="left"
         >
           <TextField
@@ -147,6 +157,13 @@ export default function ToKhaiGtgt01Editor({ ky, ban, onDoiKy, dangTai, loi }: P
             disabled={khoa || !ban}
             value={String(hienTai)}
             onChange={(e) => setNhap((cu) => ({ ...cu, [tag]: e.target.value }))}
+            // Rời ô thì định dạng lại ngay để người dùng thấy con số mình vừa gõ đã được hiểu đúng
+            // (gõ "264208827" rời ô thành "264.208.827"); gõ sai thì giữ nguyên để còn sửa.
+            onBlur={() => {
+              const gia = docSoTien(nhap[tag] ?? "");
+              if (gia === undefined) return;
+              setNhap((cu) => ({ ...cu, [tag]: gia === null ? "" : fmtSoTien(gia) }));
+            }}
             slotProps={{ input: { style: { textAlign: "right", fontSize: 13 } } }}
             sx={{
               width: 120,
@@ -250,7 +267,7 @@ export default function ToKhaiGtgt01Editor({ ky, ban, onDoiKy, dangTai, loi }: P
         </Stack>
       </Stack>
 
-      <Box sx={{ maxWidth: KHO_GIAY, mx: "auto" }}>
+      <Box sx={{ maxWidth: KHO_GIAY_TO_KHAI, mx: "auto" }}>
         {loi && !ban && (
           <Alert severity="info" sx={{ mb: 2 }}>
             {loi}
@@ -269,7 +286,7 @@ export default function ToKhaiGtgt01Editor({ ky, ban, onDoiKy, dangTai, loi }: P
             {ban.dieuChinh.soHd > 0 && (
               <Alert severity="warning">
                 Kỳ này có {ban.dieuChinh.soHd} hóa đơn điều chỉnh, tổng{" "}
-                {fmt.format(ban.dieuChinh.giaTri)} — kiểm tra dấu trước khi chốt.
+                {fmtSoTien(ban.dieuChinh.giaTri)} — kiểm tra dấu trước khi chốt.
               </Alert>
             )}
             {ban.soHdKhongKeKhai > 0 && (
@@ -334,6 +351,10 @@ export default function ToKhaiGtgt01Editor({ ky, ban, onDoiKy, dangTai, loi }: P
             </Typography>
           )}
         </Paper>
+
+        {/* Phụ lục chỉ hiện khi kỳ CÓ hàng 8% — kỳ không có thì không phải nộp, hiện khung rỗng
+            chỉ làm người dùng tưởng mình quên điền. */}
+        {ban?.phuLuc && <PhuLuc204Panel ky={ky} phuLuc={ban.phuLuc} khoa={khoa} />}
       </Box>
     </Box>
   );

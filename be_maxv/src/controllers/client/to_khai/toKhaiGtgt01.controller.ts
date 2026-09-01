@@ -68,6 +68,27 @@ export async function luu(
   }
 }
 
+/**
+ * PUT /to-khai/gtgt01/:nam/:kyLoai/:kySo/phu-luc — sửa mô tả hàng hóa trên phụ lục giảm thuế.
+ * Chỉ nhận hai ô chữ; số của phụ lục luôn tính từ hóa đơn.
+ */
+export async function luuPhuLuc(
+  request: FastifyRequest<{ Params: KyInput; Body: { muaVao?: unknown; banRa?: unknown } }>,
+  reply: FastifyReply,
+) {
+  const db = await resolveTenantDb(request);
+  try {
+    const ten = {
+      muaVao: typeof request.body?.muaVao === "string" ? request.body.muaVao : undefined,
+      banRa: typeof request.body?.banRa === "string" ? request.body.banRa : undefined,
+    };
+    return reply.send(await ToKhai.luuTenHangPhuLuc(db, docKy(request.params), ten));
+  } catch (err) {
+    request.log.error(err);
+    return traLoi(reply, err, "Không lưu được phụ lục.");
+  }
+}
+
 function doiTrangThaiHandler(trangThai: "nhap" | "chot") {
   return async function (request: FastifyRequest<{ Params: KyInput }>, reply: FastifyReply) {
     const db = await resolveTenantDb(request);

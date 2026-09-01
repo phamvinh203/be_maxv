@@ -7,6 +7,27 @@ export interface GhiDeItem {
   lyDo?: string;
 }
 
+/** Một dòng của phụ lục giảm thuế (mục I hoặc mục II). */
+export interface DongPhuLuc {
+  tenHang: string;
+  giaTri: number;
+  thue: number;
+}
+
+/** Phụ lục "Giảm thuế GTGT theo NQ 204/2025" — nộp kèm tờ khai khi kỳ có hàng 8%. */
+export interface PhuLuc204 {
+  muaVao: DongPhuLuc;
+  banRa: DongPhuLuc & {
+    thueSuatQuyDinh: number;
+    thueSuatSauGiam: number;
+    /** [08] = giá trị × (thuế suất quy định − sau giảm). */
+    thueDuocGiam: number;
+  };
+  /** [09] = [08] − [06]. */
+  chenhLech: number;
+  rong: boolean;
+}
+
 export interface HoaDonTreo {
   id: string;
   lyDo: string;
@@ -28,6 +49,8 @@ export interface BanToKhai {
   hdThieuDetail: number;
   treo: HoaDonTreo[];
   dieuChinh: { soHd: number; giaTri: number; thue: number };
+  /** `null` = kỳ không có hàng 8% nên không phải nộp phụ lục. */
+  phuLuc: PhuLuc204 | null;
   tinhLuc: string | null;
 }
 
@@ -67,6 +90,17 @@ export async function putGhiDe(
   return apiFetch<BanToKhai>(`/to-khai/gtgt01/${duongDanKy(ky)}`, {
     method: "PUT",
     body: JSON.stringify({ ghiDe }),
+  });
+}
+
+/** Sửa hai ô mô tả hàng hóa của phụ lục; số luôn tính từ hóa đơn nên không gửi lên. */
+export async function putPhuLuc(
+  ky: Ky,
+  ten: { muaVao?: string; banRa?: string },
+): Promise<BanToKhai> {
+  return apiFetch<BanToKhai>(`/to-khai/gtgt01/${duongDanKy(ky)}/phu-luc`, {
+    method: "PUT",
+    body: JSON.stringify(ten),
   });
 }
 

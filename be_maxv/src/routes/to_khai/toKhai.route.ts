@@ -2,6 +2,7 @@ import { FastifyInstance } from "fastify";
 import {
   bangKeTheoKy,
   keKhaiKy,
+  phuSongKy,
   suaQuyetDinh,
 } from "../../controllers/client/to_khai/keKhaiKy.controller";
 import {
@@ -9,6 +10,7 @@ import {
   danhSach,
   doc,
   luu,
+  luuPhuLuc,
   moKhoa,
   tinh,
 } from "../../controllers/client/to_khai/toKhaiGtgt01.controller";
@@ -25,6 +27,7 @@ export default async function (fastify: FastifyInstance) {
   const guard = [fastify.authenticate, requireModule("tokhai")];
 
   // Gán hóa đơn vào kỳ + bảng kê của kỳ
+  fastify.get("/ky/phu-song", { preHandler: guard, handler: phuSongKy });
   fastify.post("/ke-khai", { preHandler: guard, handler: keKhaiKy });
   fastify.get("/hoa-don", { preHandler: guard, handler: bangKeTheoKy });
   fastify.patch("/hoa-don/:chieu/:id", { preHandler: guard, handler: suaQuyetDinh });
@@ -36,6 +39,7 @@ export default async function (fastify: FastifyInstance) {
   fastify.get("/gtgt01/danh-sach", { preHandler: guard, handler: danhSach });
   fastify.get("/gtgt01/:nam/:kyLoai/:kySo", { preHandler: guard, handler: doc });
   fastify.put("/gtgt01/:nam/:kyLoai/:kySo", { preHandler: guard, handler: luu });
+  fastify.put("/gtgt01/:nam/:kyLoai/:kySo/phu-luc", { preHandler: guard, handler: luuPhuLuc });
   fastify.post("/gtgt01/:nam/:kyLoai/:kySo/chot", { preHandler: guard, handler: chot });
   fastify.post("/gtgt01/:nam/:kyLoai/:kySo/mo-khoa", { preHandler: guard, handler: moKhoa });
 }

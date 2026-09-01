@@ -1,6 +1,12 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "../../auth/useAuth";
-import { getBangKe, patchQuyetDinh, postKeKhai, type QuyetDinhKeKhai } from "./toKhai";
+import {
+  getBangKe,
+  getPhuSongKy,
+  patchQuyetDinh,
+  postKeKhai,
+  type QuyetDinhKeKhai,
+} from "./toKhai";
 import type { Ky } from "../ky";
 import type { InvoiceDirection } from "../../hddt/types";
 
@@ -11,6 +17,22 @@ export const toKhaiKeys = {
   bangKe: (companyId: string | null, ky: Ky, chieu: InvoiceDirection) =>
     ["toKhai", companyId, "bangKe", ky, chieu] as const,
 };
+
+/**
+ * Kỳ đã đồng bộ hóa đơn trọn vẹn chưa — dialog "Kê khai" gọi mỗi khi đổi kỳ.
+ *
+ * Không cache lâu: người dùng thường mở dialog, thấy cảnh báo, sang đồng bộ rồi quay lại ngay —
+ * đọc lại `sync_log` là một truy vấn nhẹ, rẻ hơn nhiều so với việc hiện cảnh báo đã lỗi thời.
+ */
+export function usePhuSongKyQuery(ky: Ky, enabled = true) {
+  const { isAuthenticated, currentCompanyId } = useAuth();
+  return useQuery({
+    queryKey: ["toKhai", currentCompanyId, "phuSong", ky] as const,
+    queryFn: () => getPhuSongKy(ky),
+    enabled: enabled && isAuthenticated && !!currentCompanyId,
+    staleTime: 0,
+  });
+}
 
 /** Bảng kê một kỳ/một chiều. `enabled=false` cho tab đang ẩn để khỏi gọi API thừa. */
 export function useBangKeQuery(ky: Ky, chieu: InvoiceDirection, enabled = true) {

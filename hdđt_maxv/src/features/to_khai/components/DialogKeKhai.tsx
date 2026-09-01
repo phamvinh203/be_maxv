@@ -10,8 +10,9 @@ import MenuItem from "@mui/material/MenuItem";
 import Button from "@mui/material/Button";
 import Typography from "@mui/material/Typography";
 import CircularProgress from "@mui/material/CircularProgress";
+import Alert from "@mui/material/Alert";
 import { toast } from "react-toastify";
-import { useKeKhaiMutation } from "../api/toKhaiQueries";
+import { useKeKhaiMutation, usePhuSongKyQuery } from "../api/toKhaiQueries";
 import { kyMacDinh, kyToQuery, nhanKy, soKyToiDa, type Ky, type KyLoai } from "../ky";
 import { getErrorMessage } from "../../../lib/errors";
 
@@ -26,6 +27,8 @@ export default function DialogKeKhai({ open, onClose }: { open: boolean; onClose
   const [ky, setKy] = useState<Ky>(kyMacDinh);
   const keKhai = useKeKhaiMutation();
   const navigate = useNavigate();
+  // Đọc lại mỗi khi đổi kỳ; chỉ gọi khi dialog đang mở.
+  const phuSong = usePhuSongKyQuery(ky, open);
 
   const namHienTai = new Date().getFullYear();
   const danhSachNam = Array.from({ length: 6 }, (_, i) => namHienTai - i);
@@ -52,6 +55,16 @@ export default function DialogKeKhai({ open, onClose }: { open: boolean; onClose
           Mọi hóa đơn mua vào và bán ra có ngày lập trong kỳ sẽ được đưa vào bảng kê của kỳ này.
           Hóa đơn đã kê khai ở kỳ khác sẽ được chuyển sang kỳ vừa chọn.
         </Typography>
+
+        {/*
+          Cảnh báo kỳ chưa đồng bộ trọn. KHÔNG chặn cứng nút — có lúc kế toán cố ý kê khai phần
+          đang có — nhưng phải nhìn thấy, vì tờ khai thiếu số trông y hệt tờ khai đủ số.
+        */}
+        {phuSong.data && !phuSong.data.daPhu && phuSong.data.canhBao && (
+          <Alert severity="warning" sx={{ mb: 2 }}>
+            {phuSong.data.canhBao}
+          </Alert>
+        )}
 
         <Stack direction="row" spacing={2}>
           <TextField
@@ -115,7 +128,7 @@ export default function DialogKeKhai({ open, onClose }: { open: boolean; onClose
           startIcon={keKhai.isPending ? <CircularProgress size={16} color="inherit" /> : undefined}
           sx={{ textTransform: "none" }}
         >
-          Kê khai {nhanKy(ky)}
+          {phuSong.data && !phuSong.data.daPhu ? "Vẫn kê khai" : "Kê khai"} {nhanKy(ky)}
         </Button>
       </DialogActions>
     </Dialog>

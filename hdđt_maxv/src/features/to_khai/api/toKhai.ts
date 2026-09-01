@@ -35,6 +35,25 @@ export async function getBangKe(ky: Ky, chieu: InvoiceDirection): Promise<BangKe
   return apiFetch<BangKeResult>(`/to-khai/hoa-don?${kyToQuery(ky)}&chieu=${chieu}`);
 }
 
+/** Độ phủ đồng bộ của một chiều trong kỳ. */
+export interface PhuChieu {
+  daPhu: boolean;
+  tuNgayDaCo: string | null;
+  denNgayDaCo: string | null;
+}
+
+/** Kỳ đã được đồng bộ hóa đơn trọn vẹn chưa — `canhBao` là câu mô tả phần thiếu, BE dựng sẵn. */
+export interface KetQuaPhuKy {
+  daPhu: boolean;
+  purchase: PhuChieu;
+  sold: PhuChieu;
+  canhBao: string | null;
+}
+
+export async function getPhuSongKy(ky: Ky): Promise<KetQuaPhuKy> {
+  return apiFetch<KetQuaPhuKy>(`/to-khai/ky/phu-song?${kyToQuery(ky)}`);
+}
+
 /** Giá trị cột "Chỉ tiêu tăng giảm"; rỗng = chưa chọn. */
 export type ChiTieuTangGiam = "" | "tang" | "giam";
 

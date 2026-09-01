@@ -1,6 +1,7 @@
 import type { FastifyReply, FastifyRequest } from "fastify";
 import { resolveTenantDb } from "../../../helpers/resolveTenantDb";
 import * as KeKhai from "../../../services/client/to_khai/keKhaiKy.service";
+import { kiemTraPhuKy } from "../../../services/client/to_khai/phuKy";
 import { nhanKy } from "../../../services/client/to_khai/kySoThue";
 import { docChieu, docKy, type KyInput } from "./docThamSo";
 
@@ -26,6 +27,27 @@ export async function keKhaiKy(
     request.log.error(err);
     return reply.status(400).send({
       message: err instanceof Error ? err.message : "Không kê khai được kỳ này.",
+    });
+  }
+}
+
+/**
+ * GET /to-khai/ky/phu-song?nam&kyLoai&kySo — kỳ đã được đồng bộ hóa đơn trọn vẹn chưa.
+ *
+ * Dialog "Kê khai" gọi trước khi gán để cảnh báo: kê khai một kỳ mới đồng bộ một phần vẫn chạy
+ * trơn tru và ra tờ khai thiếu số mà không có dấu hiệu gì (xem ghi chú đầu `phuKy.ts`).
+ */
+export async function phuSongKy(
+  request: FastifyRequest<{ Querystring: KyInput }>,
+  reply: FastifyReply,
+) {
+  const db = await resolveTenantDb(request);
+  try {
+    return reply.send(await kiemTraPhuKy(db, docKy(request.query)));
+  } catch (err) {
+    request.log.error(err);
+    return reply.status(400).send({
+      message: err instanceof Error ? err.message : "Không kiểm tra được dữ liệu của kỳ.",
     });
   }
 }

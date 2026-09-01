@@ -340,10 +340,23 @@ form hiện cảnh báo "Kỳ này có N hóa đơn điều chỉnh, tổng X �
 kê tách nhóm đó ra đầu danh sách. Khi có hóa đơn điều chỉnh giảm thật để đối chiếu, sửa đúng một chỗ
 trong `gomHoaDonGtgt.ts` và ghi kết luận vào chính mục này.
 
-### 11.2. [23]/[24] có gồm hóa đơn mua vào không chịu thuế hay không
+### 11.2. [23]/[24] có gồm hóa đơn mua vào không chịu thuế hay không — ĐÃ TRẢ LỜI: CÓ
 
-Đang tính là **có** (tổng mọi hóa đơn mua vào trong kỳ). Đối chiếu với XML tờ khai thật ở bước kiểm
-tay (mục 10) sẽ trả lời dứt điểm; nếu lệch thì lọc bỏ nhóm `KCT` bên mua vào.
+**Đã xác nhận 2026-08-31**, đối chiếu tờ khai thật Q2/2026 của MST 0106861880 (Phát Thịnh) kèm phụ
+lục "Giảm thuế GTGT theo NQ 204/2025/QH15":
+
+| | Tờ khai chính | Phụ lục (riêng nhóm 8%) |
+|---|---|---|
+| Giá trị mua vào | [23] = 323.070.463 | 63.748.043 |
+| Thuế mua vào | [24] = 5.102.437 | 5.102.437 |
+
+[24] khớp đúng phần thuế của nhóm 8%, còn [23] gấp 5 lần giá trị nhóm đó — phần chênh
+259.322.420 là hàng mua vào KHÔNG phát sinh thuế đầu vào. Vậy [23] gồm cả hóa đơn không chịu thuế,
+đúng như `gomMuaVao` đang làm (cộng mọi hóa đơn trong kỳ). **Không phải sửa gì.**
+
+Cùng lượt đối chiếu cũng xác nhận ánh xạ 8%: phụ lục ghi hàng "Cước vận chuyển" thuế suất theo quy
+định **10%**, sau giảm **8%**; tờ khai chính kê vào [32] (dòng "chịu thuế suất 10%") với [33] là số
+thuế THỰC TẾ 8% — đúng bảng `O_THEO_NHAN` trong `gomHoaDonGtgt.ts`.
 
 ### 11.3. Nhãn thuế suất GDT còn mức nào ngoài bảng 7.4
 

@@ -17,9 +17,11 @@ import CircularProgress from "@mui/material/CircularProgress";
 import InboxRounded from "@mui/icons-material/InboxRounded";
 import ChonKyPanel from "./ChonKyPanel";
 import ToKhaiGtgt01Editor from "./ToKhaiGtgt01Editor";
+import DanhSachKyDaLap from "./DanhSachKyDaLap";
 import { overviewColumnsToKhai } from "../templates";
 import { useBangKeQuery } from "../api/toKhaiQueries";
 import { useBanToKhaiQuery } from "../api/gtgt01Queries";
+import { KHO_GIAY_TO_KHAI } from "../layout";
 import { kyToQuery, kyTuQuery, nhanKy, type Ky, type ToKhaiRow } from "../ky";
 import { toDisplayRow } from "../../hddt/invoiceRow";
 import { buildReplacedByMap } from "../../hddt/detailRow";
@@ -210,18 +212,24 @@ export default function ToKhaiInvoiceTabs() {
         <BangKeMotChieu ky={ky} direction="sold" active={tab === "sold"} />
       </Box>
       {laToKhai && (
-        <ToKhaiGtgt01Editor
-          ky={ky}
-          ban={banToKhai.data ?? null}
-          dangTai={banToKhai.isFetching}
-          // Kỳ chưa lập trả 404 — đó là trạng thái bình thường, hiện câu chỉ đường chứ không báo lỗi đỏ.
-          loi={
-            banToKhai.isError
-              ? getErrorMessage(banToKhai.error, "Kỳ này chưa có bản tờ khai nào.")
-              : null
-          }
-          onDoiKy={() => setTab("purchase")}
-        />
+        <>
+          <ToKhaiGtgt01Editor
+            ky={ky}
+            ban={banToKhai.data ?? null}
+            dangTai={banToKhai.isFetching}
+            // Kỳ chưa lập trả 404 — đó là trạng thái bình thường, hiện câu chỉ đường chứ không báo lỗi đỏ.
+            loi={
+              banToKhai.isError
+                ? getErrorMessage(banToKhai.error, "Kỳ này chưa có bản tờ khai nào.")
+                : null
+            }
+            onDoiKy={() => setTab("purchase")}
+          />
+          {/* Cùng khổ giấy với mẫu in để hai khối thẳng mép nhau. */}
+          <Box sx={{ maxWidth: KHO_GIAY_TO_KHAI, mx: "auto" }}>
+            <DanhSachKyDaLap kyDangXem={ky} onChonKy={doiKy} />
+          </Box>
+        </>
       )}
     </Box>
   );
