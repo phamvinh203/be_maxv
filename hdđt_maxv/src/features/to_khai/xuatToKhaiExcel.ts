@@ -1,0 +1,83 @@
+import ExcelJS from "exceljs";
+import { CELL_BORDER, HEADER_FILL, HEADER_HEIGHT } from "../hddt/exportXlsx";
+import { HANG_GTGT01, maChiTieu } from "../_shared/to_khai/gtgt01Layout";
+import type { BanToKhai } from "./api/gtgt01";
+import { nhanKy, type Ky } from "./ky";
+
+/**
+ * Xuất tờ khai đang xem ra Excel — bố cục bám mẫu in: STT, chỉ tiêu (thụt lề theo cấp), giá trị,
+ * thuế, kèm cột đánh dấu ô nào kế toán đã sửa tay.
+ *
+ * Cột "Ghi chú" tồn tại vì file này đi ra ngoài cho người khác soát: nhìn con số không biết máy
+ * tính ra hay người sửa, mà đó đúng là câu hỏi đầu tiên người soát sẽ hỏi.
+ *
+ * Dùng lại ba hằng định dạng của `hddt/exportXlsx.ts`, không khai bản riêng.
+ */
+
+/** Thụt lề cột "Chỉ tiêu" theo cấp — Excel không có padding nên chèn khoảng trắng. */
+const THUT_LE = "    ";
+
+function tenFile(ky: Ky): string {
+  return `ToKhai01GTGT_${nhanKy(ky).replace("/", "-")}.xlsx`;
+}
+
+export async function xuatToKhaiGtgt01(ky: Ky, ban: BanToKhai): Promise<void> {
+  const wb = new ExcelJS.Workbook();
+  const ws = wb.addWorksheet("01-GTGT");
+
+  ws.addRow([`TỜ KHAI THUẾ GIÁ TRỊ GIA TĂNG (Mẫu số 01/GTGT) — Kỳ ${nhanKy(ky)}`]);
+  ws.addRow([`Trạng thái: ${ban.trangThai === "chot" ? "Đã chốt" : "Bản nháp"}`]);
+  ws.addRow([
+    `Nguồn: ${ban.soHdBan} hóa đơn bán ra, ${ban.soHdMua} hóa đơn mua vào` +
+      (ban.soHdKhongKeKhai > 0 ? `, ${ban.soHdKhongKeKhai} hóa đơn không kê khai` : ""),
+  ]);
+  ws.addRow([]);
+
+  const dongTieuDe = ws.addRow(["STT", "Chỉ tiêu", "Giá trị HHDV", "Thuế GTGT", "Ghi chú"]);
+  dongTieuDe.height = HEADER_HEIGHT;
+  dongTieuDe.eachCell((cell) => {
+    // HEADER_FILL là chuỗi ARGB, phải bọc trong object fill — đúng cách `exportXlsx.ts:155` và
+    // `xuatChiTieuExcel.ts:45` đang dùng.
+    cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: HEADER_FILL } };
+    cell.border = CELL_BORDER;
+    cell.font = { bold: true };
+    cell.alignment = { vertical: "middle", horizontal: "center", wrapText: true };
+  });
+
+  for (const h of HANG_GTGT01) {
+    const soGiaTri = h.giaTri ? (ban.ct[h.giaTri] ?? null) : null;
+    const soThue = h.thue ? (ban.ct[h.thue] ?? null) : null;
+    const daSua = [h.giaTri, h.thue].filter((t): t is string => !!t && !!ban.ghiDe[t]);
+
+    const row = ws.addRow([
+      h.stt,
+      `${THUT_LE.repeat(h.indent ?? 0)}${h.nhan}`,
+      soGiaTri,
+      soThue,
+      daSua.length > 0
+        ? `Sửa tay: ${daSua.map((t) => `[${maChiTieu(t)}]`).join(", ")}`
+        : "",
+    ]);
+    row.eachCell((cell) => (cell.border = CELL_BORDER));
+    if (h.header) row.font = { bold: true };
+    row.getCell(3).numFmt = "#,##0";
+    row.getCell(4).numFmt = "#,##0";
+  }
+
+  ws.getColumn(1).width = 8;
+  ws.getColumn(2).width = 78;
+  ws.getColumn(3).width = 20;
+  ws.getColumn(4).width = 20;
+  ws.getColumn(5).width = 30;
+
+  const buf = await wb.xlsx.writeBuffer();
+  const blob = new Blob([buf], {
+    type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+  });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = tenFile(ky);
+  a.click();
+  URL.revokeObjectURL(url);
+}

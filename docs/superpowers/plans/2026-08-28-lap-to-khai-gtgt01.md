@@ -59,6 +59,12 @@ Hai quy ước đã chốt trong lớp này, các task sau phải giữ:
 
 ## Phần B — Còn phải làm
 
+> **Trạng thái 2026-08-31:** Task 1–8 đã viết xong và qua kiểm tự động (typecheck · lint · build ·
+> 241/246 test BE, 5 ca `adminOwner` đỏ sẵn từ trước). **Chưa làm: bước đối chiếu tay ở Task 8
+> Step 4** — lập lại một kỳ đã nộp tờ khai thật rồi so từng chỉ tiêu với XML trong `dvc_ho_so`.
+> Đó là phép thử duy nhất trả lời được hai câu hỏi mở ở mục 11 của spec (dấu hóa đơn điều chỉnh,
+> [23]/[24] có gồm hóa đơn mua vào không chịu thuế không).
+
 Thứ tự dưới đây có phụ thuộc: Task 1 mở đường cho kế toán loại hóa đơn khỏi kỳ, mà đó chính là đầu vào Task 2 dùng để tính.
 
 ### Task 1: Sửa được "Kê khai/không kê khai" và "Chỉ tiêu tăng giảm"

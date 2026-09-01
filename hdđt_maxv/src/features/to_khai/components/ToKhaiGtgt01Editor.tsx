@@ -15,11 +15,13 @@ import Typography from "@mui/material/Typography";
 import Alert from "@mui/material/Alert";
 import Chip from "@mui/material/Chip";
 import CircularProgress from "@mui/material/CircularProgress";
+import FileDownloadRounded from "@mui/icons-material/FileDownloadRounded";
 import { toast } from "react-toastify";
 import { HANG_GTGT01, maChiTieu, type HangChiTieu } from "../../_shared/to_khai/gtgt01Layout";
 import { useDoiTrangThai, useLuuGhiDe, useTinhToKhai } from "../api/gtgt01Queries";
 import type { BanToKhai, GhiDeItem } from "../api/gtgt01";
 import { nhanKy, type Ky } from "../ky";
+import { xuatToKhaiGtgt01 } from "../xuatToKhaiExcel";
 import { getErrorMessage } from "../../../lib/errors";
 
 /**
@@ -99,6 +101,14 @@ export default function ToKhaiGtgt01Editor({ ky, ban, onDoiKy, dangTai, loi }: P
         },
         onError: (err) => toast.error(getErrorMessage(err, "Không lưu được tờ khai.")),
       },
+    );
+  };
+
+  /** Xuất file cần `await` (dựng workbook) — bọc catch để lỗi ghi file không văng ra ngoài lặng lẽ. */
+  const bamXuatExcel = () => {
+    if (!ban) return;
+    void xuatToKhaiGtgt01(ky, ban).catch((err) =>
+      toast.error(getErrorMessage(err, "Không xuất được file Excel.")),
     );
   };
 
@@ -226,6 +236,16 @@ export default function ToKhaiGtgt01Editor({ ky, ban, onDoiKy, dangTai, loi }: P
             sx={{ textTransform: "none" }}
           >
             {khoa ? "Mở khóa" : "Chốt"}
+          </Button>
+          <Button
+            size="small"
+            variant="outlined"
+            startIcon={<FileDownloadRounded fontSize="small" />}
+            onClick={bamXuatExcel}
+            disabled={!ban}
+            sx={{ textTransform: "none" }}
+          >
+            Xuất Excel
           </Button>
         </Stack>
       </Stack>
