@@ -55,9 +55,9 @@ hóa đơn nào `detail IS NULL`". Cả hai đều kiểm được bằng cách 
 |---|---|---|
 | 1 | Đầu ra lát này là **form + bảng kê + Excel**; XML nộp thuế để lát 2 | Ra thứ dùng được ngay, chưa ôm rủi ro XML sai chuẩn bị cổng từ chối |
 | 2 | Module tờ khai **chỉ đọc DB**, không gọi cổng thuế, không nhận `X-Gdt-Token` | Giữ ranh giới sạch giữa hai module; test được mà không cần token |
-| 3 | Kỳ thiếu dữ liệu thì **chặn**, kèm nút sang màn Hóa đơn điện tử | Không sinh ra con số nửa vời mà người đọc tưởng là đủ |
+| 3 | Kỳ chưa đồng bộ trọn thì **cảnh báo** ở dialog Kê khai, nút đổi thành "Vẫn kê khai" | Không sinh ra con số nửa vời mà người đọc tưởng là đủ. Sửa 2026-09-02: cảnh báo thay vì chặn cứng — có lúc kế toán cố ý kê phần đang có (xem `phuKy.ts`) |
 | 4 | Lưu **1 dòng/kỳ**, vòng đời `nhap` → `chot` | Đủ cho nhu cầu thật; nhiều bản/kỳ (khai bổ sung) để sau |
-| 5 | [22] lấy [43] của kỳ trước **đã chốt trong phần mềm**, thiếu thì nhập tay | Không buộc công ty phải bật thêm module `dvc` |
+| 5 | [22] lấy [43] của kỳ trước (chốt HOẶC nháp), thiếu thì nhập tay | Không buộc bật module `dvc`. Sửa 2026-09-02: nhận cả bản nháp, nguồn ghi ở `nguon_ct22` để màn hình cảnh báo khi kỳ trước còn nháp |
 | 6 | Hàng **8%** kê vào [32]/[33] như hàng 10%, số thuế ghi theo thực tế 8% | Mẫu 01/GTGT không có dòng 8% riêng; [33] không bị ràng buộc bằng [32]×10% |
 | 7 | Module thứ 5 trong gói đăng ký, khóa `tokhai`, route `/to-khai` | Bán kèm gói như `dvc`/`hrm` |
 
@@ -68,15 +68,14 @@ migration DB sys**. Sáu chỗ phải sửa:
 
 | Chỗ | Việc | Tình trạng |
 |---|---|---|
-| `be_maxv/src/constants/modules.ts` | Thêm `'tokhai'` vào `MODULE_KEYS` — validator gói + kiểu dữ liệu BE tự suy theo | chưa làm |
-| `maxv/src/features/owners/modules.ts` | Thêm `'tokhai'` + `MODULE_META` (nhãn "Tờ khai") — bảng tài khoản và form gói bên admin tự hiện ô tick | chưa làm |
-| `hdđt_maxv/src/features/auth/types/index.ts` | Thêm `"tokhai"` vào `MODULE_KEYS` (ba app không dùng chung package — đây là chỗ phải nhớ đồng bộ) | chưa làm |
+| `be_maxv/src/constants/modules.ts` | Thêm `'tokhai'` vào `MODULE_KEYS` — validator gói + kiểu dữ liệu BE tự suy theo | đã làm |
+| `maxv/src/features/owners/modules.ts` | Thêm `'tokhai'` + `MODULE_META` (nhãn "Tờ khai") — bảng tài khoản và form gói bên admin tự hiện ô tick | đã làm |
+| `hdđt_maxv/src/features/auth/types/index.ts` | Thêm `"tokhai"` vào `MODULE_KEYS` (ba app không dùng chung package — đây là chỗ phải nhớ đồng bộ) | đã làm |
 | `hdđt_maxv/src/components/AppHeader.tsx` | Nút "Tờ khai" trước nút "Dịch vụ công", bọc `{modules.tokhai && …}` | **đã làm** |
-| `hdđt_maxv/src/routes/AppRouter.tsx` | Route `/to-khai` bọc `ProtectedRoute` + `ModuleRoute module="tokhai"` | chưa làm |
-| `be_maxv/src/routes/index.route.ts` | `app.register(toKhaiRoutes, { prefix: '/api/v1/to-khai' })` | chưa làm |
+| `hdđt_maxv/src/routes/AppRouter.tsx` | Route `/to-khai` bọc `ProtectedRoute` + `ModuleRoute module="tokhai"` | đã làm |
+| `be_maxv/src/routes/index.route.ts` | `app.register(toKhaiRoutes, { prefix: '/api/v1/to-khai' })` | đã làm |
 
-Nút trong `AppHeader` đã có nhưng `MODULE_KEYS` phía FE **chưa có khóa `tokhai`**, nên `modules.tokhai`
-hiện là lỗi biên dịch. Thêm khóa vào ba file `MODULE_KEYS` là việc đầu tiên của lát triển khai.
+Cả sáu chỗ đã làm xong (2026-08-31).
 
 Khóa `tokhai` sẽ được ghi vào `features` của các gói đã bán; đổi tên sau này phải sửa dữ liệu, nên
 chốt tên ngay từ đầu.
@@ -90,31 +89,50 @@ hay đọc header `X-Gdt-Token`.
 Đặt folder **ngang hàng `dich_vu_cong`**, không nằm trong `hddt`: đây là module bán theo gói riêng,
 có route riêng và prefix API riêng, giống hệt cách `dich_vu_cong` tách khỏi `hddt`.
 
+Cấu trúc thật sau khi triển khai xong (cập nhật 2026-09-02):
+
 ```
 be_maxv/src/
   services/client/to_khai/
     kySoThue.ts               — quy đổi kỳ (T7/2026, Q3/2026) <-> khoảng ngày
-    sanSangKy.ts              — kỳ đã đồng bộ chưa, còn bao nhiêu HĐ thiếu detail
-    gomHoaDonGtgt.ts          — lọc theo trạng thái + gộp theo thuế suất
-    tinhGtgt01.ts             — hàm THUẦN: vào là số đã gộp + ô nhập tay, ra là bộ chỉ tiêu
-    toKhaiGtgt01.service.ts   — đọc/ghi nháp, chốt, mở khóa, bảng kê
-  controllers/client/to_khai/toKhaiGtgt01.controller.ts
-  routes/to_khai/toKhaiGtgt01.route.ts
+    phuKy.ts                  — kỳ đã đồng bộ trọn chưa (đọc sync_log), THUẦN
+    gomHoaDonGtgt.ts          — lọc theo trạng thái + gộp theo thuế suất + gộp theo nhãn, THUẦN
+    tinhGtgt01.ts             — vào là số đã gộp + ô nhập tay, ra là bộ chỉ tiêu, THUẦN
+    phuLuc204.ts              — dựng phụ lục giảm thuế 204/2025 từ kết quả gộp, THUẦN
+    keKhaiKy.service.ts       — đánh dấu hóa đơn vào kỳ, bảng kê, ô Quyết định
+    toKhaiGtgt01.service.ts   — đọc/ghi nháp, chốt, mở khóa, bắc cầu [22] kỳ trước
+  controllers/client/to_khai/
+    docThamSo.ts              — đọc + kiểm tra tham số kỳ dùng chung hai controller
+    keKhaiKy.controller.ts
+    toKhaiGtgt01.controller.ts
+  routes/to_khai/toKhai.route.ts   — một file route cho cả hai controller
+  __tests__/  kySoThue · gomHoaDonGtgt · tinhGtgt01 · phuKy · phuLuc204 ·
+              quyetDinhKeKhai · toKhaiGtgt01Ghide · moduleTokhai   (chạy bằng `npx tsx --test`)
 
 hdđt_maxv/src/
-  pages/to_khai/ToKhai.tsx                      — đã tạo (hiện là khung rỗng)
+  pages/to_khai/ToKhai.tsx
   features/to_khai/
-    api/toKhai.ts + api/toKhaiQueries.ts        — TanStack Query, theo lối invoiceQueries.ts
-    components/ChonKyPanel.tsx
-    components/TrangThaiKyBanner.tsx
-    components/ToKhaiGtgt01Editor.tsx
-    components/BangKeHoaDonDialog.tsx
+    ky.ts                     — kiểu Ky/ToKhaiRow + quy đổi kỳ <-> query string
+    layout.ts                 — KHO_GIAY_TO_KHAI (bề rộng "tờ giấy" của mẫu in)
+    api/toKhai.ts + toKhaiQueries.ts        — bảng kê, đánh dấu kỳ, ô Quyết định
+    api/gtgt01.ts + gtgt01Queries.ts        — tính, lưu nháp, chốt, mở khóa, phụ lục
+    components/ChonKyPanel.tsx              — dòng chọn kỳ thu gọn
+    components/DialogKeKhai.tsx             — chọn kỳ khi bấm "Kê khai" bên Hóa đơn điện tử
+    components/ToKhaiInvoiceTabs.tsx        — ba tab: mua vào / bán ra / tờ khai
+    components/ToKhaiGtgt01Editor.tsx       — mẫu in nhập được
+    components/PhuLuc204Panel.tsx           — phụ lục giảm thuế
+    components/OQuyetDinh.tsx               — ô "Kê khai / Không kê khai" trong bảng kê
+    components/DanhSachKyDaLap.tsx
+    templates/dauVao.ts · dauRa.ts · index.ts · quyetDinhCell.tsx   — 26 cột bảng kê
     xuatToKhaiExcel.ts
+  features/_shared/to_khai/
+    gtgt01Layout.ts           — mảng HANG_GTGT01, dùng chung với màn Dịch vụ công
+    soTien.ts                 — fmtSoTien (in dấu chấm) + docSoTien (đọc ngược khi nhập)
 ```
 
-Năm folder `lap_to_khai/` rỗng đang nằm trong `be_maxv/src/{controllers/client/hddt,routes/hddt,
-services/client/hddt}/` và `hdđt_maxv/src/{features/hddt,components}/` là dấu vết của lần chuẩn bị
-trước — xóa khi bắt đầu triển khai để khỏi có hai chỗ cùng mang tên một chức năng.
+Năm folder `lap_to_khai/` rỗng vẫn còn trong `be_maxv/src/{controllers/client/hddt,routes/hddt,
+services/client/hddt}/` và `hdđt_maxv/src/{features/hddt,components}/` — dấu vết của lần chuẩn bị
+trước, chưa xóa. Git không theo dõi thư mục rỗng nên chúng chỉ nằm trên đĩa; xóa lúc nào cũng được.
 
 `tinhGtgt01.ts` không đụng DB, không đụng HTTP: mọi con số đem đi nộp thuế đều đi qua một hàm thuần
 test được. Đó là lý do tách `gomHoaDonGtgt` (đọc DB, gộp) khỏi `tinhGtgt01` (thuần, tính).
@@ -122,8 +140,8 @@ test được. Đó là lý do tách `gomHoaDonGtgt` (đọc DB, gộp) khỏi `
 ### 5.1. Layout mẫu in dùng chung cho hai màn
 
 `ToKhaiGtgt01Form.tsx` bên `dich_vu_cong` đang giữ mảng `HANG` — 30 dòng chỉ tiêu kèm nhãn, công
-thức in trên mẫu, mức thụt lề. Tách mảng đó cùng `OHangTien` sang
-`hdđt_maxv/src/features/_shared/to_khai/gtgt01Layout.tsx`, rồi hai màn dùng chung:
+thức in trên mẫu, mức thụt lề. Đã tách mảng đó sang
+`hdđt_maxv/src/features/_shared/to_khai/gtgt01Layout.ts`, rồi hai màn dùng chung:
 
 - màn Dịch vụ công render **chỉ đọc** (số bóc từ XML đã nộp) — hành vi giữ nguyên như hiện nay;
 - màn Tờ khai render **nhập được** (số máy tính + ô sửa tay).
@@ -145,13 +163,18 @@ Thêm vào `be_maxv/prisma/tenant/schema.prisma`. Tên **không** dùng tiền t
 | `ct_may` | `Json` | Số máy tự tính, giữ nguyên để đối chiếu với ô đã sửa tay |
 | `ghi_de` | `Json` | Ô nào kế toán sửa + lý do: `{ct25: {gia: …, lyDo: "…"}}` |
 | `ct22`, `ct40`, `ct43` | `Decimal(18,2)` | Bản sao của ba khóa cùng tên trong `ct`, bóc ra cột để truy vấn: `ct43` cho kỳ sau nối [22]; `ct40`/`ct22` cho bảng danh sách kỳ. Ghi cùng lượt với `ct`, không có đường nào sửa riêng |
-| `nguon_ct22` | `VarChar(16)` | `ky_truoc` \| `nhap_tay` — hiện rõ số này ở đâu ra |
+| `phu_luc` | `Json?` | Phụ lục giảm thuế 204/2025 của kỳ (xem mục 11bis). `null` = chưa tính hoặc kỳ không có hàng 8% |
+| `nguon_ct22` | `VarChar(16)` | `ky_truoc` \| `ky_truoc_nhap` \| `nhap_tay` — hiện rõ số này ở đâu ra. `ky_truoc_nhap` là kỳ trước còn nháp nên [43] còn đổi được, màn hình cảnh báo |
 | `so_hd_ban`, `so_hd_mua` | `Int` | Ảnh chụp độ phủ dữ liệu lúc tính |
+| `so_hd_khong_ke_khai` | `Int` | Số tờ kế toán đã đánh "Không kê khai" — nhìn tờ khai là biết đã loại bao nhiêu, khỏi mở lại bảng kê đếm |
 | `hd_thieu_detail` | `Int` | Số hóa đơn thiếu chi tiết lúc tính (bản hợp lệ phải là 0) |
 | `tinh_luc` | `DateTime?` | Tính lần cuối lúc nào |
 | `datetime0`, `datetime2` | `DateTime` | Theo quy ước các bảng khác trong schema |
 
 Khóa chính ghép `@@id([nam, ky_loai, ky_so])` — một công ty là một DB tenant nên không cần cột MST.
+
+`phu_luc` tính lại mỗi lượt "Tính lại", riêng hai ô mô tả hàng hóa giữ nguyên nếu kế toán đã
+sửa — mô tả là chữ người viết, không phải số máy tính.
 
 Tách `ct` / `ct_may` / `ghi_de` để trả lời được câu kiểm toán hay hỏi nhất: *số này máy tính ra hay
 người sửa, sửa vì sao*. Trạng thái `nhap` thì mở lại là tính lại từ hóa đơn (đồng bộ thêm hóa đơn là
@@ -314,7 +337,7 @@ nên không nhập hội với 5 test integration đang đỏ sẵn trong repo (
 Ca bắt buộc có:
 
 - Gộp đúng theo từng nhãn thuế suất, gồm cả nhãn lạ rơi vào nhóm treo.
-- 8% vào [32]/[33] với số thuế thực tế (kiểm [33] ≠ [32]×10%).
+- 8% vào [32], còn [33] theo công thức HTKK `làm tròn([32]×10%) − phần được giảm` (Mục 11.5).
 - Loại `tthai` 4 và 6; giữ 1, 2, 3, 5.
 - `X >= 0` thì [41] = 0; `X < 0` thì [40a] = 0 và [41] = |X| — hai ô loại trừ nhau.
 - `[27] = [29]+[30]+[32]+[32a]`, `[34] = [26]+[27]`, `[36] = [35]-[25]`, `[43] = [41]-[42]`.
@@ -358,6 +381,11 @@ Cùng lượt đối chiếu cũng xác nhận ánh xạ 8%: phụ lục ghi hà
 định **10%**, sau giảm **8%**; tờ khai chính kê vào [32] (dòng "chịu thuế suất 10%") với [33] là số
 thuế THỰC TẾ 8% — đúng bảng `O_THEO_NHAN` trong `gomHoaDonGtgt.ts`.
 
+### 11.3. Nhãn thuế suất GDT còn mức nào ngoài bảng 7.4
+
+`detailRow.ts` đã gặp `KCT`, `KKKNT`, `\` và các mức số. Bảng ánh xạ xử lý được nhãn lạ (vào nhóm
+treo) nên không vỡ, nhưng gặp nhãn mới thì bổ sung vào bảng thay vì để kế toán gõ tay mãi.
+
 ### 11.4. Kết quả đối chiếu tờ khai thật — ĐÃ CHẠY 2026-08-31
 
 Đối chiếu bản tự lập với tờ khai 01/GTGT **đã nộp** của MST 0106861880 (Phát Thịnh), kỳ Q2/2026
@@ -365,20 +393,19 @@ thuế THỰC TẾ 8% — đúng bảng `O_THEO_NHAN` trong `gomHoaDonGtgt.ts`.
 
 Bảy chỉ tiêu lệch đến từ đúng hai nguyên nhân, không cái nào là lỗi tính toán:
 
-**a) Làm tròn 1 đồng ở [33], lan xuống 5 ô.** Ta cộng tiền thuế THỰC ghi trên ba hóa đơn
-(10.163.287 + 10.913.962 + 10.222.744 = 31.299.993); HTKK tính `391.249.917 × 8% = 31.299.993,36`
-rồi làm tròn lên 31.299.994. Sai số chảy theo công thức sang [28] → [35] → [36] → [40a] → [40].
+**a) Làm tròn 1 đồng ở [33], lan xuống 5 ô — ĐÃ SỬA 2026-09-02, xem Mục 11.5.** Ta cộng tiền thuế
+THỰC ghi trên ba hóa đơn (10.163.287 + 10.913.962 + 10.222.744 = 31.299.993), trong khi bản đã nộp
+ghi 31.299.994. Sai số chảy theo công thức sang [28] → [35] → [36] → [40a] → [40].
 
-Giữ nguyên cách cộng thuế thực trên hóa đơn — đó mới là số phải kê. Muốn khớp tuyệt đối bản đã nộp
-thì sửa tay [33], ô sẽ có dấu ghi đè và tooltip ghi số máy tính.
+Kết luận ban đầu ("giữ nguyên cách cộng thuế thực, muốn khớp thì sửa tay") **đã bị bác bỏ** khi
+tìm ra công thức thật của HTKK — xem Mục 11.5. Sau khi sửa, kỳ này khớp **21/22** ô có số.
 
 **b) [23] thiếu 20.000.** Kế toán khai [23] nhiều hơn tổng hóa đơn 20.000 đồng mà KHÔNG kèm thuế
 (nên [24] vẫn khớp). Khoản này không có trong dữ liệu hóa đơn điện tử — máy không suy được, và
 không nên đoán. Sửa tay khi cần.
 
 **Những chỗ khó nhất đều đúng:** loại hóa đơn `tthai=4` bị thay thế (117.751.551 — tính vào là kê
-khống), gộp 8% vào dòng [32]/[33] với số thuế thực, `[27]=[29]+[30]+[32]+[32a]`, `[40a]` sau khi
-trừ [22].
+khống), gộp 8% vào dòng [32]/[33], `[27]=[29]+[30]+[32]+[32a]`, `[40a]` sau khi trừ [22].
 
 **Cột "Kê khai/không kê khai" đã được kiểm chứng bằng ca thật:** hóa đơn phí ngân hàng MB
 (K26TMM 781145, thuế 72.000) mà kế toán không kê — đánh dấu "Không kê khai" rồi tính lại thì [24]
@@ -388,10 +415,195 @@ từ 5.174.437 về đúng 5.102.437.
 chỉnh giảm nào (chỉ một hóa đơn `tthai=3` giá trị 0 bên mua vào). Giữ nguyên cách làm ở 11.1 cho
 tới khi gặp ca thật.
 
-### 11.3. Nhãn thuế suất GDT còn mức nào ngoài bảng 7.4
+### 11.5. Công thức [31]/[33] của HTKK — ĐÃ SỬA 2026-09-02
 
-`detailRow.ts` đã gặp `KCT`, `KKKNT`, `\` và các mức số. Bảng ánh xạ xử lý được nhãn lạ (vào nhóm
-treo) nên không vỡ, nhưng gặp nhãn mới thì bổ sung vào bảng thay vì để kế toán gõ tay mãi.
+Chênh lệch 1 đồng ở Mục 11.4(a) **không phải chuyện làm tròn vặt**: nó chảy qua [43] sang [22] của
+kỳ sau, nên mỗi kỳ lại lệch thêm. Truy ra được nguyên nhân thật, và nó sửa được.
+
+File tờ khai tải từ cơ quan thuế mang sẵn bộ kiểm tra của HTKK ở sheet `Header`, trong đó có dòng:
+
+> Chỉ tiêu [33] = [32] × 10% − (Tổng cột 6 trên phụ lục với các dòng thuế suất 10%)
+
+và dòng tương ứng cho [31] với 5%. Sheet `Tờ khai` còn lưu luôn số trung gian **39.124.992** cạnh
+dòng [32] — chính là `làm tròn(391.249.917 × 10%)`. Trừ đi 7.824.998 của phụ lục ra đúng 31.299.994.
+
+Nên **[33] KHÔNG phải tổng thuế trên hóa đơn**, mà là:
+
+```
+[31] = làm tròn([30] × 5%)  − thuế được giảm của nhóm thuế suất quy định 5%
+[33] = làm tròn([32] × 10%) − thuế được giảm của nhóm thuế suất quy định 10%
+```
+
+Lưu ý `[32]` gộp cả hàng 10% thật lẫn hàng 8% được giảm, nên phép trừ mới ra đúng: phần 10% đóng
+đủ 10%, phần 8% được trừ lại 2%.
+
+**Cột (6) của phụ lục làm tròn XUỐNG, không phải làm tròn thường.** Đây là chỗ chỉ hai kỳ thật mới
+phân định được:
+
+| Kỳ | Giá trị hàng 8% | × 2% | Tròn thường | Tròn xuống | [33] phải ra |
+|---|---|---|---|---|---|
+| Q1/2026 | 251.896.634 | 5.037.932,**68** | 5.037.9**33** | 5.037.9**32** | 20.151.731 |
+| Q2/2026 | 391.249.917 | 7.824.998,**34** | 7.824.998 | 7.824.998 | 31.299.994 |
+
+Q2 không phân biệt được hai cách; Q1 thì có, và chỉ tròn-xuống mới khớp. `[33]` của Q1 suy ra từ
+`[22] = 3.366.060` mà bản Q2 đã nộp khai — tức `[43]` của Q1 thật đúng bằng số đó.
+
+Vì vậy `phuLuc204.ts` dùng `Math.floor`, không `Math.round`.
+
+**Kết quả sau khi sửa:** Q2/2026 khớp **21/22** ô (chỉ còn [23] lệch 20.000 — xem Mục 11.4b);
+phụ lục mục II và III khớp tuyệt đối; Q1/2026 giữ nguyên `[43] = 3.366.060` nên mắt xích sang [22]
+của Q2 không bị động.
+
+Chốt bằng test trong `tinhGtgt01.test.ts` và `phuLuc204.test.ts` mang đúng số của hai kỳ thật —
+đổi cách làm tròn là test đỏ ngay.
+
+### 11.6. Ghi đè phải CHẢY qua công thức — ĐÃ SỬA 2026-09-02
+
+Cách cũ gán ô ghi đè lên kết quả **sau khi** công thức đã chạy (`ct[khoa] = item.gia`). Hậu quả:
+kế toán sửa [26] thì [34] = [26] + [27] vẫn giữ số cũ — tờ khai tự mâu thuẫn với chính nó, mà
+không có gì báo.
+
+Nay ô ghi đè là ĐẦU VÀO của công thức, nên giá trị đã sửa chảy tiếp xuống mọi ô phụ thuộc. Kèm
+theo đó, tập ô cho phép ghi đè bị thu hẹp còn đúng những ô có nghĩa:
+
+| Loại | Ô | Ghi đè |
+|---|---|---|
+| Máy không suy được | [22] [23a] [24a] [25] [37] [38] [39a] [40b] [42] | có, mặc định 0 |
+| Máy suy từ hóa đơn | [23] [24] [26] [29] [30] [31] [32] [32a] [33] | có, ghi đè thắng |
+| Công thức thuần | [27] [28] [34] [35] [36] [40] [40a] [41] [43] | **không** |
+
+Ô công thức thuần chỉ là tổng của các ô trên; cho sửa tay chúng là mở đường cho tờ khai mâu thuẫn.
+Muốn đổi thì sửa ô nguồn. `CT_HOP_LE` của `locGhiDeHopLe` nay suy thẳng từ `CT_NHAP_TAY` để không
+có bản sao thứ hai trôi lệch.
+
+[33] vẫn cho ghi đè vì HTKK chỉ **cảnh báo** khi [33] khác [32] × 10% chứ không chặn — kế toán có
+quyền chốt tay.
+
+### 11.7. [22] phải nối được khi công ty đổi kỳ khai — ĐÃ SỬA 2026-09-02
+
+Công ty được đổi kỳ khai giữa chừng: khai quý, doanh thu vượt ngưỡng thì chuyển sang khai tháng
+(và ngược lại). Đổi luôn rơi vào đầu năm.
+
+`kyLienTruoc` giữ nguyên loại kỳ, nên công ty khai quý hết Q4/2025 rồi sang T1/2026 sẽ tra
+`{2025, thang, 12}` — không có row — và **[22] về 0**. Toàn bộ số thuế còn được khấu trừ chuyển
+sang biến mất, công ty nộp phần thuế mình không nợ. Câu cảnh báo cũ còn nói sai hẳn tình huống
+("kỳ trước chưa lập tờ khai trong phần mềm", trong khi Q4/2025 có trong phần mềm).
+
+Nay `layCt22KyTruoc` đi hai bước: tìm kỳ liền trước **cùng loại** trước (giữ nguyên hành vi cũ, một
+truy vấn khóa chính); không có thì tra bản gần nhất **kết thúc trước khi kỳ này bắt đầu**, bất kể
+loại kỳ.
+
+So sánh qua hai mốc quy về "số thứ tự tháng" (`kySoThue.ts`):
+
+```
+thangBatDau(Q1/2026)  = 2026×12 + 1  = 24313
+thangKetThuc(T1/2026) = 2026×12 + 1  = 24313
+thangKetThuc(Q4/2025) = 2025×12 + 12 = 24312
+```
+
+Điều kiện nối là `thangKetThuc(trước) < thangBatDau(nay)` — dấu `<` chứ không `<=`, và đó là chỗ
+duy nhất dễ sai: T1/2026 kết thúc đúng tháng Q1/2026 bắt đầu, nhưng nó nằm **trong** Q1 chứ không
+đứng trước, nên không được chọn làm kỳ nguồn.
+
+Kỳ nguồn trả về ở `BanToKhai.kyNguonCt22` để màn hình gọi đúng tên ("[22] lấy từ [43] của Q4/2025"
+thay vì "kỳ trước"), và khi kỳ nguồn khác loại kỳ hiện tại thì sinh thêm một câu cảnh báo — đổi kỳ
+khai là lúc số chuyển sang đáng được người nhìn lại.
+
+### 11.8. Soát công thức với bảng kê — THÊM 2026-09-02
+
+Đổi [33] sang công thức HTKK (Mục 11.5) có một cái giá: tổng thuế cộng thực từ hóa đơn không còn
+được ai nhìn. Mà đó lại là con số tốt nhất để bắt lỗi bảng kê — hóa đơn ghi nhầm mức thuế suất,
+nhãn thuế suất lệch, tờ thiếu chi tiết. Trước khi sửa thì hai số đối chiếu ngầm với nhau (chúng
+phải bằng nhau); sau khi sửa thì không.
+
+Nên `gomBanRa` vẫn cộng thuế thực vào `TongBanRa.ct31`/`ct33`, và lượt tính so hai bên:
+
+```
+lechBangKe.ct33 = ctMay.ct33 (công thức) − tongBanRa.ct33 (bảng kê)
+```
+
+**Ngưỡng nới theo số hóa đơn**, không phải hằng số. Thuế của TỪNG hóa đơn được làm tròn riêng còn
+công thức làm tròn một lần trên tổng, nên mỗi tờ góp tối đa khoảng 1 đồng sai số:
+
+```
+ngưỡng = số hóa đơn bán ra + 1
+```
+
+Q2/2026 thật: lệch 1 đồng với 3 hóa đơn, ngưỡng 4 — im lặng, đúng. Cùng số lệch đó mà kỳ chỉ có 2
+hóa đơn thì đã đáng ngờ. Ngược lại kỳ 100 hóa đơn lệch 100 đồng vẫn là làm tròn bình thường.
+
+So `ctMay` (số máy thuần) chứ không `ct`: ô kế toán ghi đè lệch khỏi hóa đơn là **cố ý**, báo lên
+chỉ tổ nhiễu.
+
+Toàn bộ phần soát nằm ở `soatToKhai.ts` — hàm THUẦN, không DB. Ngưỡng là chỗ dễ sai nhất trong cả
+module nên nó phải test được không cần Postgres; `soatToKhai.test.ts` có 11 ca, gồm ca số thật của
+Q2/2026 để chốt rằng kỳ bình thường KHÔNG sinh cảnh báo giả.
+
+Ba nhóm cảnh báo cùng sống ở đó: lệch bảng kê (mục này), phụ lục không ăn khớp [32] đã sửa tay
+(Mục 11.6), và đổi kỳ khai tháng ↔ quý (Mục 11.7).
+
+## 11bis. Phụ lục "Giảm thuế GTGT theo Nghị quyết 204/2025/QH15"
+
+Phát sinh sau khi đọc file tờ khai thật người dùng gửi (2026-08-31) — không có trong thiết kế ban
+đầu, nhưng **bắt buộc nộp kèm** tờ khai 01/GTGT khi kỳ có hàng được giảm thuế từ 10% xuống 8%.
+
+Lý do phải có: tờ khai chính gộp hàng 8% chung dòng [32]/[33] với hàng 10% (xem mục 7.4), nên phần
+được giảm KHÔNG nhìn thấy ở đâu trong tờ khai chính. Phụ lục là chỗ khai chi tiết phần đó.
+
+### 11bis.1. Ba mục và cách lấy số
+
+| Mục | Nội dung | Nguồn |
+|---|---|---|
+| I | Hàng mua vào có thuế đầu vào được khấu trừ | **MỌI nhóm có thuế** (xem 11bis.2) |
+| II | Hàng bán ra được giảm | **CHỈ nhóm 8%**, kèm thuế suất 10% → 8% |
+| III | Chênh lệch [09] = [08] − [06] | thuế được giảm ở II trừ thuế ở I |
+
+Hai chỗ dễ lẫn, mỗi chỗ có một ca test canh:
+
+- **Thuế được giảm tính theo CÔNG THỨC của mẫu** (`làm tròn xuống(giá trị × 2%)` — xem Mục 11.5
+  về việc vì sao tròn xuống), không lấy hiệu của thuế thực tế
+  trên hóa đơn. Mẫu in ghi rõ `(6)=(3)×[(4)-(5)]` và cơ quan thuế đối chiếu đúng công thức đó.
+  Số này còn đi tiếp vào [33] của tờ khai chính (Mục 11.5), nên sai ở đây là sai cả hai nơi.
+- **Mục II chỉ lấy 8%.** Hàng 10% không được giảm nên không được lọt vào, dù mục I có gộp nó.
+
+### 11bis.2. Vì sao mục I gộp cả nhóm 10%, dù tiêu đề mẫu chỉ nói 8%
+
+Tiêu đề mục I trên mẫu là "hàng hóa, dịch vụ mua vào **được áp dụng thuế suất 8%**", nhưng bản kế
+toán đã nộp ghi thuế `5.102.437` = `5.081.437` (nhóm 8%) + `21.000` (nhóm 10%). Tức thực tế mục này
+được khai là *toàn bộ thuế đầu vào được khấu trừ trong kỳ*.
+
+Lấy đúng nhóm 8% thì cột thuế lệch `21.000`, mà cột thuế chính là số đi vào mục III — số cơ quan
+thuế đối chiếu. Nên `gopMuaVaoCoThue` gộp mọi nhóm CÓ thuế; nhóm không thuế (KCT/KKKNT) bị loại vì
+không có gì để khấu trừ.
+
+### 11bis.3. Kết quả đối chiếu (Q2/2026, MST 0106861880)
+
+| | Máy | Bản đã nộp |
+|---|---|---|
+| I. giá trị mua vào | 63.728.043 | 63.748.043 (lệch 20.000) |
+| I. thuế mua vào | 5.102.437 | **khớp** |
+| II. giá trị bán ra | 391.249.917 | **khớp** |
+| II. thuế được giảm | 7.824.998 | **khớp** |
+| III. chênh lệch | 2.722.561 | **khớp** |
+
+20.000 còn lại là khoản kế toán cộng tay ngoài hóa đơn điện tử — cùng khoản làm [23] lệch 20.000
+(mục 11.4b). Không hóa đơn nào trong kỳ mang giá trị đó nên máy không suy được.
+
+### 11bis.4. Mô tả hàng hóa
+
+Máy gom tên hàng từ `detail.hdhhdvu` của các dòng đúng nhãn, khử trùng, giữ tối đa 12 tên rồi thêm
+"...". Tên thật thường rất dài (`"Cước đường bộ xe 29C50134V đi qua trạm Bắc Thăng Long-Nội Bài…"`)
+nên **hai ô mô tả sửa tay được**, và lượt "Tính lại" KHÔNG xóa phần đã sửa — kế toán biết gọi gọn
+thế nào cho cơ quan thuế dễ đọc. Số thì không sửa được: muốn đổi thì sửa bảng kê rồi tính lại.
+
+### 11bis.5. Lưu trữ và điều kiện nộp
+
+Lưu ở cột `tokhai_gtgt01.phu_luc` (Json), tính lại mỗi lượt "Tính lại". `phuLuc = null` khi kỳ
+**không có hàng 8% BÁN RA** — không có gì được giảm thì không phải nộp, kể cả khi mua vào vẫn có
+thuế đầu vào.
+
+Xuất Excel: sheet thứ hai tên `PL 204-2025`, tách khỏi sheet tờ khai chính vì đây là hai biểu mẫu
+khác nhau, cơ quan thuế nhận hai tờ.
 
 ## 12. Ngoài phạm vi — lát sau
 

@@ -158,3 +158,37 @@ export const HANG_GTGT01: HangChiTieu[] = [
 export function maChiTieu(tag: string): string {
   return tag.slice(2);
 }
+
+/**
+ * Ô kế toán được phép sửa tay trên màn Tờ khai.
+ *
+ * PHẢI khớp `CT_NHAP_TAY` trong `be_maxv/src/services/client/to_khai/tinhGtgt01.ts` — backend lọc
+ * theo danh sách đó, nên ô có ở đây mà thiếu bên kia sẽ bị nuốt im lặng: người dùng gõ số, thấy
+ * báo "Đã lưu", rồi số nhảy về như cũ. Hai project không dùng chung package nên đây là bản sao có
+ * chủ ý; sửa một bên thì sửa cả hai.
+ *
+ * Ô CÔNG THỨC THUẦN ([27] [28] [34] [35] [36] [40] [40a] [41] [43]) cố tình vắng mặt: chúng là
+ * tổng của các ô trên, sửa tay chỉ làm tờ khai mâu thuẫn với chính nó. Muốn đổi thì sửa ô nguồn.
+ */
+export const O_SUA_DUOC: ReadonlySet<string> = new Set([
+  // máy không suy được — mặc định 0
+  "ct22",
+  "ct23a",
+  "ct24a",
+  "ct25",
+  "ct37",
+  "ct38",
+  "ct39a",
+  "ct40b",
+  "ct42",
+  // máy suy từ hóa đơn — ghi đè thì thắng
+  "ct23",
+  "ct24",
+  "ct26",
+  "ct29",
+  "ct30",
+  "ct31",
+  "ct32",
+  "ct32a",
+  "ct33",
+]);

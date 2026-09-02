@@ -60,15 +60,33 @@ test("mục III = thuế bán ra được giảm − thuế mua vào", () => {
   assert.equal(pl.chenhLech, 7_824_998 - 5_081_437);
 });
 
-test("chỉ lấy nhóm 8%, bỏ qua 10% và KKKNT", () => {
+test("mục I gộp MỌI nhóm có thuế, bỏ nhóm không thuế", () => {
+  // Bản kế toán đã nộp gộp cả 10% vào mục I (thuế 5.102.437 = 5.081.437 nhóm 8% + 21.000 nhóm
+  // 10%), nên mục I lấy toàn bộ thuế đầu vào được khấu trừ. KKKNT thuế 0 -> không có gì khấu trừ.
   const muaVao = gomMuaVao([
     hd("a", [{ tsuat: "8%", thtien: 1_000_000, tthue: 80_000 }]),
     hd("b", [{ tsuat: "10%", thtien: 210_000, tthue: 21_000 }]),
     hd("c", [{ tsuat: "KKKNT", thtien: 259_322_420, tthue: 0 }]),
   ]);
   const pl = dungPhuLuc204(gomBanRa([]), muaVao);
-  assert.equal(pl.muaVao.giaTri, 1_000_000);
-  assert.equal(pl.muaVao.thue, 80_000);
+  assert.equal(pl.muaVao.giaTri, 1_210_000);
+  assert.equal(pl.muaVao.thue, 101_000);
+});
+
+test("mục II CHỈ lấy nhóm 8%, không dính 10%", () => {
+  // Mục II là phần ĐƯỢC GIẢM — hàng 10% không được giảm nên không được lọt vào.
+  const banRa = gomBanRa([
+    hd("a", [{ tsuat: "8%", thtien: 1_000_000, tthue: 80_000 }]),
+    hd("b", [{ tsuat: "10%", thtien: 5_000_000, tthue: 500_000 }]),
+  ]);
+  const pl = dungPhuLuc204(banRa, gomMuaVao([]));
+  assert.equal(pl.banRa.giaTri, 1_000_000);
+  assert.equal(pl.banRa.thueDuocGiam, 20_000);
+});
+
+test("có mua vào 8% nhưng không bán ra 8% -> vẫn không phải nộp phụ lục", () => {
+  const muaVao = gomMuaVao([hd("m", [{ tsuat: "8%", thtien: 1_000_000, tthue: 80_000 }])]);
+  assert.equal(dungPhuLuc204(gomBanRa([]), muaVao).rong, true);
 });
 
 test("gom tên hàng của nhiều hóa đơn, khử trùng, đúng nhãn", () => {
@@ -102,4 +120,28 @@ test("chênh lệch âm khi thuế đầu vào lớn hơn phần giảm đầu r
   const pl = dungPhuLuc204(banRa, muaVao);
   assert.equal(pl.banRa.thueDuocGiam, 20_000);
   assert.equal(pl.chenhLech, 20_000 - 800_000);
+});
+
+test("thuế được giảm làm tròn XUỐNG — chốt bằng hai kỳ thật", () => {
+  // Q1/2026: 251.896.634 x 2% = 5.037.932,68. Tròn thường ra 5.037.933 và làm [33] lệch một đồng
+  // so với bản đã nộp; tròn xuống ra đúng.
+  const q1 = dungPhuLuc204(gomBanRa([hd("a", [{ tsuat: "8%", thtien: 251_896_634, tthue: 20_151_731 }])]), gomMuaVao([]));
+  assert.equal(q1.banRa.thueDuocGiam, 5_037_932);
+
+  // Q2/2026: 391.249.917 x 2% = 7.824.998,34 — hai cách tròn cho cùng kết quả.
+  const q2 = dungPhuLuc204(gomBanRa([hd("b", [{ tsuat: "8%", thtien: 391_249_917, tthue: 31_299_993 }])]), gomMuaVao([]));
+  assert.equal(q2.banRa.thueDuocGiam, 7_824_998);
+});
+
+test("nhóm 8% ÂM: cắt phần lẻ về 0, không bịa ra một đồng được giảm", () => {
+  // Hóa đơn điều chỉnh giảm kéo nhóm 8% xuống âm. -25 x 2% = -0,5.
+  // `Math.floor` cho -1 (bịa ra một đồng giảm ngược); cắt về 0 mới đúng.
+  const banRa = gomBanRa([hd("a", [{ tsuat: "8%", thtien: -25, tthue: -2 }])]);
+  assert.equal(dungPhuLuc204(banRa, gomMuaVao([])).banRa.thueDuocGiam, 0);
+});
+
+test("nhóm 8% âm lớn: cắt về phía 0 chứ không xuống thêm", () => {
+  // -1.234.567 x 2% = -24.691,34 -> cắt ra -24.691 (floor cho -24.692).
+  const banRa = gomBanRa([hd("b", [{ tsuat: "8%", thtien: -1_234_567, tthue: -98_765 }])]);
+  assert.equal(dungPhuLuc204(banRa, gomMuaVao([])).banRa.thueDuocGiam, -24_691);
 });

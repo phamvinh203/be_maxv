@@ -52,6 +52,12 @@ export interface BanToKhai {
   dieuChinh: { soHd: number; giaTri: number; thue: number };
   /** `null` = kỳ không có hàng 8% nên không phải nộp phụ lục. */
   phuLuc: PhuLuc204 | null;
+  /** Câu cảnh báo của lượt tính — số vẫn ra, nhưng có chỗ đáng ngờ cần người xem lại. */
+  canhBao: string[];
+  /** Kỳ mà [22] nối từ đó; `null` khi nhập tay. Có thể khác loại kỳ hiện tại (đổi tháng<->quý). */
+  kyNguonCt22: Ky | null;
+  /** Chênh lệch giữa [31]/[33] theo công thức và tổng thuế cộng thực từ bảng kê. */
+  lechBangKe: { ct31: number; ct33: number };
   tinhLuc: string | null;
 }
 

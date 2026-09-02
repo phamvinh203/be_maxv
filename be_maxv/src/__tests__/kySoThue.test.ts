@@ -1,6 +1,13 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { khoangCuaKy, kyHopLe, kyLienTruoc, nhanKy } from "../services/client/to_khai/kySoThue";
+import {
+  khoangCuaKy,
+  kyHopLe,
+  kyLienTruoc,
+  nhanKy,
+  thangKetThuc,
+  truocKy,
+} from "../services/client/to_khai/kySoThue";
 
 /** npx tsx --test src/__tests__/kySoThue.test.ts */
 
@@ -83,4 +90,35 @@ test("kỳ đầu năm lùi về kỳ cuối năm trước", () => {
     kyLoai: "quy",
     kySo: 4,
   });
+});
+
+/* ===== Mốc so kỳ tháng <-> kỳ quý (thêm 2026-09-02) ===== */
+
+test("Q4/2025 kết thúc ngay trước T1/2026 — nối [22] được", () => {
+  assert.equal(truocKy({ nam: 2025, kyLoai: "quy", kySo: 4 }, { nam: 2026, kyLoai: "thang", kySo: 1 }), true);
+});
+
+test("T12/2025 cũng nối được sang Q1/2026", () => {
+  assert.equal(truocKy({ nam: 2025, kyLoai: "thang", kySo: 12 }, { nam: 2026, kyLoai: "quy", kySo: 1 }), true);
+});
+
+test("T1/2026 KHÔNG phải kỳ trước của Q1/2026 — nó nằm TRONG quý đó", () => {
+  assert.equal(truocKy({ nam: 2026, kyLoai: "thang", kySo: 1 }, { nam: 2026, kyLoai: "quy", kySo: 1 }), false);
+});
+
+test("Q1/2026 không nối ngược vào T1/2026", () => {
+  assert.equal(truocKy({ nam: 2026, kyLoai: "quy", kySo: 1 }, { nam: 2026, kyLoai: "thang", kySo: 1 }), false);
+});
+
+test("cùng loại vẫn đúng: Q1 trước Q2, T6 trước T7", () => {
+  assert.equal(truocKy({ nam: 2026, kyLoai: "quy", kySo: 1 }, { nam: 2026, kyLoai: "quy", kySo: 2 }), true);
+  assert.equal(truocKy({ nam: 2026, kyLoai: "thang", kySo: 6 }, { nam: 2026, kyLoai: "thang", kySo: 7 }), true);
+  assert.equal(truocKy({ nam: 2026, kyLoai: "quy", kySo: 2 }, { nam: 2026, kyLoai: "quy", kySo: 1 }), false);
+});
+
+test("Q4/2025 và T12/2025 cùng mốc kết thúc", () => {
+  assert.equal(
+    thangKetThuc({ nam: 2025, kyLoai: "quy", kySo: 4 }),
+    thangKetThuc({ nam: 2025, kyLoai: "thang", kySo: 12 }),
+  );
 });

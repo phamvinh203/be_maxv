@@ -17,7 +17,12 @@ import Chip from "@mui/material/Chip";
 import CircularProgress from "@mui/material/CircularProgress";
 import FileDownloadRounded from "@mui/icons-material/FileDownloadRounded";
 import { toast } from "react-toastify";
-import { HANG_GTGT01, maChiTieu, type HangChiTieu } from "../../_shared/to_khai/gtgt01Layout";
+import {
+  HANG_GTGT01,
+  maChiTieu,
+  O_SUA_DUOC,
+  type HangChiTieu,
+} from "../../_shared/to_khai/gtgt01Layout";
 import { useDoiTrangThai, useLuuGhiDe, useTinhToKhai } from "../api/gtgt01Queries";
 import type { BanToKhai, GhiDeItem } from "../api/gtgt01";
 import { nhanKy, type Ky } from "../ky";
@@ -35,18 +40,6 @@ import { getErrorMessage } from "../../../lib/errors";
  * dựng khối đó ngay trên đầu mẫu in làm tờ khai trông như bị kẹp.
  */
 
-/** Ô người dùng tự nhập — khớp `CT_NHAP_TAY` bên `tinhGtgt01.ts`. */
-const O_NHAP_TAY = new Set([
-  "ct22",
-  "ct23a",
-  "ct24a",
-  "ct25",
-  "ct37",
-  "ct38",
-  "ct39a",
-  "ct40b",
-  "ct42",
-]);
 
 interface Props {
   ky: Ky;
@@ -56,6 +49,12 @@ interface Props {
   dangTai: boolean;
   /** Câu lỗi khi kỳ chưa lập được (chưa kê khai, chưa có bản…). */
   loi?: string | null;
+}
+
+/** "Q1/2026" của kỳ mà [22] nối từ đó; chưa biết thì gọi chung là "kỳ trước". */
+function nhanKyNguon(ban: BanToKhai): string {
+  const k = ban.kyNguonCt22;
+  return k ? `${k.kyLoai === "thang" ? "T" : "Q"}${k.kySo}/${k.nam}` : "kỳ trước";
 }
 
 export default function ToKhaiGtgt01Editor({ ky, ban, onDoiKy, dangTai, loi }: Props) {
@@ -133,6 +132,9 @@ export default function ToKhaiGtgt01Editor({ ky, ban, onDoiKy, dangTai, loi }: P
     if (!tag) return <TableCell />;
     const daGhiDe = !!ban?.ghiDe[tag];
     const soMay = ban?.ctMay[tag];
+    // Ô công thức thuần KHÔNG cho gõ: backend lọc chúng khỏi `ghi_de`, nên để gõ được là hứa suông
+    // — người dùng thấy "Đã lưu" rồi số nhảy về như cũ, mà đây là số tiền thuế.
+    const suaDuoc = O_SUA_DUOC.has(tag);
     // Ô đang gõ dở giữ nguyên chuỗi người dùng (chèn dấu chấm giữa chừng làm nhảy con trỏ);
     // ô còn lại hiện số đã định dạng `264.208.827` cho dễ đọc.
     const hienTai = tag in nhap ? nhap[tag] : fmtSoTien(ban?.ct[tag]);
@@ -148,7 +150,13 @@ export default function ToKhaiGtgt01Editor({ ky, ban, onDoiKy, dangTai, loi }: P
           [{maChiTieu(tag)}]
         </Typography>
         <Tooltip
-          title={daGhiDe && soMay !== undefined ? `Máy tính: ${fmtSoTien(soMay)}` : ""}
+          title={
+            !suaDuoc
+              ? "Ô này là tổng của các ô trên — sửa ô nguồn thì số ở đây tự đổi theo."
+              : daGhiDe && soMay !== undefined
+                ? `Máy tính: ${fmtSoTien(soMay)}`
+                : ""
+          }
           placement="left"
         >
           <TextField
@@ -164,12 +172,14 @@ export default function ToKhaiGtgt01Editor({ ky, ban, onDoiKy, dangTai, loi }: P
               if (gia === undefined) return;
               setNhap((cu) => ({ ...cu, [tag]: gia === null ? "" : fmtSoTien(gia) }));
             }}
-            slotProps={{ input: { style: { textAlign: "right", fontSize: 13 } } }}
+            slotProps={{
+              htmlInput: { readOnly: !suaDuoc, style: { textAlign: "right", fontSize: 13 } },
+            }}
             sx={{
               width: 120,
               // Ô nhập tay có nền nhạt; ô đã sửa tay gạch chân cam để nhìn ra ngay số nào của người.
               "& .MuiInput-root": {
-                bgcolor: O_NHAP_TAY.has(tag) ? "action.hover" : "transparent",
+                bgcolor: suaDuoc ? "action.hover" : "transparent",
                 borderBottom: daGhiDe ? "2px solid" : undefined,
                 borderColor: daGhiDe ? "warning.main" : undefined,
               },
@@ -276,6 +286,13 @@ export default function ToKhaiGtgt01Editor({ ky, ban, onDoiKy, dangTai, loi }: P
 
         {ban && (
           <Stack spacing={1.5} sx={{ mb: 2 }}>
+            {/* Cảnh báo từ lượt tính (vd [32] sửa tay nhưng phụ lục giữ số cũ) — đứng đầu vì nó
+                báo số thuế đang sai, nặng hơn mọi thông báo phía dưới. */}
+            {ban.canhBao.map((c) => (
+              <Alert key={c} severity="error">
+                {c}
+              </Alert>
+            ))}
             {ban.hdThieuDetail > 0 && (
               <Alert severity="error">
                 {ban.hdThieuDetail} hóa đơn bán ra chưa tải chi tiết nên chưa tách được thuế suất —
@@ -297,15 +314,15 @@ export default function ToKhaiGtgt01Editor({ ky, ban, onDoiKy, dangTai, loi }: P
             )}
             {ban.nguonCt22 === "nhap_tay" && (
               <Alert severity="info">
-                Chỉ tiêu [22] chưa nối được từ kỳ trước (kỳ trước chưa lập tờ khai trong phần mềm) —
-                nhập tay rồi bấm “Lưu nháp”.
+                Chỉ tiêu [22] chưa nối được — không tìm thấy kỳ nào đã lập tờ khai trước kỳ này
+                trong phần mềm. Nhập tay rồi bấm “Lưu nháp”.
               </Alert>
             )}
             {ban.nguonCt22 === "ky_truoc_nhap" && (
               <Alert severity="warning">
-                Chỉ tiêu [22] lấy từ [43] của kỳ trước, nhưng kỳ trước còn là <b>bản nháp</b> — số
-                đó có thể đổi khi kỳ trước được tính lại. Chốt kỳ trước rồi tính lại kỳ này để số
-                đứng yên.
+                Chỉ tiêu [22] lấy từ [43] của {nhanKyNguon(ban)}, nhưng kỳ đó còn là{" "}
+                <b>bản nháp</b> — số có thể đổi khi kỳ đó được tính lại. Chốt kỳ trước rồi tính lại
+                kỳ này để số đứng yên.
               </Alert>
             )}
           </Stack>

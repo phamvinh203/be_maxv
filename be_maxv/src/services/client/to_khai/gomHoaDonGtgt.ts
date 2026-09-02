@@ -27,9 +27,15 @@ export interface TongBanRa {
   ct26: number;
   ct29: number;
   ct30: number;
+  /**
+   * Tiền thuế 5% cộng THỰC từ hóa đơn. Tờ khai KHÔNG lấy trực tiếp số này — [31] tính theo công
+   * thức HTKK (xem `tinhGtgt01.ts`). Giữ lại để ĐỐI CHIẾU: công thức và bảng kê lệch quá mức làm
+   * tròn cho phép nghĩa là bảng kê có vấn đề (nhãn thuế suất sai, hóa đơn ghi thuế sai).
+   */
   ct31: number;
   ct32: number;
   ct32a: number;
+  /** Tiền thuế 10% + 8% cộng THỰC từ hóa đơn — cùng vai trò đối chiếu như `ct31`. */
   ct33: number;
 }
 
@@ -111,7 +117,9 @@ export const O_THEO_NHAN: Record<string, { giaTri: keyof TongBanRa; thue?: keyof
   KCT: { giaTri: "ct26" },
   "0%": { giaTri: "ct29" },
   "5%": { giaTri: "ct30", thue: "ct31" },
-  // 8% (giảm theo nghị quyết) kê chung dòng 10%; [33] lấy số thuế THỰC TẾ, không nhân lại 10%.
+  // 8% (giảm theo nghị quyết) kê chung dòng 10%. Số thuế cộng ở đây là thuế THỰC trên hóa đơn,
+  // nhưng [33] của tờ khai KHÔNG dùng nó: HTKK tính [33] = làm tròn([32] x 10%) trừ phần được
+  // giảm ở phụ lục — xem `tinhGtgt01.ts`. Số thực ở đây giữ lại để đối chiếu với bảng kê.
   "8%": { giaTri: "ct32", thue: "ct33" },
   "10%": { giaTri: "ct32", thue: "ct33" },
   KKKNT: { giaTri: "ct32a" },

@@ -9,10 +9,11 @@
  */
 
 import type { PrismaClient, Prisma } from "../../../generated/tenant";
-import { kyLienTruoc, type Ky } from "./kySoThue";
+import { kyLienTruoc, truocKy, thangKetThuc, type Ky, type KyLoai } from "./kySoThue";
 import { gomBanRa, gomMuaVao, type HoaDonGom, type HoaDonTreo } from "./gomHoaDonGtgt";
-import { tinhGtgt01, type CtGtgt01 } from "./tinhGtgt01";
+import { tinhGtgt01, CT_NHAP_TAY, type CtGtgt01 } from "./tinhGtgt01";
 import { dungPhuLuc204, type PhuLuc204 } from "./phuLuc204";
+import { lechSoVoiBangKe, soatToKhai } from "./soatToKhai";
 import type { Chieu } from "./keKhaiKy.service";
 
 /** Nguồn của chỉ tiêu [22]. `ky_truoc_nhap` = kỳ trước còn là bản nháp nên [43] còn có thể đổi. */
@@ -31,23 +32,35 @@ export interface BanToKhai {
   ghiDe: Record<string, GhiDeItem>;
   /** [22] ở đâu ra: nối từ kỳ trước ĐÃ CHỐT | từ kỳ trước còn NHÁP (số có thể đổi) | nhập tay. */
   nguonCt22: NguonCt22;
+  /** Kỳ mà [22] nối từ đó — `null` khi nhập tay. Có thể KHÁC loại kỳ hiện tại (đổi tháng<->quý). */
+  kyNguonCt22: Ky | null;
   soHdBan: number;
   soHdMua: number;
   soHdKhongKeKhai: number;
   hdThieuDetail: number;
   treo: HoaDonTreo[];
   dieuChinh: { soHd: number; giaTri: number; thue: number };
-  /** Phụ lục giảm thuế NQ 204/2025 của kỳ; `null` = kỳ không có hàng 8% nên không phải nộp. */
+  /** Phụ lục giảm thuế NQ 204/2025 của kỳ; `null` = kỳ không có hàng 8% BÁN RA nên không phải nộp. */
   phuLuc: PhuLuc204 | null;
+  /** Câu cảnh báo cho màn hình: số vẫn tính ra, nhưng có chỗ đáng ngờ cần người xem lại. */
+  canhBao: string[];
+  /**
+   * Chênh lệch giữa số MÁY TÍNH theo công thức HTKK và tổng thuế cộng THỰC từ bảng kê.
+   *
+   * Vài đồng là chuyện làm tròn, bình thường. Lệch lớn là dấu hiệu bảng kê sai — nhãn thuế suất
+   * lệch, hóa đơn ghi nhầm mức thuế — và đó là thứ không nhìn vào đây thì không ai thấy.
+   */
+  lechBangKe: { ct31: number; ct33: number };
   tinhLuc: string | null;
 }
 
-/** Mọi chỉ tiêu của mẫu — dùng để chặn khóa lạ lọt vào `ghi_de`. */
-const CT_HOP_LE = new Set([
-  "ct22", "ct23", "ct23a", "ct24", "ct24a", "ct25", "ct26", "ct27", "ct28", "ct29",
-  "ct30", "ct31", "ct32", "ct32a", "ct33", "ct34", "ct35", "ct36", "ct37", "ct38",
-  "ct39a", "ct40", "ct40a", "ct40b", "ct41", "ct42", "ct43",
-]);
+/**
+ * Ô được phép ghi đè — lấy thẳng từ `CT_NHAP_TAY` để không có bản sao thứ hai trôi lệch.
+ *
+ * Ô công thức thuần ([27] [28] [34] [35] [36] [40] [40a] [41] [43]) KHÔNG nằm trong đây: chúng là
+ * tổng của các ô khác, ghi đè chỉ tạo ra tờ khai tự mâu thuẫn. Muốn đổi chúng thì sửa ô nguồn.
+ */
+const CT_HOP_LE: ReadonlySet<string> = new Set<string>(CT_NHAP_TAY);
 
 const DAI_TOI_DA_LY_DO = 500;
 
@@ -127,14 +140,33 @@ async function docHoaDonCuaKy(
 export async function layCt22KyTruoc(
   db: PrismaClient,
   ky: Ky,
-): Promise<{ gia: number; daChot: boolean } | null> {
+): Promise<{ gia: number; daChot: boolean; ky: Ky } | null> {
   const truoc = kyLienTruoc(ky);
   const ban = await db.tokhai_gtgt01.findUnique({
     where: { nam_ky_loai_ky_so: { nam: truoc.nam, ky_loai: truoc.kyLoai, ky_so: truoc.kySo } },
     select: { trang_thai: true, ct43: true },
   });
-  if (!ban) return null;
-  return { gia: Number(ban.ct43), daChot: ban.trang_thai === "chot" };
+  if (ban) return { gia: Number(ban.ct43), daChot: ban.trang_thai === "chot", ky: truoc };
+
+  // Không có kỳ liền trước CÙNG LOẠI. Thường là công ty vừa đổi kỳ khai (quý -> tháng khi doanh
+  // thu vượt ngưỡng, hoặc ngược lại). Bỏ qua ca này thì [22] về 0 và công ty nộp thuế mình không
+  // nợ — đúng số đã được khấu trừ chuyển sang. Nên tra tiếp bản gần nhất KẾT THÚC trước khi kỳ
+  // này bắt đầu, bất kể loại kỳ.
+  const ungVien = await db.tokhai_gtgt01.findMany({
+    where: { nam: { gte: ky.nam - 2, lte: ky.nam } },
+    select: { nam: true, ky_loai: true, ky_so: true, trang_thai: true, ct43: true },
+  });
+
+  let tot: { moc: number; gia: number; daChot: boolean; ky: Ky } | null = null;
+  for (const r of ungVien) {
+    const kyR: Ky = { nam: r.nam, kyLoai: r.ky_loai as KyLoai, kySo: r.ky_so };
+    if (!truocKy(kyR, ky)) continue;
+    const moc = thangKetThuc(kyR);
+    if (tot && moc <= tot.moc) continue;
+    tot = { moc, gia: Number(r.ct43), daChot: r.trang_thai === "chot", ky: kyR };
+  }
+  if (!tot) return null;
+  return { gia: tot.gia, daChot: tot.daChot, ky: tot.ky };
 }
 
 /**
@@ -166,33 +198,62 @@ export async function tinhVaLuu(db: PrismaClient, ky: Ky): Promise<BanToKhai> {
   for (const [khoa, item] of Object.entries(ghiDe)) nhapTay[khoa] = item.gia;
   if (ct22KyTruoc !== null) nhapTay.ct22 = ct22KyTruoc.gia;
 
-  const ctMay = tinhGtgt01({ banRa: banRa.tong, muaVao, nhapTay: {} });
-  const ct = tinhGtgt01({ banRa: banRa.tong, muaVao, nhapTay });
-  // Ô ghi đè KHÔNG nằm trong công thức (vd [26] kế toán tự sửa) vẫn phải hiện đúng số đã sửa.
-  for (const [khoa, item] of Object.entries(ghiDe)) ct[khoa] = item.gia;
+  // Phụ lục dựng TRƯỚC vì [33] cần số thuế được giảm của nó: HTKK tính
+  // [33] = [32] x 10% - (tổng cột 6 phụ lục), không cộng thuế từng hóa đơn.
+  const phuLucMoi = dungPhuLuc204(banRa, muaVao);
+  const giamThue = { ts5: 0, ts10: phuLucMoi.banRa.thueDuocGiam };
+
+  const ctMay = tinhGtgt01({ banRa: banRa.tong, muaVao, nhapTay: {}, giamThue });
+  const ct = tinhGtgt01({ banRa: banRa.tong, muaVao, nhapTay, giamThue });
+
+  const lechBangKe = lechSoVoiBangKe(ctMay, banRa.tong);
 
   const nguonCt22: NguonCt22 =
     ct22KyTruoc === null ? "nhap_tay" : ct22KyTruoc.daChot ? "ky_truoc" : "ky_truoc_nhap";
   const soHdKhongKeKhai = ban.soLoai + mua.soLoai;
 
+  // Soát là hàm THUẦN (`soatToKhai.ts`) — ngưỡng làm tròn là chỗ dễ sai nhất, tách ra để test được
+  // không cần Postgres.
+  const canhBao = soatToKhai({
+    ct,
+    ctMay,
+    tongBanRa: banRa.tong,
+    soHdBan: banRa.soHd,
+    giamThue10: giamThue.ts10,
+    kyNay: ky,
+    kyNguonCt22: ct22KyTruoc?.ky ?? null,
+  });
+
   // Phụ lục tính lại từ hóa đơn, NHƯNG hai ô mô tả hàng hóa giữ nguyên nếu kế toán đã sửa —
   // họ biết gọi gọn thế nào cho cơ quan thuế dễ đọc, tính lại mà xóa mất là mất công gõ lại.
-  const phuLucMoi = dungPhuLuc204(banRa, muaVao);
   const phuLucCu = (hienCo?.phu_luc ?? null) as PhuLuc204 | null;
   const phuLuc: PhuLuc204 | null = phuLucMoi.rong
     ? null
     : {
         ...phuLucMoi,
-        muaVao: { ...phuLucMoi.muaVao, tenHang: phuLucCu?.muaVao.tenHang || phuLucMoi.muaVao.tenHang },
-        banRa: { ...phuLucMoi.banRa, tenHang: phuLucCu?.banRa.tenHang || phuLucMoi.banRa.tenHang },
+        // `phu_luc` là JSON không ràng buộc shape (bản cũ, hoặc ai đó sửa tay DB) nên phải `?.`
+        // đủ tầng — thiếu một tầng là "Tính lại" ném TypeError, kỳ đó hỏng hẳn.
+        // `??` chứ không `||`: kế toán xóa trắng mô tả là ý định thật, `||` sẽ điền lại số máy.
+        muaVao: {
+          ...phuLucMoi.muaVao,
+          tenHang: phuLucCu?.muaVao?.tenHang ?? phuLucMoi.muaVao.tenHang,
+        },
+        banRa: {
+          ...phuLucMoi.banRa,
+          tenHang: phuLucCu?.banRa?.tenHang ?? phuLucMoi.banRa.tenHang,
+        },
       };
+  // Chỉ những cột là KẾT QUẢ của lượt tính. `ghi_de` và `trang_thai` cố tình đứng ngoài:
+  //
+  //   - `ghi_de` là dữ liệu kế toán nhập, `tinhVaLuu` chỉ ĐỌC nó. Ghi lại bản đã qua
+  //     `locGhiDeHopLe` sẽ lặng lẽ xóa vĩnh viễn những khóa mà bản mới không còn nhận (đổi tập ô
+  //     cho phép ghi đè là xóa sạch ô cũ, không log, không hoàn tác) — và cũng nuốt mất ô mà
+  //     người khác vừa lưu trong lúc lượt tính này đang chạy. Đường ghi chính thức là `luuGhiDe`.
+  //   - `trang_thai` nằm trong `update` thì một lượt "Tính lại" chạy song song với "Chốt" sẽ đẩy
+  //     bản vừa chốt về `nhap` (guard ở đầu hàm đọc trạng thái từ trước đó nên không bắt được).
   const duLieu = {
-    trang_thai: "nhap",
     ct: ct as Prisma.InputJsonValue,
     ct_may: ctMay as Prisma.InputJsonValue,
-    // `GhiDeItem.lyDo` là optional nên không khớp `InputJsonValue` (không nhận `undefined`);
-    // cast qua `unknown` — giá trị thật luôn serialize được, `locGhiDeHopLe` đã lọc sạch.
-    ghi_de: ghiDe as unknown as Prisma.InputJsonValue,
     ct22: ct.ct22,
     ct40: ct.ct40,
     ct43: ct.ct43,
@@ -207,7 +268,16 @@ export async function tinhVaLuu(db: PrismaClient, ky: Ky): Promise<BanToKhai> {
 
   const luu = await db.tokhai_gtgt01.upsert({
     where: { nam_ky_loai_ky_so: { nam: ky.nam, ky_loai: ky.kyLoai, ky_so: ky.kySo } },
-    create: { nam: ky.nam, ky_loai: ky.kyLoai, ky_so: ky.kySo, ...duLieu },
+    create: {
+      nam: ky.nam,
+      ky_loai: ky.kyLoai,
+      ky_so: ky.kySo,
+      trang_thai: "nhap",
+      // `GhiDeItem.lyDo` là optional nên không khớp `InputJsonValue` (không nhận `undefined`);
+      // cast qua `unknown` — giá trị thật luôn serialize được, `locGhiDeHopLe` đã lọc sạch.
+      ghi_de: ghiDe as unknown as Prisma.InputJsonValue,
+      ...duLieu,
+    },
     update: duLieu,
   });
 
@@ -218,6 +288,7 @@ export async function tinhVaLuu(db: PrismaClient, ky: Ky): Promise<BanToKhai> {
     ctMay,
     ghiDe,
     nguonCt22,
+    kyNguonCt22: ct22KyTruoc?.ky ?? null,
     soHdBan: banRa.soHd,
     soHdMua: muaVao.soHd,
     soHdKhongKeKhai,
@@ -225,6 +296,8 @@ export async function tinhVaLuu(db: PrismaClient, ky: Ky): Promise<BanToKhai> {
     treo: [...banRa.treo, ...muaVao.treo],
     dieuChinh: banRa.dieuChinh,
     phuLuc,
+    canhBao,
+    lechBangKe,
     tinhLuc: luu.tinh_luc?.toISOString() ?? null,
   };
 }
@@ -244,6 +317,8 @@ export async function docBan(db: PrismaClient, ky: Ky): Promise<BanToKhai | null
       row.nguon_ct22 === "ky_truoc" || row.nguon_ct22 === "ky_truoc_nhap"
         ? row.nguon_ct22
         : "nhap_tay",
+    // Kỳ nguồn là kết quả của lượt TÍNH, không lưu DB — bấm "Tính lại" sẽ có.
+    kyNguonCt22: null,
     soHdBan: row.so_hd_ban,
     soHdMua: row.so_hd_mua,
     soHdKhongKeKhai: row.so_hd_khong_ke_khai,
@@ -253,6 +328,9 @@ export async function docBan(db: PrismaClient, ky: Ky): Promise<BanToKhai | null
     treo: [],
     dieuChinh: { soHd: 0, giaTri: 0, thue: 0 },
     phuLuc: (row.phu_luc ?? null) as PhuLuc204 | null,
+    canhBao: [],
+    // Kết quả của lượt TÍNH, không lưu DB — bấm "Tính lại" sẽ có.
+    lechBangKe: { ct31: 0, ct33: 0 },
     tinhLuc: row.tinh_luc?.toISOString() ?? null,
   };
 }
@@ -328,7 +406,8 @@ export async function doiTrangThai(
 /** Danh sách kỳ đã lập, mới nhất trước. */
 export async function danhSachKy(db: PrismaClient) {
   const rows = await db.tokhai_gtgt01.findMany({
-    orderBy: [{ nam: "desc" }, { ky_so: "desc" }],
+    // Thêm `ky_loai` vì T3/2026 và Q3/2026 cùng `ky_so = 3` — thiếu nó thì hai dòng xen kẽ tùy lúc.
+    orderBy: [{ nam: "desc" }, { ky_loai: "asc" }, { ky_so: "desc" }],
     take: 100,
     select: {
       nam: true,
