@@ -12,6 +12,7 @@
  */
 
 import type { KetQuaBanRa, KetQuaMuaVao, NhomThueSuat } from "./gomHoaDonGtgt";
+import { catPhanLe } from "./tienVnd";
 
 /** Nhãn nhóm được giảm thuế. Nghị quyết đổi mức thì sửa đúng hằng này. */
 export const NHAN_GIAM_THUE = "8%";
@@ -41,17 +42,6 @@ export interface PhuLuc204 {
   chenhLech: number;
   /** Kỳ không có hàng 8% BÁN RA -> không có gì được giảm, không phải nộp phụ lục. */
   rong: boolean;
-}
-
-/**
- * Cắt phần lẻ về phía 0, và trả 0 chứ không phải -0.
- *
- * `Math.trunc(-0,5)` cho `-0`, thứ so sánh khác `0` (`Object.is`) và in ra là "-0" ở vài chỗ —
- * không thứ gì trên tờ khai nên mang dấu âm mà giá trị bằng không.
- */
-function catPhanLe(n: number): number {
-  const v = Math.trunc(n);
-  return v === 0 ? 0 : v;
 }
 
 /** Gộp tên hàng thành một câu mô tả, cắt bằng "..." khi còn nữa (giống cách bản thật viết). */
@@ -100,16 +90,7 @@ export function dungPhuLuc204(banRa: KetQuaBanRa, muaVao: KetQuaMuaVao): PhuLuc2
   const mua = gopMuaVaoCoThue(muaVao.theoNhan);
 
   const giaTriBan = nhomBan?.giaTri ?? 0;
-  // CẮT phần lẻ (về phía 0), không phải làm tròn thường. Đối chiếu hai kỳ thật của MST 0106861880:
-  //   Q1: 251.896.634 x 2% = 5.037.932,68 -> phải ra 5.037.932 (tròn thường cho 5.037.933)
-  //   Q2: 391.249.917 x 2% = 7.824.998,34 -> 7.824.998 (hai cách cho cùng kết quả)
-  // Chỉ tròn-xuống khớp CẢ HAI: [33] = làm tròn([32] x 10%) - số này, và [33] của hai kỳ đã nộp
-  // lần lượt là 20.151.731 và 31.299.994. Tròn thường làm Q1 lệch một đồng, rồi lệch đó chảy qua
-  // [43] sang [22] của kỳ sau.
-  //
-  // `trunc` chứ không `floor`: hai kỳ đối chứng đều dương nên hai hàm cho kết quả y hệt, nhưng khi
-  // hóa đơn điều chỉnh giảm kéo nhóm 8% xuống âm thì `floor(-0,02) = -1` bịa ra một đồng được
-  // giảm, còn `trunc(-0,02) = 0` mới đúng nghĩa "cắt phần lẻ".
+  // Cắt phần lẻ, KHÔNG làm tròn thường — lý do và số đối chứng ở `tienVnd.ts`.
   const thueDuocGiam = catPhanLe(
     (giaTriBan * (THUE_SUAT_QUY_DINH - THUE_SUAT_SAU_GIAM)) / 100,
   );

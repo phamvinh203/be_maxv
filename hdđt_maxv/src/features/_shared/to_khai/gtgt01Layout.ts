@@ -1,7 +1,7 @@
 /**
  * ===== LAYOUT MẪU IN 01/GTGT (TT80/2021/TT-BTC) =====
  *
- * Nguồn khai báo DUY NHẤT cho hai màn cùng dựng mẫu này:
+ * Dùng chung cho hai màn cùng dựng mẫu in này:
  *   - `dich_vu_cong/components/ToKhaiGtgt01Form.tsx` — chỉ đọc, số bóc từ XML tờ khai ĐÃ NỘP.
  *   - `to_khai/components/ToKhaiGtgt01Editor.tsx`    — nhập được, số tính từ bảng kê của kỳ.
  *
@@ -160,12 +160,12 @@ export function maChiTieu(tag: string): string {
 }
 
 /**
- * Ô kế toán được phép sửa tay trên màn Tờ khai.
+ * Ô kế toán được phép sửa tay — bản DỰ PHÒNG, chỉ dùng khi chưa tải được bản tờ khai.
  *
- * PHẢI khớp `CT_NHAP_TAY` trong `be_maxv/src/services/client/to_khai/tinhGtgt01.ts` — backend lọc
- * theo danh sách đó, nên ô có ở đây mà thiếu bên kia sẽ bị nuốt im lặng: người dùng gõ số, thấy
- * báo "Đã lưu", rồi số nhảy về như cũ. Hai project không dùng chung package nên đây là bản sao có
- * chủ ý; sửa một bên thì sửa cả hai.
+ * Nguồn thật là `BanToKhai.oSuaDuoc` do server gửi kèm mỗi lượt tính: chính server lọc `ghi_de`
+ * theo danh sách của nó, nên client đoán lấy là mời hai bên trôi lệch. Giữ bản này vì lúc `ban`
+ * còn `null` thì vẫn cần biết tô nền ô nào — khi đó mọi ô đã `disabled` nên không ảnh hưởng gì
+ * tới việc nhập.
  *
  * Ô CÔNG THỨC THUẦN ([27] [28] [34] [35] [36] [40] [40a] [41] [43]) cố tình vắng mặt: chúng là
  * tổng của các ô trên, sửa tay chỉ làm tờ khai mâu thuẫn với chính nó. Muốn đổi thì sửa ô nguồn.

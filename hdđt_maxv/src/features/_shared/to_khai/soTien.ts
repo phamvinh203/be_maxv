@@ -12,10 +12,13 @@
  * Giữ nguyên số 0 thay vì ẩn như `formatMoney` của bảng danh sách — mẫu in luôn hiện đủ mọi ô, ô
  * trống trên mẫu nghĩa là "không có chỉ tiêu", khác hẳn "có mà bằng 0".
  */
+/** Dựng một lần: `toLocaleString` tạo formatter mới mỗi lượt gọi, mà mẫu in gọi 26 lần mỗi phím gõ. */
+const FMT_VN = new Intl.NumberFormat("vi-VN");
+
 export function fmtSoTien(n: number | null | undefined): string {
   if (n === null || n === undefined) return "";
   if (n === 0) return "0";
-  const abs = Math.abs(n).toLocaleString("vi-VN");
+  const abs = FMT_VN.format(Math.abs(n));
   return n < 0 ? `(${abs})` : abs;
 }
 

@@ -11,6 +11,7 @@
 import type { PrismaClient } from "../../../generated/tenant";
 import * as GDTService from "../hddt/gdt.service";
 import { khoangCuaKy, type Ky } from "./kySoThue";
+import { chiaLo } from "./toKhaiGtgt01.service";
 
 export type Chieu = "purchase" | "sold";
 
@@ -60,8 +61,7 @@ export async function danhDauKy(db: PrismaClient, ky: Ky): Promise<KetQuaDanhDau
 
   for (const chieu of CA_HAI_CHIEU) {
     const ids = await layIdTrongKhoang(db, chieu, tuNgay, denNgay);
-    for (let i = 0; i < ids.length; i += CO_LO_UPSERT) {
-      const lo = ids.slice(i, i + CO_LO_UPSERT);
+    for (const lo of chiaLo(ids, CO_LO_UPSERT)) {
       await db.$transaction(
         lo.map((hoaDonId) =>
           db.tokhai_ky_hoa_don.upsert({

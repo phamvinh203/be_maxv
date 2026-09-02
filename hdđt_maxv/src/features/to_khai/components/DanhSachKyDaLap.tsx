@@ -9,13 +9,13 @@ import Chip from "@mui/material/Chip";
 import Typography from "@mui/material/Typography";
 import { useDanhSachKyQuery } from "../api/gtgt01Queries";
 import { nhanKy, type Ky } from "../ky";
+import { fmtSoTien } from "../../_shared/to_khai/soTien";
 
 /**
  * Các kỳ đã lập tờ khai. Ngoài việc mở nhanh kỳ cũ, bảng này trả lời một câu hỏi nghiệp vụ thật:
  * kỳ trước ĐÃ CHỐT chưa — vì chỉ bản đã chốt mới nối được [43] sang [22] của kỳ sau.
  */
 
-const fmt = new Intl.NumberFormat("vi-VN");
 
 export default function DanhSachKyDaLap({
   kyDangXem,
@@ -65,8 +65,8 @@ export default function DanhSachKyDaLap({
                       label={r.trangThai === "chot" ? "Đã chốt" : "Nháp"}
                     />
                   </TableCell>
-                  <TableCell align="right">{fmt.format(r.ct40)}</TableCell>
-                  <TableCell align="right">{fmt.format(r.ct43)}</TableCell>
+                  <TableCell align="right">{fmtSoTien(r.ct40)}</TableCell>
+                  <TableCell align="right">{fmtSoTien(r.ct43)}</TableCell>
                 </TableRow>
               );
             })}

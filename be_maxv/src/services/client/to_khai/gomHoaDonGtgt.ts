@@ -11,6 +11,8 @@
  * được là 8% hay 10%, nên xếp vào `treo` thay vì cộng nhầm vào một ô nào đó.
  */
 
+import { lamTronDong } from "./tienVnd";
+
 /** Dòng hóa đơn tối giản mà engine cần — khớp `select` của tầng service. */
 export interface HoaDonGom {
   id: string;
@@ -53,8 +55,6 @@ export interface HoaDonTreo {
 export interface NhomThueSuat {
   giaTri: number;
   thue: number;
-  /** Số hóa đơn có ít nhất một dòng thuộc nhãn này. */
-  soHd: number;
   /** Tên hàng gặp trong nhóm, đã khử trùng, giữ thứ tự xuất hiện — để mô tả hàng hóa ở phụ lục. */
   tenHang: string[];
 }
@@ -109,11 +109,8 @@ function chuanHoaNhan(raw: unknown): string {
 
 /**
  * Nhãn thuế suất -> ô nhận giá trị và ô nhận tiền thuế. Thêm/đổi mức thuế suất CHỈ sửa bảng này.
- *
- * Export vì tầng service suy ánh xạ NGƯỢC (chỉ tiêu -> các nhãn rót vào nó) từ chính bảng này —
- * hai chiều dùng chung một nguồn thì không bao giờ lệch nhau.
  */
-export const O_THEO_NHAN: Record<string, { giaTri: keyof TongBanRa; thue?: keyof TongBanRa }> = {
+const O_THEO_NHAN: Record<string, { giaTri: keyof TongBanRa; thue?: keyof TongBanRa }> = {
   KCT: { giaTri: "ct26" },
   "0%": { giaTri: "ct29" },
   "5%": { giaTri: "ct30", thue: "ct31" },
@@ -159,7 +156,7 @@ function congVaoNhan(
   thue: number,
   tenHang: string[],
 ): void {
-  const cu = bang[nhan] ?? { giaTri: 0, thue: 0, soHd: 0, tenHang: [] };
+  const cu = bang[nhan] ?? { giaTri: 0, thue: 0, tenHang: [] };
   for (const t of tenHang) {
     if (cu.tenHang.length >= TEN_HANG_TOI_DA) break;
     if (!cu.tenHang.includes(t)) cu.tenHang.push(t);
@@ -167,7 +164,6 @@ function congVaoNhan(
   bang[nhan] = {
     giaTri: cu.giaTri + giaTri,
     thue: cu.thue + thue,
-    soHd: cu.soHd + 1,
     tenHang: cu.tenHang,
   };
 }
@@ -185,6 +181,18 @@ function nhomThueSuat(detail: unknown): { nhan: string; thtien: number; tthue: n
       tthue: so(o.tthue),
     };
   });
+}
+
+/**
+ * Quy đổi một số tiền về VND rồi làm tròn về ĐỒNG, theo TỪNG hóa đơn.
+ *
+ * Làm tròn ngay tại đây vì mọi ô trên tờ khai là số nguyên, mà `thtien × tỷ giá` thì lẻ — và quy
+ * tắc kiểm của HTKK (`[33] = [32] x 10% - phụ lục`) sẽ không bao giờ khớp nếu [32] lẻ đồng.
+ * Từng hóa đơn chứ không phải tổng: mỗi hóa đơn là một chứng từ, số VND của nó phải tự đứng được
+ * khi đối chiếu. Hóa đơn VND (hệ số 1) không đổi gì vì số đã nguyên sẵn.
+ */
+function veDong(tien: number, heSo: number): number {
+  return lamTronDong(tien * heSo);
 }
 
 /** Hệ số quy đổi về VND; `null` = ngoại tệ mà thiếu tỷ giá -> không đoán, cho hóa đơn treo. */
@@ -227,8 +235,8 @@ export function gomBanRa(rows: HoaDonGom[]): KetQuaBanRa {
         coNhanLa = true;
         continue;
       }
-      const giaTri = g.thtien * heSo;
-      const thue = g.tthue * heSo;
+      const giaTri = veDong(g.thtien, heSo);
+      const thue = veDong(g.tthue, heSo);
       tong[o.giaTri] += giaTri;
       if (o.thue) tong[o.thue] += thue;
       // Giữ nguyên theo NHÃN GỐC bên cạnh việc rót vào ô: [32]/[33] gộp 8% với 10%, mà phụ lục
@@ -270,8 +278,8 @@ export function gomMuaVao(rows: HoaDonGom[]): KetQuaMuaVao {
       treo.push({ id: hd.id, lyDo: `Hóa đơn ngoại tệ ${hd.dvtte} nhưng thiếu tỷ giá` });
       continue;
     }
-    ct23 += so(hd.tgtcthue) * heSo;
-    ct24 += so(hd.tgtthue) * heSo;
+    ct23 += veDong(so(hd.tgtcthue), heSo);
+    ct24 += veDong(so(hd.tgtthue), heSo);
     soHd += 1;
 
     // Tách theo nhãn CHỈ để dựng phụ lục giảm thuế — hóa đơn chưa tải chi tiết vẫn tính vào
@@ -280,7 +288,13 @@ export function gomMuaVao(rows: HoaDonGom[]): KetQuaMuaVao {
     if (nhom === null) continue;
     const tenTheoNhan = tenHangTheoNhan(hd.detail, chuanHoaNhan);
     for (const g of nhom) {
-      congVaoNhan(theoNhan, g.nhan, g.thtien * heSo, g.tthue * heSo, tenTheoNhan.get(g.nhan) ?? []);
+      congVaoNhan(
+        theoNhan,
+        g.nhan,
+        veDong(g.thtien, heSo),
+        veDong(g.tthue, heSo),
+        tenTheoNhan.get(g.nhan) ?? [],
+      );
     }
   }
 

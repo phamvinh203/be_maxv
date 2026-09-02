@@ -1,10 +1,16 @@
 /**
- * ===== CỘT HÓA ĐƠN MUA VÀO — BẢN RIÊNG CỦA MÔ-ĐUN "TỜ KHAI" =====
+ * ===== CỘT BẢNG KÊ CỦA MÔ-ĐUN "TỜ KHAI" =====
  *
- * Cùng 26 cột và cùng thứ tự với `dauRa.ts` (mẫu bảng kê lập tờ khai), khác đúng ba cột đối tác:
- * MST / Tên / Địa chỉ ở đây là bên BÁN (mình là người mua), bên kia là bên MUA.
+ * 26 cột theo MẪU BẢNG KÊ LẬP TỜ KHAI, KHÁC hẳn bảng bên Hóa đơn điện tử: bỏ cụm cột thao tác
+ * (T. thái tải, Hóa đơn liên quan, Xem hóa đơn, Tải file, Tải hóa đơn gốc) và thêm bốn cột phục vụ
+ * kê khai (Năm, Kỳ kê khai, Chỉ tiêu tăng giảm, Kê khai/không kê khai).
  *
- * Sửa cột màn Tờ khai: sửa ở đây. Sửa cột màn Hóa đơn điện tử: sửa bên `hddt/templates/dauVao.ts`.
+ * Hai chiều dùng CHUNG một danh sách cột, khác đúng ba cột đối tác: mua vào ghi bên BÁN (mình là
+ * người mua), bán ra ghi bên MUA. Trước đây là hai file chép nhau 208/228 dòng — đổi mẫu bảng kê
+ * mà quên một file thì hai tab hiện hai bộ cột khác nhau, trong khi đây đúng là bảng dùng để đối
+ * chiếu số thuế.
+ *
+ * Sửa cột màn Tờ khai: sửa ở đây. Sửa cột màn Hóa đơn điện tử: sửa bên `hddt/templates/`.
  * Hai bên đã tách hẳn — đừng "đồng bộ lại cho giống" trừ khi có lý do nghiệp vụ.
  *
  * Import trỏ sang `hddt/` là phần HẠ TẦNG dùng chung (kiểu `InvoiceColumn`, định dạng số, nhãn
@@ -14,6 +20,7 @@ import { trangThaiHdLabel, ketQuaKiemTraLabel } from "../../hddt/api/gdt";
 import { formatDateVN } from "../../hddt/dateUtils";
 import { numericText } from "../../hddt/format";
 import { invoiceFileBase } from "../../hddt/invoiceFileName";
+import type { InvoiceDirection } from "../../hddt/types";
 import type { ToKhaiRow } from "../ky";
 import { oChiTieuTangGiamCell, oKeKhaiCell } from "./quyetDinhCell";
 import {
@@ -24,8 +31,29 @@ import {
   type InvoiceColumn,
 } from "../../hddt/templates/types";
 
+/** Ba cột đối tác — chỗ DUY NHẤT hai chiều khác nhau. `width` là bề rộng cột Excel. */
+const COT_DOI_TAC = {
+  purchase: {
+    mst: { key: "sellerMst", header: "MST người bán/MST người xuất hàng", width: 28 },
+    ten: { key: "sellerTen", header: "Tên người bán/Tên người xuất hàng", width: 34 },
+    diaChi: { key: "sellerDiaChi", header: "Địa chỉ người bán" },
+  },
+  sold: {
+    mst: { key: "buyerMst", header: "MST người mua/MST người nhận hàng", width: 22 },
+    ten: { key: "buyerTen", header: "Tên người mua/Tên người nhận hàng", width: 44 },
+    diaChi: { key: "buyerDiaChi", header: "Địa chỉ người mua" },
+  },
+} as const satisfies Record<
+  InvoiceDirection,
+  {
+    mst: { key: keyof ToKhaiRow; header: string; width: number };
+    ten: { key: keyof ToKhaiRow; header: string; width: number };
+    diaChi: { key: keyof ToKhaiRow; header: string };
+  }
+>;
 
-export function overviewDauVao(): InvoiceColumn<ToKhaiRow>[] {
+export function overviewToKhai(direction: InvoiceDirection): InvoiceColumn<ToKhaiRow>[] {
+  const doiTac = COT_DOI_TAC[direction];
   return [
     { key: "stt", header: "STT", width: 8, webWidth: 56, value: (_r, stt) => stt },
     {
@@ -101,18 +129,18 @@ export function overviewDauVao(): InvoiceColumn<ToKhaiRow>[] {
       cell: (r) => oKeKhaiCell(r),
     },
     {
-      key: "sellerMst",
-      header: "MST người bán/MST người xuất hàng",
-      width: 28,
+      key: doiTac.mst.key,
+      header: doiTac.mst.header,
+      width: doiTac.mst.width,
       webWidth: 180,
-      value: (r) => r.sellerMst,
+      value: (r) => r[doiTac.mst.key],
     },
     {
-      key: "sellerTen",
-      header: "Tên người bán/Tên người xuất hàng",
-      width: 34,
+      key: doiTac.ten.key,
+      header: doiTac.ten.header,
+      width: doiTac.ten.width,
       webWidth: 180,
-      value: (r) => r.sellerTen,
+      value: (r) => r[doiTac.ten.key],
     },
     {
       key: "tenHang",
@@ -214,11 +242,11 @@ export function overviewDauVao(): InvoiceColumn<ToKhaiRow>[] {
       value: (r, stt) => invoiceFileBase(stt, r.ngayLap, r.soHd, r.sellerMst),
     },
     {
-      key: "sellerDiaChi",
-      header: "Địa chỉ người bán",
+      key: doiTac.diaChi.key,
+      header: doiTac.diaChi.header,
       width: 34,
       webWidth: 265,
-      value: (r) => r.sellerDiaChi,
+      value: (r) => r[doiTac.diaChi.key],
     },
   ];
 }

@@ -181,7 +181,9 @@ type TabToKhai = InvoiceDirection | "to-khai";
 
 export default function ToKhaiInvoiceTabs() {
   const [searchParams, setSearchParams] = useSearchParams();
-  const ky = kyTuQuery(searchParams);
+  // `useMemo` vì `kyTuQuery` sinh object mới mỗi render, mà `ky` nằm trong deps của hai memo
+  // dựng dòng và cột tổng — thiếu nó là dựng lại cả bảng (cả panel đang ẩn) mỗi lần re-render.
+  const ky = useMemo(() => kyTuQuery(searchParams), [searchParams]);
   const [tab, setTab] = useState<TabToKhai>("purchase");
   const laToKhai = tab === "to-khai";
 

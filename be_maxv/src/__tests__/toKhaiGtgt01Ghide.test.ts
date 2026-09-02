@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { locGhiDeHopLe } from "../services/client/to_khai/toKhaiGtgt01.service";
+import { chiaLo, locGhiDeHopLe } from "../services/client/to_khai/toKhaiGtgt01.service";
 
 /**
  * npx tsx --test src/__tests__/toKhaiGtgt01Ghide.test.ts
@@ -59,4 +59,31 @@ test("giá trị không phải object thì bỏ, không ném", () => {
 
 test("lyDo quá dài bị cắt, không làm hỏng cả lượt lưu", () => {
   assert.equal(locGhiDeHopLe({ ct22: { gia: 1, lyDo: "x".repeat(1000) } }).ct22.lyDo?.length, 500);
+});
+
+/* ===== Chia lô truy vấn hóa đơn (thêm 2026-09-02) ===== */
+
+test("chiaLo cắt đúng số phần tử mỗi lô, lô cuối ngắn hơn", () => {
+  const lo = chiaLo([1, 2, 3, 4, 5, 6, 7], 3);
+  assert.deepEqual(lo, [[1, 2, 3], [4, 5, 6], [7]]);
+});
+
+test("mảng rỗng ra danh sách rỗng, KHÔNG ra một lô rỗng", () => {
+  // Ra `[[]]` thì vòng lặp gọi truy vấn với `IN ()` — Postgres trả 0 dòng nhưng vẫn tốn một lượt.
+  assert.deepEqual(chiaLo([], 100), []);
+});
+
+test("mảng ngắn hơn lô thì gói trong một lô duy nhất", () => {
+  assert.deepEqual(chiaLo([1, 2], 5000), [[1, 2]]);
+});
+
+test("chia vừa khít không sinh lô thừa ở cuối", () => {
+  assert.deepEqual(chiaLo([1, 2, 3, 4], 2), [[1, 2], [3, 4]]);
+});
+
+test("giữ nguyên thứ tự và không mất phần tử nào", () => {
+  const ds = Array.from({ length: 12_345 }, (_, i) => i);
+  const lo = chiaLo(ds, 5_000);
+  assert.equal(lo.length, 3);
+  assert.deepEqual(lo.flat(), ds);
 });

@@ -56,8 +56,8 @@ export interface BanToKhai {
   canhBao: string[];
   /** Kỳ mà [22] nối từ đó; `null` khi nhập tay. Có thể khác loại kỳ hiện tại (đổi tháng<->quý). */
   kyNguonCt22: Ky | null;
-  /** Chênh lệch giữa [31]/[33] theo công thức và tổng thuế cộng thực từ bảng kê. */
-  lechBangKe: { ct31: number; ct33: number };
+  /** Ô kế toán được phép sửa tay — server là bên quyết, client không đoán. */
+  oSuaDuoc: string[];
   tinhLuc: string | null;
 }
 

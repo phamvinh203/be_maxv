@@ -51,12 +51,6 @@ interface Props {
   loi?: string | null;
 }
 
-/** "Q1/2026" của kỳ mà [22] nối từ đó; chưa biết thì gọi chung là "kỳ trước". */
-function nhanKyNguon(ban: BanToKhai): string {
-  const k = ban.kyNguonCt22;
-  return k ? `${k.kyLoai === "thang" ? "T" : "Q"}${k.kySo}/${k.nam}` : "kỳ trước";
-}
-
 export default function ToKhaiGtgt01Editor({ ky, ban, onDoiKy, dangTai, loi }: Props) {
   // Giá trị đang gõ, theo tên thẻ. Chỉ chứa ô người dùng vừa chạm — ô khác đọc thẳng từ `ban.ct`.
   const [nhap, setNhap] = useState<Record<string, string>>({});
@@ -134,7 +128,9 @@ export default function ToKhaiGtgt01Editor({ ky, ban, onDoiKy, dangTai, loi }: P
     const soMay = ban?.ctMay[tag];
     // Ô công thức thuần KHÔNG cho gõ: backend lọc chúng khỏi `ghi_de`, nên để gõ được là hứa suông
     // — người dùng thấy "Đã lưu" rồi số nhảy về như cũ, mà đây là số tiền thuế.
-    const suaDuoc = O_SUA_DUOC.has(tag);
+    // Danh sách lấy TỪ SERVER (`ban.oSuaDuoc`) vì server mới là bên lọc; `O_SUA_DUOC` chỉ dùng khi
+    // chưa có bản tờ khai nào — lúc đó mọi ô đã `disabled` sẵn nên chỉ ảnh hưởng màu nền.
+    const suaDuoc = ban ? ban.oSuaDuoc.includes(tag) : O_SUA_DUOC.has(tag);
     // Ô đang gõ dở giữ nguyên chuỗi người dùng (chèn dấu chấm giữa chừng làm nhảy con trỏ);
     // ô còn lại hiện số đã định dạng `264.208.827` cho dễ đọc.
     const hienTai = tag in nhap ? nhap[tag] : fmtSoTien(ban?.ct[tag]);
@@ -320,7 +316,7 @@ export default function ToKhaiGtgt01Editor({ ky, ban, onDoiKy, dangTai, loi }: P
             )}
             {ban.nguonCt22 === "ky_truoc_nhap" && (
               <Alert severity="warning">
-                Chỉ tiêu [22] lấy từ [43] của {nhanKyNguon(ban)}, nhưng kỳ đó còn là{" "}
+                Chỉ tiêu [22] lấy từ [43] của {ban.kyNguonCt22 ? nhanKy(ban.kyNguonCt22) : "kỳ trước"}, nhưng kỳ đó còn là{" "}
                 <b>bản nháp</b> — số có thể đổi khi kỳ đó được tính lại. Chốt kỳ trước rồi tính lại
                 kỳ này để số đứng yên.
               </Alert>

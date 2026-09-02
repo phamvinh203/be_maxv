@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { lechSoVoiBangKe, nguongLamTron, soatToKhai } from "../services/client/to_khai/soatToKhai";
+import { nguongLamTron, soatToKhai } from "../services/client/to_khai/soatToKhai";
 import type { TongBanRa } from "../services/client/to_khai/gomHoaDonGtgt";
 import type { CtGtgt01 } from "../services/client/to_khai/tinhGtgt01";
 import type { Ky } from "../services/client/to_khai/kySoThue";
@@ -132,7 +132,3 @@ test("ngưỡng làm tròn không âm kể cả khi không có hóa đơn nào",
   assert.equal(nguongLamTron(120), 121);
 });
 
-test("lechSoVoiBangKe trả đúng hiệu hai chiều", () => {
-  const l = lechSoVoiBangKe(ct({ ct31: 10, ct33: 31_299_994 }), tong({ ct31: 25, ct33: 31_299_993 }));
-  assert.deepEqual(l, { ct31: -15, ct33: 1 });
-});

@@ -13,7 +13,7 @@ import { kyLienTruoc, truocKy, thangKetThuc, type Ky, type KyLoai } from "./kySo
 import { gomBanRa, gomMuaVao, type HoaDonGom, type HoaDonTreo } from "./gomHoaDonGtgt";
 import { tinhGtgt01, CT_NHAP_TAY, type CtGtgt01 } from "./tinhGtgt01";
 import { dungPhuLuc204, type PhuLuc204 } from "./phuLuc204";
-import { lechSoVoiBangKe, soatToKhai } from "./soatToKhai";
+import { soatToKhai } from "./soatToKhai";
 import type { Chieu } from "./keKhaiKy.service";
 
 /** Nguồn của chỉ tiêu [22]. `ky_truoc_nhap` = kỳ trước còn là bản nháp nên [43] còn có thể đổi. */
@@ -45,12 +45,11 @@ export interface BanToKhai {
   /** Câu cảnh báo cho màn hình: số vẫn tính ra, nhưng có chỗ đáng ngờ cần người xem lại. */
   canhBao: string[];
   /**
-   * Chênh lệch giữa số MÁY TÍNH theo công thức HTKK và tổng thuế cộng THỰC từ bảng kê.
-   *
-   * Vài đồng là chuyện làm tròn, bình thường. Lệch lớn là dấu hiệu bảng kê sai — nhãn thuế suất
-   * lệch, hóa đơn ghi nhầm mức thuế — và đó là thứ không nhìn vào đây thì không ai thấy.
+   * Ô kế toán được phép sửa tay. Server gửi kèm thay vì để client tự đoán: chính server là bên lọc
+   * `ghi_de` theo danh sách này, nên giữ hai bản là mời chúng trôi lệch âm thầm — ô client cho gõ
+   * mà server không nhận thì người dùng thấy "Đã lưu" rồi số nhảy về như cũ.
    */
-  lechBangKe: { ct31: number; ct33: number };
+  oSuaDuoc: readonly string[];
   tinhLuc: string | null;
 }
 
@@ -87,6 +86,23 @@ export function locGhiDeHopLe(raw: unknown): Record<string, GhiDeItem> {
   return out;
 }
 
+/**
+ * Số id mỗi lượt truy vấn `IN (...)`.
+ *
+ * Postgres extended protocol chỉ nhận 65.535 tham số một lượt, và mỗi id là một tham số — kỳ quý
+ * của công ty lớn vượt ngưỡng đó sẽ ném lỗi driver khó lần ra. Đó là lý do DUY NHẤT: kết quả các
+ * lô vẫn gom hết vào một mảng nên đỉnh bộ nhớ không đổi. Đọc tuần tự là chủ ý — hai chiều đã chạy
+ * song song ở tầng trên, thêm song song trong từng chiều chỉ nhân đỉnh RAM và tranh connection.
+ */
+const HD_MOI_LO = 5_000;
+
+/** Cắt mảng thành từng lô; mảng rỗng ra danh sách rỗng, không ra một lô rỗng. */
+export function chiaLo<T>(ds: readonly T[], moiLo: number): T[][] {
+  const ra: T[][] = [];
+  for (let i = 0; i < ds.length; i += moiLo) ra.push(ds.slice(i, i + moiLo));
+  return ra;
+}
+
 /** Các cột engine cần đọc — giữ hẹp vì `detail` là JSON nặng. */
 const SELECT_HD = {
   id: true,
@@ -119,12 +135,15 @@ async function docHoaDonCuaKy(
   const soLoai = daGan.length - idKeKhai.length;
   if (idKeKhai.length === 0) return { rows: [], soLoai, soThieuDetail: 0 };
 
-  const where = { id: { in: idKeKhai } };
-  const rows = (
+  const doc = (ids: string[]) =>
     chieu === "purchase"
-      ? await db.vct60view.findMany({ where, select: SELECT_HD })
-      : await db.vct50view.findMany({ where, select: SELECT_HD })
-  ) as unknown as HoaDonGom[];
+      ? db.vct60view.findMany({ where: { id: { in: ids } }, select: SELECT_HD })
+      : db.vct50view.findMany({ where: { id: { in: ids } }, select: SELECT_HD });
+
+  const rows: HoaDonGom[] = [];
+  for (const lo of chiaLo(idKeKhai, HD_MOI_LO)) {
+    rows.push(...((await doc(lo)) as unknown as HoaDonGom[]));
+  }
 
   const soThieuDetail = chieu === "sold" ? rows.filter((r) => r.detail == null).length : 0;
   return { rows, soLoai, soThieuDetail };
@@ -182,9 +201,11 @@ export async function tinhVaLuu(db: PrismaClient, ky: Ky): Promise<BanToKhai> {
   if (hienCo?.trang_thai === "chot") throw new BanDaChotError();
   const ghiDe = locGhiDeHopLe(hienCo?.ghi_de);
 
-  const [ban, mua] = await Promise.all([
+  // [22] không phụ thuộc hóa đơn của kỳ này nên đi cùng chuyến, khỏi thêm một lượt chờ nối đuôi.
+  const [ban, mua, ct22KyTruoc] = await Promise.all([
     docHoaDonCuaKy(db, ky, "sold"),
     docHoaDonCuaKy(db, ky, "purchase"),
+    ghiDe.ct22 ? Promise.resolve(null) : layCt22KyTruoc(db, ky),
   ]);
   if (ban.rows.length === 0 && mua.rows.length === 0) throw new KyChuaKeKhaiError();
 
@@ -193,7 +214,6 @@ export async function tinhVaLuu(db: PrismaClient, ky: Ky): Promise<BanToKhai> {
 
   // [22]: ô kế toán đã ghi đè thắng; chưa ghi đè thì nối từ [43] kỳ trước (chốt hay nháp đều lấy,
   // nguồn ghi lại ở `nguonCt22` để màn hình cảnh báo khi kỳ trước còn nháp).
-  const ct22KyTruoc = ghiDe.ct22 ? null : await layCt22KyTruoc(db, ky);
   const nhapTay: Record<string, number> = {};
   for (const [khoa, item] of Object.entries(ghiDe)) nhapTay[khoa] = item.gia;
   if (ct22KyTruoc !== null) nhapTay.ct22 = ct22KyTruoc.gia;
@@ -205,8 +225,6 @@ export async function tinhVaLuu(db: PrismaClient, ky: Ky): Promise<BanToKhai> {
 
   const ctMay = tinhGtgt01({ banRa: banRa.tong, muaVao, nhapTay: {}, giamThue });
   const ct = tinhGtgt01({ banRa: banRa.tong, muaVao, nhapTay, giamThue });
-
-  const lechBangKe = lechSoVoiBangKe(ctMay, banRa.tong);
 
   const nguonCt22: NguonCt22 =
     ct22KyTruoc === null ? "nhap_tay" : ct22KyTruoc.daChot ? "ky_truoc" : "ky_truoc_nhap";
@@ -297,7 +315,7 @@ export async function tinhVaLuu(db: PrismaClient, ky: Ky): Promise<BanToKhai> {
     dieuChinh: banRa.dieuChinh,
     phuLuc,
     canhBao,
-    lechBangKe,
+    oSuaDuoc: CT_NHAP_TAY,
     tinhLuc: luu.tinh_luc?.toISOString() ?? null,
   };
 }
@@ -329,8 +347,7 @@ export async function docBan(db: PrismaClient, ky: Ky): Promise<BanToKhai | null
     dieuChinh: { soHd: 0, giaTri: 0, thue: 0 },
     phuLuc: (row.phu_luc ?? null) as PhuLuc204 | null,
     canhBao: [],
-    // Kết quả của lượt TÍNH, không lưu DB — bấm "Tính lại" sẽ có.
-    lechBangKe: { ct31: 0, ct33: 0 },
+    oSuaDuoc: CT_NHAP_TAY,
     tinhLuc: row.tinh_luc?.toISOString() ?? null,
   };
 }

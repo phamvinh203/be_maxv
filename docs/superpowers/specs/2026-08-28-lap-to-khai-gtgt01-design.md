@@ -542,6 +542,27 @@ Q2/2026 để chốt rằng kỳ bình thường KHÔNG sinh cảnh báo giả.
 Ba nhóm cảnh báo cùng sống ở đó: lệch bảng kê (mục này), phụ lục không ăn khớp [32] đã sửa tay
 (Mục 11.6), và đổi kỳ khai tháng ↔ quý (Mục 11.7).
 
+### 11.9. Ngoại tệ làm tròn về đồng, và chia lô truy vấn — THÊM 2026-09-02
+
+**Ngoại tệ.** `gomBanRa`/`gomMuaVao` nhân tiền với tỷ giá rồi cộng thẳng, nên hóa đơn ngoại tệ để
+lại phần lẻ trong [32], [23], [24]. Hai hệ quả:
+
+- mọi ô trên tờ khai phải là số nguyên đồng;
+- quy tắc kiểm của HTKK là `[33] = [32] × 10% − phụ lục`, nên [32] lẻ đồng làm phép kiểm đó không
+  bao giờ khớp. Phần lẻ còn khiến `catPhanLe` bên phụ lục chặt oan: `999.999,99 × 2% = 19.999,9998`
+  bị cắt thành 19.999 thay vì 20.000.
+
+Nay quy đổi đi qua `veDong(tien, heSo)` — làm tròn về đồng ngay tại **từng hóa đơn**, không phải
+trên tổng: mỗi hóa đơn là một chứng từ, số VND của nó phải tự đứng được khi đối chiếu. Hóa đơn VND
+(hệ số 1) không đổi gì vì số đã nguyên sẵn, nên hai kỳ đối chứng giữ nguyên kết quả.
+
+**Chia lô.** `docHoaDonCuaKy` tra hóa đơn bằng `id: { in: [...] }`. Postgres extended protocol chỉ
+nhận 65.535 tham số một lượt và mỗi id là một tham số, nên kỳ quý của công ty lớn sẽ ném lỗi driver
+khó lần ra. Nay cắt lô 5.000 (`chiaLo`), đọc tuần tự — tuần tự là chủ ý: `detail` là JSON nặng, chạy
+song song nhiều lô chỉ đổi lỗi tham số lấy áp lực bộ nhớ.
+
+Cỡ thật hiện tại: 174 hóa đơn/quý, còn rất xa ngưỡng — đây là vá trước khi đau.
+
 ## 11bis. Phụ lục "Giảm thuế GTGT theo Nghị quyết 204/2025/QH15"
 
 Phát sinh sau khi đọc file tờ khai thật người dùng gửi (2026-08-31) — không có trong thiết kế ban

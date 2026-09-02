@@ -1,6 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "../../auth/useAuth";
-import { toKhaiKeys } from "./toKhaiQueries";
 import {
   getBan,
   getDanhSachKy,
@@ -8,6 +7,7 @@ import {
   postTinh,
   putGhiDe,
   putPhuLuc,
+  type BanToKhai,
   type GhiDeItem,
 } from "./gtgt01";
 import type { Ky } from "../ky";
@@ -41,40 +41,54 @@ export function useDanhSachKyQuery(enabled = true) {
   });
 }
 
-/** Mọi mutation làm mới chung prefix của mô-đun: bản trả về đã đủ, chỉ cần cache khớp lại. */
-function useLamMoi() {
+/**
+ * Nhận bản tờ khai mới về: đặt thẳng vào cache của đúng kỳ đó, và chỉ làm mới thêm danh sách kỳ.
+ *
+ * Trước đây mọi mutation invalidate cả prefix `toKhai/{companyId}` — kéo theo bảng kê của CẢ HAI
+ * chiều bị đánh dấu cũ, nên sửa một ô như [22] (chẳng đụng gì tới hóa đơn) cũng làm lần sau mở tab
+ * hóa đơn phải tải lại toàn bộ danh sách. Bản trả về đã đủ dùng, không cần GET lại.
+ *
+ * Danh sách kỳ vẫn phải làm mới vì [40]/[43]/trạng thái của kỳ này đổi theo.
+ */
+function useNhanBanMoi() {
   const qc = useQueryClient();
   const { currentCompanyId } = useAuth();
-  return () => qc.invalidateQueries({ queryKey: toKhaiKeys.byCompany(currentCompanyId) });
+  return (ban: BanToKhai, ky: Ky) => {
+    qc.setQueryData(gtgt01Keys.ban(currentCompanyId, ky), ban);
+    void qc.invalidateQueries({ queryKey: gtgt01Keys.danhSach(currentCompanyId) });
+  };
 }
 
 export function useTinhToKhai() {
-  const lamMoi = useLamMoi();
-  return useMutation({ mutationFn: (ky: Ky) => postTinh(ky), onSuccess: lamMoi });
+  const nhan = useNhanBanMoi();
+  return useMutation({
+    mutationFn: (ky: Ky) => postTinh(ky),
+    onSuccess: (ban, ky) => nhan(ban, ky),
+  });
 }
 
 export function useLuuGhiDe() {
-  const lamMoi = useLamMoi();
+  const nhan = useNhanBanMoi();
   return useMutation({
     mutationFn: (v: { ky: Ky; ghiDe: Record<string, GhiDeItem> }) => putGhiDe(v.ky, v.ghiDe),
-    onSuccess: lamMoi,
+    onSuccess: (ban, v) => nhan(ban, v.ky),
   });
 }
 
 /** Sửa mô tả hàng hóa trên phụ lục giảm thuế. */
 export function useLuuPhuLuc() {
-  const lamMoi = useLamMoi();
+  const nhan = useNhanBanMoi();
   return useMutation({
     mutationFn: (v: { ky: Ky; ten: { muaVao?: string; banRa?: string } }) =>
       putPhuLuc(v.ky, v.ten),
-    onSuccess: lamMoi,
+    onSuccess: (ban, v) => nhan(ban, v.ky),
   });
 }
 
 export function useDoiTrangThai() {
-  const lamMoi = useLamMoi();
+  const nhan = useNhanBanMoi();
   return useMutation({
     mutationFn: (v: { ky: Ky; chot: boolean }) => postDoiTrangThai(v.ky, v.chot),
-    onSuccess: lamMoi,
+    onSuccess: (ban, v) => nhan(ban, v.ky),
   });
 }

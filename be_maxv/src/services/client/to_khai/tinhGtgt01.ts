@@ -9,6 +9,7 @@
  */
 
 import type { TongBanRa } from "./gomHoaDonGtgt";
+import { lamTronDong } from "./tienVnd";
 
 /**
  * Ô kế toán chốt được giá trị. Hai loại, khác nhau ở chỗ máy có suy được hay không:
@@ -19,27 +20,7 @@ import type { TongBanRa } from "./gomHoaDonGtgt";
  * Ô CÔNG THỨC THUẦN ([27] [28] [34] [35] [36] [40] [40a] [41] [43]) cố tình KHÔNG có mặt: chúng
  * chỉ là tổng của các ô trên, cho sửa tay là mời tờ khai tự mâu thuẫn với chính nó.
  */
-export type CtNhapTay =
-  | "ct22"
-  | "ct23"
-  | "ct23a"
-  | "ct24"
-  | "ct24a"
-  | "ct25"
-  | "ct26"
-  | "ct29"
-  | "ct30"
-  | "ct31"
-  | "ct32"
-  | "ct32a"
-  | "ct33"
-  | "ct37"
-  | "ct38"
-  | "ct39a"
-  | "ct40b"
-  | "ct42";
-
-export const CT_NHAP_TAY: readonly CtNhapTay[] = [
+export const CT_NHAP_TAY = [
   "ct22",
   "ct23",
   "ct23a",
@@ -58,7 +39,10 @@ export const CT_NHAP_TAY: readonly CtNhapTay[] = [
   "ct39a",
   "ct40b",
   "ct42",
-];
+] as const;
+
+/** Suy TỪ mảng trên — khai hai lần là mời hai bên trôi lệch. */
+export type CtNhapTay = (typeof CT_NHAP_TAY)[number];
 
 /**
  * Thuế được giảm theo nghị quyết, tách theo THUẾ SUẤT QUY ĐỊNH (không phải suất sau giảm).
@@ -81,17 +65,6 @@ export interface DauVaoGtgt01 {
 
 export type CtGtgt01 = Record<string, number>;
 
-/**
- * Làm tròn về đồng — mọi ô tiền trên tờ khai là số nguyên.
- *
- * Đối xứng quanh 0, không dùng thẳng `Math.round`: JS làm tròn về phía +∞ nên `Math.round(-1,5)`
- * ra `-1` và `Math.round(-0,5)` ra `-0`, trong khi quy ước làm tròn tiền là "nửa ra xa 0" (-2, -1).
- * Ô âm xuất hiện khi kỳ trả hàng nhiều hơn bán.
- */
-function lamTron(n: number): number {
-  const v = n < 0 ? -Math.round(-n) : Math.round(n);
-  return v === 0 ? 0 : v; // chặn `-0` lọt vào ô tiền
-}
 
 export function tinhGtgt01(dv: DauVaoGtgt01): CtGtgt01 {
   const tay = (k: CtNhapTay): number => Number(dv.nhapTay[k] ?? 0);
@@ -125,8 +98,8 @@ export function tinhGtgt01(dv: DauVaoGtgt01): CtGtgt01 {
   // giảm, ra [33] = 31.299.994 — trong khi cộng thuế từng hóa đơn chỉ ra 31.299.993. Sai một đồng
   // ở đây chảy tiếp sang [28] [35] [36] [40a] [40], và qua [43] thì sang [22] của kỳ sau.
   // HTKK chỉ CẢNH BÁO khi [33] khác [32]x10% chứ không chặn, nên kế toán vẫn chốt tay được.
-  const ct31 = may("ct31", lamTron(ct30 * 0.05) - Number(dv.giamThue?.ts5 ?? 0));
-  const ct33 = may("ct33", lamTron(ct32 * 0.1) - Number(dv.giamThue?.ts10 ?? 0));
+  const ct31 = may("ct31", lamTronDong(ct30 * 0.05) - Number(dv.giamThue?.ts5 ?? 0));
+  const ct33 = may("ct33", lamTronDong(ct32 * 0.1) - Number(dv.giamThue?.ts10 ?? 0));
 
   const ct27 = ct29 + ct30 + ct32 + ct32a;
   const ct28 = ct31 + ct33;

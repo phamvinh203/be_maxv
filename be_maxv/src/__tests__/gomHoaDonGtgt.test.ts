@@ -150,3 +150,46 @@ test("mua vào KHÔNG cần chi tiết — chưa tải vẫn cộng được", (
   assert.equal(kq.ct24, 100_000);
   assert.equal(kq.treo.length, 0);
 });
+
+/* ===== Quy đổi ngoại tệ về đồng (thêm 2026-09-02) ===== */
+
+test("hóa đơn USD quy ra VND là số NGUYÊN đồng, không lẻ", () => {
+  // 1.234,56 USD x 25.310,5 = 31.247.330,88 -> phải ra số nguyên.
+  const kq = gomBanRa([
+    hd("a", "1", [{ tsuat: "10%", thtien: 1_234.56, tthue: 123.456 }], {
+      dvtte: "USD",
+      tgia: 25_310.5,
+    }),
+  ]);
+  assert.equal(Number.isInteger(kq.tong.ct32), true);
+  assert.equal(Number.isInteger(kq.tong.ct33), true);
+  assert.equal(kq.tong.ct32, 31_247_331);
+});
+
+test("mua vào ngoại tệ: [23]/[24] cũng nguyên đồng", () => {
+  const kq = gomMuaVao([
+    hd("m", "1", [{ tsuat: "10%", thtien: 1_234.56, tthue: 123.456 }], {
+      dvtte: "USD",
+      tgia: 25_310.5,
+      tgtcthue: 1_234.56,
+      tgtthue: 123.456,
+    }),
+  ]);
+  assert.equal(Number.isInteger(kq.ct23), true);
+  assert.equal(Number.isInteger(kq.ct24), true);
+  assert.equal(kq.ct24, 3_124_733); // 123,456 x 25.310,5 = 3.124.733,088
+});
+
+test("hóa đơn VND không bị đổi số — hệ số 1, số đã nguyên", () => {
+  const kq = gomBanRa([hd("v", "1", [{ tsuat: "8%", thtien: 391_249_917, tthue: 31_299_993 }])]);
+  assert.equal(kq.tong.ct32, 391_249_917);
+  assert.equal(kq.tong.ct33, 31_299_993);
+});
+
+test("ngoại tệ âm (điều chỉnh giảm) làm tròn đối xứng, không ra -0", () => {
+  const kq = gomBanRa([
+    hd("b", "1", [{ tsuat: "10%", thtien: -0.25, tthue: 0 }], { dvtte: "USD", tgia: 2 }),
+  ]);
+  assert.equal(kq.tong.ct32, -1); // -0,5 -> -1 (xa 0), không phải -0
+  assert.equal(Object.is(kq.tong.ct33, -0), false);
+});

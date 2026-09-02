@@ -10,6 +10,7 @@
 import type { TongBanRa } from "./gomHoaDonGtgt";
 import type { CtGtgt01 } from "./tinhGtgt01";
 import { nhanKy, type Ky } from "./kySoThue";
+import { lamTronDong } from "./tienVnd";
 
 export interface DauVaoSoat {
   /** Bộ chỉ tiêu CUỐI (đã áp ghi đè). */
@@ -47,7 +48,7 @@ export function soatToKhai(dv: DauVaoSoat): string[] {
 
   // 1) Phụ lục dựng từ hóa đơn, nhưng [32] thì kế toán ghi đè được — hai số khi đó không còn ăn
   //    khớp và [33] có thể ra âm.
-  const tranGiam = Math.abs(Math.round(dv.ct.ct32 * 0.1));
+  const tranGiam = Math.abs(lamTronDong(dv.ct.ct32 * 0.1));
   if (dv.giamThue10 > tranGiam) {
     canhBao.push(
       `Thuế được giảm ở phụ lục (${dv.giamThue10.toLocaleString("vi")}) lớn hơn [32] × 10% ` +
@@ -87,13 +88,3 @@ export function soatToKhai(dv: DauVaoSoat): string[] {
   return canhBao;
 }
 
-/** Chênh lệch giữa số máy tính theo công thức và tổng thuế cộng thực từ bảng kê. */
-export function lechSoVoiBangKe(
-  ctMay: CtGtgt01,
-  tongBanRa: TongBanRa,
-): { ct31: number; ct33: number } {
-  return {
-    ct31: ctMay.ct31 - tongBanRa.ct31,
-    ct33: ctMay.ct33 - tongBanRa.ct33,
-  };
-}

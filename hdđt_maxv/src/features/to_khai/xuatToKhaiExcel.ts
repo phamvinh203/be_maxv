@@ -3,6 +3,7 @@ import { CELL_BORDER, HEADER_FILL, HEADER_HEIGHT } from "../hddt/exportXlsx";
 import { HANG_GTGT01, maChiTieu } from "../_shared/to_khai/gtgt01Layout";
 import type { BanToKhai } from "./api/gtgt01";
 import { nhanKy, type Ky } from "./ky";
+import { luuVeMay } from "../../lib/downloadFile";
 
 /**
  * Xuất tờ khai đang xem ra Excel — bố cục bám mẫu in: STT, chỉ tiêu (thụt lề theo cấp), giá trị,
@@ -145,10 +146,5 @@ export async function xuatToKhaiGtgt01(ky: Ky, ban: BanToKhai): Promise<void> {
   const blob = new Blob([buf], {
     type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
   });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = tenFile(ky);
-  a.click();
-  URL.revokeObjectURL(url);
+  luuVeMay(blob, tenFile(ky));
 }
