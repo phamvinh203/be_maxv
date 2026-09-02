@@ -27,6 +27,8 @@ import { useDoiTrangThai, useLuuGhiDe, useTinhToKhai } from "../api/gtgt01Querie
 import type { BanToKhai, GhiDeItem } from "../api/gtgt01";
 import { nhanKy, type Ky } from "../ky";
 import { xuatToKhaiGtgt01 } from "../xuatToKhaiExcel";
+import { getXml } from "../api/gtgt01";
+import { luuVeMay } from "../../../lib/downloadFile";
 import { KHO_GIAY_TO_KHAI } from "../layout";
 import PhuLuc204Panel from "./PhuLuc204Panel";
 import { docSoTien, fmtSoTien } from "../../_shared/to_khai/soTien";
@@ -54,6 +56,7 @@ interface Props {
 export default function ToKhaiGtgt01Editor({ ky, ban, onDoiKy, dangTai, loi }: Props) {
   // Giá trị đang gõ, theo tên thẻ. Chỉ chứa ô người dùng vừa chạm — ô khác đọc thẳng từ `ban.ct`.
   const [nhap, setNhap] = useState<Record<string, string>>({});
+  const [dangTaiXml, setDangTaiXml] = useState(false);
   const tinh = useTinhToKhai();
   const luu = useLuuGhiDe();
   const doiTrangThai = useDoiTrangThai();
@@ -111,6 +114,29 @@ export default function ToKhaiGtgt01Editor({ ky, ban, onDoiKy, dangTai, loi }: P
     void xuatToKhaiGtgt01(ky, ban).catch((err) =>
       toast.error(getErrorMessage(err, "Không xuất được file Excel.")),
     );
+  };
+
+  /**
+   * Tải XML để nạp vào HTKK. File CHƯA có chữ ký số và CHƯA kèm phụ lục giảm thuế — nói rõ ngay
+   * lúc tải, đừng để kế toán nộp thiếu rồi mới biết.
+   */
+  const bamXuatXml = async () => {
+    if (!ban) return;
+    setDangTaiXml(true);
+    try {
+      const xml = await getXml(ky);
+      const ten = `ToKhai01GTGT_${nhanKy(ky).replace("/", "-")}.xml`;
+      luuVeMay(new Blob([xml], { type: "application/xml;charset=utf-8" }), ten);
+      toast.success(
+        ban.phuLuc
+          ? "Đã tải XML. Kỳ này có hàng giảm thuế — thêm phụ lục NQ 204/2025 trong HTKK trước khi nộp."
+          : "Đã tải XML. Nạp vào HTKK để ký số rồi nộp.",
+      );
+    } catch (err) {
+      toast.error(getErrorMessage(err, "Không tải được file XML."));
+    } finally {
+      setDangTaiXml(false);
+    }
   };
 
   const bamDoiTrangThai = () =>
@@ -269,6 +295,16 @@ export default function ToKhaiGtgt01Editor({ ky, ban, onDoiKy, dangTai, loi }: P
             sx={{ textTransform: "none" }}
           >
             Xuất Excel
+          </Button>
+          <Button
+            size="small"
+            variant="outlined"
+            startIcon={<FileDownloadRounded fontSize="small" />}
+            onClick={bamXuatXml}
+            disabled={!ban || dangTaiXml}
+            sx={{ textTransform: "none" }}
+          >
+            Xuất XML
           </Button>
         </Stack>
       </Stack>

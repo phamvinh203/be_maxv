@@ -1,5 +1,8 @@
 import type { FastifyReply, FastifyRequest } from "fastify";
-import { resolveTenantDb } from "../../../helpers/resolveTenantDb";
+import { resolveTenantDb, resolveTenantInfo } from "../../../helpers/resolveTenantDb";
+import { getTenantDb } from "../../../helpers/tenantClient";
+import { sysPrisma } from "../../../config/db.sys";
+import { dungXmlGtgt01, tenFileXml } from "../../../services/client/to_khai/xuatXmlGtgt01";
 import * as ToKhai from "../../../services/client/to_khai/toKhaiGtgt01.service";
 import { docKy, type KyInput } from "./docThamSo";
 
@@ -114,5 +117,48 @@ export async function danhSach(request: FastifyRequest, reply: FastifyReply) {
   } catch (err) {
     request.log.error(err);
     return traLoi(reply, err, "Không lấy được danh sách kỳ đã lập.");
+  }
+}
+
+/**
+ * GET /to-khai/gtgt01/:nam/:kyLoai/:kySo/xml — tải file XML để nạp vào HTKK rồi ký và nộp.
+ *
+ * Trả thẳng file chứ không bọc JSON: trình duyệt tải về luôn theo `Content-Disposition`.
+ *
+ * Thông tin người nộp thuế lấy từ `don_vi` bên DB điều phối (tenant DB không giữ tên/địa chỉ công
+ * ty). Cơ quan thuế và người ký để trống — phần mềm xuất SỐ, còn định danh nơi nộp và chữ ký thì
+ * kế toán điền trong HTKK.
+ */
+export async function xuatXml(request: FastifyRequest<{ Params: KyInput }>, reply: FastifyReply) {
+  const { dbName, maSoThue } = await resolveTenantInfo(request);
+  const db = getTenantDb(dbName);
+  try {
+    const ky = docKy(request.params);
+    const ban = await ToKhai.docBan(db, ky);
+    if (!ban) throw new ToKhai.ChuaCoBanError();
+
+    const donVi = await sysPrisma.donVi.findUnique({
+      where: { maSoThue },
+      select: { tenDonVi: true, diaChi: true, sdt: true },
+    });
+
+    const xml = dungXmlGtgt01({
+      ky,
+      ct: ban.ct,
+      nnt: {
+        mst: maSoThue,
+        tenNnt: donVi?.tenDonVi ?? "",
+        diaChi: donVi?.diaChi,
+        dienThoai: donVi?.sdt,
+      },
+    });
+
+    return reply
+      .header("Content-Type", "application/xml; charset=utf-8")
+      .header("Content-Disposition", `attachment; filename="${tenFileXml(ky, maSoThue)}"`)
+      .send(xml);
+  } catch (err) {
+    request.log.error(err);
+    return traLoi(reply, err, "Không xuất được file XML.");
   }
 }

@@ -1,4 +1,4 @@
-import { apiFetch } from "../../../lib/http";
+import { apiFetch, apiFetchText } from "../../../lib/http";
 import { kyToQuery, type Ky } from "../ky";
 
 /** Một ô kế toán sửa tay + lý do. */
@@ -120,6 +120,15 @@ export async function postDoiTrangThai(ky: Ky, chot: boolean): Promise<BanToKhai
 
 export async function getDanhSachKy(): Promise<DongKyDaLap[]> {
   return apiFetch<DongKyDaLap[]>("/to-khai/gtgt01/danh-sach");
+}
+
+/**
+ * Tải file XML tờ khai để nạp vào HTKK rồi ký và nộp.
+ *
+ * Trả VĂN BẢN THÔ chứ không JSON — thân phản hồi chính là nội dung file.
+ */
+export async function getXml(ky: Ky): Promise<string> {
+  return apiFetchText(`/to-khai/gtgt01/${duongDanKy(ky)}/xml`);
 }
 
 /** Kỳ hiện tại dạng query string — dùng khi cần điều hướng kèm kỳ. */

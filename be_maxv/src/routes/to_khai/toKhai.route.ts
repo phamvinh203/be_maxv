@@ -13,6 +13,7 @@ import {
   luuPhuLuc,
   moKhoa,
   tinh,
+  xuatXml,
 } from "../../controllers/client/to_khai/toKhaiGtgt01.controller";
 import { requireModule } from "../../services/shared/modules.service";
 
@@ -42,4 +43,5 @@ export default async function (fastify: FastifyInstance) {
   fastify.put("/gtgt01/:nam/:kyLoai/:kySo/phu-luc", { preHandler: guard, handler: luuPhuLuc });
   fastify.post("/gtgt01/:nam/:kyLoai/:kySo/chot", { preHandler: guard, handler: chot });
   fastify.post("/gtgt01/:nam/:kyLoai/:kySo/mo-khoa", { preHandler: guard, handler: moKhoa });
+  fastify.get("/gtgt01/:nam/:kyLoai/:kySo/xml", { preHandler: guard, handler: xuatXml });
 }
