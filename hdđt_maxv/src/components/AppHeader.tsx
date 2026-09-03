@@ -77,7 +77,7 @@ export default function AppHeader() {
             Hóa đơn điện tử
           </Button>
 
-          {/* { chỉ hiện khi admin đã bật module tờ khai cho tài khoản này. } */}
+          {/* Chỉ hiện khi admin đã bật module Tờ khai cho tài khoản này. */}
           {modules.tokhai && (
             <Button
               color="inherit"

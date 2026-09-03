@@ -11,7 +11,7 @@
  * Hàm THUẦN, không đụng DB — test ở `src/__tests__/phuLuc204.test.ts`.
  */
 
-import type { KetQuaBanRa, KetQuaMuaVao, NhomThueSuat } from "./gomHoaDonGtgt";
+import { TEN_HANG_TOI_DA, type KetQuaBanRa, type KetQuaMuaVao, type NhomThueSuat } from "./gomHoaDonGtgt";
 import { lamTronDong } from "./tienVnd";
 
 /** Nhãn nhóm được giảm thuế. Nghị quyết đổi mức thì sửa đúng hằng này. */
@@ -35,7 +35,7 @@ export interface PhuLuc204 {
   banRa: DongPhuLuc & {
     thueSuatQuyDinh: number;
     thueSuatSauGiam: number;
-    /** [08] = cắt phần lẻ của `giá trị × (thuế suất quy định − thuế suất sau giảm)`. */
+    /** [08] = làm tròn thường (nửa ra xa 0) của `giá trị × (thuế suất quy định − thuế suất sau giảm)`. */
     thueDuocGiam: number;
   };
   /** Mục III — [09] = [08] − [06]. Âm nghĩa là thuế đầu vào được khấu trừ lớn hơn phần giảm đầu ra. */
@@ -44,7 +44,6 @@ export interface PhuLuc204 {
   rong: boolean;
 }
 
-/** Gộp tên hàng thành một câu mô tả, cắt bằng "..." khi còn nữa (giống cách bản thật viết). */
 /**
  * Trần độ dài ô mô tả hàng hóa của phụ lục.
  *
@@ -55,8 +54,21 @@ export interface PhuLuc204 {
  */
 export const DAI_TOI_DA_MO_TA = 75;
 
+/** Đuôi báo "còn nữa". Tính vào trần nên cắt hai lần vẫn ra một kết quả. */
+const DUOI_CON_NUA = " ...";
+
+/** Số CODE POINT của đuôi — `.length` (UTF-16) đúng bằng số code point vì toàn ASCII. */
+const DUOI_CON_NUA_DAI = DUOI_CON_NUA.length;
+
 /**
- * Cắt mô tả về trần, thêm " ..." khi còn nữa.
+ * Cắt mô tả về trần, thêm " ..." khi còn nữa — kết quả LUÔN <= `DAI_TOI_DA_MO_TA` code point, kể
+ * cả phần đuôi.
+ *
+ * Đếm và cắt theo CODE POINT (`Array.from`), không theo UTF-16 code unit (`.length`/`.slice`):
+ * cắt bằng chỉ số UTF-16 có thể rơi đúng giữa một cặp surrogate (ký tự ngoài mặt phẳng cơ bản) và
+ * để lại một surrogate mồ côi — chuỗi không còn hợp lệ UTF-8 khi ghi ra XML. `normalize("NFC")`
+ * trước khi đếm để gộp dấu tổ hợp (chữ có dấu ở dạng NFD: chữ cái + dấu là hai code point riêng)
+ * về một code point, tránh cắt đứt ngay giữa chữ và dấu của nó.
  *
  * Ưu tiên cắt ở ranh giới TÊN (dấu ", " giữa các tên); tên đầu tiên mà đã quá dài thì cắt ở
  * khoảng trắng gần nhất để không đứt giữa từ. Không cắt ở dấu phẩy bất kỳ: chính tên hàng cũng
@@ -66,26 +78,28 @@ export const DAI_TOI_DA_MO_TA = 75;
  * Export để chỗ dựng XML gọi lại — bản phụ lục lưu trong DB từ trước có thể còn mô tả dài, mà file
  * nộp thuế thì không được dài.
  */
-/** Đuôi báo "còn nữa". Tính vào trần nên cắt hai lần vẫn ra một kết quả. */
-const DUOI_CON_NUA = " ...";
-
 export function catMoTa(mo: string): string {
-  if (mo.length <= DAI_TOI_DA_MO_TA) return mo;
+  const chuan = mo.normalize("NFC");
+  const kyTu = Array.from(chuan);
+  if (kyTu.length <= DAI_TOI_DA_MO_TA) return chuan;
   // Chuỗi ĐÃ cắt thì trả nguyên. Mô tả đi qua hai chỗ cắt (đọc bản cũ ở `docBan`, rồi dựng XML),
   // không chặn ở đây là lần sau xén tiếp và chồng thành "... ...".
-  if (mo.endsWith(DUOI_CON_NUA) && mo.length <= DAI_TOI_DA_MO_TA + DUOI_CON_NUA.length) return mo;
-  const cat = mo.slice(0, DAI_TOI_DA_MO_TA);
+  if (chuan.endsWith(DUOI_CON_NUA) && kyTu.length <= DAI_TOI_DA_MO_TA) return chuan;
+  // Chỗ dành cho NỘI DUNG khi phải thêm đuôi — tổng (nội dung + đuôi) mới là cái phải <= trần.
+  const gioiHanNoiDung = DAI_TOI_DA_MO_TA - DUOI_CON_NUA_DAI;
+  const cat = kyTu.slice(0, gioiHanNoiDung).join("");
   const ranhGioiTen = cat.lastIndexOf(", ");
   if (ranhGioiTen > 0) return `${cat.slice(0, ranhGioiTen)}${DUOI_CON_NUA}`;
   const khoangTrang = cat.lastIndexOf(" ");
   return `${khoangTrang > 0 ? cat.slice(0, khoangTrang) : cat}${DUOI_CON_NUA}`;
 }
 
+/** Gộp tên hàng thành một câu mô tả, cắt bằng "..." khi còn nữa (giống cách bản thật viết). */
 function moTaHang(tenHang: string[]): string {
   if (tenHang.length === 0) return "";
   const cau = tenHang.join(", ");
   if (cau.length > DAI_TOI_DA_MO_TA) return catMoTa(cau);
-  return tenHang.length >= 12 ? `${cau} ...` : cau;
+  return tenHang.length >= TEN_HANG_TOI_DA ? `${cau} ...` : cau;
 }
 
 /**
@@ -120,9 +134,10 @@ function gopMuaVao8(theoNhan: Record<string, NhomThueSuat>): {
  * Dựng phụ lục từ kết quả gộp của kỳ.
  *
  * Số thuế được giảm tính theo CÔNG THỨC của mẫu (giá trị × 2%), KHÔNG lấy hiệu của thuế thực tế:
- * mẫu in ghi rõ `(6)=(3)x[(4)-(5)]`, và cơ quan thuế đối chiếu đúng công thức đó. Số này còn đi
- * TIẾP vào [33] của tờ khai chính (`[33] = làm tròn([32] x 10%) - số này`), nên sai ở đây là sai
- * cả hai nơi.
+ * mẫu in ghi rõ `(6)=(3)x[(4)-(5)]`, và cơ quan thuế đối chiếu đúng công thức đó. [33] của tờ khai
+ * chính KHÔNG tính từ số này — nó lấy thẳng thuế thực cộng từng hóa đơn (`TongBanRa.ct33`, xem
+ * `gomHoaDonGtgt.ts`); số này chỉ được `soatToKhai` dùng để SOÁT [33] (`[33] ≈ [32] x 10% - số
+ * này`), nên sai ở đây là sai số phụ lục lẫn cảnh báo soát, không sai [33] trực tiếp.
  */
 export function dungPhuLuc204(banRa: KetQuaBanRa, muaVao: KetQuaMuaVao): PhuLuc204 {
   const nhomBan = banRa.theoNhan[NHAN_GIAM_THUE];

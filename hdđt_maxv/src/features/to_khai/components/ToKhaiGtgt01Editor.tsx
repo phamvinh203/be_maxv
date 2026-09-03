@@ -33,6 +33,7 @@ import { KHO_GIAY_TO_KHAI } from "../layout";
 import PhuLuc204Panel from "./PhuLuc204Panel";
 import { docSoTien, fmtSoTien } from "../../_shared/to_khai/soTien";
 import { getErrorMessage } from "../../../lib/errors";
+import { useActiveCompany } from "../../auth/useActiveCompanyMst";
 
 /**
  * Mẫu in 01/GTGT ở chế độ NHẬP ĐƯỢC — số tính từ bảng kê của kỳ, kế toán sửa tay được từng ô.
@@ -49,8 +50,12 @@ interface Props {
   /** Bấm "Đổi kỳ" — cha đưa người dùng về tab bảng kê, nơi có khối chọn kỳ đầy đủ. */
   onDoiKy: () => void;
   dangTai: boolean;
-  /** Câu lỗi khi kỳ chưa lập được (chưa kê khai, chưa có bản…). */
-  loi?: string | null;
+  /**
+   * Câu lỗi khi kỳ chưa lập được. `severity` do cha quyết theo mã lỗi BE trả (`"chua_co_ban"` =
+   * trạng thái bình thường -> "info"; lỗi thật (mất mạng, 500...) -> "error") — Editor không tự
+   * đoán bằng cách dò câu chữ.
+   */
+  loi?: { message: string; severity: "info" | "error" } | null;
 }
 
 export default function ToKhaiGtgt01Editor({ ky, ban, onDoiKy, dangTai, loi }: Props) {
@@ -136,12 +141,15 @@ export default function ToKhaiGtgt01Editor({ ky, ban, onDoiKy, dangTai, loi }: P
     luuVaTinhLai(() => toast.success("Đã lưu tờ khai."));
   };
 
+  const congTy = useActiveCompany();
+
   /** Xuất file cần `await` (dựng workbook) — bọc catch để lỗi ghi file không văng ra ngoài lặng lẽ. */
   const bamXuatExcel = () => {
     if (!ban) return;
-    void xuatToKhaiGtgt01(ky, ban).catch((err) =>
-      toast.error(getErrorMessage(err, "Không xuất được file Excel.")),
-    );
+    void xuatToKhaiGtgt01(ky, ban, {
+      mst: congTy?.maSoThue ?? "",
+      tenCongTy: congTy?.tenDonVi ?? "",
+    }).catch((err) => toast.error(getErrorMessage(err, "Không xuất được file Excel.")));
   };
 
   /** Tải XML để nạp vào HTKK. File đã có phụ lục giảm thuế nhưng CHƯA ký số — HTKK ký rồi nộp. */
@@ -325,7 +333,9 @@ export default function ToKhaiGtgt01Editor({ ky, ban, onDoiKy, dangTai, loi }: P
             variant="outlined"
             startIcon={<FileDownloadRounded fontSize="small" />}
             onClick={bamXuatExcel}
-            disabled={!ban}
+            // `dangChay`: đang có lượt lưu/tính bay tới server thì số trên `ban` (closure hiện tại)
+            // còn CŨ hơn cái người dùng vừa gõ — xuất ngay lúc này ra file mang số sai.
+            disabled={!ban || dangChay}
             sx={{ textTransform: "none" }}
           >
             Xuất Excel
@@ -335,7 +345,7 @@ export default function ToKhaiGtgt01Editor({ ky, ban, onDoiKy, dangTai, loi }: P
             variant="outlined"
             startIcon={<FileDownloadRounded fontSize="small" />}
             onClick={bamXuatXml}
-            disabled={!ban || dangTaiXml}
+            disabled={!ban || dangChay || dangTaiXml}
             sx={{ textTransform: "none" }}
           >
             Xuất XML
@@ -345,8 +355,8 @@ export default function ToKhaiGtgt01Editor({ ky, ban, onDoiKy, dangTai, loi }: P
 
       <Box sx={{ maxWidth: KHO_GIAY_TO_KHAI, mx: "auto" }}>
         {loi && !ban && (
-          <Alert severity="info" sx={{ mb: 2 }}>
-            {loi}
+          <Alert severity={loi.severity} sx={{ mb: 2 }}>
+            {loi.message}
           </Alert>
         )}
 

@@ -18,7 +18,7 @@ import InboxRounded from "@mui/icons-material/InboxRounded";
 import ChonKyPanel from "./ChonKyPanel";
 import ToKhaiGtgt01Editor from "./ToKhaiGtgt01Editor";
 import DanhSachKyDaLap from "./DanhSachKyDaLap";
-import { overviewColumnsToKhai } from "../templates";
+import { overviewToKhai } from "../templates/cotBangKe";
 import { useBangKeQuery } from "../api/toKhaiQueries";
 import { useBanToKhaiQuery } from "../api/gtgt01Queries";
 import { KHO_GIAY_TO_KHAI } from "../layout";
@@ -38,6 +38,8 @@ import InvoicePagination, { DEFAULT_ROWS_PER_PAGE } from "../../../components/In
 import { clampPage } from "../../../utils/pagination";
 import { columnDividerSx } from "../../../utils/tableStyles";
 import { getErrorMessage } from "../../../lib/errors";
+import { ApiError } from "../../../lib/http";
+import { useAuth } from "../../auth/useAuth";
 
 interface BangProps {
   ky: Ky;
@@ -60,7 +62,7 @@ function BangKeMotChieu({ ky, direction, active }: BangProps) {
   const [headerRowRef, headerRowHeight] = useElementHeight<HTMLTableRowElement>();
 
   const bangKe = useBangKeQuery(ky, direction, active);
-  const columns = useMemo(() => overviewColumnsToKhai(direction), [direction]);
+  const columns = useMemo(() => overviewToKhai(direction), [direction]);
 
   /**
    * Bản đồ ngược "hóa đơn này bị hóa đơn nào thay thế/điều chỉnh". BẮT BUỘC truyền vào
@@ -180,6 +182,7 @@ type TabToKhai = InvoiceDirection | "to-khai";
  */
 
 export default function ToKhaiInvoiceTabs() {
+  const { currentCompanyId } = useAuth();
   const [searchParams, setSearchParams] = useSearchParams();
   // `useMemo` vì `kyTuQuery` sinh object mới mỗi render, mà `ky` nằm trong deps của hai memo
   // dựng dòng và cột tổng — thiếu nó là dựng lại cả bảng (cả panel đang ẩn) mỗi lần re-render.
@@ -216,13 +219,30 @@ export default function ToKhaiInvoiceTabs() {
       {laToKhai && (
         <>
           <ToKhaiGtgt01Editor
+            // Đổi kỳ hoặc đổi công ty đang chọn phải UNMOUNT editor cũ — không thì `nhap` (ô đang
+            // gõ dở, state cục bộ trong Editor) giữ nguyên số của kỳ/công ty trước, đè lên bản mới
+            // vừa tải về màn hình. `switchCompany` (AuthContext) không tự remount route nào.
+            key={`${currentCompanyId ?? "chua-chon"}-${nhanKy(ky)}`}
             ky={ky}
             ban={banToKhai.data ?? null}
             dangTai={banToKhai.isFetching}
-            // Kỳ chưa lập trả 404 — đó là trạng thái bình thường, hiện câu chỉ đường chứ không báo lỗi đỏ.
+            // Kỳ chưa lập trả 404 kèm code "chua_co_ban" — đó là trạng thái BÌNH THƯỜNG, hiện câu
+            // chỉ đường (severity="info"). Lỗi khác (mất mạng, 500...) phải đỏ, không lẫn vào ca
+            // trên — nhầm thì người dùng bấm "Lập tờ khai" tưởng kỳ chưa lập trong khi thực ra là
+            // request thất bại.
             loi={
               banToKhai.isError
-                ? getErrorMessage(banToKhai.error, "Kỳ này chưa có bản tờ khai nào.")
+                ? {
+                    message: getErrorMessage(
+                      banToKhai.error,
+                      "Kỳ này chưa có bản tờ khai nào.",
+                    ),
+                    severity:
+                      banToKhai.error instanceof ApiError &&
+                      banToKhai.error.code === "chua_co_ban"
+                        ? "info"
+                        : "error",
+                  }
                 : null
             }
             onDoiKy={() => setTab("purchase")}

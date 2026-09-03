@@ -55,11 +55,11 @@ export function OKeKhai({ row }: { row: ToKhaiRow }) {
 export function OChiTieuTangGiam({ row }: { row: ToKhaiRow }) {
   const { luu, dangLuu } = useLuuQuyetDinh(row);
   return (
-    <Select
+    <Select<ChiTieuTangGiam>
       variant="standard"
       value={row.chiTieuTangGiam}
       disabled={dangLuu}
-      onChange={(e) => luu({ chiTieuTangGiam: e.target.value as ChiTieuTangGiam })}
+      onChange={(e) => luu({ chiTieuTangGiam: e.target.value })}
       sx={SX_O}
     >
       {CHI_TIEU_OPTIONS.map((o) => (

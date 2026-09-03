@@ -22,11 +22,17 @@
  * Cả hai trượt thì giữ kỳ theo ngày lập và nói ra bằng cảnh báo, KHÔNG đoán bừa.
  */
 
-/** Trạng thái hóa đơn thay thế (2) và điều chỉnh (3) — hai loại trỏ về một hóa đơn gốc. */
-const TTHAI_CO_GOC = new Set(["2", "3"]);
+/**
+ * Trạng thái hóa đơn thay thế (2) và điều chỉnh (3) — hai loại trỏ về một hóa đơn gốc.
+ *
+ * Nguồn DUY NHẤT của luật này: `keKhaiKy.service.ts` dựng mệnh đề SQL `tthai = ANY($n)` từ chính
+ * mảng này thay vì viết tay `IN ('2', '3')` — thêm/bớt trạng thái chỉ sửa một chỗ.
+ */
+export const TTHAI_CO_GOC = ["2", "3"] as const;
+const TTHAI_CO_GOC_SET = new Set<string>(TTHAI_CO_GOC);
 
 export function coHoaDonGoc(tthai: string | null | undefined): boolean {
-  return TTHAI_CO_GOC.has(String(tthai ?? "").trim());
+  return TTHAI_CO_GOC_SET.has(String(tthai ?? "").trim());
 }
 
 /**

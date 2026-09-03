@@ -15,10 +15,11 @@ import {
 } from "./templates";
 import type { ExcelCellStyle } from "./templates/types";
 import type { DetailRow, DisplayRow, InvoiceDirection } from "./types";
+// `HEADER_FILL`/`HEADER_HEIGHT`/`CELL_BORDER` sống ở `./xlsxStyle` (dùng chung cho mọi module xuất
+// Excel); re-export ở đây để chỗ gọi cũ khỏi phải đổi đường import.
+import { CELL_BORDER, HEADER_FILL, HEADER_HEIGHT } from "./xlsxStyle";
 
-// Trang trí sheet — không gắn với cột nào nên thuộc về file này, không thuộc template cột.
-export const HEADER_FILL = "FFDDE6F2"; // xanh nhạt
-export const HEADER_HEIGHT = 40; // đủ cho tiêu đề dài xuống dòng ở các cột hẹp
+export { CELL_BORDER, HEADER_FILL, HEADER_HEIGHT };
 /** Chiều cao các hàng KHÔNG có `wrapText` (hàng tổng) — hàng dữ liệu để Excel tự co, xem bên dưới. */
 const ROW_HEIGHT = 20;
 
@@ -35,13 +36,6 @@ const ROW_HEIGHT = 20;
  */
 const DATA_ALIGNMENT = { vertical: "top", wrapText: true } as const;
 
-/** Viền mảnh 4 cạnh — dùng cho ô tiêu đề và mọi ô dữ liệu. */
-export const CELL_BORDER = {
-  top: { style: "thin" },
-  left: { style: "thin" },
-  bottom: { style: "thin" },
-  right: { style: "thin" },
-} as const;
 /** numFmt "ô chữ" của Excel — áp cho cột có cờ `excelText` (ngày dd/MM/yyyy, mã số). */
 const TEXT_FMT = "@";
 

@@ -3,6 +3,9 @@ import type { DisplayRow } from "../hddt/types";
 
 export type KyLoai = "thang" | "quy";
 
+/** Giá trị cột "Chỉ tiêu tăng giảm" — rỗng = kế toán chưa chọn. */
+export type ChiTieuTangGiam = "" | "tang" | "giam";
+
 export interface Ky {
   nam: number;
   kyLoai: KyLoai;
@@ -16,7 +19,7 @@ export interface ToKhaiRow extends DisplayRow {
   /** Cột "Kê khai/không kê khai" — quyết định của kế toán, lưu ở `tokhai_ky_hoa_don`. */
   keKhai: boolean;
   /** Cột "Chỉ tiêu tăng giảm" — rỗng cho tới khi kế toán chọn. */
-  chiTieuTangGiam: string;
+  chiTieuTangGiam: ChiTieuTangGiam;
   /** Cột "Năm" và "Kỳ kê khai" — lấy từ KỲ ĐANG XEM, không suy từ ngày lập hóa đơn nữa. */
   nam: string;
   kyKeKhai: string;

@@ -303,6 +303,11 @@ export async function tinhVaLuu(db: PrismaClient, ky: Ky): Promise<BanToKhai> {
     so_hd_khong_ke_khai: soHdKhongKeKhai,
     hd_thieu_detail: ban.soThieuDetail,
     phu_luc: (phuLuc ?? null) as unknown as Prisma.InputJsonValue,
+    // Lưu lại để mở lại bản cũ vẫn thấy đủ — trước đây hai cột này KHÔNG lưu, đọc lại bản đã lưu
+    // ra rỗng, mất luôn cảnh báo thật (vd "N hóa đơn thay thế hụt tiền") cho tới lượt "Tính lại"
+    // kế tiếp. Xem `docBan`.
+    canh_bao: canhBao as unknown as Prisma.InputJsonValue,
+    dieu_chinh: banRa.dieuChinh as unknown as Prisma.InputJsonValue,
     tinh_luc: new Date(),
   };
 
@@ -359,6 +364,21 @@ function catMoTaPhuLuc(pl: PhuLuc204 | null): PhuLuc204 | null {
   };
 }
 
+/** Đọc `canh_bao` từ DB — `null` (bản tạo trước khi có cột này) hoặc dạng lạ -> rỗng, không throw. */
+function docCanhBao(v: unknown): string[] {
+  return Array.isArray(v) ? v.filter((x): x is string => typeof x === "string") : [];
+}
+
+/** Đọc `dieu_chinh` từ DB — `null` (bản tạo trước khi có cột này) hoặc thiếu field -> 0, không throw. */
+function docDieuChinh(v: unknown): { soHd: number; giaTri: number; thue: number } {
+  const o = (v ?? {}) as Record<string, unknown>;
+  return {
+    soHd: typeof o.soHd === "number" ? o.soHd : 0,
+    giaTri: typeof o.giaTri === "number" ? o.giaTri : 0,
+    thue: typeof o.thue === "number" ? o.thue : 0,
+  };
+}
+
 export async function docBan(db: PrismaClient, ky: Ky): Promise<BanToKhai | null> {
   const row = await db.tokhai_gtgt01.findUnique({
     where: { nam_ky_loai_ky_so: { nam: ky.nam, ky_loai: ky.kyLoai, ky_so: ky.kySo } },
@@ -380,12 +400,14 @@ export async function docBan(db: PrismaClient, ky: Ky): Promise<BanToKhai | null
     soHdMua: row.so_hd_mua,
     soHdKhongKeKhai: row.so_hd_khong_ke_khai,
     hdThieuDetail: row.hd_thieu_detail,
-    // `treo`/`dieuChinh` là kết quả của lượt TÍNH, không lưu DB — đọc lại bản cũ thì để rỗng,
-    // bấm "Tính lại" sẽ có ngay.
+    // `treo` là kết quả của lượt TÍNH, KHÔNG lưu DB — đọc lại bản cũ thì để rỗng, bấm "Tính lại"
+    // sẽ có ngay (chưa có UI hiển thị nên chưa cần lưu). `canhBao`/`dieuChinh` NGƯỢC LẠI — đây là
+    // số liệu người dùng cần thấy thật, không phải hiệu ứng phụ của một lượt tính, nên LƯU LẠI
+    // (xem `tinhVaLuu`); đọc từ cột, không còn đoán bừa mỗi lần mở lại bản cũ.
     treo: [],
-    dieuChinh: { soHd: 0, giaTri: 0, thue: 0 },
+    dieuChinh: docDieuChinh(row.dieu_chinh),
     phuLuc: catMoTaPhuLuc((row.phu_luc ?? null) as PhuLuc204 | null),
-    canhBao: [],
+    canhBao: docCanhBao(row.canh_bao),
     oSuaDuoc: CT_NHAP_TAY,
     tinhLuc: row.tinh_luc?.toISOString() ?? null,
   };

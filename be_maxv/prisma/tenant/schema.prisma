@@ -847,6 +847,17 @@ model tokhai_gtgt01 {
   /// Hóa đơn BÁN RA thiếu `detail` nên chưa tách được thuế suất; bản đáng tin phải là 0.
   hd_thieu_detail Int @default(0)
 
+  /// Câu cảnh báo của lượt "Tính lại" GẦN NHẤT (`soatToKhai.ts`), vd "N hóa đơn thay thế có tổng
+  /// NHỎ HƠN hóa đơn gốc". LƯU LẠI để mở lại bản cũ vẫn thấy đủ — không phải bấm "Tính lại" mới
+  /// hiện, vì đây là số liệu cần người xem lại thật, không phải hiệu ứng phụ của một lượt tính.
+  /// `string[]`. `null` = bản tạo trước khi có cột này, đọc lại coi như rỗng.
+  canh_bao Json?
+
+  /// Hóa đơn điều chỉnh (tthai=3, ĐÃ cộng vào `ct`) của lượt tính GẦN NHẤT, gộp cả hai chiều — chỉ
+  /// để hiển thị "kiểm tra dấu trước khi chốt". Cùng lý do LƯU LẠI như `canh_bao`.
+  /// `{soHd, giaTri, thue}`. `null` = bản tạo trước khi có cột này, đọc lại coi như rỗng.
+  dieu_chinh Json?
+
   tinh_luc DateTime?
 
   datetime0 DateTime @default(now())

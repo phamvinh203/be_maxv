@@ -11,6 +11,7 @@
 
 import type { PrismaClient } from "../../../generated/tenant";
 import { khoangCuaKy, type Ky } from "./kySoThue";
+import { ngayVn } from "../../../utils/ngayVn";
 
 /** Dòng `sync_log` rút gọn — chỉ phần cần để xét độ phủ. */
 export interface DongBoRef {
@@ -73,12 +74,6 @@ export function phuChieuTuLog(
     tuNgayDaCo: giao.map((l) => ngay(l.tu_ngay)).sort()[0],
     denNgayDaCo: giao.map((l) => ngay(l.den_ngay)).sort().reverse()[0],
   };
-}
-
-/** `2026-04-01` -> `01/04/2026` — câu cảnh báo đọc bằng mắt người Việt. */
-function ngayVn(iso: string): string {
-  const [y, m, d] = iso.split("-");
-  return `${d}/${m}/${y}`;
 }
 
 /** Câu mô tả phần thiếu của một chiều; null khi chiều đó đã phủ trọn. */

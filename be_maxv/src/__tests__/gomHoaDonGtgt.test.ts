@@ -109,6 +109,15 @@ test("nhãn thuế suất lạ không cộng vào đâu, xếp vào nhóm treo",
   assert.equal(kq.treo[0].id, "la");
 });
 
+test('nhãn rác chỉ có dấu "%" xếp vào treo, KHÔNG lặng lẽ thành "0%" vào [29]', () => {
+  // `Number("")` của JS là `0`, không phải `NaN` — nhãn "%" bóc dấu % ra chuỗi rỗng, thiếu chặn là
+  // `Number("") = 0` khớp luôn ô 0%, tiền chảy vào [29] mà không một dấu hiệu nào.
+  const kq = gomBanRa([hd("rac", "1", [{ tsuat: "%", thtien: 500_000, tthue: 0 }])]);
+  assert.equal(kq.tong.ct29, 0);
+  assert.equal(kq.treo.length, 1);
+  assert.equal(kq.treo[0].id, "rac");
+});
+
 test("hóa đơn chưa tải chi tiết xếp vào nhóm treo", () => {
   const kq = gomBanRa([{ ...hd("x", "1", []), detail: null }]);
   assert.equal(kq.treo.length, 1);

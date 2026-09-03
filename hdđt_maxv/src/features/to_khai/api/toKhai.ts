@@ -1,6 +1,8 @@
 import { apiFetch } from "../../../lib/http";
 import type { InvoiceDirection, InvoiceRaw, ReplacementRow } from "../../hddt/types";
-import { kyToQuery, type Ky } from "../ky";
+import { kyToQuery, type ChiTieuTangGiam, type Ky } from "../ky";
+
+export type { ChiTieuTangGiam };
 
 /** Kết quả lượt "Kê khai" — số hóa đơn đã gán vào kỳ, tách theo chiều. */
 export interface KetQuaKeKhai {
@@ -29,7 +31,7 @@ export interface KetQuaKeKhai {
  */
 export interface BangKeResult {
   total: number;
-  datas: (InvoiceRaw & { keKhai: boolean; chiTieuTangGiam: string })[];
+  datas: (InvoiceRaw & { keKhai: boolean; chiTieuTangGiam: ChiTieuTangGiam })[];
   thayThe: ReplacementRow[];
 }
 
@@ -64,9 +66,6 @@ export interface KetQuaPhuKy {
 export async function getPhuSongKy(ky: Ky): Promise<KetQuaPhuKy> {
   return apiFetch<KetQuaPhuKy>(`/to-khai/ky/phu-song?${kyToQuery(ky)}`);
 }
-
-/** Giá trị cột "Chỉ tiêu tăng giảm"; rỗng = chưa chọn. */
-export type ChiTieuTangGiam = "" | "tang" | "giam";
 
 /** Phần quyết định của kế toán cho một hóa đơn — field vắng mặt nghĩa là KHÔNG đổi. */
 export interface QuyetDinhKeKhai {

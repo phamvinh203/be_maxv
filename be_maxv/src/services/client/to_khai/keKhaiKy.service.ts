@@ -15,6 +15,7 @@ import { khoangCuaKy, type Ky } from "./kySoThue";
 import {
   chonTheoKyGoc,
   ngayGocTuGhiChu,
+  TTHAI_CO_GOC,
   type KetQuaChon,
   type ToCoGoc,
 } from "./kyThayThe";
@@ -91,7 +92,8 @@ async function layHoaDonCoGoc(db: PrismaClient, chieu: Chieu): Promise<HoaDonCoG
             detail->>'shdgoc'  AS shdgoc,
             detail->>'gchdgoc' AS gchdgoc
        FROM "${tenView(chieu)}"
-      WHERE tthai IN ('2', '3')`,
+      WHERE tthai = ANY($1::varchar[])`,
+    [...TTHAI_CO_GOC],
   );
 }
 

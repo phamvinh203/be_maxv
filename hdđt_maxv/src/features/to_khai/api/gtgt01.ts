@@ -1,5 +1,5 @@
 import { apiFetch, apiFetchText } from "../../../lib/http";
-import { kyToQuery, type Ky } from "../ky";
+import type { Ky } from "../ky";
 
 /** Một ô kế toán sửa tay + lý do. */
 export interface GhiDeItem {
@@ -130,6 +130,3 @@ export async function getDanhSachKy(): Promise<DongKyDaLap[]> {
 export async function getXml(ky: Ky): Promise<string> {
   return apiFetchText(`/to-khai/gtgt01/${duongDanKy(ky)}/xml`);
 }
-
-/** Kỳ hiện tại dạng query string — dùng khi cần điều hướng kèm kỳ. */
-export { kyToQuery };

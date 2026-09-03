@@ -54,7 +54,7 @@ export function nhanKy(ky: Ky): string {
 
 /**
  * Kỳ liền trước, cùng loại kỳ. Dùng để nối chỉ tiêu [22] "thuế còn được khấu trừ kỳ trước chuyển
- * sang" = [43] của bản đã chốt kỳ này.
+ * sang" = [43] của kỳ liền trước (chốt hay nháp đều lấy — xem `layCt22KyTruoc`).
  *
  * Kỳ đầu năm lùi về kỳ CUỐI của năm trước (T1 -> T12 năm trước, Q1 -> Q4 năm trước) — quên nhánh
  * này thì số khấu trừ chuyển kỳ đứt đoạn đúng chỗ giao năm.
@@ -72,7 +72,7 @@ export function kyLienTruoc(ky: Ky): Ky {
  *
  * `thangKetThuc(Q4/2025) === thangKetThuc(T12/2025)`: đúng, cả hai cùng kết thúc 31/12/2025.
  */
-export function thangBatDau(ky: Ky): number {
+function thangBatDau(ky: Ky): number {
   return ky.nam * 12 + (ky.kyLoai === "thang" ? ky.kySo : (ky.kySo - 1) * 3 + 1);
 }
 

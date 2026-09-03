@@ -131,7 +131,12 @@ function chuanHoaNhan(raw: unknown): string {
     // `KHAC` không kèm mức đọc được thì giữ nguyên chuỗi — thà treo hóa đơn còn hơn đoán một mức.
     if (Number.isFinite(mucKhac)) return `${mucKhac}%`;
   }
-  const phanTram = Number(s.replace("%", ""));
+  const chuoiSo = s.replace("%", "").trim();
+  // Rỗng sau khi bỏ "%" (nhãn rác kiểu chỉ có dấu "%") -> `Number("")` là `0`, KHÔNG phải `NaN`
+  // (quái tính của JS) — không chặn ở đây thì nhãn rác lặng lẽ thành "0%" và tiền chảy vào [29]
+  // thay vì treo để người xem lại.
+  if (!chuoiSo) return s;
+  const phanTram = Number(chuoiSo);
   return Number.isFinite(phanTram) ? `${phanTram}%` : s;
 }
 
@@ -150,7 +155,12 @@ const O_THEO_NHAN: Record<string, { giaTri: keyof TongBanRa; thue?: keyof TongBa
 };
 
 /** Số tên hàng giữ lại mỗi nhãn — phụ lục chỉ cần một câu mô tả, giữ hết là ô dài vô tận. */
-const TEN_HANG_TOI_DA = 12;
+export const TEN_HANG_TOI_DA = 12;
+
+/** Nhãn thuế suất của một dòng — cổng thuế dùng lẫn lộn 3 tên trường tùy loại hóa đơn. */
+function nhanCuaDong(o: Record<string, unknown>): string {
+  return chuanHoaNhan(o.ltsuat ?? o.tsuat ?? o.thuesuat);
+}
 
 /**
  * Tên hàng của các dòng thuộc một nhãn thuế suất, đọc từ `detail.hdhhdvu`.
@@ -158,14 +168,14 @@ const TEN_HANG_TOI_DA = 12;
  * Mảng `thttltsuat` chỉ có tiền theo mức thuế, không có tên hàng — tên nằm ở mảng dòng hàng, mỗi
  * dòng mang nhãn thuế suất riêng. Hóa đơn không có mảng dòng hàng (chỉ có tổng) -> không tên nào.
  */
-function tenHangTheoNhan(detail: unknown, chuanHoa: (v: unknown) => string): Map<string, string[]> {
+function tenHangTheoNhan(detail: unknown): Map<string, string[]> {
   const ra = new Map<string, string[]>();
   if (!detail || typeof detail !== "object") return ra;
   const ds = (detail as Record<string, unknown>).hdhhdvu;
   if (!Array.isArray(ds)) return ra;
   for (const it of ds) {
     const o = (it ?? {}) as Record<string, unknown>;
-    const nhan = chuanHoa(o.ltsuat ?? o.tsuat ?? o.thuesuat);
+    const nhan = nhanCuaDong(o);
     const ten = String(o.ten ?? o.tenhang ?? "").trim();
     if (!nhan || !ten) continue;
     const cu = ra.get(nhan) ?? [];
@@ -230,7 +240,7 @@ function suyMucThueSuat(nhom: NhomTien[], tgtcthue: number): { suat: number; tie
   let soLoiGiai = 0;
   const dang: { suat: number; tien: number }[] = [];
 
-  const do_ = (i: number, conLai: number): void => {
+  const duyet = (i: number, conLai: number): void => {
     // Thấy lời giải thứ hai là dừng: đằng nào cũng trả `null`, dò tiếp chỉ tốn công.
     if (soLoiGiai > 1) return;
     if (i === nhom.length) {
@@ -242,11 +252,11 @@ function suyMucThueSuat(nhom: NhomTien[], tgtcthue: number): { suat: number; tie
     for (const suat of SUAT_CO_THUE) {
       const tien = nhom[i].tthue / (suat / 100);
       dang.push({ suat, tien });
-      do_(i + 1, conLai - tien);
+      duyet(i + 1, conLai - tien);
       dang.pop();
     }
   };
-  do_(0, tgtcthue);
+  duyet(0, tgtcthue);
 
   return soLoiGiai === 1 ? loiGiai : null;
 }
@@ -321,8 +331,8 @@ export function vaNhomNhanBan(nhom: NhomTien[], tgtcthue: number): NhomTien[] {
   if (nhom.some((n) => n.tthue === 0 || suatTuNhan(n.nhan) === null)) return nhom;
 
   const suy = suyMucThueSuat(nhom, tgtcthue);
-  const trongSo = nhom.map((n, i) => suy?.[i].tien ?? n.tthue / (suatTuNhan(n.nhan)! / 100));
-  const tong = trongSo.reduce((a, b) => a + b, 0);
+  const tienNhom = nhom.map((n, i) => suy?.[i].tien ?? n.tthue / (suatTuNhan(n.nhan)! / 100));
+  const tong = tienNhom.reduce((a, b) => a + b, 0);
   if (tong === 0) return nhom;
 
   // Nhóm cuối nhận phần CÒN LẠI: tổng phân bổ phải khớp `tgtcthue` từng đồng, lệch một đồng ở đây
@@ -330,10 +340,9 @@ export function vaNhomNhanBan(nhom: NhomTien[], tgtcthue: number): NhomTien[] {
   // Nhóm nhận phần lẻ: nhóm cuối cùng có base KHÔNG nguyên đồng; mọi nhóm đều nguyên thì nhóm cuối.
   const leDong = (x: number) => Math.abs(x - Math.round(x)) > 1e-6;
   let oNhanDu = nhom.length - 1;
-  for (let i = 0; i < trongSo.length; i += 1) if (leDong(trongSo[i])) oNhanDu = i;
+  for (let i = 0; i < tienNhom.length; i += 1) if (leDong(tienNhom[i])) oNhanDu = i;
 
-  // Tổng phân bổ phải khớp `tgtcthue` từng đồng — lệch một đồng ở đây là lệch thẳng vào [32].
-  const tien = trongSo.map((t) => lamTronDong(t));
+  const tien = tienNhom.map((t) => lamTronDong(t));
   tien[oNhanDu] = tgtcthue - tien.reduce((s, x, i) => (i === oNhanDu ? s : s + x), 0);
 
   // Nhãn đi theo mức vừa suy ra — nó quyết định hóa đơn vào nhóm 8% của phụ lục hay không.
@@ -382,7 +391,7 @@ function nhomTuDongHang(detail: unknown, tgtcthue: number): NhomTien[] | null {
   const theoNhan = new Map<string, NhomTien>();
   for (const it of ds) {
     const o = (it ?? {}) as Record<string, unknown>;
-    const nhan = chuanHoaNhan(o.ltsuat ?? o.tsuat ?? o.thuesuat);
+    const nhan = nhanCuaDong(o);
     if (!nhan) return null;
     const cu = theoNhan.get(nhan) ?? { nhan, thtien: 0, tthue: 0 };
     cu.thtien += so(o.thtien);
@@ -409,7 +418,7 @@ function nhomThueSuat(hd: HoaDonGom): NhomTien[] | null {
   const nhom = ds.map((g) => {
     const o = (g ?? {}) as Record<string, unknown>;
     return {
-      nhan: chuanHoaNhan(o.ltsuat ?? o.tsuat ?? o.thuesuat),
+      nhan: nhanCuaDong(o),
       thtien: so(o.thtien),
       tthue: so(o.tthue),
     };
@@ -437,6 +446,26 @@ function heSoQuyDoi(hd: HoaDonGom): number | null {
   return tg > 0 ? tg : null;
 }
 
+/**
+ * Bước lọc CHUNG cho `gomBanRa`/`gomMuaVao`: loại hóa đơn bị luật cấm kê (`biLoai`), rồi quy đổi
+ * ngoại tệ — thiếu tỷ giá thì treo thay vì đoán hệ số.
+ */
+type KetQuaChuanBi =
+  | { loai: "bi_loai"; giaTri: number }
+  | { loai: "treo"; lyDo: string }
+  | { loai: "ok"; heSo: number };
+
+function chuanBiHoaDon(hd: HoaDonGom): KetQuaChuanBi {
+  if (!duocTinh(hd.tthai)) {
+    return { loai: "bi_loai", giaTri: veDong(so(hd.tgtcthue), heSoQuyDoi(hd) ?? 1) };
+  }
+  const heSo = heSoQuyDoi(hd);
+  if (heSo === null) {
+    return { loai: "treo", lyDo: `Hóa đơn ngoại tệ ${hd.dvtte} nhưng thiếu tỷ giá` };
+  }
+  return { loai: "ok", heSo };
+}
+
 export function gomBanRa(rows: HoaDonGom[]): KetQuaBanRa {
   const tong: TongBanRa = { ct26: 0, ct29: 0, ct30: 0, ct31: 0, ct32: 0, ct32a: 0, ct33: 0 };
   const treo: HoaDonTreo[] = [];
@@ -446,17 +475,17 @@ export function gomBanRa(rows: HoaDonGom[]): KetQuaBanRa {
   let soHd = 0;
 
   for (const hd of rows) {
-    if (!duocTinh(hd.tthai)) {
+    const cb = chuanBiHoaDon(hd);
+    if (cb.loai === "bi_loai") {
       biLoai.soHd += 1;
-      biLoai.giaTri += veDong(so(hd.tgtcthue), heSoQuyDoi(hd) ?? 1);
+      biLoai.giaTri += cb.giaTri;
       continue;
     }
-
-    const heSo = heSoQuyDoi(hd);
-    if (heSo === null) {
-      treo.push({ id: hd.id, lyDo: `Hóa đơn ngoại tệ ${hd.dvtte} nhưng thiếu tỷ giá` });
+    if (cb.loai === "treo") {
+      treo.push({ id: hd.id, lyDo: cb.lyDo });
       continue;
     }
+    const heSo = cb.heSo;
 
     const nhom = nhomThueSuat(hd);
     if (nhom === null || nhom.length === 0) {
@@ -464,7 +493,7 @@ export function gomBanRa(rows: HoaDonGom[]): KetQuaBanRa {
       continue;
     }
 
-    const tenTheoNhan = tenHangTheoNhan(hd.detail, chuanHoaNhan);
+    const tenTheoNhan = tenHangTheoNhan(hd.detail);
     let coNhanLa = false;
     let giaTriHd = 0;
     let thueHd = 0;
@@ -512,16 +541,17 @@ export function gomMuaVao(rows: HoaDonGom[]): KetQuaMuaVao {
   let soHd = 0;
 
   for (const hd of rows) {
-    if (!duocTinh(hd.tthai)) {
+    const cb = chuanBiHoaDon(hd);
+    if (cb.loai === "bi_loai") {
       biLoai.soHd += 1;
-      biLoai.giaTri += veDong(so(hd.tgtcthue), heSoQuyDoi(hd) ?? 1);
+      biLoai.giaTri += cb.giaTri;
       continue;
     }
-    const heSo = heSoQuyDoi(hd);
-    if (heSo === null) {
-      treo.push({ id: hd.id, lyDo: `Hóa đơn ngoại tệ ${hd.dvtte} nhưng thiếu tỷ giá` });
+    if (cb.loai === "treo") {
+      treo.push({ id: hd.id, lyDo: cb.lyDo });
       continue;
     }
+    const heSo = cb.heSo;
     ct23 += veDong(so(hd.tgtcthue), heSo);
     ct24 += veDong(so(hd.tgtthue), heSo);
     soHd += 1;
@@ -530,7 +560,7 @@ export function gomMuaVao(rows: HoaDonGom[]): KetQuaMuaVao {
     // ct23/ct24 ở trên, chỉ không góp mặt ở đây.
     const nhom = nhomThueSuat(hd);
     if (nhom === null) continue;
-    const tenTheoNhan = tenHangTheoNhan(hd.detail, chuanHoaNhan);
+    const tenTheoNhan = tenHangTheoNhan(hd.detail);
     for (const g of nhom) {
       congVaoNhan(
         theoNhan,

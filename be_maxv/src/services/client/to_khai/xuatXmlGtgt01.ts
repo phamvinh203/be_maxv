@@ -26,6 +26,7 @@
  */
 import { khoangCuaKy, type Ky } from "./kySoThue";
 import { catMoTa, type PhuLuc204 } from "./phuLuc204";
+import { ngayVn, vnDayString } from "../../../utils/ngayVn";
 
 /** Mã và tên mẫu — theo file thật đã nộp. */
 export const MA_TKHAI_GTGT01 = "842";
@@ -66,9 +67,19 @@ export interface DauVaoXmlGtgt01 {
   ngayLap?: Date;
 }
 
+/**
+ * Ký tự C0 (trừ tab/LF/CR) và DEL — XML 1.0 KHÔNG cho phép những ký tự này ở bất kỳ mức escape
+ * nào (không phải cứ `&`-escape là hợp lệ). Dữ liệu dán từ Word/Excel vào tên công ty/địa chỉ đôi
+ * khi mang theo — không lọc thì file XML không well-formed, cổng/HTKK từ chối nạp mà báo lỗi không
+ * trỏ đúng chỗ.
+ */
+// eslint-disable-next-line no-control-regex -- CỐ Ý khớp ký tự điều khiển để lọc chúng khỏi XML.
+const KY_TU_KHONG_HOP_LE_XML = /[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/g;
+
 /** Thoát ký tự đặc biệt của XML. Tên công ty có thể mang `&`, `<`, dấu nháy. */
 function thoat(s: string): string {
   return s
+    .replace(KY_TU_KHONG_HOP_LE_XML, "")
     .replace(/&/g, "&amp;")
     .replace(/</g, "&lt;")
     .replace(/>/g, "&gt;")
@@ -76,17 +87,6 @@ function thoat(s: string): string {
     .replace(/'/g, "&apos;");
 }
 
-/** `2026-09-02` — định dạng ngày của các thẻ `ngayLapTKhai`/`ngayKy`. */
-function isoNgay(d: Date): string {
-  const p = (n: number) => String(n).padStart(2, "0");
-  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
-}
-
-/** `01/07/2026` — định dạng ngày của `kyKKhaiTuNgay`/`kyKKhaiDenNgay` (khác kiểu trên). */
-function ngayVn(iso: string): string {
-  const [y, m, d] = iso.split("-");
-  return `${d}/${m}/${y}`;
-}
 
 /**
  * Số tiền trên tờ khai là số NGUYÊN, không dấu phân cách, không phần thập phân.
@@ -151,7 +151,10 @@ function khoiPhuLuc(pl: PhuLuc204 | null | undefined): string {
 export function dungXmlGtgt01(dv: DauVaoXmlGtgt01): string {
   const { ky, ct, nnt } = dv;
   const ngay = dv.ngayLap ?? new Date();
-  const ngayIso = isoNgay(ngay);
+  // Ngày GIỜ VN, không phải giờ máy chủ: `new Date().getFullYear()/getMonth()/getDate()` đọc theo
+  // TZ tiến trình đang chạy — máy chủ đặt UTC thì 00:xx giờ VN bị lùi về NGÀY HÔM TRƯỚC. `ngay`
+  // luôn là instant hợp lệ (tham số hoặc `new Date()`) nên `vnDayString` không bao giờ `undefined`.
+  const ngayIso = vnDayString(ngay)!;
   const { tuNgay, denNgay } = khoangCuaKy(ky);
   const nhanKyXml = `${ky.kySo}/${ky.nam}`;
   // `kyKKhaiTuThang`/`kyKKhaiDenThang` CHỈ điền cho kỳ THÁNG. Ba file mẫu do phần mềm khác xuất

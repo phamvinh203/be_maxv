@@ -5,6 +5,7 @@ import {
   dungXmlGtgt01,
   tenFileXml,
 } from "../services/client/to_khai/xuatXmlGtgt01";
+import { DAI_TOI_DA_MO_TA } from "../services/client/to_khai/phuLuc204";
 import { layChiTieuToKhaiGtgt } from "../services/client/dich_vu_cong/toKhaiXml";
 import type { Ky } from "../services/client/to_khai/kySoThue";
 
@@ -124,6 +125,19 @@ test("tháng 2 năm nhuận ra đúng ngày cuối", () => {
   assert.match(xml, /<kyKKhaiDenNgay>29\/02\/2028<\/kyKKhaiDenNgay>/);
 });
 
+test("ngayLapTKhai/ngayKy theo GIỜ VN, không lệ thuộc TZ máy chạy", () => {
+  // 2026-09-01T17:00:00Z = 2026-09-02T00:00 GIỜ VN (+07:00) — đúng lúc lùi một ngày nếu đọc bằng
+  // getter giờ máy chủ khi máy đặt TZ=UTC (bug đã xảy ra thật, xem `utils/ngayVn.ts`).
+  const xml = dungXmlGtgt01({
+    ky: Q2,
+    ct: {},
+    nnt: NNT,
+    ngayLap: new Date("2026-09-01T17:00:00.000Z"),
+  });
+  assert.match(xml, /<ngayLapTKhai>2026-09-02<\/ngayLapTKhai>/);
+  assert.match(xml, /<ngayKy>2026-09-02<\/ngayKy>/);
+});
+
 test("ô thiếu ghi 0 chứ không bỏ thẻ — cổng đối chiếu công thức giữa các ô", () => {
   const xml = dungXmlGtgt01({ ky: Q2, ct: {}, nnt: NNT });
   for (const tag of ["ct22", "ct23", "ct24", "ct32", "ct33", "ct40", "ct43", "ct23a", "ct39a"]) {
@@ -154,6 +168,32 @@ test("tên công ty có ký tự đặc biệt được thoát, không làm hỏ
   assert.doesNotMatch(noiDung, /[<>]/);
   assert.doesNotMatch(noiDung, /&(?!(amp|lt|gt|quot|apos);)/);
 });
+
+test("ký tự điều khiển dán từ Word/Excel bị lọc khỏi XML, không chỉ escape", () => {
+  // XML 1.0 không hợp lệ với C0 control (trừ tab/LF/CR) và DEL, dù đã qua thoát & < > " '.
+  // Dùng String.fromCharCode để dựng ký tự điều khiển thật (SOH=1, VT=11, DEL=127) — tránh
+  // mọi kiểu escape trung gian gây nhầm lẫn.
+  const kyTuDieuKhien = String.fromCharCode(1) + String.fromCharCode(11) + String.fromCharCode(127);
+  const tenCoDieuKhien = "CTY ABC" + kyTuDieuKhien + "XYZ";
+  const xml = dungXmlGtgt01({
+    ky: Q2,
+    ct: {},
+    nnt: { mst: "0106861880", tenNnt: tenCoDieuKhien },
+  });
+  const noiDung = /<tenNNT>([^<]*)<\/tenNNT>/.exec(xml)?.[1] ?? "";
+  assert.equal(noiDung, "CTY ABCXYZ");
+  for (let i = 0; i < noiDung.length; i += 1) {
+    assert.ok(noiDung.charCodeAt(i) >= 32, "còn ký tự điều khiển ở vị trí " + i);
+  }
+  // Tab/LF/CR vẫn hợp lệ trong XML 1.0 — KHÔNG bị lọc.
+  const xmlTab = dungXmlGtgt01({
+    ky: Q2,
+    ct: {},
+    nnt: { mst: "0106861880", tenNnt: "CTY" + String.fromCharCode(9) + "ABC" },
+  });
+  assert.match(xmlTab, /<tenNNT>CTY\tABC<\/tenNNT>/);
+});
+
 
 test("khai bổ sung ghi đúng số lần, mặc định là 0", () => {
   assert.match(dungXmlGtgt01({ ky: Q2, ct: {}, nnt: NNT }), /<soLan>0<\/soLan>/);
@@ -264,8 +304,8 @@ test("mô tả dài trong bản phụ lục CŨ vẫn bị cắt khi xuất XML"
   });
   const mua = /<tenHHDVMuaVao>([^<]*)<\/tenHHDVMuaVao>/.exec(xml)?.[1] ?? "";
   const ban = /<tenHHDV>([^<]*)<\/tenHHDV>/.exec(xml)?.[1] ?? "";
-  assert.ok(mua.length <= 80, `mô tả mua vào dài ${mua.length} ký tự`);
-  assert.ok(ban.length <= 80, `mô tả bán ra dài ${ban.length} ký tự`);
+  assert.ok(mua.length <= DAI_TOI_DA_MO_TA, `mô tả mua vào dài ${mua.length} ký tự`);
+  assert.ok(ban.length <= DAI_TOI_DA_MO_TA, `mô tả bán ra dài ${ban.length} ký tự`);
   assert.ok(mua.endsWith(" ..."));
   assert.ok(ban.endsWith(" ..."));
 });

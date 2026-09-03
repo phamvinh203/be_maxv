@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { chiaLo, locGhiDeHopLe } from "../services/client/to_khai/toKhaiGtgt01.service";
-import { catMoTa } from "../services/client/to_khai/phuLuc204";
+import { catMoTa, DAI_TOI_DA_MO_TA } from "../services/client/to_khai/phuLuc204";
 
 /**
  * npx tsx --test src/__tests__/toKhaiGtgt01Ghide.test.ts
@@ -99,9 +99,26 @@ test("catMoTa xử lý được mọi đầu vào mà bản phụ lục cũ có 
   // Dài -> cắt và báo còn nữa.
   const dai = Array.from({ length: 30 }, (_, i) => `Mặt hàng số ${i}`).join(", ");
   const cat = catMoTa(dai);
-  assert.ok(cat.length <= 80, `dài ${cat.length}`);
+  assert.ok(
+    Array.from(cat).length <= DAI_TOI_DA_MO_TA,
+    `dài ${Array.from(cat).length} code point, trần ${DAI_TOI_DA_MO_TA}`,
+  );
   assert.ok(cat.endsWith(" ..."));
   assert.ok(dai.startsWith(cat.slice(0, -4)), "phải là tiền tố của chuỗi gốc");
+});
+
+test("catMoTa vẫn giữ dưới trần với ký tự ngoài mặt phẳng cơ bản và chữ có dấu tổ hợp (NFD)", () => {
+  // Ký tự astral (surrogate pair trong UTF-16) rơi đúng ranh giới cắt — cắt theo code point để
+  // không để lại một surrogate mồ côi, phá vỡ tính hợp lệ UTF-8 của file XML nộp thuế.
+  const astral = "A".repeat(74) + "\u{20B9F}" + "B".repeat(50);
+  const catAstral = catMoTa(astral);
+  assert.ok(Array.from(catAstral).length <= DAI_TOI_DA_MO_TA);
+  assert.equal(Buffer.from(catAstral, "utf8").toString("utf8"), catAstral);
+
+  // Chuỗi không có khoảng trắng/dấu phẩy để cắt theo ranh giới — nhánh cũ từng cộng thêm đuôi mà
+  // không trừ vào trần, ra 79 ký tự dù cap ghi 75.
+  const khongKhoangTrang = catMoTa("Z".repeat(160));
+  assert.ok(Array.from(khongKhoangTrang).length <= DAI_TOI_DA_MO_TA);
 });
 
 test("cắt hai lần cho kết quả y hệt cắt một lần", () => {

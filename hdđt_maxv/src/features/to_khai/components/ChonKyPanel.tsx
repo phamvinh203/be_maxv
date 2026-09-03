@@ -13,14 +13,9 @@ import { soKyToiDa, type Ky, type KyLoai } from "../ky";
 export default function ChonKyPanel({
   ky,
   onChange,
-  disabled,
-  soDong,
 }: {
   ky: Ky;
   onChange: (ky: Ky) => void;
-  disabled?: boolean;
-  /** Số dòng đang hiện — để người dùng biết ngay kỳ này đã kê khai hay còn trống. */
-  soDong?: number;
 }) {
   const namHienTai = new Date().getFullYear();
   const danhSachNam = Array.from({ length: 6 }, (_, i) => namHienTai - i);
@@ -42,7 +37,6 @@ export default function ChonKyPanel({
           size="small"
           label="Loại kỳ"
           value={ky.kyLoai}
-          disabled={disabled}
           onChange={(e) => {
             const kyLoai = e.target.value as KyLoai;
             // Kẹp số kỳ khi đổi loại — đang ở tháng 7 mà chuyển sang quý thì "quý 7" vô nghĩa.
@@ -59,7 +53,6 @@ export default function ChonKyPanel({
           size="small"
           label={ky.kyLoai === "thang" ? "Tháng" : "Quý"}
           value={ky.kySo}
-          disabled={disabled}
           onChange={(e) => onChange({ ...ky, kySo: Number(e.target.value) })}
           sx={{ minWidth: 100 }}
         >
@@ -75,7 +68,6 @@ export default function ChonKyPanel({
           size="small"
           label="Năm"
           value={ky.nam}
-          disabled={disabled}
           onChange={(e) => onChange({ ...ky, nam: Number(e.target.value) })}
           sx={{ minWidth: 110 }}
         >
@@ -85,12 +77,6 @@ export default function ChonKyPanel({
             </MenuItem>
           ))}
         </TextField>
-
-        {soDong !== undefined && (
-          <Typography variant="body2" color="text.secondary">
-            {soDong} hóa đơn
-          </Typography>
-        )}
       </Stack>
     </Paper>
   );

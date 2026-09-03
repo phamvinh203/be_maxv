@@ -22,8 +22,8 @@
  * Test: `src/__tests__/ngayVn.test.ts`.
  */
 
-export const VN_OFFSET_MS = 7 * 60 * 60 * 1000;
-export const VN_OFFSET = "+07:00";
+const VN_OFFSET_MS = 7 * 60 * 60 * 1000;
+const VN_OFFSET = "+07:00";
 
 /** `yyyy-MM-dd` (GDT đôi khi trả ngày trần) hoặc `yyyy-MM-ddTHH:mm[:ss[.SSS]]`, KHÔNG hậu tố múi giờ. */
 const VN_LOCAL_RE = /^(\d{4}-\d{2}-\d{2})(T\d{2}:\d{2}(?::\d{2}(?:\.\d+)?)?)?$/;
@@ -65,4 +65,10 @@ export function toVnWallClock(v: unknown): string | undefined {
  */
 export function vnDayString(v: unknown): string | undefined {
   return toVnWallClock(v)?.slice(0, 10);
+}
+
+/** `2026-04-01` -> `01/04/2026` — định dạng hiển thị ngày kiểu Việt Nam, đọc bằng mắt người. */
+export function ngayVn(iso: string): string {
+  const [y, m, d] = iso.split("-");
+  return `${d}/${m}/${y}`;
 }
