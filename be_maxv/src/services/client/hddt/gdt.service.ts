@@ -11,6 +11,12 @@ import {
 } from "../../../config/gdt-client";
 import { readZipEntry } from "../../../helpers/zip";
 import {
+  toDate,
+  toVnWallClock,
+  vnDayEnd,
+  vnDayStart,
+} from "../../../utils/ngayVn";
+import {
   CaptchaResponse,
   LoginRequest,
   LoginResponse,
@@ -527,48 +533,12 @@ const toNum = (v: unknown): number | undefined => {
 };
 
 /**
- * QUY ƯỚC NGÀY GIỜ của module này — phát biểu hợp đồng nằm ở `docs/14-hop-dong-api.md`, mục "Quy ước
- * ngày giờ"; ở đây chỉ chép lại phần LÝ DO CÀI ĐẶT.
+ * Quy ước ngày giờ (chuỗi không hậu tố = GIỜ VIỆT NAM) sống ở `utils/ngayVn.ts` — nguồn DUY NHẤT,
+ * dùng chung với module Tờ khai. Đừng dựng lại `new Date(...)` tại chỗ ở file này.
  *
- * Một chuỗi `yyyy-MM-dd…` KHÔNG hậu tố múi giờ luôn mang nghĩa GIỜ VIỆT NAM, ở cả ba hướng: lúc đọc
- * từ GDT (`toDate`), lúc dựng khoảng lọc (`vnDayStart`/`vnDayEnd`) và lúc trả ra FE
- * (`toVnWallClock`). Trước đây mỗi hướng tự hiểu một kiểu nên cùng một hóa đơn ra hai ngày khác nhau.
- *
- * Lệch cố định +07:00 chứ không tra bảng múi giờ: Việt Nam không có DST và giữ UTC+7 từ 1975.
+ * Re-export `toVnWallClock` vì nó là một phần hợp đồng public của module (FE và test gọi qua đây).
  */
-const VN_OFFSET_MS = 7 * 60 * 60 * 1000;
-const VN_OFFSET = "+07:00";
-
-/** `yyyy-MM-dd` (GDT đôi khi trả ngày trần) hoặc `yyyy-MM-ddTHH:mm[:ss[.SSS]]`, KHÔNG hậu tố múi giờ. */
-const VN_LOCAL_RE = /^(\d{4}-\d{2}-\d{2})(T\d{2}:\d{2}(?::\d{2}(?:\.\d+)?)?)?$/;
-
-/**
- * Chuỗi ngày giờ -> instant. Chuỗi KHÔNG mang múi giờ được ghim `+07:00` thay vì để `new Date()` suy
- * theo giờ máy chủ: ngày lập là dữ liệu trên chứng từ, không được đổi theo nơi chạy tiến trình.
- * Chuỗi đã mang múi giờ (Z/+07:00) giữ nguyên instant.
- */
-const toDate = (v: unknown): Date | undefined => {
-  if (typeof v !== "string" || !v) return undefined;
-  const m = VN_LOCAL_RE.exec(v);
-  const d = new Date(m ? `${m[1]}${m[2] ?? "T00:00:00"}${VN_OFFSET}` : v);
-  return Number.isNaN(d.getTime()) ? undefined : d;
-};
-
-/** Đầu/cuối một ngày `yyyy-MM-dd` theo GIỜ VN — dùng dựng khoảng lọc so với cột `tdlap` (instant). */
-const vnDayStart = (ymd: string): Date => new Date(`${ymd}T00:00:00${VN_OFFSET}`);
-const vnDayEnd = (ymd: string): Date => new Date(`${ymd}T23:59:59.999${VN_OFFSET}`);
-
-/**
- * Date (từ DB) hoặc chuỗi ngày giờ -> `yyyy-MM-ddTHH:mm:ss` theo GIỜ VIỆT NAM, không hậu tố múi giờ.
- * Không đọc được thành ngày -> undefined (nơi gọi tự quyết định giữ nguyên input hay bỏ trống).
- * Idempotent: chuỗi đã ở dạng giờ VN chạy lại vẫn ra chính nó.
- */
-export function toVnWallClock(v: unknown): string | undefined {
-  const d = v instanceof Date ? v : toDate(v);
-  if (!d || Number.isNaN(d.getTime())) return undefined;
-  // Cộng lệch rồi in theo UTC = in giờ VN. `slice(0, 19)` cắt đúng phần `yyyy-MM-ddTHH:mm:ss`.
-  return new Date(d.getTime() + VN_OFFSET_MS).toISOString().slice(0, 19);
-}
+export { toVnWallClock } from "../../../utils/ngayVn";
 
 /**
  * Field ngày giờ trong payload chi tiết GDT mà FE ĐEM ĐI HIỂN THỊ (tờ hóa đơn GTGT, bảng "Chi tiết

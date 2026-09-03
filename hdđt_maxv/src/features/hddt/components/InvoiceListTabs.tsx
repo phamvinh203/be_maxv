@@ -25,7 +25,7 @@ import Typography from "@mui/material/Typography";
 import Alert from "@mui/material/Alert";
 import CircularProgress from "@mui/material/CircularProgress";
 import InboxRounded from "@mui/icons-material/InboxRounded";
-// import DescriptionRounded from "@mui/icons-material/DescriptionRounded";
+import DescriptionRounded from "@mui/icons-material/DescriptionRounded";
 import FileDownloadRounded from "@mui/icons-material/FileDownloadRounded";
 import CloudDownloadRounded from "@mui/icons-material/CloudDownloadRounded";
 import VisibilityRounded from "@mui/icons-material/VisibilityRounded";
@@ -94,6 +94,7 @@ import InvoiceDetailPanel from "./InvoiceDetailPanel";
 import InvoiceViewDialog from "./InvoiceViewDialog";
 import HoaDonLienQuanDialog from "./HoaDonLienQuanDialog";
 import ExportFileDialog from "./ExportFileDialog";
+import DialogKeKhai from "../../to_khai/components/DialogKeKhai";
 import DownloadOriginalDialog from "./DownloadOriginalDialog";
 import InvoicePagination, { DEFAULT_ROWS_PER_PAGE } from "../../../components/InvoicePagination";
 import { clampPage } from "../../../utils/pagination";
@@ -1410,6 +1411,10 @@ export default function InvoiceListTabs() {
   const [tab, setTab] = useState<InvoiceDirection>("purchase");
   // Xuất file là thao tác CẢ 2 CHIỀU (mua vào + bán ra) nên đặt ở cấp ngoài này, không theo từng tab.
   const [exportOpen, setExportOpen] = useState(false);
+  // Kê khai cũng là thao tác cả 2 chiều: chọn kỳ rồi gán mọi hóa đơn trong kỳ, không theo tab.
+  const [keKhaiOpen, setKeKhaiOpen] = useState(false);
+  // Nút "Kê khai" chỉ hiện khi gói có mô-đun Tờ khai — cùng cách `AppHeader` ẩn/hiện các mô-đun.
+  const { modules } = useAuth();
 
   /** Đổi tab chiều hóa đơn (purchase/sold). Dùng: `Tabs.onChange` ngay bên dưới. */
   const handleChange = (_e: SyntheticEvent, value: InvoiceDirection) => {
@@ -1434,14 +1439,17 @@ export default function InvoiceListTabs() {
         </Tabs>
 
         <Stack direction="row" spacing={1} sx={{ pb: { xs: 1, sm: 0 } }}>
-          {/* <Button
-            variant="outlined"
-            size="small"
-            startIcon={<DescriptionRounded fontSize="small" />}
-            sx={{ textTransform: "none", whiteSpace: "nowrap" }}
-          >
-            Lập tờ khai và bảng kê
-          </Button> */}
+          {modules.tokhai && (
+            <Button
+              variant="outlined"
+              size="small"
+              startIcon={<DescriptionRounded fontSize="small" />}
+              sx={{ textTransform: "none", whiteSpace: "nowrap" }}
+              onClick={() => setKeKhaiOpen(true)}
+            >
+              Kê khai
+            </Button>
+          )}
           <Button
             variant="outlined"
             size="small"
@@ -1468,6 +1476,8 @@ export default function InvoiceListTabs() {
         onClose={() => setExportOpen(false)}
         defaultRange={currentMonthRange()}
       />
+
+      <DialogKeKhai open={keKhaiOpen} onClose={() => setKeKhaiOpen(false)} />
     </Box>
   );
 }

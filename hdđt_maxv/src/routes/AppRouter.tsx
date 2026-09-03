@@ -6,6 +6,7 @@ import ForgotPasswordPage from "../pages/ForgotPasswordPage";
 import HomePage from "../pages/HomePage";
 import SettingsPage from "../pages/settings/SettingsPage";
 import DvcPage from "../pages/dich_vu_cong/DvcPage";
+import ToKhai from "../pages/to_khai/ToKhai";
 import AccountingModulesPage from "../pages/accounting/ModulesPage";
 import { defaultModulePath as defaultAccountingPath } from "../features/accounting/_shared/config";
 import KeToanDanhMucKHPage from "../pages/accounting/ban_hang/DanhMucKHPage";
@@ -123,6 +124,16 @@ export default function AppRouter() {
             element={
               <ProtectedRoute>
                 <HomePage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="to-khai"
+            element={
+              <ProtectedRoute>
+                <ModuleRoute module="tokhai">
+                  <ToKhai />
+                </ModuleRoute>
               </ProtectedRoute>
             }
           />

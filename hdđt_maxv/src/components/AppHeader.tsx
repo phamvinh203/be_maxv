@@ -77,6 +77,17 @@ export default function AppHeader() {
             Hóa đơn điện tử
           </Button>
 
+          {/* Chỉ hiện khi admin đã bật module Tờ khai cho tài khoản này. */}
+          {modules.tokhai && (
+            <Button
+              color="inherit"
+              onClick={() => navigate("/to-khai")}
+              sx={{ textTransform: "none", fontWeight: 600 }}
+            >
+              Tờ khai
+            </Button>
+          )}
+
           {/* Chỉ hiện khi admin đã bật module Dịch vụ công cho tài khoản này. */}
           {modules.dvc && (
             <Button

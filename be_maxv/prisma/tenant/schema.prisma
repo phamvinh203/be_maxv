@@ -766,3 +766,102 @@ model dvc_giay_nop_tien {
 
   @@index([ngay_nop_date])
 }
+
+// ============================================================
+//  TỜ KHAI › ĐÁNH DẤU HÓA ĐƠN THUỘC KỲ KÊ KHAI
+// ============================================================
+
+/// Hóa đơn nào được kê khai vào kỳ nào — CHỈ lưu QUYẾT ĐỊNH, không chép số liệu hóa đơn.
+///
+/// Cố ý không có cột tiền/tên đối tác: mọi số đọc thẳng từ `vct50view`/`vct60view` lúc hiển thị.
+/// Chép sang đây sẽ tạo bản thứ hai của cùng một hóa đơn, mà hóa đơn BỊ THAY THẾ / ĐIỀU CHỈNH /
+/// HỦY sau khi đã kê khai là chuyện thường xuyên — bản chép nằm im với số cũ và không ai thấy.
+/// Giữ dạng đánh dấu thì lượt xem sau luôn ra số mới nhất, và phát hiện được "hóa đơn đã kê khai
+/// nay bị thay thế".
+///
+/// Khóa chính `[hoa_don_id, chieu]`: một hóa đơn thuộc ĐÚNG một kỳ. Kê khai lại vào kỳ khác thì
+/// ghi đè dòng cũ, không sinh dòng thứ hai (tránh một hóa đơn nằm ở hai kỳ, kê khai trùng).
+/// `chieu` nằm trong khóa vì id do GDT cấp chỉ duy nhất trong phạm vi một chiều.
+model tokhai_ky_hoa_don {
+  hoa_don_id String @db.VarChar(64)
+  chieu      String @db.VarChar(8) // purchase (mua vào) | sold (bán ra)
+
+  nam     Int
+  ky_loai String @db.VarChar(8) // thang | quy
+  ky_so   Int // 1..12 (tháng) hoặc 1..4 (quý)
+
+  /// Cột "Kê khai/không kê khai" trên bảng kê. Mặc định true khi vừa gán kỳ; kế toán đổi được.
+  ke_khai Boolean @default(true)
+  /// Cột "Chỉ tiêu tăng giảm" — để trống cho tới khi kế toán chọn.
+  chi_tieu_tang_giam String? @db.VarChar(32)
+  ghi_chu            String? @db.VarChar(512)
+
+  datetime0 DateTime @default(now())
+  datetime2 DateTime @updatedAt
+
+  @@id([hoa_don_id, chieu])
+  @@index([nam, ky_loai, ky_so])
+}
+
+/// Một bản tờ khai 01/GTGT do phần mềm lập cho MỘT kỳ tính thuế.
+///
+/// Nguồn số liệu là BẢNG KÊ CỦA KỲ (hóa đơn đã gán kỳ ở `tokhai_ky_hoa_don` và kế toán để
+/// `ke_khai = true`), không phải mọi hóa đơn rơi vào khoảng ngày.
+///
+/// `nhap` = mở lại là tính lại từ bảng kê (đồng bộ thêm hóa đơn thì số tự cập nhật, ô đã ghi đè
+/// giữ nguyên); `chot` = đóng băng số đã nộp, muốn sửa phải mở khóa.
+model tokhai_gtgt01 {
+  nam     Int
+  ky_loai String @db.VarChar(8) // thang | quy
+  ky_so   Int // 1..12 (tháng) hoặc 1..4 (quý)
+
+  trang_thai String @default("nhap") @db.VarChar(16) // nhap | chot
+
+  /// Bộ chỉ tiêu CUỐI — số đem đi nộp: { ct22, ct23, ..., ct43 }.
+  ct Json
+  /// Số máy tự tính, giữ nguyên kể cả sau khi kế toán ghi đè — để trả lời "máy ra bao nhiêu".
+  ct_may Json
+  /// Ô kế toán sửa tay + lý do: { ct25: { gia: 1234, lyDo: "..." } }. Lượt tính lại KHÔNG xóa.
+  ghi_de Json
+
+  /// Bản sao ba khóa cùng tên trong `ct`, bóc ra cột để truy vấn: `ct43` cho kỳ sau nối [22],
+  /// `ct40`/`ct22` cho bảng danh sách kỳ. Ghi cùng lượt với `ct`, không có đường sửa riêng.
+  ct22 Decimal @default(0) @db.Decimal(18, 2)
+  ct40 Decimal @default(0) @db.Decimal(18, 2)
+  ct43 Decimal @default(0) @db.Decimal(18, 2)
+
+  /// [22] lấy ở đâu ra: ky_truoc (ct43 kỳ liền trước, bản ĐÃ CHỐT) | ky_truoc_nhap (kỳ trước
+  /// còn nháp nên [43] còn có thể đổi — màn hình cảnh báo) | nhap_tay.
+  nguon_ct22 String @default("nhap_tay") @db.VarChar(16)
+
+  /// Phụ lục "Giảm thuế GTGT theo NQ 204/2025" của kỳ (nhóm hàng 8%) — nộp KÈM tờ khai chính khi
+  /// kỳ có hàng được giảm thuế. Số liệu tính lại mỗi lượt "Tính lại"; riêng hai ô mô tả hàng hóa
+  /// giữ nguyên nếu kế toán đã sửa. `null` = kỳ chưa tính hoặc không có hàng 8%.
+  phu_luc Json?
+
+  so_hd_ban Int @default(0)
+  so_hd_mua Int @default(0)
+  /// Số hóa đơn kế toán đã đánh "Không kê khai" — nhìn bản tờ khai là biết đã loại bao nhiêu tờ,
+  /// khỏi phải mở lại bảng kê để đếm.
+  so_hd_khong_ke_khai Int @default(0)
+  /// Hóa đơn BÁN RA thiếu `detail` nên chưa tách được thuế suất; bản đáng tin phải là 0.
+  hd_thieu_detail Int @default(0)
+
+  /// Câu cảnh báo của lượt "Tính lại" GẦN NHẤT (`soatToKhai.ts`), vd "N hóa đơn thay thế có tổng
+  /// NHỎ HƠN hóa đơn gốc". LƯU LẠI để mở lại bản cũ vẫn thấy đủ — không phải bấm "Tính lại" mới
+  /// hiện, vì đây là số liệu cần người xem lại thật, không phải hiệu ứng phụ của một lượt tính.
+  /// `string[]`. `null` = bản tạo trước khi có cột này, đọc lại coi như rỗng.
+  canh_bao Json?
+
+  /// Hóa đơn điều chỉnh (tthai=3, ĐÃ cộng vào `ct`) của lượt tính GẦN NHẤT, gộp cả hai chiều — chỉ
+  /// để hiển thị "kiểm tra dấu trước khi chốt". Cùng lý do LƯU LẠI như `canh_bao`.
+  /// `{soHd, giaTri, thue}`. `null` = bản tạo trước khi có cột này, đọc lại coi như rỗng.
+  dieu_chinh Json?
+
+  tinh_luc DateTime?
+
+  datetime0 DateTime @default(now())
+  datetime2 DateTime @updatedAt
+
+  @@id([nam, ky_loai, ky_so])
+}

@@ -7,7 +7,7 @@
  *
  * Quyền chỉ đến từ **gói thuê bao** — không có bật/tắt riêng theo tài khoản.
  */
-export const MODULE_KEYS = ['hrm', 'accounting', 'dvc'] as const;
+export const MODULE_KEYS = ['hrm', 'accounting', 'dvc', 'tokhai'] as const;
 
 export type ModuleKey = (typeof MODULE_KEYS)[number];
 
@@ -31,5 +31,9 @@ export const MODULE_META: Record<ModuleKey, ModuleMeta> = {
   dvc: {
     nhanNgan: 'Dịch vụ công',
     moTa: 'Tra cứu, đồng bộ và xem tờ khai/giấy nộp tiền qua cổng Dịch vụ công thuế điện tử.',
+  },
+  tokhai: {
+    nhanNgan: 'Tờ khai',
+    moTa: 'Lập tờ khai thuế GTGT mẫu 01/GTGT từ hóa đơn điện tử đã đồng bộ.',
   },
 };
