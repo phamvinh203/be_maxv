@@ -12,7 +12,7 @@ import type { PrismaClient, Prisma } from "../../../generated/tenant";
 import { kyLienTruoc, truocKy, thangKetThuc, type Ky, type KyLoai } from "./kySoThue";
 import { gomBanRa, gomMuaVao, type HoaDonGom, type HoaDonTreo } from "./gomHoaDonGtgt";
 import { tinhGtgt01, CT_NHAP_TAY, type CtGtgt01 } from "./tinhGtgt01";
-import { dungPhuLuc204, type PhuLuc204 } from "./phuLuc204";
+import { catMoTa, dungPhuLuc204, type PhuLuc204 } from "./phuLuc204";
 import { soatToKhai } from "./soatToKhai";
 import type { Chieu } from "./keKhaiKy.service";
 
@@ -252,13 +252,16 @@ export async function tinhVaLuu(db: PrismaClient, ky: Ky): Promise<BanToKhai> {
         // `phu_luc` là JSON không ràng buộc shape (bản cũ, hoặc ai đó sửa tay DB) nên phải `?.`
         // đủ tầng — thiếu một tầng là "Tính lại" ném TypeError, kỳ đó hỏng hẳn.
         // `??` chứ không `||`: kế toán xóa trắng mô tả là ý định thật, `||` sẽ điền lại số máy.
+        // `catMoTa` cả ở đây: bản LƯU TRƯỚC khi có trần 75 ký tự vẫn mang mô tả dài, giữ nguyên
+        // là nó sống mãi. Cắt lúc tính lại thì dữ liệu cũ tự sạch dần, và màn hình / Excel / XML
+        // cùng thấy một chuỗi.
         muaVao: {
           ...phuLucMoi.muaVao,
-          tenHang: phuLucCu?.muaVao?.tenHang ?? phuLucMoi.muaVao.tenHang,
+          tenHang: catMoTa(phuLucCu?.muaVao?.tenHang ?? phuLucMoi.muaVao.tenHang),
         },
         banRa: {
           ...phuLucMoi.banRa,
-          tenHang: phuLucCu?.banRa?.tenHang ?? phuLucMoi.banRa.tenHang,
+          tenHang: catMoTa(phuLucCu?.banRa?.tenHang ?? phuLucMoi.banRa.tenHang),
         },
       };
   // Chỉ những cột là KẾT QUẢ của lượt tính. `ghi_de` và `trang_thai` cố tình đứng ngoài:
@@ -320,6 +323,23 @@ export async function tinhVaLuu(db: PrismaClient, ky: Ky): Promise<BanToKhai> {
   };
 }
 
+/**
+ * Cắt hai ô mô tả của bản phụ lục ĐỌC TỪ DB.
+ *
+ * Kỳ lưu trước khi có trần 75 ký tự vẫn mang mô tả dài; cắt ngay lúc đọc để màn hình và file Excel
+ * thấy đúng thứ sẽ nằm trong file XML nộp thuế, không phải chờ bấm "Tính lại".
+ *
+ * KHÔNG ghi ngược xuống DB ở đây — `docBan` chỉ đọc. Bản trong DB được dọn ở lượt tính lại.
+ */
+function catMoTaPhuLuc(pl: PhuLuc204 | null): PhuLuc204 | null {
+  if (!pl) return null;
+  return {
+    ...pl,
+    muaVao: { ...pl.muaVao, tenHang: catMoTa(pl.muaVao?.tenHang ?? "") },
+    banRa: { ...pl.banRa, tenHang: catMoTa(pl.banRa?.tenHang ?? "") },
+  };
+}
+
 export async function docBan(db: PrismaClient, ky: Ky): Promise<BanToKhai | null> {
   const row = await db.tokhai_gtgt01.findUnique({
     where: { nam_ky_loai_ky_so: { nam: ky.nam, ky_loai: ky.kyLoai, ky_so: ky.kySo } },
@@ -345,7 +365,7 @@ export async function docBan(db: PrismaClient, ky: Ky): Promise<BanToKhai | null
     // bấm "Tính lại" sẽ có ngay.
     treo: [],
     dieuChinh: { soHd: 0, giaTri: 0, thue: 0 },
-    phuLuc: (row.phu_luc ?? null) as PhuLuc204 | null,
+    phuLuc: catMoTaPhuLuc((row.phu_luc ?? null) as PhuLuc204 | null),
     canhBao: [],
     oSuaDuoc: CT_NHAP_TAY,
     tinhLuc: row.tinh_luc?.toISOString() ?? null,

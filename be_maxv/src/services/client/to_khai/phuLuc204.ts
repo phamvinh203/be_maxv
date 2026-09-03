@@ -66,13 +66,19 @@ export const DAI_TOI_DA_MO_TA = 75;
  * Export để chỗ dựng XML gọi lại — bản phụ lục lưu trong DB từ trước có thể còn mô tả dài, mà file
  * nộp thuế thì không được dài.
  */
+/** Đuôi báo "còn nữa". Tính vào trần nên cắt hai lần vẫn ra một kết quả. */
+const DUOI_CON_NUA = " ...";
+
 export function catMoTa(mo: string): string {
   if (mo.length <= DAI_TOI_DA_MO_TA) return mo;
+  // Chuỗi ĐÃ cắt thì trả nguyên. Mô tả đi qua hai chỗ cắt (đọc bản cũ ở `docBan`, rồi dựng XML),
+  // không chặn ở đây là lần sau xén tiếp và chồng thành "... ...".
+  if (mo.endsWith(DUOI_CON_NUA) && mo.length <= DAI_TOI_DA_MO_TA + DUOI_CON_NUA.length) return mo;
   const cat = mo.slice(0, DAI_TOI_DA_MO_TA);
   const ranhGioiTen = cat.lastIndexOf(", ");
-  if (ranhGioiTen > 0) return `${cat.slice(0, ranhGioiTen)} ...`;
+  if (ranhGioiTen > 0) return `${cat.slice(0, ranhGioiTen)}${DUOI_CON_NUA}`;
   const khoangTrang = cat.lastIndexOf(" ");
-  return `${khoangTrang > 0 ? cat.slice(0, khoangTrang) : cat} ...`;
+  return `${khoangTrang > 0 ? cat.slice(0, khoangTrang) : cat}${DUOI_CON_NUA}`;
 }
 
 function moTaHang(tenHang: string[]): string {

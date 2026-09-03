@@ -1,6 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { chiaLo, locGhiDeHopLe } from "../services/client/to_khai/toKhaiGtgt01.service";
+import { catMoTa } from "../services/client/to_khai/phuLuc204";
 
 /**
  * npx tsx --test src/__tests__/toKhaiGtgt01Ghide.test.ts
@@ -86,4 +87,25 @@ test("giữ nguyên thứ tự và không mất phần tử nào", () => {
   const lo = chiaLo(ds, 5_000);
   assert.equal(lo.length, 3);
   assert.deepEqual(lo.flat(), ds);
+});
+
+/* ===== Cắt mô tả phụ lục khi đọc bản cũ (thêm 2026-09-03) ===== */
+
+test("catMoTa xử lý được mọi đầu vào mà bản phụ lục cũ có thể mang", () => {
+  // Ngắn hơn trần -> giữ nguyên, không thêm dấu ...
+  assert.equal(catMoTa("Cước vận chuyển"), "Cước vận chuyển");
+  // Rỗng -> rỗng (bản cũ có thể chưa có mô tả).
+  assert.equal(catMoTa(""), "");
+  // Dài -> cắt và báo còn nữa.
+  const dai = Array.from({ length: 30 }, (_, i) => `Mặt hàng số ${i}`).join(", ");
+  const cat = catMoTa(dai);
+  assert.ok(cat.length <= 80, `dài ${cat.length}`);
+  assert.ok(cat.endsWith(" ..."));
+  assert.ok(dai.startsWith(cat.slice(0, -4)), "phải là tiền tố của chuỗi gốc");
+});
+
+test("cắt hai lần cho kết quả y hệt cắt một lần", () => {
+  // `docBan` cắt lúc đọc, `dungXmlGtgt01` cắt lại lúc xuất — hai lượt không được chồng thêm dấu.
+  const dai = Array.from({ length: 30 }, (_, i) => `Mặt hàng số ${i}`).join(", ");
+  assert.equal(catMoTa(catMoTa(dai)), catMoTa(dai));
 });
