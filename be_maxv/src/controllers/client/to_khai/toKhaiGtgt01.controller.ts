@@ -145,6 +145,7 @@ export async function xuatXml(request: FastifyRequest<{ Params: KyInput }>, repl
     const xml = dungXmlGtgt01({
       ky,
       ct: ban.ct,
+      phuLuc: ban.phuLuc,
       nnt: {
         mst: maSoThue,
         tenNnt: donVi?.tenDonVi ?? "",

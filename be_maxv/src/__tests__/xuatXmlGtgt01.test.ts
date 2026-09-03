@@ -87,7 +87,6 @@ test("mã mẫu và namespace đúng bản 01/GTGT của cổng", () => {
   assert.equal(MA_TKHAI_GTGT01, "842");
   assert.match(xml, /<maTKhai>842<\/maTKhai>/);
   assert.match(xml, /xmlns="http:\/\/kekhaithue\.gdt\.gov\.vn\/TKhaiThue"/);
-  assert.match(xml, /<HSoKhaiThue id="ID-NODETOSIGN">/);
 });
 
 test("kỳ quý ghi kieuKy=Q và đủ khoảng ngày", () => {
@@ -96,8 +95,9 @@ test("kỳ quý ghi kieuKy=Q và đủ khoảng ngày", () => {
   assert.match(xml, /<kyKKhai>2\/2026<\/kyKKhai>/);
   assert.match(xml, /<kyKKhaiTuNgay>01\/04\/2026<\/kyKKhaiTuNgay>/);
   assert.match(xml, /<kyKKhaiDenNgay>30\/06\/2026<\/kyKKhaiDenNgay>/);
-  assert.match(xml, /<kyKKhaiTuThang>4\/2026<\/kyKKhaiTuThang>/);
-  assert.match(xml, /<kyKKhaiDenThang>6\/2026<\/kyKKhaiDenThang>/);
+  // Kỳ QUÝ để rỗng hai thẻ tháng — ba file mẫu do phần mềm khác xuất đều vậy.
+  assert.match(xml, /<kyKKhaiTuThang \/>/);
+  assert.match(xml, /<kyKKhaiDenThang \/>/);
 });
 
 test("kỳ tháng ghi kieuKy=M, khoảng ngày gói trong đúng tháng", () => {
@@ -110,6 +110,9 @@ test("kỳ tháng ghi kieuKy=M, khoảng ngày gói trong đúng tháng", () => 
   assert.match(xml, /<kyKKhai>7\/2026<\/kyKKhai>/);
   assert.match(xml, /<kyKKhaiTuNgay>01\/07\/2026<\/kyKKhaiTuNgay>/);
   assert.match(xml, /<kyKKhaiDenNgay>31\/07\/2026<\/kyKKhaiDenNgay>/);
+  // Kỳ THÁNG thì hai thẻ tháng có số, cùng một giá trị.
+  assert.match(xml, /<kyKKhaiTuThang>7\/2026<\/kyKKhaiTuThang>/);
+  assert.match(xml, /<kyKKhaiDenThang>7\/2026<\/kyKKhaiDenThang>/);
 });
 
 test("tháng 2 năm nhuận ra đúng ngày cuối", () => {
@@ -165,4 +168,104 @@ test("tên file theo lối đặt tên của cổng", () => {
     tenFileXml(Q2, "0106861880"),
     "01_GTGT_TT80_2026_0106861880_01-04-2026_30-06-2026.xml",
   );
+});
+
+test("khung ngoài khớp mẫu HTKK 5.7.6 xuất", () => {
+  const xml = xmlQ2();
+  assert.match(xml, /<HSoKhaiThue id="ID_1">/);
+  assert.match(xml, /<pbanTKhaiXML>2\.8\.3<\/pbanTKhaiXML>/);
+  assert.match(xml, /<nganhNgheKD \/>/);
+  // Mẫu 01/GTGT KHÔNG có khối đại lý thuế — khối đó thuộc mẫu 01/CNKD hộ kinh doanh.
+  assert.doesNotMatch(xml, /<DLyThue>/);
+  // `CTieuTKhaiChinh` mở đầu bằng ba thẻ này rồi mới tới `Header`.
+  assert.match(
+    xml,
+    /<CTieuTKhaiChinh>\s*<ma_NganhNghe>00<\/ma_NganhNghe>\s*<ten_NganhNghe>[^<]+<\/ten_NganhNghe>\s*<tieuMucHachToan>1701<\/tieuMucHachToan>\s*<Header>/,
+  );
+  assert.match(xml, /<DiaChiHDSXKDKhacTinhNDTSC>[\s\S]*<ct11c_tinhTP_ten \/>[\s\S]*<\/DiaChiHDSXKDKhacTinhNDTSC>/);
+});
+
+test("phụ lục giảm thuế khớp TỪNG THẺ với mẫu chuẩn", () => {
+  // Số lấy từ chính file HTKK người dùng gửi (MST 0111142786, Q2/2026).
+  const xml = dungXmlGtgt01({
+    ky: Q2,
+    ct: CT_Q2,
+    nnt: NNT,
+    phuLuc: {
+      rong: false,
+      muaVao: {
+        tenHang: "Bánh xe, Càng bánh xe, Xe đẩy, Cước vận chuyển, VPP, Dịch vụ ăn uống, khác…",
+        giaTri: 7_880_500_667,
+        thue: 630_440_054,
+      },
+      banRa: {
+        tenHang: "Bánh xe, Càng bánh xe, Vòng bi, Vòng bánh xe",
+        giaTri: 7_093_463_577,
+        thue: 567_477_086,
+        thueSuatQuyDinh: 10,
+        thueSuatSauGiam: 8,
+        thueDuocGiam: 141_869_272,
+      },
+      chenhLech: -488_570_782,
+    },
+  });
+  assert.match(xml, /<PL_NQ142_GTGT>/); // tên thẻ giữ số nghị quyết CŨ, đừng đổi thành 204
+  assert.match(xml, /<giaTriHHDVMuaVao>7880500667<\/giaTriHHDVMuaVao>/);
+  assert.match(xml, /<thueGTGTHHDV>630440054<\/thueGTGTHHDV>/);
+  assert.match(xml, /<tongCongGiaTriHHDVMuaVao>7880500667<\/tongCongGiaTriHHDVMuaVao>/);
+  assert.match(xml, /<giaTriHHDV>7093463577<\/giaTriHHDV>/);
+  assert.match(xml, /<thueSuatTheoQuyDinh>10<\/thueSuatTheoQuyDinh>/);
+  assert.match(xml, /<thueSuatSauGiam>8<\/thueSuatSauGiam>/);
+  assert.match(xml, /<thueGTGTDuocGiam>141869272<\/thueGTGTDuocGiam>/);
+  assert.match(xml, /<tongCongThueGTGTDuocGiam>141869272<\/tongCongThueGTGTDuocGiam>/);
+  assert.match(xml, /<ChenhLech>\s*<ct9>-488570782<\/ct9>\s*<\/ChenhLech>/);
+});
+
+test("kỳ không có hàng 8% thì PLuc rỗng", () => {
+  assert.match(dungXmlGtgt01({ ky: Q2, ct: CT_Q2, nnt: NNT }), /<PLuc \/>/);
+  assert.match(
+    dungXmlGtgt01({ ky: Q2, ct: CT_Q2, nnt: NNT, phuLuc: null }),
+    /<PLuc \/>/,
+  );
+});
+
+test("người ký / cơ quan thuế / tỉnh để RỖNG nhưng vẫn giữ thẻ", () => {
+  // Phần mềm không giữ những dữ liệu này — HTKK tự điền nơi nộp theo MST rồi ký. Bỏ hẳn thẻ thì
+  // sai cấu trúc, nên để thẻ rỗng.
+  const xml = xmlQ2();
+  assert.match(xml, /<nguoiKy><\/nguoiKy>/);
+  assert.match(xml, /<maCQTNoiNop \/>/);
+  assert.match(xml, /<tenCQTNoiNop \/>/);
+  assert.match(xml, /<maTinhNNT \/>/);
+  assert.match(xml, /<tenTinhNNT \/>/);
+});
+
+test("mô tả dài trong bản phụ lục CŨ vẫn bị cắt khi xuất XML", () => {
+  // Bản lưu trong DB từ trước trần 75 vẫn còn mô tả dài; lượt tính lại cố ý giữ mô tả cũ, nên
+  // chỗ dựng XML phải tự cắt — file nộp thuế không được mang ô mô tả vài nghìn ký tự.
+  const dai = Array.from({ length: 40 }, (_, i) => `Tên hàng hóa rất dài số ${i}`).join(", ");
+  const xml = dungXmlGtgt01({
+    ky: Q2,
+    ct: CT_Q2,
+    nnt: NNT,
+    phuLuc: {
+      rong: false,
+      muaVao: { tenHang: dai, giaTri: 1_000, thue: 80 },
+      banRa: {
+        tenHang: dai,
+        giaTri: 1_000,
+        thue: 80,
+        thueSuatQuyDinh: 10,
+        thueSuatSauGiam: 8,
+        thueDuocGiam: 20,
+      },
+      chenhLech: -60,
+    },
+  });
+  const mua = /<tenHHDVMuaVao>([^<]*)<\/tenHHDVMuaVao>/.exec(xml)?.[1] ?? "";
+  const ban = /<tenHHDV>([^<]*)<\/tenHHDV>/.exec(xml)?.[1] ?? "";
+  assert.ok(mua.length <= 80, `mô tả mua vào dài ${mua.length} ký tự`);
+  assert.ok(ban.length <= 80, `mô tả bán ra dài ${ban.length} ký tự`);
+  assert.ok(mua.endsWith(" ..."));
+  assert.ok(ban.endsWith(" ..."));
 });

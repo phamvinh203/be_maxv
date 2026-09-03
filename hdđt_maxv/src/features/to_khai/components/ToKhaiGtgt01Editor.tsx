@@ -116,10 +116,7 @@ export default function ToKhaiGtgt01Editor({ ky, ban, onDoiKy, dangTai, loi }: P
     );
   };
 
-  /**
-   * Tải XML để nạp vào HTKK. File CHƯA có chữ ký số và CHƯA kèm phụ lục giảm thuế — nói rõ ngay
-   * lúc tải, đừng để kế toán nộp thiếu rồi mới biết.
-   */
+  /** Tải XML để nạp vào HTKK. File đã có phụ lục giảm thuế nhưng CHƯA ký số — HTKK ký rồi nộp. */
   const bamXuatXml = async () => {
     if (!ban) return;
     setDangTaiXml(true);
@@ -129,7 +126,7 @@ export default function ToKhaiGtgt01Editor({ ky, ban, onDoiKy, dangTai, loi }: P
       luuVeMay(new Blob([xml], { type: "application/xml;charset=utf-8" }), ten);
       toast.success(
         ban.phuLuc
-          ? "Đã tải XML. Kỳ này có hàng giảm thuế — thêm phụ lục NQ 204/2025 trong HTKK trước khi nộp."
+          ? "Đã tải XML, kèm phụ lục giảm thuế. Nạp vào HTKK để ký số rồi nộp."
           : "Đã tải XML. Nạp vào HTKK để ký số rồi nộp.",
       );
     } catch (err) {

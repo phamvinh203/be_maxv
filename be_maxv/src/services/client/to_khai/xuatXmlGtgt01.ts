@@ -5,31 +5,44 @@
  *
  * ===== NGUỒN CỦA CẤU TRÚC (đừng sửa theo trí nhớ) =====
  *
- * Tên thẻ chỉ tiêu và các nhóm bọc lấy từ MỘT FILE 01/GTGT THẬT đã nộp (MST 0106200129, Q2/2026,
- * `maTKhai` 842) — chính file đang dùng làm dữ liệu test cho `dich_vu_cong/toKhaiXml.ts`. Đó là lý
- * do [23]/[24] nằm trong `GiaTriVaThueGTGTHHDVMuaVao` còn [32]/[33] trong `HHDVBRaChiuTSuat10`
- * chứ không phẳng như tên thẻ gợi ý.
+ * Bám MỘT FILE 01/GTGT do HTKK 5.7.6 xuất ra để nộp (MST 0111142786, Q2/2026, `maTKhai` 842,
+ * `pbanTKhaiXML` 2.8.3) — người dùng cung cấp. Đây là bản đầy đủ NHẤT hiện có: khác với file tải
+ * VỀ từ cổng (thiếu vài khối), và khác với mẫu 01/CNKD hộ kinh doanh (mẫu khác hẳn).
  *
- * Khung ngoài (`id="ID-NODETOSIGN"`, `loaiTKhai`, `KyKKhaiThue` đủ 6 thẻ, `GiaHan`, `<PLuc />`)
- * lấy từ hai file XML do phần mềm khác xuất (mẫu 01/CNKD của MST 0111142786) — mẫu khác nhưng
- * khung ngoài là chung cho mọi tờ khai của cổng.
+ * Vài chỗ chỉ nhìn file mới biết, đừng suy từ tên thẻ:
+ *   - [23]/[24] nằm trong `GiaTriVaThueGTGTHHDVMuaVao`, [32]/[33] trong `HHDVBRaChiuTSuat10`;
+ *   - `CTieuTKhaiChinh` mở đầu bằng `ma_NganhNghe` + `ten_NganhNghe` + `tieuMucHachToan` + `Header`;
+ *   - mẫu này KHÔNG có khối `DLyThue` (khối đó thuộc mẫu 01/CNKD);
+ *   - `kyKKhaiTuThang`/`kyKKhaiDenThang` để RỖNG với kỳ quý, chỉ điền với kỳ tháng;
+ *   - thẻ phụ lục giảm thuế tên `PL_NQ142_GTGT` — giữ số nghị quyết CŨ (142) dù nội dung là
+ *     204/2025. HTKK không đổi tên thẻ qua các đợt nghị quyết; đổi theo là cổng không đọc được.
  *
  * ===== CÁI FILE NÀY CỐ Ý KHÔNG LÀM =====
  *
- * KHÔNG ký số. `id="ID-NODETOSIGN"` đánh dấu chỗ chữ ký sẽ chèn vào; kế toán nạp file này vào HTKK
- * hoặc iTaxViewer để ký và nộp. Cũng vì vậy `nguoiKy`/`maCQTNoiNop` để trống — hai file mẫu do
- * phần mềm khác xuất cũng để trống đúng những thẻ đó.
- *
- * KHÔNG kèm phụ lục giảm thuế NQ 204/2025: `<PLuc />` để rỗng vì chưa có mẫu XML thật của phụ lục
- * để bám. Kỳ có hàng 8% thì kế toán vẫn phải thêm phụ lục trong HTKK — màn hình nói ra điều đó
- * (nó đã biết kỳ có phụ lục hay không qua `BanToKhai.phuLuc`) thay vì để người dùng nộp thiếu.
+ * KHÔNG ký số, và KHÔNG điền người ký / cơ quan thuế nơi nộp / tỉnh: `nguoiKy`, `maCQTNoiNop`,
+ * `tenCQTNoiNop`, `maTinhNNT`, `tenTinhNNT` để RỖNG (giữ thẻ, chỉ bỏ nội dung — cổng đối chiếu
+ * cấu trúc). Phần mềm không giữ những dữ liệu đó; kế toán nạp file vào HTKK, HTKK tự điền nơi nộp
+ * theo MST rồi ký và nộp.
  */
-
 import { khoangCuaKy, type Ky } from "./kySoThue";
+import { catMoTa, type PhuLuc204 } from "./phuLuc204";
 
 /** Mã và tên mẫu — theo file thật đã nộp. */
 export const MA_TKHAI_GTGT01 = "842";
 const TEN_TKHAI = "TỜ KHAI THUẾ GIÁ TRỊ GIA TĂNG (Mẫu số 01/GTGT)";
+/** Phiên bản định dạng XML của mẫu 842, theo file HTKK 5.7.6 xuất. */
+const PBAN_TKHAI_XML = "2.8.3";
+
+/**
+ * Ngành nghề và tiểu mục hạch toán — mã `00` là "hoạt động sản xuất kinh doanh thông thường",
+ * tiểu mục `1701` là thuế GTGT hàng sản xuất kinh doanh trong nước. Đúng cho gần như mọi doanh
+ * nghiệp khai 01/GTGT; hoạt động đặc thù (thủy điện, xổ số, chuyển nhượng bất động sản...) có mã
+ * khác và cần khai riêng — chưa hỗ trợ.
+ */
+const MA_NGANH_NGHE = "00";
+const TEN_NGANH_NGHE = "Hoạt động sản xuất kinh doanh thông thường";
+const TIEU_MUC_HACH_TOAN = "1701";
+
 const MO_TA_BMAU =
   "(Ban hành kèm theo Thông tư số 80/2021/TT-BTC ngày 29 tháng 9 năm 2021 của Bộ trưởng Bộ Tài chính)";
 
@@ -45,6 +58,8 @@ export interface DauVaoXmlGtgt01 {
   /** Bộ chỉ tiêu CUỐI của bản tờ khai (`BanToKhai.ct`). */
   ct: Record<string, number>;
   nnt: ThongTinNnt;
+  /** Phụ lục giảm thuế của kỳ; `null` = kỳ không có hàng 8% nên `<PLuc />` để rỗng. */
+  phuLuc?: PhuLuc204 | null;
   /** Tờ khai lần đầu = 0; khai bổ sung lần N = N. */
   soLan?: number;
   /** Ngày lập/ngày ký ghi trên tờ khai; mặc định hôm nay. */
@@ -89,19 +104,70 @@ function kieuKy(ky: Ky): string {
   return ky.kyLoai === "thang" ? "M" : "Q";
 }
 
+/**
+ * Khối `<PLuc>` — phụ lục giảm thuế GTGT theo nghị quyết.
+ *
+ * Thẻ tên `PL_NQ142_GTGT` giữ số nghị quyết CŨ (142/2024) dù nội dung khai theo 204/2025: HTKK
+ * không đổi tên thẻ qua các đợt nghị quyết, đổi theo là cổng không đọc được phụ lục.
+ *
+ * Kỳ không có hàng được giảm thì trả `<PLuc />` rỗng — đúng như tờ khai không kèm phụ lục.
+ *
+ * Mô tả hàng hóa cắt lại qua `catMoTa` dù `dungPhuLuc204` đã cắt: bản phụ lục LƯU TRONG DB từ
+ * trước có thể còn mô tả dài (lượt tính lại cố ý giữ mô tả cũ để không xóa chữ kế toán đã sửa),
+ * mà file nộp thuế thì không được dài.
+ */
+function khoiPhuLuc(pl: PhuLuc204 | null | undefined): string {
+  if (!pl || pl.rong) return "    <PLuc />";
+  const n = (v: number) => String(Math.round(v));
+  return `    <PLuc>
+      <PL_NQ142_GTGT>
+        <HH_DV_MuaVaoTrongKy>
+          <BangKeTenHHDV ID="ID_1">
+            <tenHHDVMuaVao>${thoat(catMoTa(pl.muaVao.tenHang))}</tenHHDVMuaVao>
+            <giaTriHHDVMuaVao>${n(pl.muaVao.giaTri)}</giaTriHHDVMuaVao>
+            <thueGTGTHHDV>${n(pl.muaVao.thue)}</thueGTGTHHDV>
+          </BangKeTenHHDV>
+          <tongCongGiaTriHHDVMuaVao>${n(pl.muaVao.giaTri)}</tongCongGiaTriHHDVMuaVao>
+          <tongCongThueGTGTHHDV>${n(pl.muaVao.thue)}</tongCongThueGTGTHHDV>
+        </HH_DV_MuaVaoTrongKy>
+        <HH_DV_BanRaTrongKy>
+          <BangKeTenHHDV ID="ID_1">
+            <tenHHDV>${thoat(catMoTa(pl.banRa.tenHang))}</tenHHDV>
+            <giaTriHHDV>${n(pl.banRa.giaTri)}</giaTriHHDV>
+            <thueSuatTheoQuyDinh>${pl.banRa.thueSuatQuyDinh}</thueSuatTheoQuyDinh>
+            <thueSuatSauGiam>${pl.banRa.thueSuatSauGiam}</thueSuatSauGiam>
+            <thueGTGTDuocGiam>${n(pl.banRa.thueDuocGiam)}</thueGTGTDuocGiam>
+          </BangKeTenHHDV>
+          <tongCongGiaTriHHDV>${n(pl.banRa.giaTri)}</tongCongGiaTriHHDV>
+          <tongCongThueGTGTDuocGiam>${n(pl.banRa.thueDuocGiam)}</tongCongThueGTGTDuocGiam>
+        </HH_DV_BanRaTrongKy>
+        <ChenhLech>
+          <ct9>${n(pl.chenhLech)}</ct9>
+        </ChenhLech>
+      </PL_NQ142_GTGT>
+    </PLuc>`;
+}
+
 export function dungXmlGtgt01(dv: DauVaoXmlGtgt01): string {
   const { ky, ct, nnt } = dv;
   const ngay = dv.ngayLap ?? new Date();
   const ngayIso = isoNgay(ngay);
   const { tuNgay, denNgay } = khoangCuaKy(ky);
   const nhanKyXml = `${ky.kySo}/${ky.nam}`;
-  const thangDau = ky.kyLoai === "thang" ? ky.kySo : (ky.kySo - 1) * 3 + 1;
-  const thangCuoi = ky.kyLoai === "thang" ? ky.kySo : ky.kySo * 3;
+  // `kyKKhaiTuThang`/`kyKKhaiDenThang` CHỈ điền cho kỳ THÁNG. Ba file mẫu do phần mềm khác xuất
+  // đều thống nhất: kỳ tháng ghi `7/2026` ở cả hai thẻ, kỳ QUÝ để RỖNG (khoảng thời gian của quý
+  // đã nằm ở `kyKKhaiTuNgay`/`kyKKhaiDenNgay`). Điền tháng đầu/cuối quý vào đây là sai form.
+  const oThang =
+    ky.kyLoai === "thang"
+      ? `<kyKKhaiTuThang>${ky.kySo}/${ky.nam}</kyKKhaiTuThang>
+            <kyKKhaiDenThang>${ky.kySo}/${ky.nam}</kyKKhaiDenThang>`
+      : `<kyKKhaiTuThang />
+            <kyKKhaiDenThang />`;
   const t = (tag: string) => tien(ct, tag);
 
   return `<?xml version="1.0" encoding="UTF-8"?>
 <HSoThueDTu xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns="http://kekhaithue.gdt.gov.vn/TKhaiThue">
-  <HSoKhaiThue id="ID-NODETOSIGN">
+  <HSoKhaiThue id="ID_1">
     <TTinChung>
       <TTinDVu>
         <maDVu>MAXV</maDVu>
@@ -114,6 +180,7 @@ export function dungXmlGtgt01(dv: DauVaoXmlGtgt01): string {
           <maTKhai>${MA_TKHAI_GTGT01}</maTKhai>
           <tenTKhai>${TEN_TKHAI}</tenTKhai>
           <moTaBMau>${MO_TA_BMAU}</moTaBMau>
+          <pbanTKhaiXML>${PBAN_TKHAI_XML}</pbanTKhaiXML>
           <loaiTKhai>C</loaiTKhai>
           <soLan>${Math.max(0, Math.trunc(dv.soLan ?? 0))}</soLan>
           <KyKKhaiThue>
@@ -121,8 +188,7 @@ export function dungXmlGtgt01(dv: DauVaoXmlGtgt01): string {
             <kyKKhai>${nhanKyXml}</kyKKhai>
             <kyKKhaiTuNgay>${ngayVn(tuNgay)}</kyKKhaiTuNgay>
             <kyKKhaiDenNgay>${ngayVn(denNgay)}</kyKKhaiDenNgay>
-            <kyKKhaiTuThang>${thangDau}/${ky.nam}</kyKKhaiTuThang>
-            <kyKKhaiDenThang>${thangCuoi}/${ky.nam}</kyKKhaiDenThang>
+            ${oThang}
           </KyKKhaiThue>
           <maCQTNoiNop />
           <tenCQTNoiNop />
@@ -133,6 +199,7 @@ export function dungXmlGtgt01(dv: DauVaoXmlGtgt01): string {
           </GiaHan>
           <nguoiKy></nguoiKy>
           <ngayKy>${ngayIso}</ngayKy>
+          <nganhNgheKD />
         </TKhaiThue>
         <NNT>
           <mst>${thoat(nnt.mst)}</mst>
@@ -150,7 +217,21 @@ export function dungXmlGtgt01(dv: DauVaoXmlGtgt01): string {
       </TTinTKhaiThue>
     </TTinChung>
     <CTieuTKhaiChinh>
-      <ten_NganhNghe>Hoạt động sản xuất kinh doanh thông thường</ten_NganhNghe>
+      <ma_NganhNghe>${MA_NGANH_NGHE}</ma_NganhNghe>
+      <ten_NganhNghe>${TEN_NGANH_NGHE}</ten_NganhNghe>
+      <tieuMucHachToan>${TIEU_MUC_HACH_TOAN}</tieuMucHachToan>
+      <Header>
+        <ct09 />
+        <ct10 />
+        <DiaChiHDSXKDKhacTinhNDTSC>
+          <ct11a_phuongXa_ma />
+          <ct11a_phuongXa_ten />
+          <ct11b_quanHuyen_ma />
+          <ct11b_quanHuyen_ten />
+          <ct11c_tinhTP_ma />
+          <ct11c_tinhTP_ten />
+        </DiaChiHDSXKDKhacTinhNDTSC>
+      </Header>
       <ct21>0</ct21>
       <ct22>${t("ct22")}</ct22>
       <GiaTriVaThueGTGTHHDVMuaVao>
@@ -192,7 +273,7 @@ export function dungXmlGtgt01(dv: DauVaoXmlGtgt01): string {
       <ct42>${t("ct42")}</ct42>
       <ct43>${t("ct43")}</ct43>
     </CTieuTKhaiChinh>
-    <PLuc />
+${khoiPhuLuc(dv.phuLuc)}
   </HSoKhaiThue>
 </HSoThueDTu>
 `;

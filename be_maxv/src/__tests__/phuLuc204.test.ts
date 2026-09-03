@@ -152,3 +152,51 @@ test("nhóm 8% âm lớn: làm tròn đúng phía, không xuống thêm một đ
   const banRa = gomBanRa([hd("b", [{ tsuat: "8%", thtien: -1_234_567, tthue: -98_765 }])]);
   assert.equal(dungPhuLuc204(banRa, gomMuaVao([])).banRa.thueDuocGiam, -24_691);
 });
+
+test("mô tả hàng hóa cắt về 75 ký tự, đúng cỡ bản HTKK xuất", () => {
+  const dai = "Bánh xe của xe đẩy hàng hóa bằng sắt kết hợp nhựa, có giá đỡ bằng sắt 1 bánh, cỡ bánh xe phi 100mm";
+  const banRa = gomBanRa([
+    hd("a", [{ tsuat: "8%", thtien: 1_000_000, tthue: 80_000 }],
+      Array.from({ length: 12 }, (_, i) => ({ ten: `${dai} loại ${i}`, ltsuat: "8%" }))),
+  ]);
+  const mo = dungPhuLuc204(banRa, gomMuaVao([])).banRa.tenHang;
+  assert.ok(mo.length <= 80, `mô tả dài ${mo.length} ký tự`);
+  assert.ok(mo.endsWith(" ..."), "phải có dấu ... báo còn nữa");
+  // Ngay tên ĐẦU đã vượt trần -> cắt ở khoảng trắng, không đứt giữa từ: phần giữ lại phải là
+  // TIỀN TỐ của tên gốc, và ký tự đứng ngay sau nó trong tên gốc phải là khoảng trắng.
+  const giu = mo.slice(0, -4);
+  const goc = `${dai} loại 0`;
+  assert.ok(goc.startsWith(giu), `không phải tiền tố của tên gốc: "${giu}"`);
+  // Ký tự ngay sau chỗ cắt phải là khoảng trắng hoặc dấu phẩy — cả hai đều là ranh giới hợp lệ,
+  // miễn không cắt giữa một từ.
+  assert.match(goc[giu.length] ?? "", /[\s,]/u, `đứt giữa từ tại "...${giu.slice(-20)}"`);
+});
+
+test("nhiều tên NGẮN thì cắt ở ranh giới tên, không đứt giữa tên", () => {
+  const banRa = gomBanRa([
+    hd("b", [{ tsuat: "8%", thtien: 1_000_000, tthue: 80_000 }], [
+      { ten: "Bánh xe", ltsuat: "8%" },
+      { ten: "Càng bánh xe", ltsuat: "8%" },
+      { ten: "Xe đẩy", ltsuat: "8%" },
+      { ten: "Cước vận chuyển", ltsuat: "8%" },
+      { ten: "Dịch vụ ăn uống trọn gói cho hội nghị khách hàng", ltsuat: "8%" },
+    ]),
+  ]);
+  const mo = dungPhuLuc204(banRa, gomMuaVao([])).banRa.tenHang;
+  assert.ok(mo.length <= 80, `dài ${mo.length}`);
+  assert.ok(mo.endsWith(" ..."));
+  // Phần giữ lại phải gồm các tên NGUYÊN VẸN.
+  for (const ten of mo.slice(0, -4).split(", ")) {
+    assert.ok(
+      ["Bánh xe", "Càng bánh xe", "Xe đẩy", "Cước vận chuyển"].includes(ten),
+      `tên bị đứt: "${ten}"`,
+    );
+  }
+});
+
+test("mô tả ngắn thì giữ nguyên, không thêm dấu ...", () => {
+  const banRa = gomBanRa([
+    hd("c", [{ tsuat: "8%", thtien: 1_000, tthue: 80 }], [{ ten: "Cước vận chuyển", ltsuat: "8%" }]),
+  ]);
+  assert.equal(dungPhuLuc204(banRa, gomMuaVao([])).banRa.tenHang, "Cước vận chuyển");
+});

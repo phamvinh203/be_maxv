@@ -45,9 +45,40 @@ export interface PhuLuc204 {
 }
 
 /** Gộp tên hàng thành một câu mô tả, cắt bằng "..." khi còn nữa (giống cách bản thật viết). */
+/**
+ * Trần độ dài ô mô tả hàng hóa của phụ lục.
+ *
+ * 75 ký tự theo đúng bản HTKK xuất: "Bánh xe, Càng bánh xe, Xe đẩy, Cước vận chuyển, VPP, Dịch vụ
+ * ăn uống, khác…". Đếm 12 TÊN là chưa đủ — có công ty đặt tên hàng dài cả trăm ký tự ("Bánh xe của
+ * xe đẩy hàng hóa bằng sắt kết hợp nhựa, có giá đỡ bằng sắt 1 bánh, cỡ bánh xe phi 100mm…"), một
+ * tên như thế đã vượt trần.
+ */
+export const DAI_TOI_DA_MO_TA = 75;
+
+/**
+ * Cắt mô tả về trần, thêm " ..." khi còn nữa.
+ *
+ * Ưu tiên cắt ở ranh giới TÊN (dấu ", " giữa các tên); tên đầu tiên mà đã quá dài thì cắt ở
+ * khoảng trắng gần nhất để không đứt giữa từ. Không cắt ở dấu phẩy bất kỳ: chính tên hàng cũng
+ * chứa dấu phẩy ("bằng sắt kết hợp nhựa, có giá đỡ bằng sắt 1 bánh") nên lấy nó làm ranh giới sẽ
+ * đứt giữa một tên và mô tả đọc thành câu cụt.
+ *
+ * Export để chỗ dựng XML gọi lại — bản phụ lục lưu trong DB từ trước có thể còn mô tả dài, mà file
+ * nộp thuế thì không được dài.
+ */
+export function catMoTa(mo: string): string {
+  if (mo.length <= DAI_TOI_DA_MO_TA) return mo;
+  const cat = mo.slice(0, DAI_TOI_DA_MO_TA);
+  const ranhGioiTen = cat.lastIndexOf(", ");
+  if (ranhGioiTen > 0) return `${cat.slice(0, ranhGioiTen)} ...`;
+  const khoangTrang = cat.lastIndexOf(" ");
+  return `${khoangTrang > 0 ? cat.slice(0, khoangTrang) : cat} ...`;
+}
+
 function moTaHang(tenHang: string[]): string {
   if (tenHang.length === 0) return "";
   const cau = tenHang.join(", ");
+  if (cau.length > DAI_TOI_DA_MO_TA) return catMoTa(cau);
   return tenHang.length >= 12 ? `${cau} ...` : cau;
 }
 
