@@ -12,7 +12,7 @@
  */
 
 import type { KetQuaBanRa, KetQuaMuaVao, NhomThueSuat } from "./gomHoaDonGtgt";
-import { catPhanLe } from "./tienVnd";
+import { lamTronDong } from "./tienVnd";
 
 /** Nhãn nhóm được giảm thuế. Nghị quyết đổi mức thì sửa đúng hằng này. */
 export const NHAN_GIAM_THUE = "8%";
@@ -90,8 +90,8 @@ export function dungPhuLuc204(banRa: KetQuaBanRa, muaVao: KetQuaMuaVao): PhuLuc2
   const mua = gopMuaVaoCoThue(muaVao.theoNhan);
 
   const giaTriBan = nhomBan?.giaTri ?? 0;
-  // Cắt phần lẻ, KHÔNG làm tròn thường — lý do và số đối chứng ở `tienVnd.ts`.
-  const thueDuocGiam = catPhanLe(
+  // Làm tròn thường — số đối chứng ở `tienVnd.ts`.
+  const thueDuocGiam = lamTronDong(
     (giaTriBan * (THUE_SUAT_QUY_DINH - THUE_SUAT_SAU_GIAM)) / 100,
   );
   const thueMua = mua.thue;

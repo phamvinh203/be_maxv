@@ -122,26 +122,33 @@ test("chênh lệch âm khi thuế đầu vào lớn hơn phần giảm đầu r
   assert.equal(pl.chenhLech, 20_000 - 800_000);
 });
 
-test("thuế được giảm làm tròn XUỐNG — chốt bằng hai kỳ thật", () => {
-  // Q1/2026: 251.896.634 x 2% = 5.037.932,68. Tròn thường ra 5.037.933 và làm [33] lệch một đồng
-  // so với bản đã nộp; tròn xuống ra đúng.
-  const q1 = dungPhuLuc204(gomBanRa([hd("a", [{ tsuat: "8%", thtien: 251_896_634, tthue: 20_151_731 }])]), gomMuaVao([]));
-  assert.equal(q1.banRa.thueDuocGiam, 5_037_932);
+test("thuế được giảm LÀM TRÒN THƯỜNG — chốt bằng hai phụ lục thật", () => {
+  // MST 0111142786 (XNK Thành Công). Hai kỳ này phân định được tròn-thường với cắt-phần-lẻ, và
+  // cả hai đều khớp tròn thường. Trước đây code dùng `Math.trunc` theo một suy luận ngược từ
+  // [22] của kỳ sau — hai file này bác điều đó.
+  const q1 = dungPhuLuc204(
+    gomBanRa([hd("a", [{ tsuat: "8%", thtien: 4_631_817_848, tthue: 370_545_428 }])]),
+    gomMuaVao([]),
+  );
+  assert.equal(q1.banRa.thueDuocGiam, 92_636_357); // 92.636.356,96 -> tròn LÊN
 
-  // Q2/2026: 391.249.917 x 2% = 7.824.998,34 — hai cách tròn cho cùng kết quả.
-  const q2 = dungPhuLuc204(gomBanRa([hd("b", [{ tsuat: "8%", thtien: 391_249_917, tthue: 31_299_993 }])]), gomMuaVao([]));
-  assert.equal(q2.banRa.thueDuocGiam, 7_824_998);
+  const q2 = dungPhuLuc204(
+    gomBanRa([hd("b", [{ tsuat: "8%", thtien: 7_093_463_577, tthue: 567_477_086 }])]),
+    gomMuaVao([]),
+  );
+  assert.equal(q2.banRa.thueDuocGiam, 141_869_272); // 141.869.271,54 -> tròn LÊN
 });
 
-test("nhóm 8% ÂM: cắt phần lẻ về 0, không bịa ra một đồng được giảm", () => {
-  // Hóa đơn điều chỉnh giảm kéo nhóm 8% xuống âm. -25 x 2% = -0,5.
-  // `Math.floor` cho -1 (bịa ra một đồng giảm ngược); cắt về 0 mới đúng.
+test("nhóm 8% ÂM: làm tròn đối xứng, không ra -0", () => {
+  // Hóa đơn điều chỉnh giảm kéo nhóm 8% xuống âm. -25 x 2% = -0,5 -> -1 (nửa ra XA 0).
   const banRa = gomBanRa([hd("a", [{ tsuat: "8%", thtien: -25, tthue: -2 }])]);
-  assert.equal(dungPhuLuc204(banRa, gomMuaVao([])).banRa.thueDuocGiam, 0);
+  const pl = dungPhuLuc204(banRa, gomMuaVao([]));
+  assert.equal(pl.banRa.thueDuocGiam, -1);
+  assert.equal(Object.is(pl.banRa.thueDuocGiam, -0), false);
 });
 
-test("nhóm 8% âm lớn: cắt về phía 0 chứ không xuống thêm", () => {
-  // -1.234.567 x 2% = -24.691,34 -> cắt ra -24.691 (floor cho -24.692).
+test("nhóm 8% âm lớn: làm tròn đúng phía, không xuống thêm một đồng", () => {
+  // -1.234.567 x 2% = -24.691,34 -> -24.691 (phần lẻ 0,34 < nửa nên không đẩy xa thêm).
   const banRa = gomBanRa([hd("b", [{ tsuat: "8%", thtien: -1_234_567, tthue: -98_765 }])]);
   assert.equal(dungPhuLuc204(banRa, gomMuaVao([])).banRa.thueDuocGiam, -24_691);
 });

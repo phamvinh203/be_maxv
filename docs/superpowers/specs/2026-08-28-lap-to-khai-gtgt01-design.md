@@ -437,18 +437,42 @@ Nên **[33] KHÔNG phải tổng thuế trên hóa đơn**, mà là:
 Lưu ý `[32]` gộp cả hàng 10% thật lẫn hàng 8% được giảm, nên phép trừ mới ra đúng: phần 10% đóng
 đủ 10%, phần 8% được trừ lại 2%.
 
-**Cột (6) của phụ lục làm tròn XUỐNG, không phải làm tròn thường.** Đây là chỗ chỉ hai kỳ thật mới
-phân định được:
+**Cột (6) của phụ lục làm tròn THƯỜNG.** Chỗ này từng bị kết luận sai, đáng ghi lại vì sai lầm
+có ích: ban đầu chọn *cắt phần lẻ* dựa trên suy luận NGƯỢC ở Phát Thịnh — không có tờ khai Q1 của
+họ, nên `[33]` Q1 được suy từ `[22] = 3.366.060` mà bản Q2 đã nộp khai.
 
-| Kỳ | Giá trị hàng 8% | × 2% | Tròn thường | Tròn xuống | [33] phải ra |
+Hai phụ lục THẬT của MST 0111142786 (XNK Thành Công) bác điều đó bằng chứng cứ trực tiếp:
+
+| Kỳ | Giá trị hàng 8% | × 2% | Tròn thường | Cắt phần lẻ | Phụ lục ĐÃ NỘP khai |
 |---|---|---|---|---|---|
-| Q1/2026 | 251.896.634 | 5.037.932,**68** | 5.037.9**33** | 5.037.9**32** | 20.151.731 |
-| Q2/2026 | 391.249.917 | 7.824.998,**34** | 7.824.998 | 7.824.998 | 31.299.994 |
+| Q1/2026 | 4.631.817.848 | 92.636.356,**96** | 92.636.3**57** | 92.636.3**56** | **92.636.357** |
+| Q2/2026 | 7.093.463.577 | 141.869.271,**54** | 141.869.2**72** | 141.869.2**71** | **141.869.272** |
 
-Q2 không phân biệt được hai cách; Q1 thì có, và chỉ tròn-xuống mới khớp. `[33]` của Q1 suy ra từ
-`[22] = 3.366.060` mà bản Q2 đã nộp khai — tức `[43]` của Q1 thật đúng bằng số đó.
+Cả hai kỳ đều phân định được, và cả hai đều khớp tròn thường. Nên `phuLuc204.ts` dùng
+`lamTronDong` (tròn thường, nửa ra xa 0) — cùng một hàm với bộ chỉ tiêu, không còn quy tắc thứ hai.
 
-Vì vậy `phuLuc204.ts` dùng `Math.floor`, không `Math.round`.
+**Hệ quả cần biết:** kỳ Q1/2026 của Phát Thịnh, engine ra `[33] = 20.151.730` và `[43] = 3.366.061`,
+trong khi bản Q2 đã nộp khai `[22] = 3.366.060`. Lệch một đồng đó KHÔNG phải lỗi công thức — xem
+mục dưới.
+
+### 11.5b. `[33]` trên tờ khai thật KHÔNG phải lúc nào cũng theo công thức
+
+Đối chiếu ba tờ khai đã nộp cho thấy kế toán khai `[33]` theo số của họ, và HTKK **chỉ cảnh báo**
+chứ không chặn (bộ kiểm ghi mức `N` cho quy tắc này):
+
+| Tờ khai | [33] khai | Công thức HTKK | Lệch |
+|---|---|---|---|
+| XNK Thành Công Q1/2026 | 408.646.091 | 408.646.089 | +2 |
+| XNK Thành Công Q2/2026 | 641.712.199 | 641.712.213 | −14 |
+| Phát Thịnh Q1/2026 (suy từ [22] kỳ sau) | 20.151.731 | 20.151.730 | +1 |
+| Phát Thịnh Q2/2026 | 31.299.994 | 31.299.994 | 0 |
+
+Chính file Excel của XNK Thành Công còn giữ ô phụ ghi số HTKK tự tính (408.646.089 / 641.712.213)
+NGAY CẠNH ô khai — bằng chứng là HTKK có tính, có so, và vẫn cho nộp số khác.
+
+Phần mềm giữ công thức HTKK làm số máy: đó là chuẩn của cơ quan thuế, và là số duy nhất suy được
+từ hóa đơn. Kế toán muốn khai khác thì ghi đè `[33]` (ô này nằm trong danh sách sửa được — Mục
+11.6), lượt soát sẽ không kêu vì nó so `ctMay` chứ không so `ct` (Mục 11.8).
 
 **Kết quả sau khi sửa:** Q2/2026 khớp **21/22** ô (chỉ còn [23] lệch 20.000 — xem Mục 11.4b);
 phụ lục mục II và III khớp tuyệt đối; Q1/2026 giữ nguyên `[43] = 3.366.060` nên mắt xích sang [22]
