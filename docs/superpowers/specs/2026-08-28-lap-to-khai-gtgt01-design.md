@@ -417,6 +417,9 @@ tới khi gặp ca thật.
 
 ### 11.5. Công thức [31]/[33] của HTKK — ĐÃ SỬA 2026-09-02
 
+> **ĐÃ ĐẢO 2026-09-03 — xem Mục 11.21.** [31]/[33] nay cộng thuế TỪNG hóa đơn; công thức
+> dưới đây còn dùng, nhưng chỉ để `soatToKhai` đối chiếu và báo khi chênh vượt mức làm tròn.
+
 Chênh lệch 1 đồng ở Mục 11.4(a) **không phải chuyện làm tròn vặt**: nó chảy qua [43] sang [22] của
 kỳ sau, nên mỗi kỳ lại lệch thêm. Truy ra được nguyên nhân thật, và nó sửa được.
 
@@ -587,6 +590,387 @@ song song nhiều lô chỉ đổi lỗi tham số lấy áp lực bộ nhớ.
 
 Cỡ thật hiện tại: 174 hóa đơn/quý, còn rất xa ngưỡng — đây là vá trước khi đau.
 
+### 11.10. Hóa đơn thay thế / điều chỉnh thuộc kỳ của HÓA ĐƠN GỐC — SỬA 2026-09-03
+
+Trước đây mọi hóa đơn vào kỳ theo NGÀY LẬP của chính nó. Sai với hóa đơn thay thế và điều chỉnh:
+chúng sửa cho một hóa đơn của kỳ trước, nên phải khai bổ sung vào **kỳ của hóa đơn gốc**. Hóa đơn
+lập 07/01/2026 thay thế cho hóa đơn 26/12/2025 thuộc Q4/2025, không phải Q1/2026 — kê nhầm là doanh
+thu chạy sang quý khác và **cả hai** tờ khai đều sai.
+
+Lọc theo trạng thái thì vốn đã đúng, không đổi: `1` mới / `2` thay thế / `3` điều chỉnh / `5` bị
+điều chỉnh đều KÊ; `4` đã bị thay thế và `6` đã bị hủy thì LOẠI.
+
+**Ngày gốc phải suy ra, hóa đơn không mang sẵn.** `tdlapgoc` và `nlapgoc` rỗng trên mọi bản ghi đã
+kiểm; chỉ có `khhdgoc`/`shdgoc` (ký hiệu + số). Hai đường bù nhau, đo trên MST 0111142786:
+
+| Cách | Bán ra | Mua vào |
+|---|---|---|
+| Tra hóa đơn gốc trong DB theo (ký hiệu, số) | 26/27 | 5/6 |
+| Bóc ngày từ câu ghi chú `gchdgoc` ("…lập ngày 26/12/2025") | 26/27 | **0/6** |
+
+Tra DB chính xác hơn nên đi trước; ghi chú là đường cứu khi hóa đơn gốc thuộc năm chưa đồng bộ —
+đúng ca `C25TLT 1474`. Ghi chú bên mua vào do nhà cung cấp tự viết, không theo mẫu nào, nên không
+dựa vào nó được. Cả hai trượt thì **giữ theo ngày lập** và đếm vào `khongRoKyGoc` để màn hình cảnh
+báo — đoán bừa một kỳ là đẩy doanh thu sang quý khác.
+
+**Phép chọn đi hai chiều** (`chonTheoKyGoc`, hàm thuần): BỎ tờ lập trong kỳ mà gốc ở kỳ khác, THÊM
+tờ lập ngoài kỳ mà gốc rơi vào kỳ này.
+
+**Tác động đo được** (XNK Thành Công, bán ra):
+
+| Chuyển | Số tờ | Giá trị |
+|---|---|---|
+| Q1/2026 → Q4/2025 | 1 | 17.100.000 |
+| Q2/2026 → Q1/2026 | 8 | 84.475.150 |
+| Q3/2026 → Q2/2026 | 1 | 5.236.000 |
+
+**Cần biết khi đối chiếu:** quy tắc này làm số LỆCH XA HƠN so với hai tờ khai công ty đó đã nộp ở
+Q1 (từ +90.290.965 thành +200.145.115) và gần hơn ở Q2 (từ +122.488.398 còn +82.340.341). Tức kế
+toán của họ kê hóa đơn thay thế theo ngày lập, không chuyển về kỳ gốc. Phần mềm theo LUẬT, đây là
+quyết định đã chốt — đừng "sửa lại cho khớp tờ khai cũ" khi thấy lệch.
+
+### 11.11. Cổng trả `thtien` NHÂN BẢN — vá 2026-09-03
+
+Một số hóa đơn có nhiều nhóm thuế suất mà cổng ghi `thtien` của MỖI nhóm bằng TỔNG cả hóa đơn:
+
+```
+C26TLT 1090, tgtcthue = 41.499.000
+  [ { 8%,  thuế 3.096.880, thtien 41.499.000 },
+    { 10%, thuế   278.800, thtien 41.499.000 } ]
+```
+
+Cộng thẳng là tính 41.499.000 hai lần. Số thật suy ngược từ thuế: `3.096.880 ÷ 8% = 38.711.000`
+và `278.800 ÷ 10% = 2.788.000`, cộng đúng bằng `tgtcthue`.
+
+Đo trên MST 0111142786: **38 hóa đơn bán ra** dính, tổng thừa **213.346.363** — gần khít phần lệch
+`[32]` của hai kỳ mà trước đó không truy ra được (90.290.965 + 122.488.398 = 212.779.363).
+
+`vaNhomNhanBan` nhận diện HẸP: chỉ vá khi có từ hai nhóm VÀ **mọi** nhóm ghi `thtien` bằng
+`tgtcthue` (38/38 tờ hỏng đều mang dấu hiệu này). Phân bổ theo trọng số `tthue ÷ thuế suất`, nhóm
+cuối nhận phần còn lại để tổng khớp từng đồng. Nhóm không suy được (thuế 0, nhãn chữ) thì trả
+nguyên mảng cũ cho hóa đơn rơi vào nhóm treo — không bịa cách chia.
+
+### 11.12. Đối chiếu bảng kê Q1/2026 — kết luận cũ SAI, nguyên nhân thật là múi giờ
+
+> Bản ghi ngày 2026-09-03 (sáng) kết luận khoảng lệch đến từ "thiếu dữ liệu đồng bộ: 117 tờ
+> `C25TLT` chưa có trong DB". **Sai.** Giữ lại đoạn này để không ai đi lại đường đó.
+
+Cách suy sai: đối chiếu bảng kê kế toán với DB theo cặp **(ký hiệu, số hóa đơn)**. 117 dòng mang ký
+hiệu `C25TLT` không tìm thấy trong DB nên bị kết luận là chưa đồng bộ. Đồng bộ thêm tháng 12/2025 về
+cũng không có chúng — đúng ra đó đã là dấu hiệu để nghi ngờ chính giả thuyết.
+
+Kiểm lại bằng cách bỏ ký hiệu, chỉ so **số hóa đơn**: cả 1069 tờ đều có trong DB, tiền khớp **tuyệt
+đối 1069/1069**, chỉ ngày lập trong DB sớm hơn sổ đúng một ngày ở 1062 tờ. Phần mềm kế toán ghi ký
+hiệu là `C25TLT` cho 117 tờ vốn là `C26TLT` — nhãn trong sổ, không phải dữ liệu thiếu.
+
+**Bài học về phương pháp:** khi hai nguồn lệch, đối chiếu bằng nhiều khóa độc lập trước khi kết luận
+"thiếu dữ liệu". Một khóa duy nhất mà một bên ghi sai thì mọi dòng đều "biến mất", trông y hệt thiếu
+dữ liệu.
+
+**Bài học còn nguyên giá trị:** hai số trong ký hiệu hóa đơn là năm **ĐĂNG KÝ MẪU**, KHÔNG phải năm
+lập. Từng có hàm `namTuKyHieu` đọc `C25TLT` thành 2025 — đã xóa. Muốn biết kỳ thì đọc `tdlap`.
+
+### 11.13. Kỳ kê khai đọc theo mốc UTC — lệch một ngày, SỬA 2026-09-03
+
+**Nguyên nhân gốc của mọi khoảng lệch còn lại.** Cổng thuế trả ngày lập lúc 00:00 giờ VN, lưu thành
+**17:00 UTC hôm trước** (đo: 2123/2123 hóa đơn bán ra của MST 0111142786 đều mang giờ `17:00:00`).
+
+Module Hóa đơn điện tử đọc đúng — nó có sẵn `vnDayStart`/`vnDayEnd`/`toVnWallClock`. Module Tờ khai
+KHÔNG thấy chúng nên tự viết lại phép so ngày bằng mốc UTC:
+
+```ts
+const gte = new Date(`${tuNgay}T00:00:00.000Z`);   // keKhaiKy.service.ts — SAI
+const lte = new Date(`${denNgay}T23:59:59.999Z`);
+goc[0].tdlap.toISOString().slice(0, 10)            // ngày gốc — cũng SAI
+```
+
+Hệ quả: kỳ Q1/2026 thực chất quét hóa đơn lập **02/01 – 01/04**.
+
+**Sửa:** dời bốn hàm giờ VN ra `src/utils/ngayVn.ts` làm nguồn DUY NHẤT, thêm `vnDayString` cho ca
+"lấy ngày lịch của một bản ghi". `gdt.service.ts` dùng lại từ đó. Đây mới là phần quan trọng: lỗi
+sinh ra vì có hai nơi tự hiểu ngày một kiểu, nên chữa bằng cách bỏ nơi thứ hai chứ không chỉ sửa
+mốc.
+
+**Vá kèm — `danhDauKy` chỉ biết THÊM, không biết GỠ.** Bảng `tokhai_ky_hoa_don` khóa chính là
+`[hoa_don_id, chieu]` nên hóa đơn chỉ rời một kỳ khi có kỳ khác giành lấy. Tờ bị luật kỳ gốc đẩy đi,
+hay tờ vào kỳ do đọc sai ngày, nằm lại vĩnh viễn. Thêm `goKhoiKy` chạy TRƯỚC lượt gán, truyền danh
+sách id thành MỘT tham số mảng (`= ANY($5)`) để không đụng trần 65.535 tham số của Postgres. Lượt
+sửa này gỡ 14 tờ khỏi Q1 và 21 tờ khỏi Q2. FE báo số tờ bị gỡ — chúng mất theo cột `ke_khai`/
+`ghi_chu`.
+
+**Vá kèm — bảng kê giấu hóa đơn kéo về từ kỳ khác.** `layBangKeTheoKy` lọc lại theo khoảng ngày của
+kỳ nên tờ được luật kỳ gốc kéo về không hiện trên màn hình, dù đã cộng vào tờ khai. `khoangDocBangKe`
+nới khoảng đọc tới ngày lập xa nhất trong số hóa đơn đã gán (JOIN qua bảng gán, không truyền id).
+
+### 11.14. Nhãn thuế suất của nhóm bị nhân bản cũng SAI — vá 2026-09-03
+
+Hóa đơn dính lỗi `thtien` nhân bản (mục 11.11) thường bị chép luôn `tsuat` của nhóm đầu sang nhóm
+sau. Ca thật C26TLT 426, `tgtcthue` = 786.000:
+
+```
+cổng trả: [ { "8%", thuế 49.280, thtien 786.000 },
+            { "8%", thuế 17.000, thtien 786.000 } ]
+sổ kế toán:  8% = 616.000   |   10% = 170.000
+```
+
+17.000 ÷ 8% = 212.500 không cho tổng nào đúng; chỉ 17.000 ÷ 10% = 170.000 mới ra 786.000.
+
+**Sửa:** `suyMucThueSuat` dò hết tổ hợp mức trong {5%, 8%, 10%} và chỉ nhận khi có **đúng một** tổ
+hợp cho `Σ (tthue ÷ suất) = tgtcthue`. Hai tổ hợp cùng khớp thì giữ nhãn cổng — không có căn cứ
+chọn, mà chọn sai là chuyển tiền nhầm giữa nhóm 8% và 10% của phụ lục.
+
+Tin nhãn thì `[32]` vẫn đúng (8% và 10% chung một ô) nhưng phụ lục lệch, kéo `[33]` lệch theo. Đo
+trên Q1/2026: 19 hóa đơn dính, phụ lục 8% lệch 10.634.002.
+
+### 11.15. Nhãn `KHAC:08.00%` — vá 2026-09-03
+
+Cổng thuế còn trả nhãn dạng `KHAC:<mức>%` (gặp thật: một nhóm mua vào 1.869.629.200 đồng, thuế
+149.570.336 = đúng 8,00%). `chuanHoaNhan` không bóc được mức nên nó thành một nhóm riêng. Bên MUA
+VÀO chỉ lệch phụ lục; bên **BÁN RA thì cả hóa đơn rơi vào `treo` và mất khỏi `[32]`** — mất doanh
+thu mà bảng không hiện dấu hiệu gì. Hiện chưa hóa đơn bán ra nào mang nhãn này, nhưng không có gì
+bảo đảm sẽ không có.
+
+Đã bóc mức ra. `KHAC` không kèm mức đọc được thì vẫn treo — thà nói không biết còn hơn đoán.
+
+### 11.16. Phụ lục Mục I lấy ĐÚNG nhóm 8% — đảo quyết định cũ 2026-09-03
+
+Mục 11bis từng chốt "Mục I gộp mọi nhóm có thuế", suy từ một phụ lục thật của MST 0106861880. Hai tờ
+khai thật của MST 0111142786 bác cách đó:
+
+| Kỳ | Phụ lục đã nộp | chỉ nhóm 8% | mọi nhóm có thuế |
+|---|---|---|---|
+| Q1/2026 | 6.185.602.920 | lệch −8.685.122 | lệch +1.022.271.928 |
+| Q2/2026 | 7.880.500.667 | lệch −9.268.211 | lệch +793.410.717 |
+
+0,1% so với 11–17%. Phần lệch còn lại đúng bằng 8% ở cả hai kỳ (694.811 và 741.459 tiền thuế) — là
+hàng 8% cổng thuế ghi thiếu trong `thttltsuat`, không phải nhóm 10% lẫn vào. Con số 21.000 của MST
+0106861880 nhiều khả năng là một dòng kế toán tự thêm tay.
+
+### 11.17. Kết quả đối chiếu sau khi sửa — 2026-09-03
+
+MST 0111142786, so với tờ khai đã nộp:
+
+| Chỉ tiêu | Trước | Sau | Đã nộp |
+|---|---|---|---|
+| Q1 `[23]` | 7.226.030.011 (0) | 7.226.030.011 (**0**) | 7.226.030.011 |
+| Q1 `[24]` | 598.816.081 (0) | 598.816.081 (**0**) | 598.816.081 |
+| Q1 `[32]` | 5.114.998.212 (+102.173.752) | 5.011.516.460 (−1.308.000) | 5.012.824.460 |
+| Q1 `[33]` | 416.636.909 (+7.990.818) | 408.541.449 (−104.642) | 408.646.091 |
+| Q1 PL 8% | 4.743.145.602 (+111.327.754) | 4.630.509.850 (−1.307.998) | 4.631.817.848 |
+| Q2 `[23]` | 10.055.439.595 (+1.356.031.600) | 8.698.693.995 (−714.000) | 8.699.407.995 |
+| Q2 `[24]` | 819.923.325 (+108.539.648) | 711.383.677 (**0**) | 711.383.677 |
+| Q2 `[32]` | 7.814.671.191 (−21.143.659) | 7.836.582.850 (+768.000) | 7.835.814.850 |
+| Q2 PL 8% | — | 7.094.231.577 (+768.000) | 7.093.463.577 |
+
+**Phần dư KHÔNG phải lỗi**, gồm đúng bốn chứng từ:
+
+1. `C26TLT|1189` (13/04/2026, điều chỉnh −768.000) và `C26TLT|2122` (30/06/2026, thay thế +852.000)
+   — luật kỳ gốc (mục 11.10) đưa về Q1. Kế toán nộp Q1 ngày 26/04 nên chưa có chúng; đúng luật thì
+   phải khai bổ sung Q1, không kê vào Q2. Đây là chỗ phần mềm ĐÚNG hơn tờ khai đã nộp.
+2. `C26TLT|1056` (31/03/2026, 1.392.000) — cổng thuế đánh `tthai=4` (đã bị thay thế) nên phần mềm
+   loại; kế toán vẫn kê. Cần người quyết định.
+3. Một chứng từ mua vào 714.000 **không thuế** có trong sổ Q2 mà cổng thuế không có (`[24]` khớp
+   tuyệt đối nên phần thiếu chắc chắn không mang thuế). Nhiều khả năng là hóa đơn giấy / chứng từ
+   ngoài hệ thống hóa đơn điện tử.
+
+### 11.18. [22] nối từ một kỳ THIẾU DỮ LIỆU — cảnh báo 2026-09-03
+
+Lỗi im lặng nặng nhất của cả module, và nó lây: `[22]` sai thì `[41]`/`[43]` sai theo, mà `[43]` lại
+chảy tiếp sang `[22]` của kỳ sau. Một kỳ thiếu hóa đơn làm hỏng **mọi kỳ về sau**, không kỳ nào có
+dấu hiệu gì.
+
+Ca thật (MST 0111142786). `sync_log` cho thấy Q4/2025 chỉ đồng bộ **tháng 12** (01/12–31/12), thiếu
+tháng 10 và 11:
+
+```
+Q4/2025  [43] =  42.997.436   (tờ khai đã nộp: 366.696.473)
+Q1/2026  [22] =  42.997.436   -> [41] = [43] = 233.272.068
+                                (đã nộp 556.866.463 — hụt 323.594.395)
+Q2/2026  [22] = 233.272.068   -> sai tiếp
+```
+
+Chỉ riêng `[22]` gây ra khoảng lệch lớn hơn cả ba lỗi ở Mục 11.13–11.15 cộng lại. Với `[22]` đúng,
+`[41]` = 190.274.632 + 366.696.473 = **556.971.105**, lệch 104.642 — đúng bằng phần lệch của `[36]`,
+tức không còn nguồn sai nào khác.
+
+**Sửa:** `tinhVaLuu` gọi `kiemTraPhuKy` cho KỲ NGUỒN của `[22]` (chứ không chỉ kỳ đang lập) và đẩy
+phần mô tả thiếu vào `soatToKhai`. Cảnh báo nói rõ thiếu khoảng ngày nào và hai đường thoát: đồng bộ
+trọn kỳ nguồn rồi tính lại, hoặc nhập tay `[22]` theo tờ khai đã nộp của kỳ đó. Không tự sửa số —
+máy không biết tờ khai kỳ trước đã nộp bao nhiêu.
+
+Tách thêm `phanThieuPhuKy` khỏi `canhBaoPhuKy`: cái sau tự gói một câu hoàn chỉnh ("Kỳ này chưa được
+đồng bộ trọn vẹn — … Kê khai lúc này sẽ ra tờ khai thiếu số."), nhúng nguyên vào giữa câu khác thì
+thành hai câu lồng nhau.
+
+**Quy tắc [22] (đã đúng sẵn, nay có test canh):** kỳ trước CHƯA lập -> `[22]` để kế toán nhập tay;
+kỳ trước ĐÃ lập -> nối tiếp `[43]` của nó. Kế toán gõ tay thì số gõ THẮNG, và nó chảy tiếp xuống
+`[40a]`/`[41]`/`[40]`/`[43]` chứ không đứng một mình (`hieu = [36] - [22] + [37] - [38] - [39a]`).
+Gõ `[22] = 0` là ý định thật, không bị coi như bỏ trống. Ba ca này nằm ở `tinhGtgt01.test.ts`.
+
+**Cảnh báo kỳ ĐANG LẬP cũng thiếu dữ liệu.** Dialog "Kê khai" đã báo lúc gán kỳ, nhưng đó là một
+lần rồi thôi — mở lại bản nháp hôm sau thì màn tờ khai không còn dấu vết gì, mà tờ khai thiếu 1/3 số
+liệu trông y hệt tờ khai đủ. `tinhVaLuu` nay xét độ phủ cho CẢ kỳ đang lập lẫn kỳ nguồn `[22]`, đọc
+`sync_log` một lần cho cả hai (`docLogDongBo` + `phuKyTuLog`).
+
+**Chưa làm:** cảnh báo không lan sang kỳ tiếp theo. Q2/2026 vẫn nhận `[22]` sai từ Q1 mà không kêu,
+vì kỳ nguồn của nó (Q1) đã đồng bộ đủ. Sửa Q1 thì Q2 tự đúng, nên chấp nhận; đáng làm nếu về sau
+thấy người dùng bỏ sót.
+
+### 11.19. Hóa đơn KHÔNG có khối `thttltsuat` — hai đường bù, vá 2026-09-03
+
+122 hóa đơn mua vào của MST 0111142786 (điện lực, Viettel, MobiFone, FPT) chỉ có tổng, cổng thuế
+không trả khối tách thuế suất. Chúng vẫn vào `[23]`/`[24]` (mua vào chỉ cần tổng) nhưng KHÔNG vào
+bảng `theoNhan`, nên phụ lục Mục I hụt: Q1 thiếu 8.685.122, Q2 thiếu 9.268.211.
+
+Nguy hiểm hơn ở chiều BÁN RA: không tách được mức là cả hóa đơn rơi vào `treo` và mất khỏi `[32]`.
+Dữ liệu hiện tại chỉ có 1 tờ bán ra như vậy và tiền bằng 0 nên chưa lộ, nhưng cơ chế thì sẵn đó.
+
+**Hai đường bù, theo thứ tự chắc chắn giảm dần:**
+
+1. `nhomTuDongHang` — gộp `detail.hdhhdvu`, mỗi dòng hàng đã mang nhãn mức của nó. Đây là số THẬT.
+   Cứu ca hóa đơn NHIỀU mức: hóa đơn FPT `K26THT` tổng 336.364 thuế 31.655 (9,41% — không phải mức
+   nào), nhưng hai dòng ghi rõ 8% 99.091 và 10% 237.273. Chỉ nhận khi tổng dòng khớp `tgtcthue`
+   từng đồng.
+2. `nhomTuTongHoaDon` — suy MỘT mức từ `tgtthue ÷ tgtcthue`, nhận khi đúng một mức trong {5,8,10}
+   khớp trong sai số 1 đồng. Đo thật: 101 tờ ra 10%, 9 tờ ra 8%.
+
+**Hai ca cố tình từ chối:** `tthue = 0` (không phân biệt được KCT vào `[26]` với thuế suất 0% vào
+`[29]`) và tổng dòng hàng không khớp `tgtcthue` (cổng trả thiếu dòng, hoặc chiết khấu nằm ngoài).
+
+Kết quả: `Σ theoNhan` nay bằng ĐÚNG `[23]` ở cả hai quý — mọi hóa đơn mua vào đều xếp được nhóm.
+Phụ lục Mục I của Q2 khớp tuyệt đối bản đã nộp (7.880.500.667 / 630.440.054).
+
+### 11.20. Đối chiếu ĐẦY ĐỦ 27 chỉ tiêu + phụ lục, hai quý — 2026-09-03
+
+Sau toàn bộ các bản vá 11.13–11.19, với `[22]` của Q1 nhập tay 366.696.473:
+
+| | Q1/2026 | Q2/2026 |
+|---|---|---|
+| Chỉ tiêu KHỚP | 18/27 | 16/27 |
+| Chỉ tiêu lệch | 9 (đều là hệ quả dây chuyền của `[32]`) | 11 (3 nguồn độc lập) |
+
+**Q1 — một nguồn lệch duy nhất:** `[32]` −1.308.000 (ba chứng từ, xem 11.17), kéo theo `[27]` `[34]`
+cùng số, và `[33]` `[28]` `[35]` `[36]` −104.642, `[41]` `[43]` +104.642.
+
+**Q2 — ba nguồn độc lập:**
+
+| Nguồn | Ảnh hưởng |
+|---|---|
+| `[22]` thừa hưởng phần lệch của Q1 | `[22]` +104.642 -> `[41]` `[43]` |
+| Chứng từ mua vào 714.000 KHÔNG thuế, có trong sổ mà cổng thuế không có | `[23]` −714.000 (`[24]` khớp tuyệt đối nên phần thiếu chắc chắn không mang thuế) |
+| `C26TLT\|1189` (điều chỉnh −768.000) chuyển sang Q1 theo luật kỳ gốc | `[32]` `[27]` `[34]` +768.000, phụ lục Mục II +768.000 |
+
+Cộng dồn: `Δ[41] = Δ[22] − Δ[36] = 104.642 − 61.454 = 43.188` ✓.
+
+**Phần dư của phụ lục Mục I ở Q1 (−1.251.819 giá trị / −100.144 thuế, đúng 8%)** KHÔNG phải hóa đơn
+thiếu: `Σ theoNhan = [23]` chính xác, tức mọi tờ đều đã xếp nhóm. Đây là chênh lệch PHÂN LOẠI 8%/10%
+giữa nhãn cổng thuế và sổ kế toán trên cùng một tập hóa đơn — 0,02%, không đuổi tiếp.
+
+### 11.21. [31]/[33] cộng thuế TỪNG hóa đơn, không dùng công thức HTKK — ĐẢO 2026-09-03
+
+Mục 11.5 từng chốt `[33] = làm tròn([32] x 10%) - (cột 6 phụ lục)`, suy từ MỘT tờ khai thật
+(MST 0106861880 Q2/2026: công thức ra 31.299.994, cộng từng hóa đơn ra 31.299.993, bản nộp ghi
+31.299.994). Hai tờ khai thật của MST 0111142786 bác cách đó:
+
+| Kỳ | [33] đã nộp | Cộng thuế từng hóa đơn | Công thức HTKK |
+|---|---|---|---|
+| Q1/2026 | 408.646.091 | **408.646.091** (khớp) | 408.646.089 (−2) |
+| Q2/2026 | 641.712.199 | **641.712.199** (khớp) | 641.712.213 (+14) |
+
+**Hai cách là CÙNG MỘT đại lượng.** Khai triển: `10% x (nền8 + nền10) − 2% x nền8 = 8% x nền8 +
+10% x nền10` — đúng bằng tổng thuế trên hóa đơn. Chỉ khác chỗ làm tròn: cộng từng hóa đơn thì tròn
+theo từng tờ, công thức thì tròn một lần trên tổng. Chênh vài đồng.
+
+Chọn cộng từng hóa đơn vì đó là số thuế THẬT đã ghi trên chứng từ giao cho khách, và vì hai tờ khai
+của công ty đang dùng phần mềm khớp đúng nó từng đồng. HTKK chỉ CẢNH BÁO khi hai số khác nhau chứ
+không chặn.
+
+**`soatToKhai` đổi vai:** trước đây so `ctMay` với chính bảng kê (nay hai số đó là một, phép so hóa
+vô nghĩa). Giờ so số của ta với CÔNG THỨC KIỂM của HTKK và báo khi chênh vượt `số hóa đơn + 1` đồng
+— vừa bắt được hóa đơn ghi sai mức thuế suất, vừa cho kế toán biết trước HTKK sẽ nhắc gì.
+
+Hệ quả: `tinhGtgt01` không còn nhận tham số `giamThue` (phụ lục chỉ còn phục vụ chính nó và phép
+soát). `TongBanRa.ct31`/`ct33` từ "số để đối chiếu" thành CHÍNH [31]/[33].
+
+### 11.22. Phần lẻ khi suy ngược tiền từng nhóm thuế suất — vá 2026-09-03
+
+Khi cổng trả `thtien` nhân bản, tiền của từng nhóm phải suy ngược từ tiền thuế. Bản đầu chia theo
+TỈ LỆ nên phần lẻ của hóa đơn bị rải đều, làm sai MỌI nhóm. Bản hai dùng `tthue ÷ suất` cho các nhóm
+đầu và dồn phần dư vào nhóm CUỐI — vẫn sai khi nhóm cuối là nhóm chia hết.
+
+Quy tắc đúng: **phần dư về nhóm mà `tthue ÷ suất` KHÔNG ra số nguyên** — chính nhóm đó bị làm tròn
+nên base của nó kém chắc chắn nhất; base tiền Việt luôn nguyên đồng. Mọi nhóm đều nguyên mà tổng vẫn
+lệch (phần lẻ của bản thân hóa đơn) thì nhóm cuối nhận.
+
+| Ca thật | tgtcthue | Chia tỉ lệ | Dồn nhóm cuối | Quy tắc mới | Sổ kế toán |
+|---|---|---|---|---|---|
+| C26TLT 978 | 3.959.273 | 2.300.002 / 1.659.271 | 2.300.000 / 1.659.273 | 2.300.000 / 1.659.273 | 2.300.000 / 1.659.273 |
+| C26TLT 364 | 7.761.090 | — | 7.641.088 / 120.002 | 7.641.090 / 120.000 | 7.641.090 / 120.000 |
+
+Đối chiếu TỪNG hóa đơn với bảng kê kế toán Q1/2026 sau khi vá: **0/1069 tờ lệch**, nhóm 10% khớp
+tuyệt đối (381.006.612 / 38.100.664).
+
+> Dòng hàng chi tiết (`hdhhdvu`) KHÔNG cứu được ca này: những hóa đơn dính lỗi nhân bản đều bị dán
+> nhãn 8% cho MỌI dòng, dùng vào còn sai hơn suy ngược từ tiền thuế.
+
+### 11.23. Chênh lệch Q1/2026 quy về ĐÚNG HAI dòng hàng — 2026-09-03
+
+Sau tất cả, mọi khoảng lệch còn lại là bội số của hai khoản sau:
+
+```
+C26TLT|1056  31/03/2026  TỔNG 1.392.000 = 8% 540.000 + 10% 852.000
+      ↓ bị thay thế bởi
+C26TLT|2122  30/06/2026  TỔNG   852.000 = 10% 852.000
+      -> phần 10% giữ nguyên từng đồng, phần 8% trị giá 540.000 BIẾN MẤT
+
+C26TLT|548   11/02/2026  8% 768.000
+      ↓ bị điều chỉnh giảm bởi
+C26TLT|1189  13/04/2026  8% −768.000     -> triệt tiêu trọn hóa đơn gốc
+```
+
+`540.000 + 768.000 = 1.308.000`, và `x 8% = 104.640`. Đây là lý do nhóm 10% khớp tuyệt đối còn nhóm
+8% lệch: tờ thay thế đổi 852.000 lấy 852.000 ở nhóm 10%, không đụng gì nhóm 8%.
+
+Trạng thái cuối (Q1 khớp 18/25 chỉ tiêu, Q2 khớp 14/25), MỌI ô lệch đều là bội số của hai khoản
+trên hoặc của chứng từ mua vào 714.000:
+
+| | Q1 | Q2 |
+|---|---|---|
+| `[32]` `[27]` `[34]` | −1.308.000 | +768.000 |
+| `[33]` `[28]` `[35]` `[36]` | −104.640 | +61.440 |
+| `[41]` `[43]` | +104.640 | +43.200 |
+| `[22]` | khớp | +104.640 (thừa hưởng Q1) |
+| `[23]` | khớp | −714.000 |
+
+Không còn đồng lẻ nào không giải thích được.
+
+### 11.24. Hóa đơn thay thế BỎ SÓT dòng hàng — cảnh báo 2026-09-03
+
+Thay thế là thay TOÀN BỘ tờ gốc, không thay từng dòng: cổng thuế đánh tờ gốc `tthai=4` và cả tờ vô
+hiệu. Nên khi người lập tờ thay thế quên một dòng hàng, tiền của dòng đó **rơi khỏi tờ khai vĩnh
+viễn** mà bảng kê không hiện dấu hiệu gì — nhìn vào chỉ thấy tờ thay thế với số đúng của chính nó.
+
+Ca thật `C26TLT|2122` thay cho `|1056`:
+
+```
+1056 (31/03)  • Bánh xe gang Ø80mm       12 x 71.000 = 852.000   (nhóm thuế: 10%)
+              • Bánh xe đẩy phi 100mm    12 x 45.000 = 540.000   (nhóm thuế:  8%)
+2122 (30/06)  • Bánh xe gang Ø80mm       12 x 71.000 = 852.000   (nhãn dòng sửa thành 10%)
+              -> lập để SỬA THUẾ SUẤT dòng bánh xe gang, nhưng quên hẳn dòng bánh xe đẩy
+```
+
+540.000 đồng hàng đã bán thật, khách đã nhận, nhưng không còn hóa đơn hợp lệ nào chống lưng. Kê nó
+vào tờ khai là kê doanh thu không có chứng từ — nên phần mềm KHÔNG tự thêm lại; cách sửa đúng là lập
+lại hóa đơn thay thế cho đủ hai dòng.
+
+Quét toàn bộ dữ liệu MST 0111142786: **5 tờ dính**, bán ra 4 tờ hụt 2.342.000 và mua vào 1 tờ hụt
+**263.460.500** (`C26TTM|98` 27 dòng thay cho `|90` 31 dòng — mất 4 dòng hàng).
+
+`layThayTheHut` JOIN tờ thay thế với tờ gốc theo `khhdgoc`/`shdgoc`; tra không ra tờ gốc thì bỏ qua
+(JOIN tự loại) — thà không báo còn hơn báo dựa trên một tờ gốc đoán ra. Câu cảnh báo kể 3 tờ HỤT
+NHIỀU NHẤT: danh sách vào là hai chiều nối đuôi nhau, cắt thẳng theo thứ tự thì tờ 263 triệu bên mua
+vào rơi vào phần bị giấu — đúng tờ cần nhìn nhất.
+
 ## 11bis. Phụ lục "Giảm thuế GTGT theo Nghị quyết 204/2025/QH15"
 
 Phát sinh sau khi đọc file tờ khai thật người dùng gửi (2026-08-31) — không có trong thiết kế ban
@@ -609,17 +993,17 @@ Hai chỗ dễ lẫn, mỗi chỗ có một ca test canh:
   về việc vì sao tròn xuống), không lấy hiệu của thuế thực tế
   trên hóa đơn. Mẫu in ghi rõ `(6)=(3)×[(4)-(5)]` và cơ quan thuế đối chiếu đúng công thức đó.
   Số này còn đi tiếp vào [33] của tờ khai chính (Mục 11.5), nên sai ở đây là sai cả hai nơi.
-- **Mục II chỉ lấy 8%.** Hàng 10% không được giảm nên không được lọt vào, dù mục I có gộp nó.
+- **Cả hai mục chỉ lấy nhóm 8%.** Hàng 10% không được giảm nên không được lọt vào mục II; mục I
+  cũng vậy — xem Mục 11.16, quyết định cũ đã bị đảo.
 
-### 11bis.2. Vì sao mục I gộp cả nhóm 10%, dù tiêu đề mẫu chỉ nói 8%
+### 11bis.2. Mục I lấy đúng nhóm 8% — ĐẢO quyết định cũ, xem Mục 11.16
 
-Tiêu đề mục I trên mẫu là "hàng hóa, dịch vụ mua vào **được áp dụng thuế suất 8%**", nhưng bản kế
-toán đã nộp ghi thuế `5.102.437` = `5.081.437` (nhóm 8%) + `21.000` (nhóm 10%). Tức thực tế mục này
-được khai là *toàn bộ thuế đầu vào được khấu trừ trong kỳ*.
+> Bản trước chốt "mục I gộp mọi nhóm có thuế", suy từ MỘT phụ lục thật của MST 0106861880 (thuế
+> `5.102.437` = `5.081.437` nhóm 8% + `21.000` nhóm 10%). Hai tờ khai thật của MST 0111142786 bác
+> cách đó: gộp thêm 10% làm lệch 11-17%, lấy đúng 8% chỉ lệch 0,1%. Số liệu đầy đủ ở Mục 11.16.
 
-Lấy đúng nhóm 8% thì cột thuế lệch `21.000`, mà cột thuế chính là số đi vào mục III — số cơ quan
-thuế đối chiếu. Nên `gopMuaVaoCoThue` gộp mọi nhóm CÓ thuế; nhóm không thuế (KCT/KKKNT) bị loại vì
-không có gì để khấu trừ.
+Hàm `gopMuaVao8` lấy thẳng nhóm `8%` của `theoNhan`. Với MST 0106861880 cách này lệch `21.000` tiền
+thuế — chấp nhận, đổi lại hai kỳ của MST 0111142786 khớp gần tuyệt đối.
 
 ### 11bis.3. Kết quả đối chiếu (Q2/2026, MST 0106861880)
 
@@ -630,6 +1014,9 @@ không có gì để khấu trừ.
 | II. giá trị bán ra | 391.249.917 | **khớp** |
 | II. thuế được giảm | 7.824.998 | **khớp** |
 | III. chênh lệch | 2.722.561 | **khớp** |
+
+> Số trong bảng là kết quả của bản CŨ (mục I gộp cả 10%). Sau Mục 11.16, dòng "I. thuế mua vào"
+> ra `5.081.437` — lệch `21.000` so với bản đã nộp. Chưa chạy lại các dòng còn lại cho MST này.
 
 20.000 còn lại là khoản kế toán cộng tay ngoài hóa đơn điện tử — cùng khoản làm [23] lệch 20.000
 (mục 11.4b). Không hóa đơn nào trong kỳ mang giá trị đó nên máy không suy được.

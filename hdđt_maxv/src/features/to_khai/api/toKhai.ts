@@ -9,6 +9,17 @@ export interface KetQuaKeKhai {
   purchase: number;
   sold: number;
   tong: number;
+  /**
+   * Số hóa đơn thay thế/điều chỉnh không suy được kỳ của hóa đơn gốc — chúng giữ theo ngày lập.
+   * Nói ra để kế toán tự kiểm, thay vì im lặng gán một kỳ có thể sai.
+   */
+  khongRoKyGoc: number;
+  /**
+   * Số hóa đơn bị GỠ khỏi kỳ vì lượt quét này không còn nhận (hóa đơn thay thế chuyển sang kỳ của
+   * hóa đơn gốc, hoặc tờ trước đây vào kỳ do đọc sai ngày). Cột "Kê khai"/"Ghi chú" của chúng mất
+   * theo, nên phải nói ra.
+   */
+  daGo: number;
 }
 
 /**

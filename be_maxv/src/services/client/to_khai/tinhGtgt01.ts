@@ -9,7 +9,6 @@
  */
 
 import type { TongBanRa } from "./gomHoaDonGtgt";
-import { lamTronDong } from "./tienVnd";
 
 /**
  * Ô kế toán chốt được giá trị. Hai loại, khác nhau ở chỗ máy có suy được hay không:
@@ -44,23 +43,11 @@ export const CT_NHAP_TAY = [
 /** Suy TỪ mảng trên — khai hai lần là mời hai bên trôi lệch. */
 export type CtNhapTay = (typeof CT_NHAP_TAY)[number];
 
-/**
- * Thuế được giảm theo nghị quyết, tách theo THUẾ SUẤT QUY ĐỊNH (không phải suất sau giảm).
- *
- * Vào công thức [31]/[33] đúng như HTKK làm — xem `tinhGtgt01`. Hàng giảm 10%->8% nằm ở `ts10`.
- */
-export interface GiamThueTheoSuat {
-  ts5: number;
-  ts10: number;
-}
-
 export interface DauVaoGtgt01 {
   banRa: TongBanRa;
   muaVao: { ct23: number; ct24: number };
   /** Ô đã nhập tay/ghi đè. `ct25` VẮNG MẶT -> lấy mặc định bằng [24]; có mặt (kể cả 0) thì thắng. */
   nhapTay: Partial<Record<CtNhapTay, number>>;
-  /** Thiếu -> coi như kỳ không có hàng được giảm thuế. */
-  giamThue?: Partial<GiamThueTheoSuat>;
 }
 
 export type CtGtgt01 = Record<string, number>;
@@ -90,16 +77,21 @@ export function tinhGtgt01(dv: DauVaoGtgt01): CtGtgt01 {
   const ct32 = may("ct32", dv.banRa.ct32);
   const ct32a = may("ct32a", dv.banRa.ct32a);
 
-  // [31]/[33] tính theo CÔNG THỨC của HTKK, không lấy tổng thuế thực tế trên hóa đơn:
-  //     [31] = [30] x 5%  - (tổng cột 6 phụ lục, dòng thuế suất 5%)
-  //     [33] = [32] x 10% - (tổng cột 6 phụ lục, dòng thuế suất 10%)
-  // Quy tắc này in ngay trong bộ kiểm tra của HTKK (sheet `Header` của file tờ khai tải về), và
-  // bản Q2/2026 đã nộp khớp đúng nó: làm tròn(391.249.917 x 10%) = 39.124.992, trừ 7.824.998 được
-  // giảm, ra [33] = 31.299.994 — trong khi cộng thuế từng hóa đơn chỉ ra 31.299.993. Sai một đồng
-  // ở đây chảy tiếp sang [28] [35] [36] [40a] [40], và qua [43] thì sang [22] của kỳ sau.
-  // HTKK chỉ CẢNH BÁO khi [33] khác [32]x10% chứ không chặn, nên kế toán vẫn chốt tay được.
-  const ct31 = may("ct31", lamTronDong(ct30 * 0.05) - Number(dv.giamThue?.ts5 ?? 0));
-  const ct33 = may("ct33", lamTronDong(ct32 * 0.1) - Number(dv.giamThue?.ts10 ?? 0));
+  // [31]/[33] = CỘNG TIỀN THUẾ TỪNG HÓA ĐƠN trên bảng kê.
+  //
+  // HTKK có một công thức kiểm khác: `[33] = làm tròn([32] x 10%) - (cột 6 phụ lục)`. Hai cách là
+  // CÙNG MỘT đại lượng — khai triển ra đều bằng `8% x nền8 + 10% x nền10` — chỉ khác chỗ làm tròn:
+  // cộng từng hóa đơn thì làm tròn theo từng tờ, công thức thì làm tròn một lần trên tổng. Chênh
+  // nhau vài đồng.
+  //
+  // Chọn cộng từng hóa đơn vì đó là số thuế THẬT đã ghi trên chứng từ giao cho khách. Đối chiếu hai
+  // tờ khai đã nộp của MST 0111142786: Q1/2026 [33] = 408.646.091 và Q2/2026 [33] = 641.712.199 —
+  // cộng từng hóa đơn khớp CẢ HAI từng đồng, còn công thức lệch 2 và 14 đồng.
+  //
+  // HTKK chỉ CẢNH BÁO khi hai số khác nhau chứ không chặn; `soatToKhai` cũng đối chiếu sẵn và nói
+  // ra khi chênh vượt mức làm tròn, để kế toán biết trước lúc nạp file.
+  const ct31 = may("ct31", dv.banRa.ct31);
+  const ct33 = may("ct33", dv.banRa.ct33);
 
   const ct27 = ct29 + ct30 + ct32 + ct32a;
   const ct28 = ct31 + ct33;

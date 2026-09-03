@@ -7,8 +7,8 @@
  * Đầu vào là hóa đơn ĐÃ GÁN KỲ và kế toán để `ke_khai = true`; việc loại hóa đơn "không kê khai"
  * làm ở tầng service, không ở đây.
  *
- * Số tách theo thuế suất chỉ có trong `detail.thttltsuat` — hóa đơn chưa tải chi tiết KHÔNG đoán
- * được là 8% hay 10%, nên xếp vào `treo` thay vì cộng nhầm vào một ô nào đó.
+ * Số tách theo thuế suất nằm ở `detail.thttltsuat`. Thiếu khối đó thì thử suy MỘT mức từ tổng hóa
+ * đơn (`nhomTuTongHoaDon`); suy không ra thì xếp vào `treo` thay vì cộng nhầm vào một ô nào đó.
  */
 
 import { lamTronDong } from "./tienVnd";
@@ -29,15 +29,11 @@ export interface TongBanRa {
   ct26: number;
   ct29: number;
   ct30: number;
-  /**
-   * Tiền thuế 5% cộng THỰC từ hóa đơn. Tờ khai KHÔNG lấy trực tiếp số này — [31] tính theo công
-   * thức HTKK (xem `tinhGtgt01.ts`). Giữ lại để ĐỐI CHIẾU: công thức và bảng kê lệch quá mức làm
-   * tròn cho phép nghĩa là bảng kê có vấn đề (nhãn thuế suất sai, hóa đơn ghi thuế sai).
-   */
+  /** Tiền thuế 5% cộng THỰC từ hóa đơn — đây CHÍNH LÀ [31] của tờ khai (xem `tinhGtgt01.ts`). */
   ct31: number;
   ct32: number;
   ct32a: number;
-  /** Tiền thuế 10% + 8% cộng THỰC từ hóa đơn — cùng vai trò đối chiếu như `ct31`. */
+  /** Tiền thuế 10% + 8% cộng THỰC từ hóa đơn — đây CHÍNH LÀ [33] của tờ khai. */
   ct33: number;
 }
 
@@ -59,9 +55,24 @@ export interface NhomThueSuat {
   tenHang: string[];
 }
 
+/**
+ * Hóa đơn bị LUẬT loại khỏi tờ khai (đã bị thay thế / đã bị hủy) — đếm riêng để nói ra.
+ *
+ * Chúng vẫn nằm trong bảng kê với cột "Kê khai" bật, nhưng engine bỏ qua. Không đếm ra thì kế toán
+ * nhìn bảng kê thấy tick mà số không vào tờ khai, không hiểu vì sao (đo thật: 1.424.055.300 đồng
+ * mua vào của Q1/2026 bị loại lặng lẽ).
+ */
+export interface HoaDonBiLoai {
+  soHd: number;
+  /** Tiền chưa thuế, ĐÃ quy về đồng như mọi số khác. */
+  giaTri: number;
+}
+
 export interface KetQuaBanRa {
   tong: TongBanRa;
   treo: HoaDonTreo[];
+  /** Hóa đơn đã bị thay thế (4) / đã bị hủy (6) — luật cấm kê, không có cách nào bật lên. */
+  biLoai: HoaDonBiLoai;
   /** Nhóm `tthai=3` — ĐÃ cộng vào `tong`, tách ra đây chỉ để hiển thị và soát dấu. */
   dieuChinh: { soHd: number; giaTri: number; thue: number };
   /** Số liệu theo TỪNG nhãn thuế suất (`"8%"`, `"10%"`, `"KCT"`…) — nguồn cho phụ lục giảm thuế. */
@@ -73,10 +84,11 @@ export interface KetQuaMuaVao {
   ct23: number;
   ct24: number;
   treo: HoaDonTreo[];
+  biLoai: HoaDonBiLoai;
   /**
-   * Số liệu theo từng nhãn thuế suất. Chỉ có với hóa đơn ĐÃ tải chi tiết; hóa đơn thiếu `detail`
-   * vẫn được cộng vào `ct23`/`ct24` (mua vào chỉ cần tổng) nhưng không xuất hiện ở đây — nên tổng
-   * các nhãn có thể NHỎ HƠN `ct23`, đừng dùng nó để kiểm tra chéo.
+   * Số liệu theo từng nhãn thuế suất. Hóa đơn không tách được mức (nhiều mức mà cổng chỉ trả tổng,
+   * hoặc thuế bằng 0) vẫn được cộng vào `ct23`/`ct24` (mua vào chỉ cần tổng) nhưng không xuất hiện
+   * ở đây — nên tổng các nhãn có thể NHỎ HƠN `ct23`, đừng dùng nó để kiểm tra chéo.
    */
   theoNhan: Record<string, NhomThueSuat>;
   soHd: number;
@@ -97,12 +109,28 @@ function so(v: unknown): number {
 }
 
 /**
- * Chuẩn hóa nhãn thuế suất cổng trả ("10", "10%", " KCT ") về một dạng duy nhất để tra bảng ánh
- * xạ. Mức số ra `"10%"`; mã chữ ra chữ hoa không khoảng trắng thừa.
+ * Nhãn "thuế suất khác" của cổng thuế, có mức thật gắn kèm: `KHAC:08.00%`, `KHAC:8%`.
+ *
+ * Gặp thật trên hóa đơn mua vào của MST 0111142786: một nhóm 1.869.629.200 đồng, thuế 149.570.336
+ * — đúng 8,00%. Không bóc mức ra thì nhãn này thành một nhóm riêng: bên MUA VÀO chỉ lệch phụ lục,
+ * nhưng bên BÁN RA thì cả hóa đơn bị xếp vào `treo` và rơi khỏi [32], tức mất doanh thu mà bảng
+ * không hiện dấu hiệu gì.
+ */
+const NHAN_KHAC_RE = /^KHAC:\s*([\d.]+)\s*%?$/;
+
+/**
+ * Chuẩn hóa nhãn thuế suất cổng trả ("10", "10%", " KCT ", "KHAC:08.00%") về một dạng duy nhất để
+ * tra bảng ánh xạ. Mức số ra `"10%"`; mã chữ ra chữ hoa không khoảng trắng thừa.
  */
 function chuanHoaNhan(raw: unknown): string {
   const s = String(raw ?? "").trim().toUpperCase();
   if (!s) return "";
+  const khac = NHAN_KHAC_RE.exec(s);
+  if (khac) {
+    const mucKhac = Number(khac[1]);
+    // `KHAC` không kèm mức đọc được thì giữ nguyên chuỗi — thà treo hóa đơn còn hơn đoán một mức.
+    if (Number.isFinite(mucKhac)) return `${mucKhac}%`;
+  }
   const phanTram = Number(s.replace("%", ""));
   return Number.isFinite(phanTram) ? `${phanTram}%` : s;
 }
@@ -114,9 +142,8 @@ const O_THEO_NHAN: Record<string, { giaTri: keyof TongBanRa; thue?: keyof TongBa
   KCT: { giaTri: "ct26" },
   "0%": { giaTri: "ct29" },
   "5%": { giaTri: "ct30", thue: "ct31" },
-  // 8% (giảm theo nghị quyết) kê chung dòng 10%. Số thuế cộng ở đây là thuế THỰC trên hóa đơn,
-  // nhưng [33] của tờ khai KHÔNG dùng nó: HTKK tính [33] = làm tròn([32] x 10%) trừ phần được
-  // giảm ở phụ lục — xem `tinhGtgt01.ts`. Số thực ở đây giữ lại để đối chiếu với bảng kê.
+  // 8% (giảm theo nghị quyết) kê chung dòng 10%. Số thuế cộng ở đây là thuế THỰC trên hóa đơn và
+  // đi thẳng vào [33] của tờ khai — xem `tinhGtgt01.ts`.
   "8%": { giaTri: "ct32", thue: "ct33" },
   "10%": { giaTri: "ct32", thue: "ct33" },
   KKKNT: { giaTri: "ct32a" },
@@ -168,12 +195,218 @@ function congVaoNhan(
   };
 }
 
-/** Các nhóm thuế suất của một hóa đơn; `null` = hóa đơn chưa có chi tiết. */
-function nhomThueSuat(detail: unknown): { nhan: string; thtien: number; tthue: number }[] | null {
+/** Một nhóm thuế suất của hóa đơn sau khi đã chuẩn hóa. */
+export interface NhomTien {
+  nhan: string;
+  thtien: number;
+  tthue: number;
+}
+
+/** Các mức thuế suất CÓ tiền thuế mà một nhóm có thể mang — dùng khi phải suy ngược mức thật. */
+const SUAT_CO_THUE = [5, 8, 10] as const;
+
+/** Số nhóm tối đa còn dò hết tổ hợp được (3^6 = 729 phép thử). Vượt ngưỡng thì thôi, không đoán. */
+const NHOM_TOI_DA_DO = 6;
+
+/** Nhãn `"8%"` -> 8; nhãn chữ (KCT/KKKNT) hoặc rỗng -> `null`. */
+function suatTuNhan(nhan: string): number | null {
+  const s = Number(nhan.replace("%", ""));
+  return Number.isFinite(s) && s > 0 ? s : null;
+}
+
+/**
+ * Suy MỨC THUẾ SUẤT THẬT của từng nhóm từ tiền thuế, khi nhãn cổng trả không đáng tin.
+ *
+ * Ràng buộc: `Σ (tthue_i ÷ suất_i)` phải bằng đúng `tgtcthue`. Dò hết tổ hợp mức trong
+ * `SUAT_CO_THUE` và chỉ nhận khi có ĐÚNG MỘT tổ hợp thỏa — hai tổ hợp cùng thỏa nghĩa là dữ liệu
+ * không đủ để kết luận, thà giữ nguyên còn hơn chuyển tiền nhầm giữa nhóm 8% và nhóm 10%.
+ *
+ * Trả về mảng tiền theo từng nhóm, hoặc `null` khi không có lời giải duy nhất.
+ */
+function suyMucThueSuat(nhom: NhomTien[], tgtcthue: number): { suat: number; tien: number }[] | null {
+  if (nhom.length > NHOM_TOI_DA_DO) return null;
+
+  let loiGiai: { suat: number; tien: number }[] | null = null;
+  let soLoiGiai = 0;
+  const dang: { suat: number; tien: number }[] = [];
+
+  const do_ = (i: number, conLai: number): void => {
+    // Thấy lời giải thứ hai là dừng: đằng nào cũng trả `null`, dò tiếp chỉ tốn công.
+    if (soLoiGiai > 1) return;
+    if (i === nhom.length) {
+      if (Math.abs(conLai) > 1) return;
+      soLoiGiai += 1;
+      loiGiai = dang.map((x) => ({ ...x }));
+      return;
+    }
+    for (const suat of SUAT_CO_THUE) {
+      const tien = nhom[i].tthue / (suat / 100);
+      dang.push({ suat, tien });
+      do_(i + 1, conLai - tien);
+      dang.pop();
+    }
+  };
+  do_(0, tgtcthue);
+
+  return soLoiGiai === 1 ? loiGiai : null;
+}
+
+/**
+ * Vá hóa đơn mà cổng trả `thtien` NHÂN BẢN — mọi nhóm ghi bằng TỔNG hóa đơn thay vì tiền của
+ * riêng nhóm.
+ *
+ * Ca thật (MST 0111142786, hóa đơn C26TLT 1090, `tgtcthue` = 41.499.000):
+ *
+ *     [ { 8%,  thuế 3.096.880, thtien 41.499.000 },
+ *       { 10%, thuế   278.800, thtien 41.499.000 } ]
+ *
+ * Cộng thẳng `thtien` là tính 41.499.000 HAI LẦN. Số thật suy ngược từ tiền thuế:
+ * 3.096.880 ÷ 8% = 38.711.000 và 278.800 ÷ 10% = 2.788.000, cộng lại đúng bằng `tgtcthue`.
+ * Đo trên dữ liệu thật: 38 hóa đơn bán ra dính, tổng thừa 213.346.363 — đúng bằng phần lệch [32]
+ * của hai kỳ so với tờ khai đã nộp.
+ *
+ * ===== NHÃN THUẾ SUẤT CŨNG HỎNG THEO =====
+ *
+ * Hóa đơn dính lỗi này thường bị chép luôn cả `tsuat` của nhóm đầu sang nhóm sau. Ca thật
+ * (C26TLT 426, `tgtcthue` = 786.000, `tgtthue` = 66.280):
+ *
+ *     [ { "8%", thuế 49.280, thtien 786.000 },
+ *       { "8%", thuế 17.000, thtien 786.000 } ]
+ *
+ * Nhóm sau ghi 8% nhưng 17.000 ÷ 8% = 212.500 không ra tổng nào đúng; chỉ 17.000 ÷ 10% = 170.000
+ * mới cho 616.000 + 170.000 = 786.000 — khớp từng đồng với sổ kế toán. Nên phải suy lại MỨC trước,
+ * rồi mới chia tiền (`suyMucThueSuat`), thay vì tin nhãn. Tin nhãn thì [32] vẫn đúng (8% và 10%
+ * chung một ô) nhưng phụ lục giảm thuế lệch, kéo [33] lệch theo.
+ *
+ * Nhận diện HẸP, không đoán rộng: chỉ vá khi có TỪ HAI nhóm và MỌI nhóm ghi `thtien` bằng
+ * `tgtcthue`. Hóa đơn nhiều nhóm mà tổng khớp `tgtcthue` là dữ liệu lành, không đụng vào.
+ *
+ * Không suy được mức duy nhất thì lùi về `tthue ÷ nhãn`. Nhóm thuế 0 hoặc nhãn chữ (KCT/KKKNT) làm
+ * cả hai đường mất nghĩa -> TRẢ NGUYÊN mảng cũ, để hóa đơn rơi vào nhóm treo thay vì bịa cách chia.
+ *
+ * ===== TIỀN CỦA TỪNG NHÓM LÀ `tthue ÷ suất`, KHÔNG PHẢI CHIA TỈ LỆ =====
+ *
+ * Mỗi nhóm nhận đúng `tthue ÷ suất` của chính nó; nhóm CUỐI nhận phần còn lại để tổng khớp
+ * `tgtcthue` từng đồng. Bản trước chia tỉ lệ (`tgtcthue × trọngSố ÷ Σ trọngSố`) nên khi tổng các
+ * base không khớp `tgtcthue` — hóa đơn có chiết khấu hoặc làm tròn lẻ — phần dư bị rải đều và làm
+ * lệch MỌI nhóm.
+ *
+ * Ca thật C26TLT 978 (`tgtcthue` = 3.959.273, thuế 184.000 + 165.927):
+ *
+ *     tiền thật : 8% = 184.000 ÷ 8%  = 2.300.000   (khớp sổ kế toán)
+ *                 10% = 165.927 ÷ 10% = 1.659.270   -> tổng 3.959.270, thiếu 3 đồng
+ *     chia tỉ lệ: 8% = 2.300.002 · 10% = 1.659.271  -> SAI cả hai nhóm
+ *     cách này  : 8% = 2.300.000 · 10% = 1.659.273  -> khớp sổ kế toán
+ *
+ * Cách này cũng đúng hơn ở ca nhãn hỏng: `[616.000, 786.000 − 616.000] = [616.000, 170.000]` ra
+ * thẳng số thật mà không cần giải, trong khi chia tỉ lệ ra 584.401/201.599 — không phải base của
+ * mức thuế nào.
+ *
+ * ===== AI NHẬN PHẦN LẺ =====
+ *
+ * Nhóm mà `tthue ÷ suất` KHÔNG ra số nguyên — vì tiền thuế của chính nhóm đó đã bị làm tròn nên
+ * base của nó là số kém chắc chắn nhất. Base tiền Việt luôn nguyên đồng; nhóm chia hết là nhóm có
+ * base chắc, đừng đụng vào. Ca thật C26TLT 364 (`tgtcthue` = 7.761.090, thuế 611.287 + 12.000):
+ *
+ *     12.000 ÷ 10%  = 120.000       -> nguyên, base chắc
+ *     611.287 ÷ 8%  = 7.641.087,5   -> lẻ, nhận phần còn lại = 7.761.090 − 120.000 = 7.641.090
+ *
+ * Khớp sổ kế toán. Dồn theo vị trí (nhóm cuối) thì tờ này sai 2 đồng. Mọi nhóm đều chia hết mà
+ * tổng vẫn lệch (ca 978, lẻ 3 đồng của bản thân hóa đơn) -> nhóm CUỐI nhận, cũng khớp sổ.
+ */
+export function vaNhomNhanBan(nhom: NhomTien[], tgtcthue: number): NhomTien[] {
+  if (nhom.length < 2 || tgtcthue === 0) return nhom;
+  const nhanBan = nhom.every((n) => Math.abs(n.thtien - tgtcthue) <= 1);
+  if (!nhanBan) return nhom;
+  if (nhom.some((n) => n.tthue === 0 || suatTuNhan(n.nhan) === null)) return nhom;
+
+  const suy = suyMucThueSuat(nhom, tgtcthue);
+  const trongSo = nhom.map((n, i) => suy?.[i].tien ?? n.tthue / (suatTuNhan(n.nhan)! / 100));
+  const tong = trongSo.reduce((a, b) => a + b, 0);
+  if (tong === 0) return nhom;
+
+  // Nhóm cuối nhận phần CÒN LẠI: tổng phân bổ phải khớp `tgtcthue` từng đồng, lệch một đồng ở đây
+  // là lệch thẳng vào [32].
+  // Nhóm nhận phần lẻ: nhóm cuối cùng có base KHÔNG nguyên đồng; mọi nhóm đều nguyên thì nhóm cuối.
+  const leDong = (x: number) => Math.abs(x - Math.round(x)) > 1e-6;
+  let oNhanDu = nhom.length - 1;
+  for (let i = 0; i < trongSo.length; i += 1) if (leDong(trongSo[i])) oNhanDu = i;
+
+  // Tổng phân bổ phải khớp `tgtcthue` từng đồng — lệch một đồng ở đây là lệch thẳng vào [32].
+  const tien = trongSo.map((t) => lamTronDong(t));
+  tien[oNhanDu] = tgtcthue - tien.reduce((s, x, i) => (i === oNhanDu ? s : s + x), 0);
+
+  // Nhãn đi theo mức vừa suy ra — nó quyết định hóa đơn vào nhóm 8% của phụ lục hay không.
+  return nhom.map((n, i) => ({ ...n, nhan: suy ? `${suy[i].suat}%` : n.nhan, thtien: tien[i] }));
+}
+
+/**
+ * Suy MỘT nhóm thuế suất từ tổng của cả hóa đơn, dùng khi cổng thuế không trả khối `thttltsuat`.
+ *
+ * Gặp thật (MST 0111142786): 122 hóa đơn mua vào — điện lực, Viettel, MobiFone — chỉ có tổng, không
+ * có khối tách thuế suất. Chúng vẫn vào [23]/[24] (mua vào chỉ cần tổng) nhưng KHÔNG vào bảng
+ * `theoNhan`, nên phụ lục giảm thuế hụt mất phần hàng 8% của chúng: Mục I thiếu 8.685.122 ở Q1 và
+ * 9.268.211 ở Q2 so với phụ lục đã nộp.
+ *
+ * Chỉ nhận khi ĐÚNG MỘT mức khớp tiền thuế trong sai số 1 đồng. Hai ca cố tình từ chối:
+ *
+ *   - `tthue = 0`: không phân biệt được KCT (vào [26]) với thuế suất 0% (vào [29]) — hai ô khác
+ *     nhau, đoán sai là chuyển tiền sang sai dòng tờ khai.
+ *   - Hóa đơn NHIỀU mức: tỷ lệ thuế/tiền ra một số không phải mức nào (7 hóa đơn FPT: 9,4109%).
+ *     Không suy được thì để nguyên, thà thiếu ở phụ lục còn hơn xếp nhầm nhóm được giảm thuế.
+ */
+function nhomTuTongHoaDon(tgtcthue: number, tgtthue: number): NhomTien[] | null {
+  if (tgtcthue === 0 || tgtthue === 0) return null;
+  const khop = SUAT_CO_THUE.filter(
+    (m) => Math.abs(tgtthue - lamTronDong((tgtcthue * m) / 100)) <= 1,
+  );
+  if (khop.length !== 1) return null;
+  return [{ nhan: `${khop[0]}%`, thtien: tgtcthue, tthue: tgtthue }];
+}
+
+/**
+ * Gộp DÒNG HÀNG (`detail.hdhhdvu`) thành các nhóm thuế suất — mỗi dòng đã mang nhãn mức của nó.
+ *
+ * Đây là số THẬT chứ không phải suy, nên dùng trước `nhomTuTongHoaDon`. Cứu đúng ca hóa đơn NHIỀU
+ * mức mà cổng bỏ trống khối `thttltsuat` — ví dụ hóa đơn FPT (`K26THT`): tổng 336.364 thuế 31.655
+ * (9,41%, không phải mức nào), nhưng hai dòng hàng ghi rõ 8% 99.091 và 10% 237.273.
+ *
+ * Chỉ nhận khi tổng dòng hàng khớp `tgtcthue` từng đồng: lệch nghĩa là cổng trả thiếu dòng, hoặc có
+ * chiết khấu nằm ngoài — gộp lúc đó là hụt tiền mà không biết.
+ */
+function nhomTuDongHang(detail: unknown, tgtcthue: number): NhomTien[] | null {
   if (!detail || typeof detail !== "object") return null;
-  const ds = (detail as Record<string, unknown>).thttltsuat;
-  if (!Array.isArray(ds)) return null;
-  return ds.map((g) => {
+  const ds = (detail as Record<string, unknown>).hdhhdvu;
+  if (!Array.isArray(ds) || ds.length === 0) return null;
+
+  const theoNhan = new Map<string, NhomTien>();
+  for (const it of ds) {
+    const o = (it ?? {}) as Record<string, unknown>;
+    const nhan = chuanHoaNhan(o.ltsuat ?? o.tsuat ?? o.thuesuat);
+    if (!nhan) return null;
+    const cu = theoNhan.get(nhan) ?? { nhan, thtien: 0, tthue: 0 };
+    cu.thtien += so(o.thtien);
+    cu.tthue += so(o.tthue);
+    theoNhan.set(nhan, cu);
+  }
+  const nhom = [...theoNhan.values()];
+  const tong = nhom.reduce((s, n) => s + n.thtien, 0);
+  return Math.abs(tong - tgtcthue) <= 1 ? nhom : null;
+}
+
+/** Các nhóm thuế suất của một hóa đơn; `null` = không tách được. */
+function nhomThueSuat(hd: HoaDonGom): NhomTien[] | null {
+  const tgtcthue = so(hd.tgtcthue);
+  const detail = hd.detail;
+  const ds =
+    detail && typeof detail === "object"
+      ? (detail as Record<string, unknown>).thttltsuat
+      : undefined;
+  // Thiếu khối tách thuế suất (hoặc có mà rỗng) -> gộp dòng hàng, không được nữa thì suy từ tổng.
+  if (!Array.isArray(ds) || ds.length === 0) {
+    return nhomTuDongHang(detail, tgtcthue) ?? nhomTuTongHoaDon(tgtcthue, so(hd.tgtthue));
+  }
+  const nhom = ds.map((g) => {
     const o = (g ?? {}) as Record<string, unknown>;
     return {
       nhan: chuanHoaNhan(o.ltsuat ?? o.tsuat ?? o.thuesuat),
@@ -181,6 +414,7 @@ function nhomThueSuat(detail: unknown): { nhan: string; thtien: number; tthue: n
       tthue: so(o.tthue),
     };
   });
+  return vaNhomNhanBan(nhom, tgtcthue);
 }
 
 /**
@@ -208,10 +442,15 @@ export function gomBanRa(rows: HoaDonGom[]): KetQuaBanRa {
   const treo: HoaDonTreo[] = [];
   const dieuChinh = { soHd: 0, giaTri: 0, thue: 0 };
   const theoNhan: Record<string, NhomThueSuat> = {};
+  const biLoai: HoaDonBiLoai = { soHd: 0, giaTri: 0 };
   let soHd = 0;
 
   for (const hd of rows) {
-    if (!duocTinh(hd.tthai)) continue;
+    if (!duocTinh(hd.tthai)) {
+      biLoai.soHd += 1;
+      biLoai.giaTri += veDong(so(hd.tgtcthue), heSoQuyDoi(hd) ?? 1);
+      continue;
+    }
 
     const heSo = heSoQuyDoi(hd);
     if (heSo === null) {
@@ -219,7 +458,7 @@ export function gomBanRa(rows: HoaDonGom[]): KetQuaBanRa {
       continue;
     }
 
-    const nhom = nhomThueSuat(hd.detail);
+    const nhom = nhomThueSuat(hd);
     if (nhom === null || nhom.length === 0) {
       treo.push({ id: hd.id, lyDo: "Hóa đơn chưa tải chi tiết nên chưa tách được thuế suất" });
       continue;
@@ -257,7 +496,7 @@ export function gomBanRa(rows: HoaDonGom[]): KetQuaBanRa {
     }
   }
 
-  return { tong, treo, dieuChinh, theoNhan, soHd };
+  return { tong, treo, biLoai, dieuChinh, theoNhan, soHd };
 }
 
 /**
@@ -267,12 +506,17 @@ export function gomBanRa(rows: HoaDonGom[]): KetQuaBanRa {
 export function gomMuaVao(rows: HoaDonGom[]): KetQuaMuaVao {
   const treo: HoaDonTreo[] = [];
   const theoNhan: Record<string, NhomThueSuat> = {};
+  const biLoai: HoaDonBiLoai = { soHd: 0, giaTri: 0 };
   let ct23 = 0;
   let ct24 = 0;
   let soHd = 0;
 
   for (const hd of rows) {
-    if (!duocTinh(hd.tthai)) continue;
+    if (!duocTinh(hd.tthai)) {
+      biLoai.soHd += 1;
+      biLoai.giaTri += veDong(so(hd.tgtcthue), heSoQuyDoi(hd) ?? 1);
+      continue;
+    }
     const heSo = heSoQuyDoi(hd);
     if (heSo === null) {
       treo.push({ id: hd.id, lyDo: `Hóa đơn ngoại tệ ${hd.dvtte} nhưng thiếu tỷ giá` });
@@ -284,7 +528,7 @@ export function gomMuaVao(rows: HoaDonGom[]): KetQuaMuaVao {
 
     // Tách theo nhãn CHỈ để dựng phụ lục giảm thuế — hóa đơn chưa tải chi tiết vẫn tính vào
     // ct23/ct24 ở trên, chỉ không góp mặt ở đây.
-    const nhom = nhomThueSuat(hd.detail);
+    const nhom = nhomThueSuat(hd);
     if (nhom === null) continue;
     const tenTheoNhan = tenHangTheoNhan(hd.detail, chuanHoaNhan);
     for (const g of nhom) {
@@ -298,5 +542,5 @@ export function gomMuaVao(rows: HoaDonGom[]): KetQuaMuaVao {
     }
   }
 
-  return { ct23, ct24, treo, theoNhan, soHd };
+  return { ct23, ct24, treo, biLoai, theoNhan, soHd };
 }

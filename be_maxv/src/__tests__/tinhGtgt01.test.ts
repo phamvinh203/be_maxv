@@ -142,40 +142,50 @@ function banRaRong() {
   return { ct26: 0, ct29: 0, ct30: 0, ct31: 0, ct32: 0, ct32a: 0, ct33: 0 };
 }
 
-test("[33] lấy công thức HTKK, khớp tờ khai Q2/2026 đã nộp", () => {
-  // Bản thật MST 0106861880: [32]=391.249.917, phụ lục giảm 7.824.998, [33]=31.299.994.
-  // Cộng thuế từng hóa đơn chỉ ra 31.299.993 — chênh một đồng chính là chỗ này.
+test("[33] là TỔNG THUẾ TỪNG HÓA ĐƠN, khớp hai tờ khai đã nộp của MST 0111142786", () => {
+  // Q1/2026: 8% 4.631.817.848 (thuế 370.545.427) + 10% 381.006.612 (thuế 38.100.664).
+  // Cộng thuế từng hóa đơn = 408.646.091 — đúng số trên tờ khai đã nộp.
+  // Công thức kiểm của HTKK ra 501.282.446 - 92.636.357 = 408.646.089, lệch 2 đồng.
   const ct = tinhGtgt01({
-    banRa: { ...banRaRong(), ct32: 391_249_917, ct33: 31_299_993 },
-    muaVao: { ct23: 323_050_463, ct24: 5_102_437 },
-    nhapTay: { ct22: 3_366_060 },
-    giamThue: { ts10: 7_824_998 },
+    banRa: { ...banRaRong(), ct32: 5_012_824_460, ct33: 408_646_091 },
+    muaVao: { ct23: 7_226_030_011, ct24: 598_816_081 },
+    nhapTay: { ct22: 366_696_473 },
   });
-  assert.equal(ct.ct33, 31_299_994);
-  assert.equal(ct.ct28, 31_299_994);
-  assert.equal(ct.ct35, 31_299_994);
-  assert.equal(ct.ct36, 26_197_557);
-  assert.equal(ct.ct40a, 22_831_497);
-  assert.equal(ct.ct40, 22_831_497);
+  assert.equal(ct.ct33, 408_646_091);
+  assert.equal(ct.ct28, 408_646_091);
+  assert.equal(ct.ct35, 408_646_091);
+  assert.equal(ct.ct36, -190_169_990);
+  assert.equal(ct.ct41, 556_866_463);
+  assert.equal(ct.ct43, 556_866_463);
 });
 
-test("không có hàng được giảm thì [33] = [32] x 10%", () => {
+test("[33] KHÔNG bị làm tròn lại theo [32] — số lẻ của bảng kê giữ nguyên", () => {
+  // [32] x 10% = 100.000,5; nếu còn dùng công thức thì [33] ra 100.001.
   const ct = tinhGtgt01({
-    banRa: { ...banRaRong(), ct32: 1_000_005 },
+    banRa: { ...banRaRong(), ct32: 1_000_005, ct33: 100_000 },
     muaVao: { ct23: 0, ct24: 0 },
     nhapTay: {},
   });
-  assert.equal(ct.ct33, 100_001); // làm tròn 100.000,5
+  assert.equal(ct.ct33, 100_000);
 });
 
-test("[31] cũng theo công thức, trừ phần giảm của nhóm 5%", () => {
+test("[31] cũng lấy thuế thực của nhóm 5% trên bảng kê", () => {
   const ct = tinhGtgt01({
-    banRa: { ...banRaRong(), ct30: 2_000_000 },
+    banRa: { ...banRaRong(), ct30: 2_000_000, ct31: 90_000 },
     muaVao: { ct23: 0, ct24: 0 },
     nhapTay: {},
-    giamThue: { ts5: 10_000 },
   });
-  assert.equal(ct.ct31, 90_000); // 100.000 - 10.000
+  assert.equal(ct.ct31, 90_000);
+});
+
+test("ghi đè [33] vẫn thắng số cộng từ bảng kê", () => {
+  const ct = tinhGtgt01({
+    banRa: { ...banRaRong(), ct32: 1_000_000, ct33: 100_000 },
+    muaVao: { ct23: 0, ct24: 0 },
+    nhapTay: { ct33: 99_000 },
+  });
+  assert.equal(ct.ct33, 99_000);
+  assert.equal(ct.ct28, 99_000, "ghi đè phải CHẢY TIẾP xuống [28]");
 });
 
 test("ghi đè [26] CHẢY TIẾP vào [34] — không còn để tờ khai tự mâu thuẫn", () => {
@@ -201,7 +211,7 @@ test("ghi đè [33] thắng công thức, và [28] dùng số đã ghi đè", ()
 
 test("ghi đè [24] chảy vào [25] mặc định rồi vào [36]", () => {
   const ct = tinhGtgt01({
-    banRa: { ...banRaRong(), ct32: 1_000_000 },
+    banRa: { ...banRaRong(), ct32: 1_000_000, ct33: 100_000 },
     muaVao: { ct23: 500_000, ct24: 50_000 },
     nhapTay: { ct24: 30_000 },
   });
@@ -210,21 +220,59 @@ test("ghi đè [24] chảy vào [25] mặc định rồi vào [36]", () => {
   assert.equal(ct.ct36, 100_000 - 30_000);
 });
 
-test("làm tròn đối xứng quanh 0 khi [32] âm — kỳ trả hàng nhiều hơn bán", () => {
-  // -15 x 10% = -1,5. Math.round cho -1 (về phía +∞); quy ước tiền là -2.
+test("kỳ ÂM (trả hàng nhiều hơn bán) đi thẳng từ bảng kê, không làm tròn lại", () => {
+  // Làm tròn về đồng đã làm ở `gomHoaDonGtgt` theo TỪNG hóa đơn; ở đây chỉ cộng, không tròn lại
+  // lần nữa — tròn hai lần là lệch thêm một đồng mà không ai truy ra được.
   const ct = tinhGtgt01({
-    banRa: { ...banRaRong(), ct32: -15 },
+    banRa: { ...banRaRong(), ct30: -10, ct31: -1, ct32: -15, ct33: -2 },
     muaVao: { ct23: 0, ct24: 0 },
     nhapTay: {},
   });
+  assert.equal(ct.ct31, -1);
   assert.equal(ct.ct33, -2);
+  assert.equal(ct.ct28, -3);
+  assert.equal(ct.ct41, 3, "[36] âm -> còn được khấu trừ");
 });
 
-test("[30] âm cũng làm tròn đối xứng", () => {
-  const ct = tinhGtgt01({
-    banRa: { ...banRaRong(), ct30: -10 },
-    muaVao: { ct23: 0, ct24: 0 },
-    nhapTay: {},
-  });
-  assert.equal(ct.ct31, -1); // -10 x 5% = -0,5 -> -1
+/* ===== [22] nhập tay: có chảy tiếp xuống các ô dưới không ===== */
+
+test("nhập tay [22] kéo theo [40a] [41] [40] [43] — không phải sửa mỗi một ô", () => {
+  // Ca thật Q1/2026 (MST 0111142786): [36] = -190.274.632.
+  const nen = { banRa: { ...RONG, ct32: 5_011_516_460, ct33: 408_541_449 }, muaVao: { ct23: 7_226_030_011, ct24: 598_816_081 } };
+
+  const chuaNhap = tinhGtgt01({ ...nen, nhapTay: { ct33: 408_541_449 } });
+  assert.equal(chuaNhap.ct22, 0);
+  assert.equal(chuaNhap.ct36, -190_274_632);
+  assert.equal(chuaNhap.ct41, 190_274_632);
+  assert.equal(chuaNhap.ct43, 190_274_632);
+
+  // Kế toán gõ [22] theo tờ khai đã nộp của kỳ trước.
+  const daNhap = tinhGtgt01({ ...nen, nhapTay: { ct33: 408_541_449, ct22: 366_696_473 } });
+  assert.equal(daNhap.ct22, 366_696_473);
+  assert.equal(daNhap.ct36, -190_274_632, "[36] không phụ thuộc [22], phải giữ nguyên");
+  assert.equal(daNhap.ct41, 556_971_105, "[41] = -( [36] - [22] )");
+  assert.equal(daNhap.ct43, 556_971_105, "[43] = [41] - [42]");
+  assert.equal(daNhap.ct40a, 0);
+  assert.equal(daNhap.ct40, 0);
+});
+
+test("[22] lớn hơn số phải nộp -> lật từ [40a] sang [41], không ra số âm", () => {
+  const nen = { banRa: { ...RONG, ct32: 1_000_000_000, ct33: 100_000_000 }, muaVao: { ct23: 0, ct24: 20_000_000 } };
+  // [36] = 100.000.000 - 20.000.000 = 80.000.000 -> phải nộp khi [22] = 0.
+  const nop = tinhGtgt01({ ...nen, nhapTay: {} });
+  assert.equal(nop.ct40a, 80_000_000);
+  assert.equal(nop.ct41, 0);
+
+  // [22] = 200.000.000 -> hết phải nộp, chuyển sang còn được khấu trừ 120.000.000.
+  const khauTru = tinhGtgt01({ ...nen, nhapTay: { ct22: 200_000_000 } });
+  assert.equal(khauTru.ct40a, 0);
+  assert.equal(khauTru.ct40, 0);
+  assert.equal(khauTru.ct41, 120_000_000);
+  assert.equal(khauTru.ct43, 120_000_000);
+});
+
+test("nhập tay [22] = 0 là ý định thật, không bị coi như bỏ trống", () => {
+  const nen = { banRa: { ...RONG }, muaVao: { ct23: 0, ct24: 10_000_000 } };
+  assert.equal(tinhGtgt01({ ...nen, nhapTay: { ct22: 0 } }).ct41, 10_000_000);
+  assert.equal(tinhGtgt01({ ...nen, nhapTay: { ct22: 4_000_000 } }).ct41, 14_000_000);
 });

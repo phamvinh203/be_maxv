@@ -37,6 +37,21 @@ export default function DialogKeKhai({ open, onClose }: { open: boolean; onClose
   const chay = () => {
     keKhai.mutate(ky, {
       onSuccess: (kq) => {
+        if (kq.khongRoKyGoc > 0) {
+          // Hóa đơn thay thế đi theo kỳ của hóa đơn GỐC; không tra được gốc thì nó nằm lại theo
+          // ngày lập — có thể sai kỳ, phải để kế toán biết mà kiểm.
+          toast.warning(
+            `${kq.khongRoKyGoc} hóa đơn thay thế/điều chỉnh chưa tra được hóa đơn gốc nên vẫn ` +
+              `tính theo ngày lập. Đồng bộ kỳ của hóa đơn gốc rồi kê khai lại để chắc chắn.`,
+          );
+        }
+        if (kq.daGo > 0) {
+          // Gỡ khỏi kỳ là mất luôn cột "Kê khai"/"Ghi chú" của tờ đó ở kỳ này — không nói ra thì
+          // kế toán tưởng mình chưa từng chỉnh.
+          toast.info(
+            `${kq.daGo} hóa đơn không còn thuộc kỳ ${kq.nhanKy} nên đã được gỡ khỏi bảng kê.`,
+          );
+        }
         toast.success(
           `Đã kê khai kỳ ${kq.nhanKy}: ${kq.purchase} hóa đơn mua vào, ${kq.sold} hóa đơn bán ra.`,
         );

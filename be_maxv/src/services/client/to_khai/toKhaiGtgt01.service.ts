@@ -14,7 +14,8 @@ import { gomBanRa, gomMuaVao, type HoaDonGom, type HoaDonTreo } from "./gomHoaDo
 import { tinhGtgt01, CT_NHAP_TAY, type CtGtgt01 } from "./tinhGtgt01";
 import { catMoTa, dungPhuLuc204, type PhuLuc204 } from "./phuLuc204";
 import { soatToKhai } from "./soatToKhai";
-import type { Chieu } from "./keKhaiKy.service";
+import { docLogDongBo, phuKyTuLog } from "./phuKy";
+import { layThayTheHut, type Chieu } from "./keKhaiKy.service";
 
 /** Nguồn của chỉ tiêu [22]. `ky_truoc_nhap` = kỳ trước còn là bản nháp nên [43] còn có thể đổi. */
 export type NguonCt22 = "ky_truoc" | "ky_truoc_nhap" | "nhap_tay";
@@ -218,28 +219,46 @@ export async function tinhVaLuu(db: PrismaClient, ky: Ky): Promise<BanToKhai> {
   for (const [khoa, item] of Object.entries(ghiDe)) nhapTay[khoa] = item.gia;
   if (ct22KyTruoc !== null) nhapTay.ct22 = ct22KyTruoc.gia;
 
-  // Phụ lục dựng TRƯỚC vì [33] cần số thuế được giảm của nó: HTKK tính
-  // [33] = [32] x 10% - (tổng cột 6 phụ lục), không cộng thuế từng hóa đơn.
+  // Phụ lục dựng trước để `soatToKhai` đối chiếu [33] với công thức kiểm của HTKK
+  // (`làm tròn([32] x 10%) - cột 6 phụ lục`); bản thân [33] cộng thuế từng hóa đơn.
   const phuLucMoi = dungPhuLuc204(banRa, muaVao);
-  const giamThue = { ts5: 0, ts10: phuLucMoi.banRa.thueDuocGiam };
 
-  const ctMay = tinhGtgt01({ banRa: banRa.tong, muaVao, nhapTay: {}, giamThue });
-  const ct = tinhGtgt01({ banRa: banRa.tong, muaVao, nhapTay, giamThue });
+  const ctMay = tinhGtgt01({ banRa: banRa.tong, muaVao, nhapTay: {} });
+  const ct = tinhGtgt01({ banRa: banRa.tong, muaVao, nhapTay });
 
   const nguonCt22: NguonCt22 =
     ct22KyTruoc === null ? "nhap_tay" : ct22KyTruoc.daChot ? "ky_truoc" : "ky_truoc_nhap";
   const soHdKhongKeKhai = ban.soLoai + mua.soLoai;
+
+  // Kỳ này VÀ kỳ nguồn [22] đã đồng bộ đủ hóa đơn chưa — đọc `sync_log` MỘT lần cho cả hai.
+  // Kỳ nguồn chỉ xét khi [22] THẬT SỰ nối từ đó: kế toán đã ghi đè [22] thì số kia không còn đi vào
+  // tờ khai, cảnh báo lúc ấy chỉ gây nhiễu.
+  // Tờ thay thế bỏ sót dòng hàng — hỏi cả hai chiều, đi cùng chuyến với phần độ phủ.
+  const [thayTheHutBan, thayTheHutMua, logDongBo] = await Promise.all([
+    layThayTheHut(db, ky, "sold"),
+    layThayTheHut(db, ky, "purchase"),
+    docLogDongBo(db),
+  ]);
+  const thieuDuLieuKyNay = phuKyTuLog(logDongBo, ky).phanThieu;
+  const thieuDuLieuKyNguonCt22 =
+    ct22KyTruoc === null ? null : phuKyTuLog(logDongBo, ct22KyTruoc.ky).phanThieu;
 
   // Soát là hàm THUẦN (`soatToKhai.ts`) — ngưỡng làm tròn là chỗ dễ sai nhất, tách ra để test được
   // không cần Postgres.
   const canhBao = soatToKhai({
     ct,
     ctMay,
-    tongBanRa: banRa.tong,
     soHdBan: banRa.soHd,
-    giamThue10: giamThue.ts10,
+    biLoai: {
+      soHd: banRa.biLoai.soHd + muaVao.biLoai.soHd,
+      giaTri: banRa.biLoai.giaTri + muaVao.biLoai.giaTri,
+    },
+    thayTheHut: [...thayTheHutBan, ...thayTheHutMua],
+    giamThue10: phuLucMoi.banRa.thueDuocGiam,
     kyNay: ky,
+    thieuDuLieuKyNay,
     kyNguonCt22: ct22KyTruoc?.ky ?? null,
+    thieuDuLieuKyNguonCt22,
   });
 
   // Phụ lục tính lại từ hóa đơn, NHƯNG hai ô mô tả hàng hóa giữ nguyên nếu kế toán đã sửa —

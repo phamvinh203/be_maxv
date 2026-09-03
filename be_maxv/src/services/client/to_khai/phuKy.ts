@@ -34,6 +34,8 @@ export interface KetQuaPhuKy {
   sold: PhuChieu;
   /** Câu mô tả phần thiếu, dựng sẵn ở BE để FE khỏi lặp logic; null khi đã đủ. */
   canhBao: string | null;
+  /** Như `canhBao` nhưng KHÔNG có câu dẫn — để nơi khác nhúng vào câu của mình. */
+  phanThieu: string | null;
 }
 
 /** `2026-04-01` — so sánh và hiển thị đều theo NGÀY. */
@@ -103,8 +105,14 @@ function moTaThieu(
   return `${nhan}: mới đồng bộ ${ngayVn(phu.tuNgayDaCo)}–${ngayVn(phu.denNgayDaCo)}, thiếu ${thieu.join(" và ")}`;
 }
 
-/** Dựng câu cảnh báo chung cho cả hai chiều; null khi đủ. */
-export function canhBaoPhuKy(
+/**
+ * Chỉ PHẦN MÔ TẢ thiếu, không có câu dẫn — `null` khi đã phủ trọn.
+ *
+ * Tách khỏi `canhBaoPhuKy` để nơi khác nhúng được vào câu của mình: cảnh báo "[22] nối từ kỳ chưa
+ * đồng bộ đủ" mà chèn nguyên câu "Kỳ này chưa được đồng bộ trọn vẹn — ... Kê khai lúc này sẽ ra tờ
+ * khai thiếu số." vào giữa thì thành hai câu lồng nhau, đọc không ra.
+ */
+export function phanThieuPhuKy(
   purchase: PhuChieu,
   sold: PhuChieu,
   khoang: { tuNgay: string; denNgay: string },
@@ -113,21 +121,42 @@ export function canhBaoPhuKy(
     moTaThieu("Hóa đơn mua vào", purchase, khoang),
     moTaThieu("Hóa đơn bán ra", sold, khoang),
   ].filter((s): s is string => s !== null);
-  if (phan.length === 0) return null;
-  return `Kỳ này chưa được đồng bộ trọn vẹn — ${phan.join("; ")}. Kê khai lúc này sẽ ra tờ khai thiếu số.`;
+  return phan.length === 0 ? null : phan.join("; ");
 }
 
-export async function kiemTraPhuKy(db: PrismaClient, ky: Ky): Promise<KetQuaPhuKy> {
-  const khoang = khoangCuaKy(ky);
-  const logs = (await db.sync_log.findMany({
-    // Chỉ lượt "Đồng bộ" HOÀN THÀNH mới được tính là đã phủ — lượt "Cập nhật" áp bộ lọc UI của
-    // người dùng nên không đảm bảo lấy hết hóa đơn trong khoảng.
+/** Dựng câu cảnh báo chung cho cả hai chiều; null khi đủ. */
+export function canhBaoPhuKy(
+  purchase: PhuChieu,
+  sold: PhuChieu,
+  khoang: { tuNgay: string; denNgay: string },
+): string | null {
+  const phan = phanThieuPhuKy(purchase, sold, khoang);
+  return phan === null
+    ? null
+    : `Kỳ này chưa được đồng bộ trọn vẹn — ${phan}. Kê khai lúc này sẽ ra tờ khai thiếu số.`;
+}
+
+/**
+ * Các lượt đồng bộ đã HOÀN THÀNH — nguồn cho mọi phép xét độ phủ.
+ *
+ * Tách khỏi `kiemTraPhuKy` để một lượt tính tờ khai xét được NHIỀU kỳ (kỳ đang lập và kỳ nguồn của
+ * [22]) mà chỉ đọc bảng một lần.
+ *
+ * Chỉ lượt "Đồng bộ" mới được tính là đã phủ — lượt "Cập nhật" áp bộ lọc UI của người dùng nên
+ * không đảm bảo lấy hết hóa đơn trong khoảng.
+ */
+export async function docLogDongBo(db: PrismaClient): Promise<DongBoRef[]> {
+  return (await db.sync_log.findMany({
     where: { trang_thai: "done", dien_giai: { startsWith: "Đồng bộ" } },
     select: { direction: true, tu_ngay: true, den_ngay: true },
     orderBy: { created_at: "desc" },
     take: 200,
   })) as DongBoRef[];
+}
 
+/** Xét độ phủ của một kỳ từ log đã đọc sẵn — hàm THUẦN. */
+export function phuKyTuLog(logs: DongBoRef[], ky: Ky): KetQuaPhuKy {
+  const khoang = khoangCuaKy(ky);
   const purchase = phuChieuTuLog(logs, "purchase", khoang);
   const sold = phuChieuTuLog(logs, "sold", khoang);
   return {
@@ -135,5 +164,10 @@ export async function kiemTraPhuKy(db: PrismaClient, ky: Ky): Promise<KetQuaPhuK
     purchase,
     sold,
     canhBao: canhBaoPhuKy(purchase, sold, khoang),
+    phanThieu: phanThieuPhuKy(purchase, sold, khoang),
   };
+}
+
+export async function kiemTraPhuKy(db: PrismaClient, ky: Ky): Promise<KetQuaPhuKy> {
+  return phuKyTuLog(await docLogDongBo(db), ky);
 }

@@ -60,17 +60,17 @@ test("mục III = thuế bán ra được giảm − thuế mua vào", () => {
   assert.equal(pl.chenhLech, 7_824_998 - 5_081_437);
 });
 
-test("mục I gộp MỌI nhóm có thuế, bỏ nhóm không thuế", () => {
-  // Bản kế toán đã nộp gộp cả 10% vào mục I (thuế 5.102.437 = 5.081.437 nhóm 8% + 21.000 nhóm
-  // 10%), nên mục I lấy toàn bộ thuế đầu vào được khấu trừ. KKKNT thuế 0 -> không có gì khấu trừ.
+test("mục I CHỈ lấy nhóm 8% — 10% và nhóm không thuế đứng ngoài", () => {
+  // Đối chiếu hai tờ khai thật của MST 0111142786 (Q1 và Q2/2026): mục I khớp nhóm 8% trong phạm vi
+  // 0,1%, còn gộp thêm 10% thì lệch 11-17% — xem bảng số trong `gopMuaVao8`.
   const muaVao = gomMuaVao([
     hd("a", [{ tsuat: "8%", thtien: 1_000_000, tthue: 80_000 }]),
     hd("b", [{ tsuat: "10%", thtien: 210_000, tthue: 21_000 }]),
     hd("c", [{ tsuat: "KKKNT", thtien: 259_322_420, tthue: 0 }]),
   ]);
   const pl = dungPhuLuc204(gomBanRa([]), muaVao);
-  assert.equal(pl.muaVao.giaTri, 1_210_000);
-  assert.equal(pl.muaVao.thue, 101_000);
+  assert.equal(pl.muaVao.giaTri, 1_000_000);
+  assert.equal(pl.muaVao.thue, 80_000);
 });
 
 test("mục II CHỈ lấy nhóm 8%, không dính 10%", () => {

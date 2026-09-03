@@ -2,8 +2,8 @@
  * Phụ lục "Giảm thuế giá trị gia tăng theo Nghị quyết 204/2025/QH15" — nộp KÈM tờ khai 01/GTGT khi
  * kỳ có hàng được giảm thuế từ 10% xuống 8%.
  *
- * Cấu trúc bám bản thật (đối chiếu tờ khai Q2/2026 của MST 0106861880):
- *   Mục I   — hàng MUA VÀO có thuế đầu vào được khấu trừ (xem `gopMuaVaoCoThue`)
+ * Cấu trúc bám bản thật (đối chiếu Q1+Q2/2026 của MST 0111142786 và Q2/2026 của MST 0106861880):
+ *   Mục I   — hàng MUA VÀO nhóm 8% (xem `gopMuaVao8`)
  *   Mục II  — hàng BÁN RA nhóm 8%: giá trị, thuế suất quy định (10%), sau giảm (8%),
  *             thuế được giảm = giá trị × (10% − 8%)
  *   Mục III — chênh lệch [09] = thuế bán ra được giảm − thuế mua vào
@@ -89,28 +89,31 @@ function moTaHang(tenHang: string[]): string {
 }
 
 /**
- * Mục I gộp MỌI nhóm mua vào CÓ thuế đầu vào, không chỉ nhóm 8%.
+ * Mục I lấy ĐÚNG nhóm 8% của hàng mua vào — theo đúng tiêu đề mẫu ("...được áp dụng mức thuế suất
+ * thuế giá trị gia tăng 8%").
  *
- * Đối chiếu phụ lục thật Q2/2026 của MST 0106861880: bản kế toán đã nộp ghi thuế 5.102.437 =
- * 5.081.437 (nhóm 8%) + 21.000 (nhóm 10%). Tức thực tế mục này được khai là "toàn bộ thuế đầu vào
- * được khấu trừ trong kỳ", dù tiêu đề mẫu chỉ nói 8%. Lấy đúng nhóm 8% thì cột thuế lệch, mà cột
- * thuế mới là số đi vào mục III và bị cơ quan thuế đối chiếu.
+ * Từng có bản gộp MỌI nhóm có thuế, suy từ phụ lục thật Q2/2026 của MST 0106861880 (thuế 5.102.437
+ * = 5.081.437 nhóm 8% + 21.000 nhóm 10%). Hai tờ khai thật của MST 0111142786 bác cách đó:
  *
- * Nhóm không thuế (KCT/KKKNT, thuế = 0) bị loại — chúng không có gì để khấu trừ.
+ *              | phụ lục đã nộp          | chỉ nhóm 8%          | mọi nhóm có thuế
+ *   Q1/2026    | 6.185.602.920           | lệch    -8.685.122   | lệch +1.022.271.928
+ *   Q2/2026    | 7.880.500.667           | lệch    -9.268.211   | lệch   +793.410.717
+ *
+ * Tức 0,1% so với 11-17%. Phần lệch còn lại đúng bằng 8% cả hai kỳ (694.811 và 741.459 tiền thuế) —
+ * là hàng 8% mà cổng thuế ghi thiếu trong `thttltsuat`, không phải nhóm 10% lẫn vào. Con số
+ * 21.000 của MST 0106861880 nhiều khả năng là một dòng kế toán tự thêm tay.
  */
-function gopMuaVaoCoThue(theoNhan: Record<string, NhomThueSuat>): {
+function gopMuaVao8(theoNhan: Record<string, NhomThueSuat>): {
   giaTri: number;
   thue: number;
   tenHang: string[];
 } {
-  const ra = { giaTri: 0, thue: 0, tenHang: [] as string[] };
-  for (const nhom of Object.values(theoNhan)) {
-    if (nhom.thue <= 0) continue;
-    ra.giaTri += nhom.giaTri;
-    ra.thue += nhom.thue;
-    for (const t of nhom.tenHang) if (!ra.tenHang.includes(t)) ra.tenHang.push(t);
-  }
-  return ra;
+  const nhom = theoNhan[NHAN_GIAM_THUE];
+  return {
+    giaTri: nhom?.giaTri ?? 0,
+    thue: nhom?.thue ?? 0,
+    tenHang: nhom?.tenHang ?? [],
+  };
 }
 
 /**
@@ -123,8 +126,8 @@ function gopMuaVaoCoThue(theoNhan: Record<string, NhomThueSuat>): {
  */
 export function dungPhuLuc204(banRa: KetQuaBanRa, muaVao: KetQuaMuaVao): PhuLuc204 {
   const nhomBan = banRa.theoNhan[NHAN_GIAM_THUE];
-  // Mục I gộp mọi nhóm có thuế; mục II chỉ nhóm được giảm (8%) — xem ghi chú `gopMuaVaoCoThue`.
-  const mua = gopMuaVaoCoThue(muaVao.theoNhan);
+  // Cả hai mục đều chỉ lấy nhóm 8% — xem ghi chú `gopMuaVao8`.
+  const mua = gopMuaVao8(muaVao.theoNhan);
 
   const giaTriBan = nhomBan?.giaTri ?? 0;
   // Làm tròn thường — số đối chứng ở `tienVnd.ts`.

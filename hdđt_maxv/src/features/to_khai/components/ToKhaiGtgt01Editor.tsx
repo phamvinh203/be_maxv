@@ -73,8 +73,14 @@ export default function ToKhaiGtgt01Editor({ ky, ban, onDoiKy, dangTai, loi }: P
       onError: (err) => toast.error(getErrorMessage(err, "Không lập được tờ khai.")),
     });
 
-  const bamLuu = () => {
-    if (!ban) return;
+  /**
+   * Gom mọi ô đang gõ dở thành bộ ghi đè gửi lên server.
+   *
+   * `null` = có ô không đọc được thành số. Tách khỏi `luuVaTinhLai` để nút "Lưu" báo lỗi cho người
+   * dùng, còn lượt tính lại tự động lúc rời ô thì im lặng bỏ qua — đang gõ dở mà bị mắng là phiền.
+   */
+  const dungGhiDe = (): { ghiDe: Record<string, GhiDeItem>; oHong: string[] } | null => {
+    if (!ban) return null;
     const ghiDe: Record<string, GhiDeItem> = { ...ban.ghiDe };
     const oHong: string[] = [];
     for (const [tag, chuoi] of Object.entries(nhap)) {
@@ -84,28 +90,50 @@ export default function ToKhaiGtgt01Editor({ ky, ban, onDoiKy, dangTai, loi }: P
         delete ghiDe[tag];
         continue;
       }
-      // Gõ sai (chữ, ký tự lạ) thì BÁO, không lặng lẽ bỏ qua — số trên tờ khai không được phép
-      // khác cái người dùng tưởng mình vừa nhập.
+      // Gõ sai (chữ, ký tự lạ) thì giữ lại tên ô để nơi gọi quyết định có báo hay không — tuyệt đối
+      // không lặng lẽ lấy số cũ: số trên tờ khai không được phép khác cái người dùng tưởng mình gõ.
       if (gia === undefined) {
         oHong.push(`[${maChiTieu(tag)}]`);
         continue;
       }
       ghiDe[tag] = { gia };
     }
-    if (oHong.length > 0) {
-      toast.error(`Không đọc được số ở ô ${oHong.join(", ")} — kiểm tra lại rồi lưu.`);
-      return;
-    }
+    return { ghiDe, oHong };
+  };
+
+  /**
+   * Lưu ô sửa tay rồi TÍNH LẠI — server trả về bộ chỉ tiêu mới, `setNhap({})` cho màn hình đọc lại
+   * từ đó.
+   *
+   * Chỉ có một engine tính (bên server). Client cố ý KHÔNG tự tính lại tại chỗ: hai bản công thức
+   * là hai bản sẽ trôi lệch, mà đây là số tiền thuế.
+   */
+  const luuVaTinhLai = (onThanhCong?: () => void) => {
+    const gom = dungGhiDe();
+    if (!gom) return;
+    // Còn ô gõ sai thì KHÔNG lưu ô nào cả. Lưu một phần rồi `setNhap({})` là xóa mất cái người dùng
+    // đang gõ dở ở ô kia mà không nói gì — họ chỉ rời con trỏ chứ có bảo bỏ đâu.
+    if (gom.oHong.length > 0) return;
     luu.mutate(
-      { ky, ghiDe },
+      { ky, ghiDe: gom.ghiDe },
       {
         onSuccess: () => {
           setNhap({});
-          toast.success("Đã lưu tờ khai.");
+          onThanhCong?.();
         },
         onError: (err) => toast.error(getErrorMessage(err, "Không lưu được tờ khai.")),
       },
     );
+  };
+
+  const bamLuu = () => {
+    const gom = dungGhiDe();
+    if (!gom) return;
+    if (gom.oHong.length > 0) {
+      toast.error(`Không đọc được số ở ô ${gom.oHong.join(", ")} — kiểm tra lại rồi lưu.`);
+      return;
+    }
+    luuVaTinhLai(() => toast.success("Đã lưu tờ khai."));
   };
 
   /** Xuất file cần `await` (dựng workbook) — bọc catch để lỗi ghi file không văng ra ngoài lặng lẽ. */
@@ -186,10 +214,19 @@ export default function ToKhaiGtgt01Editor({ ky, ban, onDoiKy, dangTai, loi }: P
             onChange={(e) => setNhap((cu) => ({ ...cu, [tag]: e.target.value }))}
             // Rời ô thì định dạng lại ngay để người dùng thấy con số mình vừa gõ đã được hiểu đúng
             // (gõ "264208827" rời ô thành "264.208.827"); gõ sai thì giữ nguyên để còn sửa.
+            //
+            // Rồi LƯU VÀ TÍNH LẠI luôn: [22] chảy tiếp vào [40a]/[41]/[40]/[43], [32] chảy vào
+            // [27]/[33]/[34]/[35]/[36]… Bắt bấm "Lưu" mới thấy số đổi thì người dùng gõ xong nhìn
+            // các ô dưới đứng im, tưởng phần mềm không nhận.
             onBlur={() => {
-              const gia = docSoTien(nhap[tag] ?? "");
+              // Ô người dùng KHÔNG chạm tới thì không đụng vào. Thiếu chặn này, chỉ cần bấm vào một
+              // ô đã có số rồi tab đi là `docSoTien("")` ra null và ô bị xóa trắng.
+              if (!(tag in nhap)) return;
+              const gia = docSoTien(nhap[tag]);
               if (gia === undefined) return;
               setNhap((cu) => ({ ...cu, [tag]: gia === null ? "" : fmtSoTien(gia) }));
+              // Số không đổi so với bản đã lưu -> khỏi gọi server.
+              if (gia !== (ban?.ghiDe[tag]?.gia ?? null)) luuVaTinhLai();
             }}
             slotProps={{
               htmlInput: { readOnly: !suaDuoc, style: { textAlign: "right", fontSize: 13 } },
