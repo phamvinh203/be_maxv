@@ -1,5 +1,6 @@
 import Box from "@mui/material/Box";
 import Typography from "@mui/material/Typography";
+import AppHeader from "../../components/AppHeader";
 import ToKhaiInvoiceTabs from "../../features/to_khai/components/ToKhaiInvoiceTabs";
 
 /**
@@ -9,11 +10,14 @@ import ToKhaiInvoiceTabs from "../../features/to_khai/components/ToKhaiInvoiceTa
  */
 export default function ToKhai() {
   return (
-    <Box sx={{ p: 3 }}>
-      <Typography variant="h6" sx={{ mb: 2 }}>
-        Tờ khai
-      </Typography>
-      <ToKhaiInvoiceTabs />
-    </Box>
+    <>
+      <AppHeader />
+      <Box sx={{ p: 3 }}>
+        <Typography variant="h6" sx={{ mb: 2 }}>
+          Tờ khai
+        </Typography>
+        <ToKhaiInvoiceTabs />
+      </Box>
+    </>
   );
 }
