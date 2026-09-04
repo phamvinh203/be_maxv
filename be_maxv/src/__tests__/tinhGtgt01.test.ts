@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { tinhGtgt01 } from "../services/client/to_khai/tinhGtgt01";
-import type { TongBanRa } from "../services/client/to_khai/gomHoaDonGtgt";
+import { tinhGtgt01 } from "../services/client/to_khai/domain/tinhGtgt01";
+import type { TongBanRa } from "../services/client/to_khai/domain/gomHoaDonGtgt";
 
 /**
  * npx tsx --test src/__tests__/tinhGtgt01.test.ts

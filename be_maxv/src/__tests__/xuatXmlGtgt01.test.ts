@@ -4,10 +4,10 @@ import {
   MA_TKHAI_GTGT01,
   dungXmlGtgt01,
   tenFileXml,
-} from "../services/client/to_khai/xuatXmlGtgt01";
-import { DAI_TOI_DA_MO_TA } from "../services/client/to_khai/phuLuc204";
+} from "../services/client/to_khai/serialization/xuatXmlGtgt01";
+import { DAI_TOI_DA_MO_TA } from "../services/client/to_khai/domain/phuLuc204";
 import { layChiTieuToKhaiGtgt } from "../services/client/dich_vu_cong/toKhaiXml";
-import type { Ky } from "../services/client/to_khai/kySoThue";
+import type { Ky } from "../services/client/to_khai/domain/kySoThue";
 
 /**
  * npx tsx --test src/__tests__/xuatXmlGtgt01.test.ts

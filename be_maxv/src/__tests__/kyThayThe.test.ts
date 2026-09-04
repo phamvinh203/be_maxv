@@ -4,7 +4,7 @@ import {
   chonTheoKyGoc,
   coHoaDonGoc,
   ngayGocTuGhiChu,
-} from "../services/client/to_khai/kyThayThe";
+} from "../services/client/to_khai/domain/kyThayThe";
 
 /**
  * npx tsx --test src/__tests__/kyThayThe.test.ts

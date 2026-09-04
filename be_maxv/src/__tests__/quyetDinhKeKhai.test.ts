@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { locQuyetDinh } from "../services/client/to_khai/keKhaiKy.service";
+import { locQuyetDinh } from "../services/client/to_khai/application/keKhaiKy.service";
 
 /**
  * npx tsx --test src/__tests__/quyetDinhKeKhai.test.ts

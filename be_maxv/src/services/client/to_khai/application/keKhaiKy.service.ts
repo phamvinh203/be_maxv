@@ -8,24 +8,20 @@
  * không), tuyệt đối không chép số tiền — xem ghi chú model trong `prisma/tenant/schema.prisma`.
  */
 
-import type { PrismaClient } from "../../../generated/tenant";
-import { vnDayEnd, vnDayStart, vnDayString } from "../../../utils/ngayVn";
-import * as GDTService from "../hddt/gdt.service";
-import { khoangCuaKy, type Ky } from "./kySoThue";
+import type { PrismaClient } from "../../../../generated/tenant";
+import { vnDayEnd, vnDayStart, vnDayString } from "../../../../utils/ngayVn";
+import * as GDTService from "../../hddt/gdt.service";
+import { khoangCuaKy, type Ky } from "../domain/kySoThue";
 import {
   chonTheoKyGoc,
   ngayGocTuGhiChu,
   TTHAI_CO_GOC,
   type KetQuaChon,
   type ToCoGoc,
-} from "./kyThayThe";
-import { duocTinh } from "./gomHoaDonGtgt";
-import type { ThayTheHut } from "./soatToKhai";
-import { chiaLo } from "./toKhaiGtgt01.service";
-
-export type Chieu = "purchase" | "sold";
-
-const CA_HAI_CHIEU: Chieu[] = ["purchase", "sold"];
+} from "../domain/kyThayThe";
+import { duocTinh } from "../domain/gomHoaDonGtgt";
+import { chiaLo } from "../domain/chiaLo";
+import { CA_HAI_CHIEU, tenViewHoaDon, type Chieu } from "../domain/chieuHoaDon";
 
 /**
  * Số dòng upsert mỗi transaction. Một kỳ có thể vài nghìn hóa đơn; gom tất cả vào MỘT transaction
@@ -44,11 +40,6 @@ export interface KetQuaDanhDau {
   khongRoKyGoc: number;
   /** Số hóa đơn bị GỠ khỏi kỳ vì lượt quét mới không còn nhận — xem `goKhoiKy`. */
   daGo: number;
-}
-
-/** Tên view theo chiều — `vct60view` là MUA VÀO, `vct50view` là BÁN RA (đúng, không ngược). */
-function tenView(chieu: Chieu): string {
-  return chieu === "purchase" ? "vct60view" : "vct50view";
 }
 
 /** Một hóa đơn thay thế/điều chỉnh kèm thông tin cần để suy ra kỳ của hóa đơn GỐC. */
@@ -73,7 +64,7 @@ async function ngayGocCuaHoaDon(
 ): Promise<string | null> {
   if (hd.khhdgoc && hd.shdgoc) {
     const goc = await db.$queryRawUnsafe<{ tdlap: Date }[]>(
-      `SELECT tdlap FROM "${tenView(chieu)}" WHERE khhdon = $1 AND shdon = $2 LIMIT 1`,
+      `SELECT tdlap FROM "${tenViewHoaDon(chieu)}" WHERE khhdon = $1 AND shdon = $2 LIMIT 1`,
       hd.khhdgoc,
       hd.shdgoc,
     );
@@ -91,7 +82,7 @@ async function layHoaDonCoGoc(db: PrismaClient, chieu: Chieu): Promise<HoaDonCoG
             detail->>'khhdgoc' AS khhdgoc,
             detail->>'shdgoc'  AS shdgoc,
             detail->>'gchdgoc' AS gchdgoc
-       FROM "${tenView(chieu)}"
+       FROM "${tenViewHoaDon(chieu)}"
       WHERE tthai = ANY($1::varchar[])`,
     [...TTHAI_CO_GOC],
   );
@@ -212,35 +203,6 @@ export async function danhDauKy(db: PrismaClient, ky: Ky): Promise<KetQuaDanhDau
   return ketQua;
 }
 
-/**
- * Hóa đơn THAY THẾ của kỳ mà tổng nhỏ hơn hóa đơn gốc — dấu hiệu tờ thay thế bỏ sót dòng hàng.
- *
- * Chỉ xét tờ kế toán để `ke_khai`; tờ gốc tra theo `khhdgoc`/`shdgoc`, không tra được thì bỏ qua
- * (JOIN tự loại) — thà không báo còn hơn báo dựa trên một tờ gốc đoán ra.
- */
-export async function layThayTheHut(
-  db: PrismaClient,
-  ky: Ky,
-  chieu: Chieu,
-): Promise<ThayTheHut[]> {
-  return db.$queryRawUnsafe<ThayTheHut[]>(
-    `SELECT m.khhdon || '|' || m.shdon AS "hoaDon",
-            g.shdon                    AS "soGoc",
-            (g.tgtcthue - m.tgtcthue)::float8 AS hut
-       FROM "tokhai_ky_hoa_don" k
-       JOIN "${tenView(chieu)}" m ON m.id = k.hoa_don_id
-       JOIN "${tenView(chieu)}" g
-         ON g.khhdon = m.detail->>'khhdgoc' AND g.shdon = m.detail->>'shdgoc'
-      WHERE k.chieu = $1 AND k.nam = $2 AND k.ky_loai = $3 AND k.ky_so = $4
-        AND k.ke_khai AND m.tthai = '2' AND m.tgtcthue < g.tgtcthue
-      ORDER BY (g.tgtcthue - m.tgtcthue) DESC`,
-    chieu,
-    ky.nam,
-    ky.kyLoai,
-    ky.kySo,
-  );
-}
-
 /** Ba giá trị hợp lệ của cột "Chỉ tiêu tăng giảm"; rỗng = kế toán chưa chọn, hoặc xóa lựa chọn cũ. */
 export type ChiTieuTangGiam = "" | "tang" | "giam";
 
@@ -322,7 +284,7 @@ async function khoangDocBangKe(
   const { tuNgay, denNgay } = khoangCuaKy(ky);
   const bien = await db.$queryRawUnsafe<{ tu: Date | null; den: Date | null }[]>(
     `SELECT MIN(v.tdlap) AS tu, MAX(v.tdlap) AS den
-       FROM "${tenView(chieu)}" v
+       FROM "${tenViewHoaDon(chieu)}" v
        JOIN "tokhai_ky_hoa_don" k ON k.hoa_don_id = v.id AND k.chieu = $1
       WHERE k.nam = $2 AND k.ky_loai = $3 AND k.ky_so = $4`,
     chieu,
