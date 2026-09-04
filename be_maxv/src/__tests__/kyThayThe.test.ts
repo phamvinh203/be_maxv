@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import {
   chonTheoKyGoc,
   coHoaDonGoc,
+  ngayGocDuyNhat,
   ngayGocTuGhiChu,
 } from "../services/client/to_khai/domain/kyThayThe";
 
@@ -59,6 +60,13 @@ test("ngày không có thật -> null, thà không biết còn hơn gán sai k�
   assert.equal(ngayGocTuGhiChu("... lập ngày 00/01/2026"), null);
 });
 
+test("ngày gốc tra DB: chỉ nhận khi một ngày duy nhất, không chọn tùy tiện ứng viên mơ hồ", () => {
+  assert.equal(ngayGocDuyNhat(["2026-01-31"]), "2026-01-31");
+  assert.equal(ngayGocDuyNhat(["2026-01-31", "2026-01-31"]), "2026-01-31");
+  assert.equal(ngayGocDuyNhat(["2026-01-31", "2026-02-01"]), null);
+  assert.equal(ngayGocDuyNhat([]), null);
+});
+
 test("ngày cuối tháng và năm nhuận vẫn hợp lệ", () => {
   assert.equal(ngayGocTuGhiChu("... lập ngày 31/12/2025"), "2025-12-31");
   assert.equal(ngayGocTuGhiChu("... lập ngày 29/02/2028"), "2028-02-29");
@@ -106,15 +114,16 @@ test("gốc cùng kỳ thì giữ nguyên, không nhân đôi", () => {
   assert.ok(kq.ids.includes("tt"));
 });
 
-test("không suy được kỳ gốc: tờ TRONG kỳ thì giữ lại và đếm cảnh báo", () => {
+test("không suy được kỳ gốc: tờ TRONG kỳ bị chặn và đếm cảnh báo", () => {
   const kq = chonTheoKyGoc(
     ["a", "tt"],
     [{ id: "tt", ngayGoc: null, lapTrongKy: true }],
     TU,
     DEN,
   );
-  assert.ok(kq.ids.includes("tt"), "giữ theo ngày lập, không vứt đi");
+  assert.ok(!kq.ids.includes("tt"), "không được tự dùng ngày lập thay cho ngày gốc");
   assert.equal(kq.khongRoKyGoc, 1);
+  assert.deepEqual(kq.idsKhongRoKyGoc, ["tt"], "phải dọn được cả lần gán sai trước đây");
 });
 
 test("không suy được kỳ gốc: tờ NGOÀI kỳ thì để yên, không cảnh báo nhầm", () => {
@@ -126,6 +135,7 @@ test("không suy được kỳ gốc: tờ NGOÀI kỳ thì để yên, không c
   );
   assert.deepEqual(kq.ids, ["a"]);
   assert.equal(kq.khongRoKyGoc, 0);
+  assert.deepEqual(kq.idsKhongRoKyGoc, ["tt"]);
 });
 
 test("biên kỳ: gốc đúng ngày đầu và ngày cuối kỳ đều thuộc kỳ", () => {

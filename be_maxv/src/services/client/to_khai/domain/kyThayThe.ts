@@ -19,7 +19,8 @@
  *     đồng bộ, nhưng chỉ dùng được cho hóa đơn BÁN RA (26/27) — ghi chú bên mua vào do nhà cung
  *     cấp tự viết, không theo mẫu nào (0/6 bóc được).
  *
- * Cả hai trượt thì giữ kỳ theo ngày lập và nói ra bằng cảnh báo, KHÔNG đoán bừa.
+ * Cả hai trượt thì chặn hóa đơn khỏi bảng kê và nói ra bằng cảnh báo, không được dùng ngày lập
+ * của tờ thay thế/điều chỉnh làm ngày thay thế cho ngày gốc.
  */
 
 /**
@@ -78,8 +79,10 @@ export interface ToCoGoc {
 
 export interface KetQuaChon {
   ids: string[];
-  /** Số tờ nằm trong kỳ mà không suy được kỳ gốc — giữ theo ngày lập, cần người xem lại. */
+  /** Số tờ nằm trong kỳ mà không suy được kỳ gốc — bị chặn, cần bổ sung dữ liệu gốc. */
   khongRoKyGoc: number;
+  /** Id mọi tờ không suy được kỳ gốc, dùng để gỡ cả các lần gán kỳ sai từ trước. */
+  idsKhongRoKyGoc: string[];
 }
 
 /**
@@ -88,8 +91,8 @@ export interface KetQuaChon {
  * Hàm THUẦN để test được không cần Postgres — phần đọc DB nằm ở `keKhaiKy.service.ts`.
  *
  * Phép chọn đi hai chiều: BỎ tờ lập trong kỳ mà gốc ở kỳ khác, THÊM tờ lập ngoài kỳ mà gốc rơi vào
- * kỳ này. Không suy được kỳ gốc thì để nguyên theo ngày lập và đếm vào `khongRoKyGoc` — đoán bừa
- * một kỳ là đẩy doanh thu sang quý khác.
+ * kỳ này. Không suy được kỳ gốc thì loại khỏi kết quả và đếm vào `khongRoKyGoc`: không được thay
+ * ngày hóa đơn gốc bằng ngày lập của tờ điều chỉnh/thay thế.
  */
 export function chonTheoKyGoc(
   idLapTrongKy: readonly string[],
@@ -99,13 +102,29 @@ export function chonTheoKyGoc(
 ): KetQuaChon {
   const chon = new Set(idLapTrongKy);
   let khongRoKyGoc = 0;
+  const idsKhongRoKyGoc: string[] = [];
   for (const to of coGoc) {
     if (!to.ngayGoc) {
-      if (to.lapTrongKy) khongRoKyGoc += 1;
+      idsKhongRoKyGoc.push(to.id);
+      if (to.lapTrongKy) {
+        chon.delete(to.id);
+        khongRoKyGoc += 1;
+      }
       continue;
     }
     if (to.ngayGoc >= tuNgay && to.ngayGoc <= denNgay) chon.add(to.id);
     else chon.delete(to.id);
   }
-  return { ids: [...chon], khongRoKyGoc };
+  return { ids: [...chon], khongRoKyGoc, idsKhongRoKyGoc };
+}
+
+/**
+ * Chỉ nhận ngày tra từ DB khi mọi ứng viên cùng chỉ đến MỘT ngày lịch. Khóa gốc GDT hiện không
+ * luôn mang mẫu số hóa đơn, nên cùng MST + ký hiệu + số có thể trả nhiều ứng viên; chọn bản ghi
+ * đầu tiên trong trường hợp ấy sẽ làm tờ khai rơi vào kỳ sai.
+ */
+export function ngayGocDuyNhat(ngayUngVien: readonly (string | null | undefined)[]): string | null {
+  const ngayKhacNhau = new Set(ngayUngVien.filter((ngay): ngay is string => Boolean(ngay)));
+  if (ngayKhacNhau.size !== 1) return null;
+  return ngayKhacNhau.values().next().value ?? null;
 }

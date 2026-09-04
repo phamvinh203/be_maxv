@@ -115,10 +115,17 @@ Controller chỉ làm ba việc: xác thực tenant, đọc `ky` từ request, t
 ```ts
 export async function danhDauKy(db: PrismaClient, ky: Ky): Promise<KetQuaDanhDau> {
   const { tuNgay, denNgay } = khoangCuaKy(ky);
-  const ketQua = { purchase: 0, sold: 0, khongRoKyGoc: 0, daGo: 0 };
+  const ketQua = { purchase: 0, sold: 0, khongRoKyGoc: 0, daGo: 0, daGoKhongRoKyGoc: 0 };
 
   for (const chieu of CA_HAI_CHIEU) {
-    const { ids, khongRoKyGoc } = await layIdTrongKhoang(db, chieu, tuNgay, denNgay);
+    const { ids, khongRoKyGoc, idsKhongRoKyGoc } = await layIdTrongKhoang(
+      db,
+      chieu,
+      tuNgay,
+      denNgay,
+    );
+    ketQua.khongRoKyGoc += khongRoKyGoc;
+    ketQua.daGoKhongRoKyGoc += await goHoaDonKhongRoKyGoc(db, chieu, idsKhongRoKyGoc);
     ketQua.daGo += await goKhoiKy(db, ky, chieu, ids);
 
     for (const lo of chiaLo(ids, CO_LO_UPSERT)) {
@@ -161,7 +168,7 @@ Hóa đơn gốc lập ngày 26/12/2025
 - `lapTrongKy`: hóa đơn có ngày lập nằm trong khoảng kỳ.
 - `coGoc`: hóa đơn thay thế/điều chỉnh kèm ngày hóa đơn gốc nếu suy được.
 
-Hàm vừa loại tờ lập trong kỳ nhưng gốc ở kỳ khác, vừa kéo tờ lập ở kỳ sau về kỳ gốc. Nếu không suy được ngày gốc, nó không đoán; giữ hóa đơn theo ngày lập và tăng `khongRoKyGoc` để UI cảnh báo.
+Hàm vừa loại tờ lập trong kỳ nhưng gốc ở kỳ khác, vừa kéo tờ lập ở kỳ sau về kỳ gốc. Nếu không suy được ngày gốc, nó không đoán và cũng không dùng ngày lập của tờ điều chỉnh/thay thế làm ngày thay thế: hóa đơn bị chặn khỏi bảng kê, đồng thời tăng `khongRoKyGoc` để UI yêu cầu đồng bộ hoặc bổ sung hóa đơn gốc rồi kê khai lại. Danh sách id không rõ gốc còn được dùng để gỡ mọi lần gán kỳ cũ, nên hóa đơn không bị sót ở một bảng kê trước đó.
 
 ### `domain/chieuHoaDon.ts` và `domain/chiaLo.ts`
 
