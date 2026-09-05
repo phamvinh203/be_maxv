@@ -81,3 +81,12 @@ export interface CreatePlanInput {
 }
 
 export type UpdatePlanInput = Partial<Omit<CreatePlanInput, 'ma'>>;
+
+/**
+ * Kết quả PATCH gói. Sửa `chuKyThang` sẽ dời hạn cho thuê bao đang dùng gói đó (chỉ kéo dài,
+ * không rút ngắn — xem `hanMoiKhiDoiGoi` bên backend), nên server nói rõ đã chạm vào bao nhiêu
+ * thuê bao. Im lặng ở đây nghĩa là admin không biết thao tác của mình ảnh hưởng tới mấy khách.
+ */
+export interface PlanUpdated extends Plan {
+  soThueBaoDoiHan: number;
+}

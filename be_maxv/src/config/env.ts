@@ -86,7 +86,6 @@ export const env = {
   refreshTtlSec: Number(process.env.REFRESH_TOKEN_TTL_SEC ?? 60 * 60 * 24 * 7),
 
   // Thời gian dùng miễn phí khi đăng ký tài khoản mới (mặc định 1 tháng = 30 ngày).
-  trialDays: Number(process.env.TRIAL_DAYS ?? 30),
 
   /** Số hóa đơn/trang khi gọi danh sách GDT — chỉnh để A/B đo tốc độ pha danh sách. */
   gdtListPageSize: parseGdtListPageSize(process.env.GDT_LIST_PAGE_SIZE),

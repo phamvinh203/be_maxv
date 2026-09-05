@@ -15,6 +15,7 @@ import {
   usePlans,
   useSubscriptions,
   useCancelSubscription,
+  useRenewSubscription,
 } from '@/features/subscriptions/hooks/useSubscriptions';
 import type {
   ListSubscriptionsParams,
@@ -48,12 +49,30 @@ function SubscriptionsSection({
   const { data } = useSubscriptions(params);
   const { data: plans } = usePlans();
   const cancel = useCancelSubscription();
+  const renew = useRenewSubscription();
   const [changeSub, setChangeSub] = useState<Subscription | null>(null);
   const [historySub, setHistorySub] = useState<Subscription | null>(null);
 
   function handleCancel(sub: Subscription): void {
     if (window.confirm(`Hủy thuê bao của "${sub.owner.hoTen}"?`)) {
       cancel.mutate(sub.id);
+    }
+  }
+
+  /**
+   * Gia hạn theo chu kỳ của chính gói đang dùng. Nói rõ SỐ THÁNG trong câu hỏi vì nó lấy
+   * từ `chuKyThang` của gói chứ không phải một con số cố định — admin sửa gói là số này đổi
+   * theo, và đó chính là điều dễ gây bất ngờ nhất ở màn này.
+   */
+  function handleRenew(sub: Subscription): void {
+    const goi = plans.find((p) => p.id === sub.planId);
+    const chuKy = goi?.chuKyThang ?? 0;
+    const moTa =
+      chuKy > 0
+        ? `thêm ${chuKy} tháng theo chu kỳ gói "${sub.plan.ten}"`
+        : `thành không giới hạn thời gian (gói "${sub.plan.ten}" không có chu kỳ)`;
+    if (window.confirm(`Gia hạn thuê bao của "${sub.owner.hoTen}" ${moTa}?`)) {
+      renew.mutate(sub.id);
     }
   }
 
@@ -68,6 +87,7 @@ function SubscriptionsSection({
         onPageSizeChange={onPageSizeChange}
         onChangePlan={setChangeSub}
         onHistory={setHistorySub}
+        onRenew={handleRenew}
         onCancel={handleCancel}
       />
       {changeSub && (

@@ -19,6 +19,7 @@ import {
   listSubscriptions,
   changePlan,
   cancelSubscription,
+  renewSubscription,
   listSubscriptionHistory,
 } from '../../controllers/admin/adminSubscription.controller';
 import {
@@ -73,6 +74,7 @@ export async function adminRoutes(app: FastifyInstance) {
   // Thuê bao
   app.get('/subscriptions', listSubscriptions);
   app.post('/subscriptions/:id/change-plan', changePlan);
+  app.post('/subscriptions/:id/renew', renewSubscription);
   app.post('/subscriptions/:id/cancel', cancelSubscription);
   app.get('/subscriptions/:id/history', listSubscriptionHistory);
 

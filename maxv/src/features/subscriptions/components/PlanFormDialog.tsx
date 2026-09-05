@@ -55,6 +55,14 @@ export function PlanFormDialog({ open, plan, onClose }: Props): JSX.Element {
   const [features, setFeatures] = useState<Partial<UserModules>>(
     plan?.features ?? {},
   );
+  /**
+   * Số thuê bao vừa được dời hạn theo chu kỳ mới; `null` = chưa lưu xong.
+   *
+   * Khi có thuê bao bị ảnh hưởng thì KHÔNG đóng dialog ngay: sửa chu kỳ gói là thao tác chạm
+   * vào hạn dùng của khách hàng thật, admin phải nhìn thấy nó đã chạm bao nhiêu người rồi mới
+   * đóng — đóng cái rụp thì không có nơi nào khác báo lại điều đó.
+   */
+  const [soDoiHan, setSoDoiHan] = useState<number | null>(null);
 
   function handleSubmit(): void {
     const soMst = soMstToiDa.trim() === '' ? null : Number(soMstToiDa);
@@ -73,7 +81,12 @@ export function PlanFormDialog({ open, plan, onClose }: Props): JSX.Element {
             features,
           },
         },
-        { onSuccess: onClose },
+        {
+          onSuccess: (kq) => {
+            if (kq.soThueBaoDoiHan > 0) setSoDoiHan(kq.soThueBaoDoiHan);
+            else onClose();
+          },
+        },
       );
     } else {
       create.mutate(
@@ -98,6 +111,13 @@ export function PlanFormDialog({ open, plan, onClose }: Props): JSX.Element {
       <DialogContent>
         <Stack spacing={2} sx={{ mt: 0.5 }}>
           {isError && <Alert severity="error">Không lưu được gói (mã trùng?)</Alert>}
+          {soDoiHan !== null && (
+            <Alert severity="success">
+              Đã lưu gói. {soDoiHan} thuê bao đang dùng gói này được dời hạn theo
+              chu kỳ mới. Thuê bao có hạn dài hơn chu kỳ mới (đã gia hạn nhiều
+              lần) và thuê bao đã hủy được giữ nguyên.
+            </Alert>
+          )}
           <TextField
             label="Mã gói"
             value={ma}
@@ -124,7 +144,8 @@ export function PlanFormDialog({ open, plan, onClose }: Props): JSX.Element {
             type="number"
             value={chuKyThang}
             onChange={(e) => setChuKyThang(e.target.value)}
-            helperText="0 = gói miễn phí"
+            helperText="0 = không hết hạn. Đổi ô này sẽ dời hạn cho mọi thuê bao đang dùng gói (chỉ kéo dài, không rút ngắn)."
+            slotProps={{ formHelperText: { sx: { lineHeight: 1.4 } } }}
             fullWidth
           />
           <TextField
@@ -159,7 +180,8 @@ export function PlanFormDialog({ open, plan, onClose }: Props): JSX.Element {
             <Typography sx={{ fontWeight: 600 }}>Module kèm theo gói</Typography>
             <Typography sx={{ fontSize: 13, color: 'text.secondary', mb: 1 }}>
               Tài khoản dùng gói này sẽ thấy các module được tick. Gói miễn phí
-              nên để trống.
+              không tick module nào thì người đăng ký mới vào sẽ thấy một thanh
+              menu trống — nên tick ít nhất những module cho dùng thử.
             </Typography>
             {MODULE_KEYS.map((k) => (
               <FormControlLabel
@@ -190,15 +212,17 @@ export function PlanFormDialog({ open, plan, onClose }: Props): JSX.Element {
       </DialogContent>
       <DialogActions>
         <Button onClick={onClose} color="inherit">
-          Hủy bỏ
+          {soDoiHan !== null ? 'Đóng' : 'Hủy bỏ'}
         </Button>
-        <Button
-          variant="contained"
-          onClick={handleSubmit}
-          disabled={pending || !ma || !ten}
-        >
-          {pending ? 'Đang lưu…' : 'Lưu'}
-        </Button>
+        {soDoiHan === null && (
+          <Button
+            variant="contained"
+            onClick={handleSubmit}
+            disabled={pending || !ma || !ten}
+          >
+            {pending ? 'Đang lưu…' : 'Lưu'}
+          </Button>
+        )}
       </DialogActions>
     </Dialog>
   );
