@@ -2,6 +2,11 @@ import type { Prisma, PrismaClient } from '../../../generated/tenant';
 import { ConflictError, NotFoundError } from '../../../helpers/errors';
 import { assertNotExists, findOrThrow } from '../../../helpers/crudGuards';
 import { MESSAGES } from '../../../constants/messages';
+import {
+  hopDongHienHanhTheoNv,
+  loaiHdVeNhanVien,
+  type HopDongHienHanh,
+} from './hopDong.service';
 import type {
   NhanVienBodyInput,
   NhanVienListQuery,
@@ -21,13 +26,7 @@ const nhanVienSelect = {
   ma_pb: true,
   chuc_vu: true,
   cap_bac: true,
-  so_hop_dong: true,
-  loai_hop_dong: true,
-  kieu_luong: true,
   ngay_vao_lam: true,
-  ngay_hieu_luc_toi: true,
-  bhxh: true,
-  tncn: true,
   mien_cham_cong: true,
   cong_doan: true,
   so_tai_khoan: true,
@@ -92,17 +91,6 @@ async function assertPhongBanTonTai(
   );
 }
 
-/**
- * Hợp đồng dịch vụ (HĐDV) không thuộc diện đóng phí công đoàn — ép `false` bất kể người dùng
- * gửi lên gì, thay vì tin form. Áp ở service để mọi đường ghi (API, import Excel sau này) đều
- * đi qua cùng một luật.
- */
-function chuanHoaCongDoan<
-  T extends { loai_hop_dong: string; cong_doan: boolean },
->(body: T): T {
-  return body.loai_hop_dong === 'hdvc' ? { ...body, cong_doan: false } : body;
-}
-
 /** GET danh sách + lọc, kèm `ten_pb` (thay LEFT JOIN hrm_phong_ban). */
 export async function listNhanVien(db: PrismaClient, q: NhanVienListQuery) {
   const and: Prisma.hrm_nhan_vienWhereInput[] = [{ da_xoa: false }];
@@ -127,17 +115,46 @@ export async function listNhanVien(db: PrismaClient, q: NhanVienListQuery) {
 
   const tenPbTheoMa = new Map(phongBan.map((pb) => [pb.ma_pb, pb.ten_pb]));
   const soNptTheoMa = new Map(demNpt.map((g) => [g.ma_nv, g._count._all]));
+  const hopDongTheoMa = await hopDongHienHanhTheoNv(
+    db,
+    rows.map((r) => r.ma_nv),
+  );
 
   return rows.map((r) => ({
     ...r,
     ten_pb: r.ma_pb ? (tenPbTheoMa.get(r.ma_pb) ?? null) : null,
     so_npt: soNptTheoMa.get(r.ma_nv) ?? 0,
+    ...phanHopDong(hopDongTheoMa.get(r.ma_nv)),
   }));
+}
+
+/**
+ * Thông tin hợp đồng hiện hành trả kèm hồ sơ nhân viên.
+ *
+ * TÍNH TỪ `hrm_hop_dong` mỗi lần đọc — trước đây 6 trường này là cột lưu sẵn trên
+ * `hrm_nhan_vien` và đó là nguồn của hai lỗi không tránh được: (1) "hiện hành" phụ thuộc ngày
+ * hôm nay nhưng bản sao chỉ tính lại lúc có người ghi hợp đồng, nên hợp đồng ký trước cho tương
+ * lai tới ngày hiệu lực vẫn không ai cập nhật; (2) form nhân viên ghi thẳng vào mấy cột đó,
+ * đè mất giá trị suy ra từ hợp đồng mà không báo gì.
+ *
+ * Nhân viên chưa có hợp đồng nào -> `null` hết. Đó là sự thật và phải hiện đúng như vậy: bản cũ
+ * luôn có giá trị vì `POST /nhan-vien` bắt nhập số hợp đồng rồi FE bịa `TAM-<mã NV>` khi người
+ * dùng để trống.
+ */
+function phanHopDong(hd: HopDongHienHanh | undefined) {
+  return {
+    so_hop_dong: hd?.so_hd ?? null,
+    loai_hop_dong: hd ? loaiHdVeNhanVien(hd.loai_hd) : null,
+    kieu_luong: hd?.kieu_luong ?? null,
+    ngay_hieu_luc_toi: hd?.ngay_ket_thuc ?? null,
+    bhxh: hd?.trich_bhxh ?? null,
+    tncn: hd?.tinh_tncn ?? null,
+  };
 }
 
 /** GET 1 nhân viên — màn chi tiết/sửa cần đủ trường, không lấy lại từ danh sách. */
 export async function getNhanVien(db: PrismaClient, maNv: string) {
-  return findOrThrow(
+  const nv = await findOrThrow(
     () =>
       db.hrm_nhan_vien.findFirst({
         where: { ma_nv: maNv, da_xoa: false },
@@ -145,6 +162,8 @@ export async function getNhanVien(db: PrismaClient, maNv: string) {
       }),
     new NotFoundError(MESSAGES.HRM.NHAN_VIEN_NOT_FOUND),
   );
+  const hopDongTheoMa = await hopDongHienHanhTheoNv(db, [maNv]);
+  return { ...nv, ...phanHopDong(hopDongTheoMa.get(maNv)) };
 }
 
 /** POST tạo mới. Bỏ trống `ma_nv` thì sinh tự động. */
@@ -156,16 +175,20 @@ export async function createNhanVien(
 
   const maNv = body.ma_nv ?? (await sinhMaNhanVien(db));
 
+  // KHÔNG lọc `da_xoa: false` ở đây: mã nhân viên không bao giờ được cấp lại (khóa chính giữ
+  // nguyên dòng đã xóa mềm), nên trùng với một mã ĐÃ XÓA vẫn là trùng. Lọc thì guard này cho
+  // qua rồi vỡ ở khóa chính, người dùng nhận câu chung "Dữ liệu bị trùng" thay vì biết đích
+  // xác mã nào đang vướng.
   await assertNotExists(
     () =>
       db.hrm_nhan_vien.findFirst({
-        where: { ma_nv: maNv, da_xoa: false },
+        where: { ma_nv: maNv },
         select: { ma_nv: true },
       }),
     new ConflictError(`Mã nhân viên "${maNv}" đã tồn tại`),
   );
 
-  const { ma_nv: _bo, ...phanConLai } = chuanHoaCongDoan(body);
+  const { ma_nv: _bo, ...phanConLai } = body;
   await db.hrm_nhan_vien.create({ data: { ...phanConLai, ma_nv: maNv } });
   return { ma_nv: maNv };
 }
@@ -188,7 +211,7 @@ export async function updateNhanVien(
 
   await db.hrm_nhan_vien.update({
     where: { ma_nv: maNv },
-    data: { ...chuanHoaCongDoan(body), datetime2: new Date() },
+    data: { ...body, datetime2: new Date() },
   });
   return { ma_nv: maNv };
 }

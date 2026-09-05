@@ -60,10 +60,20 @@ export class DriveChuaCauHinhError extends ConflictError {
  * thành "app tự vỡ" (500), trong khi thật ra máy chủ chỉ đang không gọi được Google.
  *
  * Giữ nguyên chữ ký của `fetch` để chỗ gọi không phải đổi cách viết.
+ *
+ * Cũng đặt trần thời gian ở đây: không đặt thì mỗi lượt thừa hưởng mặc định 300 giây của undici
+ * — một kết nối treo giữ chỗ một request handler suốt 5 phút, mà tải file lại nằm sau hai lượt
+ * gọi (đổi token rồi mới tới Drive). 30 giây đủ rộng cho file 10MB đường truyền kém, và đủ ngắn
+ * để hỏng thì hỏng dứt khoát.
  */
+const HAN_GOI_MS = 30_000;
+
 async function fetchGoogle(url: string, init?: RequestInit): Promise<Response> {
   try {
-    return await fetch(url, init);
+    return await fetch(url, {
+      ...init,
+      signal: init?.signal ?? AbortSignal.timeout(HAN_GOI_MS),
+    });
   } catch (err) {
     // Chỉ lấy phần host: URL đầy đủ có thể mang theo query nhạy cảm (mã đổi token).
     const host = (() => {
@@ -81,6 +91,28 @@ async function fetchGoogle(url: string, init?: RequestInit): Promise<Response> {
   }
 }
 
+/**
+ * Rút mã lỗi máy-đọc-được từ body Google trả về. Hai dạng khác nhau tùy endpoint:
+ *   OAuth : {"error":"invalid_grant","error_description":"..."}
+ *   Drive : {"error":{"code":403,"status":"PERMISSION_DENIED","errors":[{"reason":"..."}]}}
+ *
+ * Không parse được thì trả `undefined` — xem ghi chú ở `DriveApiError.maLoi`.
+ */
+function docMaLoi(body: string): string | undefined {
+  try {
+    const j = JSON.parse(body) as {
+      error?: string | { status?: string; errors?: { reason?: string }[] };
+    };
+    if (typeof j.error === 'string') return j.error;
+    if (j.error && typeof j.error === 'object') {
+      return j.error.errors?.[0]?.reason ?? j.error.status;
+    }
+  } catch {
+    // Body không phải JSON (Google có lúc trả HTML khi 5xx qua proxy) — không có mã để rút.
+  }
+  return undefined;
+}
+
 async function doc<T>(res: Response, viec: string): Promise<T> {
   if (!res.ok) {
     // Nuốt lỗi parse: Google có lúc trả HTML (5xx qua proxy) chứ không phải JSON.
@@ -88,6 +120,7 @@ async function doc<T>(res: Response, viec: string): Promise<T> {
     throw new DriveApiError(
       res.status,
       `Google Drive từ chối yêu cầu "${viec}" (HTTP ${res.status}): ${chiTiet.slice(0, 200)}`,
+      { maLoi: docMaLoi(chiTiet) },
     );
   }
   return (await res.json()) as T;
@@ -188,13 +221,47 @@ export async function layAccessToken(refreshToken: string): Promise<string> {
 }
 
 /**
+ * Hàng đợi theo từng thư mục, để hai request cùng lúc không cùng "tìm hụt rồi cùng tạo".
+ *
+ * "Tìm trước rồi tạo" chỉ chặn được trùng khi các lượt đi TUẦN TỰ. Hai người cùng đính file cho
+ * một nhân viên thì cả hai đều tìm hụt (thư mục chưa ai tạo), cả hai đều tạo — Drive cho phép
+ * trùng tên nên ra hai thư mục, file nằm rải hai nơi.
+ *
+ * Khóa trong tiến trình là đủ cho topology hiện tại (IIS -> một tiến trình Node). Chạy nhiều
+ * tiến trình thì khóa này không còn bao trùm — lúc đó phải chuyển sang khóa ở DB.
+ */
+const hangDoiThuMuc = new Map<string, Promise<string>>();
+
+export function taoThuMucNeuChua(
+  accessToken: string,
+  ten: string,
+  idCha: string | null,
+): Promise<string> {
+  const khoa = `${idCha ?? 'root'}/${ten}`;
+  const truoc = hangDoiThuMuc.get(khoa) ?? Promise.resolve('');
+  // Nối vào đuôi hàng đợi và NUỐT lỗi của lượt trước (`catch`) — lượt trước hỏng thì lượt này
+  // vẫn phải được chạy, không thì một lỗi mạng làm kẹt luôn thư mục đó tới khi khởi động lại.
+  const lan = truoc
+    .catch(() => '')
+    .then(() => timHoacTaoThuMuc(accessToken, ten, idCha));
+
+  hangDoiThuMuc.set(khoa, lan);
+  // Dọn khi đã là lượt cuối, để Map không phình theo số nhân viên.
+  void lan
+    .catch(() => undefined)
+    .finally(() => {
+      if (hangDoiThuMuc.get(khoa) === lan) hangDoiThuMuc.delete(khoa);
+    });
+  return lan;
+}
+
+/**
  * Tìm thư mục con theo tên, chưa có thì tạo. Trả về ID.
  *
- * Tìm trước để bấm hai lần không sinh hai thư mục trùng tên (Drive CHO PHÉP trùng tên, nó không
- * tự chặn giúp mình). Với scope `drive.file` thì lệnh tìm chỉ thấy thư mục do app tạo — đúng ý:
- * không đụng tới thư mục sẵn có của khách.
+ * Với scope `drive.file` thì lệnh tìm chỉ thấy thư mục do app tạo — đúng ý: không đụng tới thư
+ * mục sẵn có của khách. Gọi qua `taoThuMucNeuChua` để được xếp hàng, đừng gọi thẳng.
  */
-export async function taoThuMucNeuChua(
+async function timHoacTaoThuMuc(
   accessToken: string,
   ten: string,
   idCha: string | null,
@@ -256,7 +323,12 @@ export async function taiFileLen(
     noiDung: Buffer;
   },
 ): Promise<FileDaTaiLen> {
-  const bien = `maxv-${Date.now().toString(36)}`;
+  // Boundary NGẪU NHIÊN, không phải mốc thời gian: thân request chứa nguyên byte file người
+  // dùng đưa lên và không ai quét xem trong đó có chuỗi boundary hay không. Boundary đoán được
+  // thì một file dựng có chủ đích chèn được thêm một phần metadata giả (đè `parents`, tức đẩy
+  // file sang thư mục khác); mà kể cả không ai cố tình, một PDF vô tình chứa đúng chuỗi đó cũng
+  // làm Google parse hỏng với lỗi 400 không đâu vào đâu.
+  const bien = `maxv-${randomBytes(16).toString('hex')}`;
   const metadata = JSON.stringify({
     name: tuyChon.ten,
     parents: [tuyChon.idThuMuc],
@@ -310,6 +382,7 @@ export async function taiFileLen(
 export async function layNoiDungFile(
   accessToken: string,
   fileId: string,
+  tranByte: number,
 ): Promise<Buffer> {
   const res = await fetchGoogle(
     `${DRIVE_FILES}/${encodeURIComponent(fileId)}?alt=media`,
@@ -320,9 +393,34 @@ export async function layNoiDungFile(
     throw new DriveApiError(
       res.status,
       `Không tải được file từ Drive (HTTP ${res.status}): ${chiTiet.slice(0, 200)}`,
+      { maLoi: docMaLoi(chiTiet) },
     );
   }
-  return Buffer.from(await res.arrayBuffer());
+
+  // Trần dung lượng cả ở ĐƯỜNG VỀ, không chỉ đường lên. File nằm trên Drive CỦA KHÁCH: sau khi
+  // app tải lên 2MB, chính họ mở Drive thay bằng file 2GB lúc nào cũng được — `arrayBuffer()`
+  // sẽ nuốt trọn vào RAM của máy chủ. Đọc theo từng khối và dừng ngay khi vượt trần.
+  const co = Number(res.headers.get('content-length'));
+  if (Number.isFinite(co) && co > tranByte) {
+    throw new DriveApiError(
+      413,
+      `File trên Drive lớn hơn giới hạn ${tranByte} byte.`,
+    );
+  }
+
+  const khoi: Buffer[] = [];
+  let tong = 0;
+  for await (const phan of res.body as unknown as AsyncIterable<Uint8Array>) {
+    tong += phan.byteLength;
+    if (tong > tranByte) {
+      throw new DriveApiError(
+        413,
+        `File trên Drive lớn hơn giới hạn ${tranByte} byte.`,
+      );
+    }
+    khoi.push(Buffer.from(phan));
+  }
+  return Buffer.concat(khoi);
 }
 
 /** Xóa file trên Drive. Coi 404 là đã xong — khách tự xóa tay trước đó cũng là kết quả mong muốn. */
@@ -354,9 +452,17 @@ export async function xoaFile(
  */
 const STATE_HAN_MS = 10 * 60 * 1000;
 
+/**
+ * Tiền tố tách miền: cùng một khóa bí mật đang phục vụ hai giao thức (JWT truy cập và state
+ * OAuth). Hiện chưa lợi dụng được vì hai định dạng khác nhau rõ (JWT có 1 dấu chấm, `than` có
+ * 2), nhưng chỉ cần sau này ai đó thêm một trường vào `than` là ranh giới đó mất, và chữ ký
+ * state biến thành cỗ máy ký JWT hộ. Tiền tố cố định làm hai không gian không bao giờ trùng.
+ */
+const STATE_MIEN = 'drive-state|';
+
 function kyState(thanh: string): string {
   return createHmac('sha256', env.jwtAccessSecret)
-    .update(thanh)
+    .update(STATE_MIEN + thanh)
     .digest('base64url');
 }
 

@@ -9,6 +9,8 @@ import { sendCreated, sendOk } from '../../../helpers/response';
 import { HttpStatus } from '../../../constants/httpStatus';
 import { ConflictError, ForbiddenError } from '../../../helpers/errors';
 import { MESSAGES } from '../../../constants/messages';
+import { env } from '../../../config/env';
+import { canAccessDonVi } from '../../../helpers/access';
 import {
   docState,
   taoState,
@@ -69,16 +71,55 @@ export async function remove(req: FastifyRequest, reply: FastifyReply) {
 // ── Google Drive: file scan đính kèm ────────────────────────────────────────
 // File scan nằm trên Drive CỦA CÔNG TY khách; DB chỉ giữ con trỏ. Xem taiLieuDrive.service.ts.
 
-/** Công ty đang chọn. Mọi endpoint Drive đều theo công ty này, không nhận id từ client. */
-function donViDangChon(req: FastifyRequest): string {
+/**
+ * Công ty đang chọn, ĐÃ kiểm lại quyền trong DB. Không nhận id từ client.
+ *
+ * Không tin thẳng `donViId` trong access token: token sống 15 phút và CỐ Ý không đối chiếu DB
+ * mỗi request (xem jwt.plugin.ts), nên người vừa bị gỡ quyền vào công ty vẫn cầm một token hợp
+ * lệ tới hết hạn. Mọi route tài liệu khác đi qua `resolveTenantDb` nên được kiểm lại ở đó; ba
+ * endpoint Drive không cần DB tenant nên trước đây bỏ qua — mà chúng lại đúng là chỗ đọc/ngắt/
+ * đổi kho tài liệu của cả công ty. `requireModule('hrm')` không lấp được chỗ này: nó xét gói
+ * dịch vụ của chủ tài khoản, không xét quyền vào MST cụ thể.
+ */
+async function donViDangChon(req: FastifyRequest): Promise<string> {
   const donViId = req.user?.donViId;
   if (!donViId) throw new ForbiddenError(MESSAGES.COMPANY.NO_COMPANY);
+  if (!(await canAccessDonVi(req.user.userId, req.user.role, donViId))) {
+    throw new ForbiddenError(MESSAGES.COMPANY.NO_ACCESS);
+  }
   return donViId;
+}
+
+/**
+ * Cookie giữ `state` vừa phát, để callback đối chiếu — xem ghi chú ở `driveLienKet`.
+ *
+ * `sameSite: 'lax'` là CỐ Ý, và phải khác cookie access (`strict`): Google điều hướng top-level
+ * từ site khác về callback, `lax` vẫn được gửi kèm trong tình huống đó còn `strict` thì không.
+ */
+const DRIVE_STATE_COOKIE = 'driveOauthState';
+
+/** Đường dẫn cookie = đúng path của callback, lấy từ env để đổi redirect URI khỏi phải sửa code. */
+function duongDanCallback(): string {
+  try {
+    return new URL(env.googleRedirectUri).pathname;
+  } catch {
+    return '/api/v1/hrm/tai-lieu/drive/callback';
+  }
+}
+
+function cookieStateOptions() {
+  return {
+    httpOnly: true,
+    sameSite: 'lax' as const,
+    secure: env.nodeEnv === 'production',
+    path: duongDanCallback(),
+    maxAge: 600, // khớp hạn 10 phút của state
+  };
 }
 
 // GET /api/v1/hrm/tai-lieu/drive/trang-thai
 export async function driveTrangThai(req: FastifyRequest, reply: FastifyReply) {
-  return sendOk(reply, await trangThaiDrive(donViDangChon(req)));
+  return sendOk(reply, await trangThaiDrive(await donViDangChon(req)));
 }
 
 /**
@@ -87,12 +128,31 @@ export async function driveTrangThai(req: FastifyRequest, reply: FastifyReply) {
  * Phải là popup chứ không chuyển hướng cả trang: chuyển hướng làm trang unload và mất luôn file
  * người dùng vừa chọn (object `File` chỉ sống trong bộ nhớ trang), quay lại phải chọn file lần nữa.
  *
- * `state` là JWT ngắn hạn mang donViId: chống CSRF (kẻ khác không tự dựng được callback hợp lệ)
- * và để callback biết đang nối Drive cho công ty nào mà không tin tham số từ URL.
+ * `state` ký HMAC mang donViId, để callback biết đang nối Drive cho công ty nào mà không tin
+ * tham số từ URL. Chữ ký khiến không ai GIẢ MẠO được state — nhưng một state ĐÃ PHÁT hợp lệ thì
+ * vẫn là tấm vé dùng được suốt 10 phút, và nó đi qua URL nên nằm trong thanh địa chỉ popup, lịch
+ * sử trình duyệt, log của Google lẫn log truy cập của chính mình. Ai nhặt được tấm vé đó có thể
+ * chạy hết luồng đồng ý bằng TÀI KHOẢN GOOGLE CỦA HỌ rồi nộp vào callback, và từ đó mọi file
+ * scan của công ty nạn nhân đổ vào Drive của họ.
+ *
+ * Nên state được khóa vào đúng trình duyệt đã xin nó bằng một cookie, và callback xóa cookie
+ * ngay sau khi dùng — mỗi vé chỉ đi được một lần, từ đúng một máy.
  */
 export async function driveLienKet(req: FastifyRequest, reply: FastifyReply) {
-  const donViId = donViDangChon(req);
-  return sendOk(reply, { url: urlDangNhap(taoState(donViId)) });
+  const donViId = await donViDangChon(req);
+
+  // Nối LẦN ĐẦU thì ai làm hồ sơ cũng nối được — luồng "bấm thêm file -> đăng nhập Google" phải
+  // chạy trọn ngay tại chỗ, chặn ở đây là kế toán không đính được file nào cho tới khi gọi được
+  // chủ tài khoản. Nhưng ĐỔI sang tài khoản khác thì khác hẳn: nó chuyển kho tài liệu của cả
+  // công ty sang Drive của người vừa đăng nhập, nên để chủ tài khoản quyết.
+  const tt = await trangThaiDrive(donViId);
+  if (tt.da_ket_noi && req.user.role !== 'OWNER') {
+    throw new ForbiddenError(MESSAGES.HRM.DRIVE_DOI_TAI_KHOAN_CHI_OWNER);
+  }
+
+  const state = taoState(donViId);
+  reply.setCookie(DRIVE_STATE_COOKIE, state, cookieStateOptions());
+  return sendOk(reply, { url: urlDangNhap(state) });
 }
 
 /**
@@ -136,6 +196,12 @@ export async function driveCallback(req: FastifyRequest, reply: FastifyReply) {
   // Nonce cho CSP — mới mỗi lần trả trang. Xem ghi chú ở `thoatHtml`.
   const nonce = randomBytes(16).toString('base64');
 
+  // Script trong trang chỉ làm ĐÚNG một việc: tự đóng popup. Trước đây còn `postMessage` báo
+  // kết quả về trang cha, đã bỏ vì là code chết — trang này do API phục vụ nên origin của nó là
+  // origin API, trong khi trang cha ở origin FE, message sẽ bị trình duyệt bỏ; mà FE cũng không
+  // lắng nghe message nào (nó hỏi lại máy chủ sau khi popup đóng, cách đó đúng ở cả dev lẫn
+  // production). Ghi chú để NGOÀI chuỗi HTML: mọi thứ trong đó đều bị gửi tới trình duyệt.
+
   const dong = (thanhCong: boolean, thongDiep: string) =>
     reply
       .status(HttpStatus.OK)
@@ -152,13 +218,14 @@ export async function driveCallback(req: FastifyRequest, reply: FastifyReply) {
         `<!doctype html><meta charset="utf-8"><title>Kết nối Google Drive</title>
 <body style="font-family:system-ui;padding:24px;text-align:center">
 <p>${thoatHtml(thongDiep)}</p>
-<script nonce="${nonce}">
-  // Báo về trang cha rồi tự đóng. Trang cha đang giữ file người dùng đã chọn và sẽ tải lên tiếp.
-  try { window.opener && window.opener.postMessage(
-    { nguon: 'maxv-drive', thanh_cong: ${thanhCong ? 'true' : 'false'} }, window.location.origin); } catch (e) {}
-  setTimeout(function () { window.close(); }, ${thanhCong ? 300 : 4000});
-</script></body>`,
+<script nonce="${nonce}">setTimeout(function(){window.close()},${thanhCong ? 300 : 4000})</script></body>`,
       );
+
+  // Đọc rồi XÓA NGAY, trước mọi nhánh trả về: vé chỉ dùng một lần, kể cả khi lần này hỏng.
+  // Hỏng thì người dùng bấm lại từ đầu và nhận vé mới — rẻ hơn nhiều so với để một vé còn sống
+  // lởn vởn trong log suốt 10 phút.
+  const veDaPhat = req.cookies?.[DRIVE_STATE_COOKIE];
+  reply.clearCookie(DRIVE_STATE_COOKIE, { path: duongDanCallback() });
 
   if (error) {
     // Giá trị thật của `error` CHỈ vào log: nó là tham số URL, ai cũng đặt được.
@@ -166,6 +233,16 @@ export async function driveCallback(req: FastifyRequest, reply: FastifyReply) {
     return dong(false, 'Bạn chưa cấp quyền truy cập Google Drive.');
   }
   if (!code || !state) return dong(false, 'Thiếu tham số trả về từ Google.');
+
+  // So sánh thường là đủ: `state` đã ký HMAC nên đoán mò không ra, và giá trị đem so nằm trong
+  // cookie httpOnly của chính trình duyệt này — không có kênh đo thời gian nào để lợi dụng.
+  if (!veDaPhat || veDaPhat !== state) {
+    req.log.warn('Callback Drive không khớp cookie state (vé lạ hoặc đã dùng)');
+    return dong(
+      false,
+      'Phiên kết nối không hợp lệ hoặc đã dùng rồi. Hãy bấm thêm file lại từ đầu, trên chính trình duyệt này.',
+    );
+  }
 
   const donViId = docState(state);
   if (!donViId) {
@@ -189,12 +266,22 @@ export async function driveCallback(req: FastifyRequest, reply: FastifyReply) {
   }
 }
 
-// DELETE /api/v1/hrm/tai-lieu/drive/ket-noi
+/**
+ * DELETE /api/v1/hrm/tai-lieu/drive/ket-noi
+ *
+ * Chỉ OWNER: đây là thao tác cấp công ty, cắt đường xem/tải file scan của MỌI người dùng và xóa
+ * luôn các ID thư mục đã nhớ. Kiểm ở đây chứ không dùng `app.requireRole` ở route để nói được
+ * đúng lý do — `requireRole` chỉ trả câu chung "không có quyền", người dùng không biết phải nhờ ai.
+ */
 export async function driveNgatKetNoi(
   req: FastifyRequest,
   reply: FastifyReply,
 ) {
-  await ngatKetNoiDrive(donViDangChon(req));
+  const donViId = await donViDangChon(req);
+  if (req.user.role !== 'OWNER') {
+    throw new ForbiddenError(MESSAGES.HRM.DRIVE_NGAT_CHI_OWNER);
+  }
+  await ngatKetNoiDrive(donViId);
   return sendOk(reply, { da_ngat: true });
 }
 
@@ -233,7 +320,7 @@ export async function taiFileLenTaiLieu(
 
   return sendCreated(
     reply,
-    await dinhKemFile(db, donViDangChon(req), id, {
+    await dinhKemFile(db, await donViDangChon(req), id, {
       ten: file.filename,
       mimeType: file.mimetype,
       noiDung,
@@ -250,22 +337,29 @@ export async function xemFileTaiLieu(req: FastifyRequest, reply: FastifyReply) {
   const { id } = validateParams(taiLieuParamSchema, req.params);
   const { noiDung, tenFile, mimeType } = await taiFileVe(
     db,
-    donViDangChon(req),
+    await donViDangChon(req),
     id,
   );
 
-  return reply
-    .type(mimeType)
-    .header(
-      'content-disposition',
-      `inline; filename*=UTF-8''${encodeURIComponent(tenFile)}`,
-    )
-    .send(noiDung);
+  return (
+    reply
+      .type(mimeType)
+      .header(
+        'content-disposition',
+        `inline; filename*=UTF-8''${encodeURIComponent(tenFile)}`,
+      )
+      // Đây là ảnh CCCD / hợp đồng của nhân viên. `no-store` để không nằm lại trong cache đĩa
+      // của trình duyệt hay proxy trung gian sau khi người dùng đăng xuất; `nosniff` để trình
+      // duyệt bám đúng mimeType mình khai, không tự đoán ra HTML rồi chạy như trang web.
+      .header('cache-control', 'no-store, private')
+      .header('x-content-type-options', 'nosniff')
+      .send(noiDung)
+  );
 }
 
 // DELETE /api/v1/hrm/tai-lieu/:id/file
 export async function goFileTaiLieu(req: FastifyRequest, reply: FastifyReply) {
   const db = await resolveTenantDb(req);
   const { id } = validateParams(taiLieuParamSchema, req.params);
-  return sendOk(reply, await goFile(db, donViDangChon(req), id));
+  return sendOk(reply, await goFile(db, await donViDangChon(req), id));
 }

@@ -6,6 +6,7 @@ import {
   NotFoundError,
 } from '../../../helpers/errors';
 import { findOrThrow } from '../../../helpers/crudGuards';
+import { getTenantDb } from '../../../helpers/tenantClient';
 import { MESSAGES } from '../../../constants/messages';
 import {
   decryptGdtPassword,
@@ -91,6 +92,12 @@ export async function luuKetNoiDrive(
     );
   }
 
+  // Đọc kết nối CŨ trước khi ghi đè — cần biết có phải đổi sang tài khoản Google khác không.
+  const truoc = await sysPrisma.donVi.findUnique({
+    where: { id: donViId },
+    select: { driveEmail: true, driveRefreshTokenCipher: true },
+  });
+
   const ketQua = await doiMaLayToken(code);
   const blob = encryptGdtPassword(ketQua.refreshToken);
   if (!blob) {
@@ -111,7 +118,46 @@ export async function luuKetNoiDrive(
       driveRootFolderId: null,
     },
   });
+
+  // Chỉ dọn thư mục đã nhớ khi KHÔNG chắc vẫn là tài khoản cũ. Nối lại đúng tài khoản cũ thì
+  // mọi ID vẫn dùng được, dọn chỉ tốn thêm lượt gọi Drive. Thiếu email (Google không trả, hoặc
+  // lần kết nối trước không lưu được) thì coi như đã đổi — thà dọn thừa còn hơn để nhân viên
+  // trỏ vào thư mục của tài khoản khác rồi hỏng vĩnh viễn.
+  const doiTaiKhoan =
+    Boolean(truoc?.driveRefreshTokenCipher) &&
+    (!truoc?.driveEmail || !ketQua.email || truoc.driveEmail !== ketQua.email);
+  if (doiTaiKhoan) await quenThuMucNhanVien(donViId);
+
   return { email: ketQua.email };
+}
+
+/**
+ * Quên mọi ID thư mục nhân viên đã nhớ trong DB tenant.
+ *
+ * `driveRootFolderId` nằm ở DB sys nên chỗ nào cũng xóa được, nhưng ID thư mục TỪNG nhân viên
+ * lại nằm ở DB tenant — không dọn thì sau khi đổi tài khoản Google, `thuMucNhanVien` vẫn trả ID
+ * thuộc tài khoản CŨ. Với quyền `drive.file` thì tài khoản mới không nhìn thấy thư mục đó, Drive
+ * trả 404, và mọi lần tải file cho nhân viên ấy hỏng VĨNH VIỄN — bấm ngắt rồi nối lại cũng
+ * không cứu, vì vẫn đi đúng đường đó.
+ *
+ * Xóa an toàn, không mất gì: `taoThuMucNeuChua` tìm theo tên trước khi tạo, nên nối lại đúng
+ * tài khoản cũ thì nó tìm thấy thư mục sẵn có và nhớ lại ID, không sinh thư mục trùng.
+ *
+ * CỐ Ý không đụng `hrm_tai_lieu.drive_file_id`: file không tìm lại được theo tên như thư mục,
+ * xóa con trỏ là xóa luôn dấu vết khách từng đính kèm giấy tờ gì. File cũ vẫn nằm nguyên ở tài
+ * khoản Google trước đó — việc của mình là báo đúng chuyện đó (xem DRIVE_FILE_KHONG_MO_DUOC).
+ */
+async function quenThuMucNhanVien(donViId: string): Promise<void> {
+  const dv = await sysPrisma.donVi.findUnique({
+    where: { id: donViId },
+    select: { dbName: true },
+  });
+  if (!dv?.dbName) return; // chưa cấp DB tenant thì cũng chưa có thư mục nào
+
+  await getTenantDb(dv.dbName).hrm_nhan_vien.updateMany({
+    where: { drive_folder_id: { not: null } },
+    data: { drive_folder_id: null },
+  });
 }
 
 export async function ngatKetNoiDrive(donViId: string): Promise<void> {
@@ -125,6 +171,7 @@ export async function ngatKetNoiDrive(donViId: string): Promise<void> {
       driveRootFolderId: null,
     },
   });
+  await quenThuMucNhanVien(donViId);
 }
 
 async function layTokenDonVi(donViId: string): Promise<TokenDonVi> {
@@ -173,6 +220,13 @@ async function layTokenDonVi(donViId: string): Promise<TokenDonVi> {
  * Access token cho công ty. Refresh token bị thu hồi (khách gỡ quyền trong tài khoản Google)
  * thì Google trả 400 `invalid_grant` — lúc đó XÓA kết nối đã lưu để màn hình hiện đúng trạng
  * thái "chưa kết nối" thay vì báo lỗi lạ mỗi lần tải file.
+ *
+ * Điều kiện xóa bám đúng MÃ LỖI `invalid_grant`, KHÔNG bám dải 4xx. Cùng endpoint này còn trả
+ * 4xx cho những chuyện không liên quan gì tới khách: `invalid_client` khi người vận hành đổi
+ * `GOOGLE_CLIENT_SECRET` mà cập nhật env sai, hay 429 khi nhiều tenant tải file cùng lúc (mọi
+ * tenant dùng chung một OAuth client). Bắt theo dải thì một lần gõ nhầm env sẽ xóa refresh
+ * token của TOÀN BỘ tenant, sửa lại env cũng không cứu được vì token đã mất khỏi DB — mọi công
+ * ty phải đăng nhập Google lại. Không rõ mã thì để lỗi bay lên thành 502 (thử lại được).
  */
 async function accessTokenCuaDonVi(
   donViId: string,
@@ -181,7 +235,7 @@ async function accessTokenCuaDonVi(
   try {
     return await layAccessToken(tok.refreshToken);
   } catch (err) {
-    if (err instanceof DriveApiError && err.status >= 400 && err.status < 500) {
+    if (err instanceof DriveApiError && err.maLoi === 'invalid_grant') {
       await ngatKetNoiDrive(donViId);
       throw new ConflictError(MESSAGES.HRM.DRIVE_CAN_KET_NOI_LAI);
     }
@@ -329,14 +383,21 @@ export async function taiFileVe(
 
   try {
     return {
-      noiDung: await layNoiDungFile(accessToken, tl.drive_file_id),
+      // Cùng trần với lúc tải lên. File nằm trên Drive CỦA KHÁCH nên họ thay bằng file khổng lồ
+      // lúc nào cũng được — không chặn thì đường về thành lỗ hổng nuốt RAM máy chủ.
+      noiDung: await layNoiDungFile(
+        accessToken,
+        tl.drive_file_id,
+        GIOI_HAN_FILE_BYTE,
+      ),
       tenFile: tl.ten_file ?? 'tai-lieu',
       mimeType: tl.mime_type ?? 'application/octet-stream',
     };
   } catch (err) {
-    // Khách xóa file thẳng trên Drive — nói đúng chuyện đó, đừng để lỗi kỹ thuật lọt ra.
+    // 404 = app không với tới file: khách xóa thẳng trên Drive, HOẶC file thuộc tài khoản Google
+    // kết nối trước đây. Không phân biệt được hai ca nên thông điệp nêu cả hai.
     if (err instanceof DriveApiError && err.status === 404) {
-      throw new NotFoundError(MESSAGES.HRM.DRIVE_FILE_DA_BI_XOA);
+      throw new NotFoundError(MESSAGES.HRM.DRIVE_FILE_KHONG_MO_DUOC);
     }
     throw err;
   }

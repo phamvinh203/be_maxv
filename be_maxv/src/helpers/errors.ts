@@ -64,11 +64,24 @@ export class MailError extends AppError {
  * được phép bị hiểu nhầm thành "khách đã thu hồi quyền" rồi tự ngắt kết nối Drive của họ.
  */
 export class DriveApiError extends AppError {
+  /**
+   * Mã lỗi máy-đọc-được Google trả kèm (vd `invalid_grant`, `invalid_client`, `rateLimitExceeded`).
+   *
+   * Có vì mã HTTP KHÔNG đủ để phân biệt: khách gỡ quyền trong tài khoản Google và người vận hành
+   * gõ sai `GOOGLE_CLIENT_SECRET` đều ra 4xx ở cùng một endpoint, nhưng cái đầu phải xóa kết nối
+   * đã lưu, còn cái sau thì tuyệt đối không được — xóa là mất refresh token của MỌI công ty.
+   *
+   * `undefined` khi Google trả body không phải JSON (HTML 5xx qua proxy). Chỗ gọi phải coi
+   * "không rõ mã" là KHÔNG khớp, đừng đoán.
+   */
+  readonly maLoi?: string;
+
   constructor(
     public readonly status: number,
     message: string,
-    options?: ErrorOptions,
+    options?: ErrorOptions & { maLoi?: string },
   ) {
     super('DriveApiError', message, options);
+    this.maLoi = options?.maLoi;
   }
 }

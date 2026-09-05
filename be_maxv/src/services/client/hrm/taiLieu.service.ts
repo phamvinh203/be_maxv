@@ -31,7 +31,7 @@ const taiLieuSelect = {
  * kỹ thuật — chặn ở đây để nói đúng chuyện gì sai.
  */
 async function assertNhanVienTonTai(
-  db: PrismaClient,
+  db: PrismaClient | Prisma.TransactionClient,
   maNv: string,
 ): Promise<void> {
   await findOrThrow(
@@ -78,12 +78,20 @@ export async function listTaiLieu(db: PrismaClient, q: TaiLieuListQuery) {
   }));
 }
 
-/** POST tạo mới. */
+/**
+ * POST tạo mới.
+ *
+ * Kiểm tra và ghi nằm trong CÙNG transaction: tách ra thì có khe để nhân viên bị xóa mềm ở giữa
+ * hai câu lệnh, và tài liệu được tạo dưới một nhân viên không còn tồn tại. Mọi đường đọc đều
+ * lọc `nhan_vien.da_xoa` nên dòng đó chỉ vô hình chứ không sai lệch gì — nhưng đây là chỗ ghi
+ * DUY NHẤT trong hai service mới còn để hở, gói lại cho đồng nhất với `hopDong.service`.
+ */
 export async function createTaiLieu(db: PrismaClient, body: TaiLieuBodyInput) {
-  await assertNhanVienTonTai(db, body.ma_nv);
-
   const id = randomUUID();
-  await db.hrm_tai_lieu.create({ data: { ...body, id } });
+  await db.$transaction(async (tx) => {
+    await assertNhanVienTonTai(tx, body.ma_nv);
+    await tx.hrm_tai_lieu.create({ data: { ...body, id } });
+  });
   return { id };
 }
 
