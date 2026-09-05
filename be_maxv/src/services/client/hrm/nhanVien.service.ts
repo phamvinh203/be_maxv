@@ -105,19 +105,23 @@ export async function listNhanVien(db: PrismaClient, q: NhanVienListQuery) {
   if (q.ma_pb) and.push({ ma_pb: q.ma_pb });
   if (q.status) and.push({ status: q.status });
 
-  const [rows, phongBan] = await Promise.all([
+  const [rows, phongBan, demNpt] = await Promise.all([
     db.hrm_nhan_vien.findMany({
       where: and.length ? { AND: and } : undefined,
       select: nhanVienSelect,
       orderBy: { ma_nv: 'asc' },
     }),
     db.hrm_phong_ban.findMany({ select: { ma_pb: true, ten_pb: true } }),
+    db.hrm_nguoi_phu_thuoc.groupBy({ by: ['ma_nv'], _count: { _all: true } }),
   ]);
 
   const tenPbTheoMa = new Map(phongBan.map((pb) => [pb.ma_pb, pb.ten_pb]));
+  const soNptTheoMa = new Map(demNpt.map((g) => [g.ma_nv, g._count._all]));
+
   return rows.map((r) => ({
     ...r,
     ten_pb: r.ma_pb ? (tenPbTheoMa.get(r.ma_pb) ?? null) : null,
+    so_npt: soNptTheoMa.get(r.ma_nv) ?? 0,
   }));
 }
 
