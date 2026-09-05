@@ -74,7 +74,10 @@ export default fp(
         if (err.code === 'P2003') {
           return reply
             .status(HttpStatus.CONFLICT)
-            .send({ success: false, message: MESSAGES.COMMON.STILL_REFERENCED });
+            .send({
+              success: false,
+              message: MESSAGES.COMMON.STILL_REFERENCED,
+            });
         }
       }
 

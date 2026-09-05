@@ -555,6 +555,7 @@ model sync_log {
   @@index([created_at])
 }
 
+
 // ============================================================
 //  DỊCH VỤ CÔNG › CACHE HỒ SƠ ĐÃ NỘP (dich-vu-cong)
 //  Cùng chiến lược cache như vct50view: cột chính bóc sẵn + `raw` Json
@@ -901,6 +902,7 @@ model hrm_nhan_vien {
   datetime2 DateTime @default(now())
 
   nguoi_phu_thuoc hrm_nguoi_phu_thuoc[]
+  tai_lieu        hrm_tai_lieu[]
 
   @@index([ma_pb])
   @@index([so_cccd])
@@ -936,5 +938,36 @@ model hrm_nguoi_phu_thuoc {
   /// không có gì báo. Postgres coi các NULL là khác nhau nên hồ sơ chưa có MST vẫn nhập được
   /// nhiều dòng, đúng ý: chỉ chặn khi đã biết MST.
   @@unique([ma_nv, mst])
+  @@index([ma_nv])
+}
+
+
+
+/// Hồ sơ / tài liệu của nhân viên (CCCD, bằng cấp, chứng chỉ…) — bản ghi con thật sự, xóa
+/// nhân viên thì xóa theo (cascade), giống hrm_nguoi_phu_thuoc.
+///
+/// Giai đoạn này CHỈ lưu thông tin giấy tờ nhập tay. File scan sẽ để trên Google Drive của
+/// chính công ty (xem bàn luận về hướng A) — lúc đó thêm cột con trỏ `drive_file_id` +
+/// `mime_type` + `ten_file`, không phải sửa gì ở đây.
+model hrm_tai_lieu {
+  id    String @id @db.VarChar(64) // sinh tự động (uuid) ở service khi tạo
+  ma_nv String @db.VarChar(24)
+
+  /// Loại giấy tờ. CHỮ TỰ DO (≤50) chứ không ép enum: danh sách ở FE (cccd, ho_chieu,
+  /// bang_cap, chung_chi, so_yeu_ly_lich) chỉ là gợi ý cho 5 loại hay dùng, còn hồ sơ nhân
+  /// sự thực tế còn giấy khám sức khỏe, sổ BHXH, quyết định bổ nhiệm… Ép enum là chặn oan
+  /// những thứ có thật (đúng bài học đã gặp ở `hrm_nguoi_phu_thuoc.quan_he`).
+  loai String @db.VarChar(50)
+
+  so_hieu  String?   @db.VarChar(64) // null: có loại không mang số hiệu, vd sơ yếu lý lịch
+  ngay_cap DateTime? @db.Date
+  noi_cap  String?   @db.VarChar(254)
+  ghi_chu  String?   @db.VarChar(512)
+
+  datetime0 DateTime @default(now())
+  datetime2 DateTime @default(now())
+
+  nhan_vien hrm_nhan_vien @relation(fields: [ma_nv], references: [ma_nv], onDelete: Cascade, onUpdate: Cascade)
+
   @@index([ma_nv])
 }

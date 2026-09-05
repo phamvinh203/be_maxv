@@ -100,7 +100,11 @@ async function assertKhongTrungMst(
   await assertNotExists(
     () =>
       db.hrm_nguoi_phu_thuoc.findFirst({
-        where: { ma_nv: maNv, mst, ...(boQuaId ? { id: { not: boQuaId } } : {}) },
+        where: {
+          ma_nv: maNv,
+          mst,
+          ...(boQuaId ? { id: { not: boQuaId } } : {}),
+        },
         select: { ho_ten: true },
       }),
     new ConflictError(

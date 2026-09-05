@@ -11,7 +11,8 @@ export const MESSAGES = {
     // Ba thông điệp dưới dùng cho lỗi ràng buộc Postgres (xem errorHandler.plugin.ts).
     DUPLICATE_KEY: 'Dữ liệu bị trùng, vui lòng thử lại',
     RECORD_GONE: 'Bản ghi không còn tồn tại, vui lòng tải lại danh sách',
-    STILL_REFERENCED: 'Dữ liệu đang được sử dụng ở nơi khác, không thể thực hiện',
+    STILL_REFERENCED:
+      'Dữ liệu đang được sử dụng ở nơi khác, không thể thực hiện',
   },
 
   AUTH: {
@@ -52,7 +53,8 @@ export const MESSAGES = {
     INVITE_NOTIFY_FAILED:
       'Không thể gửi email thông báo cho quản trị viên, vui lòng thử lại',
     INVITE_NOT_FOUND: 'Lời mời không tồn tại',
-    INVITE_NOT_PENDING: 'Lời mời này đã được xử lý (không còn ở trạng thái chờ duyệt)',
+    INVITE_NOT_PENDING:
+      'Lời mời này đã được xử lý (không còn ở trạng thái chờ duyệt)',
     INVITE_WELCOME_MAIL_FAILED:
       'Không thể gửi email mật khẩu cho nhân viên, vui lòng thử lại',
   },
@@ -112,6 +114,7 @@ export const MESSAGES = {
   HRM: {
     NHAN_VIEN_NOT_FOUND: 'Không tìm thấy nhân viên',
     NGUOI_PHU_THUOC_NOT_FOUND: 'Không tìm thấy người phụ thuộc',
+    TAI_LIEU_NOT_FOUND: 'Không tìm thấy tài liệu',
     PHONG_BAN_NOT_FOUND: 'Không tìm thấy phòng ban',
     PHONG_BAN_ME_NOT_FOUND: 'Phòng ban cha không tồn tại',
     PHONG_BAN_ME_SELF: 'Phòng ban cha không thể là chính nó',

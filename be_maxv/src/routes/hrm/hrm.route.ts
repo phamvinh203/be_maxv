@@ -3,6 +3,7 @@ import { requireModule } from '../../services/shared/modules.service';
 import { hrmNguoiPhuThuocRoutes } from './nguoiPhuThuoc.route';
 import { hrmNhanVienRoutes } from './nhanVien.route';
 import { hrmPhongBanRoutes } from './phongBan.route';
+import { hrmTaiLieuRoutes } from './taiLieu.route';
 
 /**
  * Nhóm route HRM (nhân sự) — chạy trên DB tenant, các bảng `hrm_*`.
@@ -21,4 +22,5 @@ export async function hrmRoutes(app: FastifyInstance) {
   await app.register(hrmPhongBanRoutes);
   await app.register(hrmNhanVienRoutes);
   await app.register(hrmNguoiPhuThuocRoutes);
+  await app.register(hrmTaiLieuRoutes);
 }

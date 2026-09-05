@@ -66,7 +66,9 @@ async function sinhMaNhanVien(db: PrismaClient): Promise<string> {
   // Vượt 9999 nhân viên — hiếm, nhưng không được đứng im: lấy đuôi timestamp làm mã.
   const ma = `NV${Date.now().toString().slice(-6)}`;
   if (ma.length > MA_NV_MAX) {
-    throw new ConflictError('Không sinh được mã nhân viên, vui lòng tự nhập mã.');
+    throw new ConflictError(
+      'Không sinh được mã nhân viên, vui lòng tự nhập mã.',
+    );
   }
   return ma;
 }
@@ -95,9 +97,9 @@ async function assertPhongBanTonTai(
  * gửi lên gì, thay vì tin form. Áp ở service để mọi đường ghi (API, import Excel sau này) đều
  * đi qua cùng một luật.
  */
-function chuanHoaCongDoan<T extends { loai_hop_dong: string; cong_doan: boolean }>(
-  body: T,
-): T {
+function chuanHoaCongDoan<
+  T extends { loai_hop_dong: string; cong_doan: boolean },
+>(body: T): T {
   return body.loai_hop_dong === 'hdvc' ? { ...body, cong_doan: false } : body;
 }
 
