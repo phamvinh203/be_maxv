@@ -15,6 +15,7 @@ import Button from "@mui/material/Button";
 import IconButton from "@mui/material/IconButton";
 import Tooltip from "@mui/material/Tooltip";
 import Chip from "@mui/material/Chip";
+import CircularProgress from "@mui/material/CircularProgress";
 import Typography from "@mui/material/Typography";
 import AddRounded from "@mui/icons-material/AddRounded";
 import EditRounded from "@mui/icons-material/EditRounded";
@@ -23,14 +24,14 @@ import SearchRounded from "@mui/icons-material/SearchRounded";
 import GroupAddRounded from "@mui/icons-material/GroupAddRounded";
 import SubdirectoryArrowRightRounded from "@mui/icons-material/SubdirectoryArrowRightRounded";
 import { getErrorMessage } from "../../../../lib/errors";
-import { usePhongBanRows, useXoaPhongBan } from "../../mock/hooks/phongBan";
+import { usePhongBanRows, useXoaPhongBan } from "../../api/phongBanQueries";
 import type { PhongBanRow } from "../../types";
 import XacNhanXoaDialog from "../XacNhanXoaDialog";
 import GanNhanhDialog from "./GanNhanhDialog";
 import PhongBanFormDialog from "./PhongBanFormDialog";
 
 export default function PhongBanTable() {
-  const rows = usePhongBanRows();
+  const { rows, isLoading, isError, error } = usePhongBanRows();
   const xoaPhongBan = useXoaPhongBan();
 
   const [tuKhoa, setTuKhoa] = useState("");
@@ -197,13 +198,30 @@ export default function PhongBanTable() {
             {rowsHien.length === 0 && (
               <TableRow>
                 <TableCell colSpan={7}>
-                  <Typography
-                    variant="body2"
-                    color="text.disabled"
-                    sx={{ textAlign: "center", py: 4 }}
-                  >
-                    {tuKhoa ? "Không có phòng ban nào khớp." : "Chưa có phòng ban nào."}
-                  </Typography>
+                  {/* Ba trạng thái phải phân biệt được: đang tải, tải hỏng, và thật sự
+                      chưa có phòng ban nào — cùng hiện "Chưa có" thì lỗi mạng trông
+                      hệt như danh mục rỗng, người dùng sẽ đi tạo lại từ đầu. */}
+                  {isLoading ? (
+                    <Stack sx={{ alignItems: "center", py: 4 }}>
+                      <CircularProgress size={24} />
+                    </Stack>
+                  ) : isError ? (
+                    <Typography
+                      variant="body2"
+                      color="error"
+                      sx={{ textAlign: "center", py: 4 }}
+                    >
+                      {getErrorMessage(error, "Không tải được danh sách phòng ban.")}
+                    </Typography>
+                  ) : (
+                    <Typography
+                      variant="body2"
+                      color="text.disabled"
+                      sx={{ textAlign: "center", py: 4 }}
+                    >
+                      {tuKhoa ? "Không có phòng ban nào khớp." : "Chưa có phòng ban nào."}
+                    </Typography>
+                  )}
                 </TableCell>
               </TableRow>
             )}
