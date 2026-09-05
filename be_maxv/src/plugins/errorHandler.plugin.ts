@@ -6,6 +6,7 @@ import {
   ForbiddenError,
   ValidationError,
   MailError,
+  DriveApiError,
 } from '../helpers/errors';
 import { HttpStatus } from '../constants/httpStatus';
 import { MESSAGES } from '../constants/messages';
@@ -52,6 +53,29 @@ export default fp(
           .send({ success: false, message: err.message });
       }
       /**
+       * Google Drive hỏng hoặc cấu hình phía mình sai (chưa bật Drive API, hết hạn mức...).
+       * Không map thì rơi xuống 500 "Lỗi máy chủ nội bộ" — người dùng không biết là do dịch vụ
+       * ngoài, còn mình thì tưởng app tự vỡ.
+       *
+       * Chỉ trả thông điệp chung, KHÔNG đẩy `err.message` ra client: nội dung Google trả về là
+       * tiếng Anh kèm mã lỗi nội bộ, vô nghĩa với người nhập liệu. Chi tiết đầy đủ nằm ở log
+       * cho người vận hành. Các trường hợp người dùng TỰ xử lý được (token bị thu hồi -> kết
+       * nối lại, file đã xóa trên Drive) đã được đổi thành lỗi nghiệp vụ riêng ở tầng service
+       * nên không đi tới đây.
+       */
+      if (err instanceof DriveApiError) {
+        req.log.error(err);
+        return reply.status(HttpStatus.BAD_GATEWAY).send({
+          success: false,
+          // status 0 = chưa nhận được phản hồi nào (mất mạng/DNS/tường lửa) — nói đúng như vậy,
+          // đừng để người dùng đi kiểm tra cấu hình Google trong khi lỗi nằm ở đường truyền.
+          message:
+            err.status === 0
+              ? MESSAGES.HRM.DRIVE_KHONG_KET_NOI_DUOC
+              : MESSAGES.HRM.DRIVE_LOI_GOOGLE,
+        });
+      }
+      /**
        * Lỗi ràng buộc của Postgres do Prisma ném ra. Không map thì rơi xuống nhánh 500 bên
        * dưới: client không phân biệt được "bấm lưu lại đi" với "máy chủ hỏng", còn log lỗi
        * thì đầy những dòng không phải sự cố thật.
@@ -72,9 +96,10 @@ export default fp(
             .send({ success: false, message: MESSAGES.COMMON.RECORD_GONE });
         }
         if (err.code === 'P2003') {
-          return reply
-            .status(HttpStatus.CONFLICT)
-            .send({ success: false, message: MESSAGES.COMMON.STILL_REFERENCED });
+          return reply.status(HttpStatus.CONFLICT).send({
+            success: false,
+            message: MESSAGES.COMMON.STILL_REFERENCED,
+          });
         }
       }
 

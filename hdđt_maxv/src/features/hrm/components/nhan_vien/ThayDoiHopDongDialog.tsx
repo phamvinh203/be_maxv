@@ -18,7 +18,7 @@ import { getErrorMessage } from "../../../../lib/errors";
 import { KIEU_LUONG, LOAI_HD } from "../../constants";
 import { homNay, ngayVn, nhan, tienVn } from "../../format";
 import { hopDongRong } from "../../formDefaults";
-import { useDoiHopDong } from "../../mock/hooks/hopDong";
+import { useDoiHopDong } from "../../api/hopDongQueries";
 import type { HopDong, HopDongFormValues, KieuLuong, LoaiHopDong, NhanVien } from "../../types";
 import OThongTin from "../OThongTin";
 import TienField from "../TienField";

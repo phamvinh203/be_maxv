@@ -23,7 +23,7 @@ import {
   useSuaNhanVien,
   useThemNhanVien,
 } from "../../api/nhanVienQueries";
-import { useHopDongList } from "../../mock/hooks/hopDong";
+import { useHopDongList } from "../../api/hopDongQueries";
 import type { HopDongFormValues, NhanVien } from "../../types";
 import HopDongTab from "./tabs/HopDongTab";
 import HoSoTab from "./tabs/HoSoTab";
@@ -45,7 +45,7 @@ export default function NhanVienDialog({ open, onClose, maNv }: Props) {
   const maMoi = useMaNhanVienMoi();
   const themNhanVien = useThemNhanVien();
   const suaNhanVien = useSuaNhanVien();
-  const lichSuHopDong = useHopDongList(maNv ?? null);
+  const { items: lichSuHopDong } = useHopDongList(maNv ?? null);
 
   const [tab, setTab] = useState(0);
   const [nhanVien, setNhanVien] = useState<NhanVien>(() => nhanVienRong(""));

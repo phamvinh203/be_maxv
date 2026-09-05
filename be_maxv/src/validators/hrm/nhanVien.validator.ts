@@ -1,36 +1,11 @@
 import { z } from 'zod';
-import { optEmail, optMst, optText } from '../shared/primitives';
-
-/**
- * Ngày dạng `YYYY-MM-DD` -> Date (UTC 00:00).
- *
- * Ép đúng chuẩn ISO thay vì `z.coerce.date()`: coerce nuốt cả `"15/01/2026"` (ra ngày sai)
- * lẫn số nguyên, mà đây là ngày dùng để tính hợp đồng/lương nên sai một ngày là sai bảng
- * lương. Ghim UTC để ngày không tự lùi/tiến theo múi giờ máy chủ (cột là `@db.Date`).
- */
-const ngayISO = z
-  .string()
-  .trim()
-  .regex(/^\d{4}-\d{2}-\d{2}$/, 'Ngày phải theo định dạng YYYY-MM-DD')
-  .transform((s, ctx) => {
-    const d = new Date(`${s}T00:00:00Z`);
-    // Đối chiếu ngược chuỗi: `new Date("2026-02-30")` KHÔNG trả Invalid Date mà tự trôi sang
-    // 2026-03-02 — chỉ kiểm NaN thì ngày gõ nhầm sẽ lặng lẽ lưu thành ngày khác.
-    if (Number.isNaN(d.getTime()) || d.toISOString().slice(0, 10) !== s) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        message: `Ngày không có thật: ${s}`,
-      });
-      return z.NEVER;
-    }
-    return d;
-  });
-
-/** Ngày tùy chọn: '' | null | thiếu -> null. */
-const ngayTuyChon = z
-  .union([ngayISO, z.literal(''), z.null()])
-  .optional()
-  .transform((v) => (v ? v : null));
+import {
+  ngayISO,
+  ngayTuyChon,
+  optEmail,
+  optMst,
+  optText,
+} from '../shared/primitives';
 
 /** Text tùy chọn có giới hạn độ dài — chặn ở đây để tràn cột trả 400 thay vì 500 từ Postgres. */
 function optTextMax(max: number, nhan: string) {

@@ -10,6 +10,16 @@ interface JwtPayload {
 }
 
 declare module 'fastify' {
+  interface FastifyContextConfig {
+    /**
+     * Cho phép MỘT route trong nhóm đã gắn guard chạy mà không cần đăng nhập.
+     * Chỉ dùng cho endpoint mà trình duyệt đi vào từ site khác (redirect OAuth) — khi đó
+     * cookie access (SameSite=Strict) không được gửi kèm, nên guard chắc chắn chặn nhầm.
+     * Route bật cờ này PHẢI tự xác thực bằng cách khác (vd `state` ký HMAC).
+     */
+    khongCanAuth?: boolean;
+  }
+
   interface FastifyInstance {
     sysPrisma: PrismaClient;
     authenticate: (req: FastifyRequest) => Promise<void>;

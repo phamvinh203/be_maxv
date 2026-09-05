@@ -92,7 +92,11 @@ async function apiFetchRaw(path: string, options: ApiFetchOptions = {}): Promise
     ...rest,
     credentials: "include",
     headers: {
-      ...(rest.body ? { "Content-Type": "application/json" } : {}),
+      // FormData phải để fetch tự đặt `multipart/form-data; boundary=...` — ép JSON vào là
+      // server không tách được các phần và upload hỏng.
+      ...(rest.body && !(rest.body instanceof FormData)
+        ? { "Content-Type": "application/json" }
+        : {}),
       ...headers,
     },
   };

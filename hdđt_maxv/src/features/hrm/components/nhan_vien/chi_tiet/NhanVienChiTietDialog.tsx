@@ -15,8 +15,7 @@ import EditRounded from "@mui/icons-material/EditRounded";
 import { hopDongHienHanh } from "../../../cay";
 import { homNay } from "../../../format";
 import { useNhanVienDetail } from "../../../api/nhanVienQueries";
-// Lịch sử hợp đồng vẫn mock — khóa theo ma_nv nên nhân viên tạo qua API sẽ thấy phần này trống.
-import { useHopDongList } from "../../../mock/hooks/hopDong";
+import { useHopDongList } from "../../../api/hopDongQueries";
 import HoSoTab from "../tabs/HoSoTab";
 import NguoiPhuThuocTab from "../tabs/NguoiPhuThuocTab";
 import ThayDoiHopDongDialog from "../ThayDoiHopDongDialog";
@@ -42,7 +41,7 @@ const NHAN_TAB = ["Thông tin nhân viên", "Hồ sơ tài liệu", "Người ph
  */
 export default function NhanVienChiTietDialog({ open, onClose, maNv, onSua }: Props) {
   const nhanVien = useNhanVienDetail(maNv);
-  const lichSuHopDong = useHopDongList(maNv);
+  const { items: lichSuHopDong } = useHopDongList(maNv);
 
   const [tab, setTab] = useState(0);
   const [doiHopDongOpen, setDoiHopDongOpen] = useState(false);

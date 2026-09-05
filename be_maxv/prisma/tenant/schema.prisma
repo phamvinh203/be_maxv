@@ -900,7 +900,13 @@ model hrm_nhan_vien {
   datetime0 DateTime @default(now())
   datetime2 DateTime @default(now())
 
+  /// ID thư mục Drive riêng của nhân viên ("<ma_nv> - <họ tên>"), tạo lười lúc tải file đầu
+  /// tiên. Lưu ID vì tên thư mục chỉ là nhãn — đổi tên nhân viên không được làm đứt liên kết.
+  drive_folder_id String? @db.VarChar(64)
+
   nguoi_phu_thuoc hrm_nguoi_phu_thuoc[]
+  tai_lieu        hrm_tai_lieu[]
+  hop_dong        hrm_hop_dong[]
 
   @@index([ma_pb])
   @@index([so_cccd])
@@ -936,5 +942,80 @@ model hrm_nguoi_phu_thuoc {
   /// không có gì báo. Postgres coi các NULL là khác nhau nên hồ sơ chưa có MST vẫn nhập được
   /// nhiều dòng, đúng ý: chỉ chặn khi đã biết MST.
   @@unique([ma_nv, mst])
+  @@index([ma_nv])
+}
+
+/// Lịch sử hợp đồng lao động của nhân viên — 1 nhân viên NHIỀU hợp đồng theo thời gian
+/// (thử việc hết hạn rồi lên chính thức là hai hợp đồng, không phải sửa đè lên nhau).
+///
+/// QUAN HỆ VỚI 7 CỘT HỢP ĐỒNG TRÊN `hrm_nhan_vien`: bảng này là NGUỒN SỰ THẬT, mấy cột kia
+/// là BẢN SAO của hợp đồng hiện hành để màn danh sách khỏi phải join. Mọi đường ghi vào bảng
+/// này BẮT BUỘC gọi `dongBoHopDongHienHanh()` ở cuối, trong cùng transaction — quên một nhánh
+/// là hai nơi nói khác nhau mà không có gì báo.
+model hrm_hop_dong {
+  id    String @id @db.VarChar(64) // sinh tự động (uuid) ở service khi tạo
+  ma_nv String @db.VarChar(24)
+
+  so_hd String @db.VarChar(100)
+
+  /// Loại hợp đồng, CHỮ TỰ DO (≤24). Danh sách gợi ý ở FE: khong_xac_dinh | xac_dinh |
+  /// thu_viec | thoi_vu | khoan. Giữ đủ 5 giá trị ở đây (bản sao trên `hrm_nhan_vien` gom về
+  /// 3 theo spec) để lịch sử không mất thông tin — đây mới là chỗ đọc ra để hiển thị.
+  loai_hd    String @db.VarChar(24)
+  kieu_luong String @db.VarChar(8) // gross | net
+
+  /// Lương thỏa thuận và mức đóng BHXH của CHÍNH hợp đồng này — ký hợp đồng mới là đổi lương,
+  /// nên hai số này thuộc về hợp đồng chứ không phải nhân viên.
+  luong_chinh Decimal @default(0) @db.Decimal(18, 2)
+  luong_bhxh  Decimal @default(0) @db.Decimal(18, 2)
+
+  ngay_bat_dau  DateTime  @db.Date
+  ngay_ket_thuc DateTime? @db.Date // null = không xác định thời hạn
+
+  trich_bhxh Boolean @default(true)
+  tinh_tncn  Boolean @default(true)
+  ghi_chu    String? @db.VarChar(512)
+
+  datetime0 DateTime @default(now())
+  datetime2 DateTime @default(now())
+
+  nhan_vien hrm_nhan_vien @relation(fields: [ma_nv], references: [ma_nv], onDelete: Cascade, onUpdate: Cascade)
+
+  @@index([ma_nv])
+}
+
+/// Hồ sơ / tài liệu của nhân viên (CCCD, bằng cấp, chứng chỉ…) — bản ghi con thật sự, xóa
+/// nhân viên thì xóa theo (cascade), giống hrm_nguoi_phu_thuoc.
+///
+/// Giai đoạn này CHỈ lưu thông tin giấy tờ nhập tay. File scan sẽ để trên Google Drive của
+/// chính công ty (xem bàn luận về hướng A) — lúc đó thêm cột con trỏ `drive_file_id` +
+/// `mime_type` + `ten_file`, không phải sửa gì ở đây.
+model hrm_tai_lieu {
+  id    String @id @db.VarChar(64) // sinh tự động (uuid) ở service khi tạo
+  ma_nv String @db.VarChar(24)
+
+  /// Loại giấy tờ. CHỮ TỰ DO (≤50) chứ không ép enum: danh sách ở FE (cccd, ho_chieu,
+  /// bang_cap, chung_chi, so_yeu_ly_lich) chỉ là gợi ý cho 5 loại hay dùng, còn hồ sơ nhân
+  /// sự thực tế còn giấy khám sức khỏe, sổ BHXH, quyết định bổ nhiệm… Ép enum là chặn oan
+  /// những thứ có thật (đúng bài học đã gặp ở `hrm_nguoi_phu_thuoc.quan_he`).
+  loai String @db.VarChar(50)
+
+  so_hieu  String?   @db.VarChar(64) // null: có loại không mang số hiệu, vd sơ yếu lý lịch
+  ngay_cap DateTime? @db.Date
+  noi_cap  String?   @db.VarChar(254)
+  ghi_chu  String?   @db.VarChar(512)
+
+  /// File scan trên Google Drive của công ty. null = chỉ có thông tin giấy tờ, chưa đính file.
+  /// Giữ luôn tên/kiểu/kích thước để màn danh sách hiện được mà không phải gọi Drive từng dòng.
+  drive_file_id String? @db.VarChar(64)
+  ten_file      String? @db.VarChar(254)
+  mime_type     String? @db.VarChar(128)
+  kich_thuoc    Int? // byte
+
+  datetime0 DateTime @default(now())
+  datetime2 DateTime @default(now())
+
+  nhan_vien hrm_nhan_vien @relation(fields: [ma_nv], references: [ma_nv], onDelete: Cascade, onUpdate: Cascade)
+
   @@index([ma_nv])
 }

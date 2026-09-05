@@ -91,6 +91,13 @@ export const env = {
   gdtListPageSize: parseGdtListPageSize(process.env.GDT_LIST_PAGE_SIZE),
 
   // SMTP (thông báo qua email - vd báo admin khi có lời mời nhân viên mới)
+  // Google Drive — nơi lưu FILE SCAN hồ sơ nhân sự (hướng A: Drive của chính công ty khách).
+  // KHÔNG dùng `required()`: thiếu cấu hình thì tính năng tự TẮT MỀM (giống khóa mã hóa mật khẩu
+  // cổng thuế) chứ không làm sập cả app — phần nhập liệu hồ sơ vẫn chạy bình thường.
+  googleClientId: process.env.GOOGLE_CLIENT_ID ?? '',
+  googleClientSecret: process.env.GOOGLE_CLIENT_SECRET ?? '',
+  googleRedirectUri: process.env.GOOGLE_REDIRECT_URI ?? '',
+
   smtpHost: required('SMTP_HOST'),
   smtpPort: Number(process.env.SMTP_PORT ?? 587),
   smtpUser: required('SMTP_USER'),

@@ -13,7 +13,10 @@ import Stack from "@mui/material/Stack";
 import { getErrorMessage } from "../../../../lib/errors";
 import { LOAI_TAI_LIEU } from "../../constants";
 import { taiLieuRong } from "../../formDefaults";
-import { useLuuTaiLieu } from "../../mock/hooks/taiLieu";
+import CircularProgress from "@mui/material/CircularProgress";
+import Typography from "@mui/material/Typography";
+import AttachFileRounded from "@mui/icons-material/AttachFileRounded";
+import { useLuuTaiLieu, useTaiFileLen } from "../../api/taiLieuQueries";
 import type { LoaiTaiLieu, TaiLieu, TaiLieuFormValues } from "../../types";
 
 interface Props {
@@ -28,12 +31,17 @@ export default function TaiLieuFormDialog({ open, onClose, maNv, taiLieu }: Prop
   const laSua = Boolean(taiLieu);
   const luuTaiLieu = useLuuTaiLieu();
 
+  const taiFileLen = useTaiFileLen();
+
   const [values, setValues] = useState<TaiLieuFormValues>(taiLieuRong);
   const [dangLuu, setDangLuu] = useState(false);
+  /** File người dùng vừa chọn, chưa tải lên — chỉ tải sau khi lưu xong dòng tài liệu. */
+  const [fileChon, setFileChon] = useState<File | null>(null);
 
   useEffect(() => {
     if (!open) return;
     // eslint-disable-next-line react-hooks/set-state-in-effect
+    setFileChon(null);
     setValues(
       taiLieu
         ? {
@@ -53,10 +61,21 @@ export default function TaiLieuFormDialog({ open, onClose, maNv, taiLieu }: Prop
   const handleSubmit = async () => {
     setDangLuu(true);
     try {
-      await luuTaiLieu(maNv, values, taiLieu?.id);
+      // Lưu dòng tài liệu TRƯỚC rồi mới tải file: endpoint tải file khóa theo id của dòng,
+      // nên thêm mới thì phải có dòng đã.
+      const id = await luuTaiLieu(maNv, values, taiLieu?.id);
       toast.success(laSua ? "Đã cập nhật tài liệu." : "Đã thêm tài liệu.");
+
+      if (fileChon) {
+        // Chưa kết nối Drive thì hook tự mở popup đăng nhập Google rồi mới tải lên.
+        toast.info("Đang tải file lên Google Drive…");
+        await taiFileLen(id, fileChon);
+        toast.success("Đã tải file scan lên Google Drive.");
+      }
       onClose();
     } catch (err) {
+      // Dòng tài liệu có thể đã lưu xong mà chỉ hỏng bước tải file — nói rõ để người dùng biết
+      // là không phải nhập lại từ đầu, chỉ cần đính lại file.
       toast.error(getErrorMessage(err, "Không lưu được tài liệu."));
     } finally {
       setDangLuu(false);
@@ -124,6 +143,32 @@ export default function TaiLieuFormDialog({ open, onClose, maNv, taiLieu }: Prop
               />
             </Box>
           </Box>
+          <Box>
+            <Button
+              component="label"
+              variant="outlined"
+              startIcon={<AttachFileRounded />}
+              disabled={dangLuu}
+              sx={{ textTransform: "none" }}
+            >
+              {fileChon ? "Đổi file khác" : "Thêm file scan"}
+              <input
+                hidden
+                type="file"
+                accept="image/jpeg,image/png,image/webp,image/heic,application/pdf"
+                onChange={(e) => setFileChon(e.target.files?.[0] ?? null)}
+              />
+            </Button>
+            <Typography
+              variant="caption"
+              color="text.secondary"
+              sx={{ display: "block", mt: 0.75 }}
+            >
+              {fileChon
+                ? `${fileChon.name} — ${(fileChon.size / 1024 / 1024).toFixed(2)}MB`
+                : "Ảnh hoặc PDF, tối đa 10MB. Lần đầu sẽ mở cửa sổ đăng nhập Google để kết nối Drive của công ty."}
+            </Typography>
+          </Box>
         </Stack>
       </DialogContent>
       <DialogActions>
@@ -134,6 +179,7 @@ export default function TaiLieuFormDialog({ open, onClose, maNv, taiLieu }: Prop
           variant="contained"
           onClick={handleSubmit}
           disabled={dangLuu}
+          startIcon={dangLuu ? <CircularProgress size={16} /> : undefined}
           sx={{ textTransform: "none" }}
         >
           {laSua ? "Lưu thay đổi" : "Thêm tài liệu"}

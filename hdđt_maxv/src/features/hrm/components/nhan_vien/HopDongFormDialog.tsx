@@ -14,7 +14,7 @@ import Checkbox from "@mui/material/Checkbox";
 import { getErrorMessage } from "../../../../lib/errors";
 import { KIEU_LUONG, LOAI_HD } from "../../constants";
 import { hopDongRong } from "../../formDefaults";
-import { useLuuHopDong } from "../../mock/hooks/hopDong";
+import { useLuuHopDong } from "../../api/hopDongQueries";
 import type { HopDong, HopDongFormValues, KieuLuong, LoaiHopDong } from "../../types";
 import TienField from "../TienField";
 

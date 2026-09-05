@@ -28,7 +28,7 @@ import MarkEmailReadRounded from "@mui/icons-material/MarkEmailReadRounded";
 export interface ManHinhHoSoLuong {
   path: string;
   label: string;
-  /** Icon đứng trước nhãn tab. Giữ component, xem ghi chú ở `du_lieu_luong/tabs.ts`. */
+  /** Icon đứng trước nhãn tab. Giữ component, xem ghi chú ở `du_lieu_tinh_luong/tabs.ts`. */
   icon: SvgIconComponent;
   /** Một câu mô tả, hiện ở màn hình "đang phát triển" cho tới khi dựng xong. */
   moTa: string;

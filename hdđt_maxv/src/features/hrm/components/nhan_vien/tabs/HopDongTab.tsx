@@ -2,6 +2,7 @@ import { useState } from "react";
 import { toast } from "react-toastify";
 import Box from "@mui/material/Box";
 import Stack from "@mui/material/Stack";
+import CircularProgress from "@mui/material/CircularProgress";
 import Paper from "@mui/material/Paper";
 import Table from "@mui/material/Table";
 import TableBody from "@mui/material/TableBody";
@@ -23,7 +24,7 @@ import { getErrorMessage } from "../../../../../lib/errors";
 import { trangThaiHopDong } from "../../../cay";
 import { KIEU_LUONG, LOAI_HD } from "../../../constants";
 import { homNay, ngayVn, nhan, tienVn } from "../../../format";
-import { useHopDongList, useXoaHopDong } from "../../../mock/hooks/hopDong";
+import { useHopDongList, useXoaHopDong } from "../../../api/hopDongQueries";
 import type { HopDong } from "../../../types";
 import XacNhanXoaDialog from "../../XacNhanXoaDialog";
 import HopDongFormDialog from "../HopDongFormDialog";
@@ -36,7 +37,12 @@ const MAU_TRANG_THAI = {
 
 /** Nơi duy nhất ký mới, gia hạn và sửa hợp đồng của một nhân viên. */
 export default function HopDongTab({ maNv }: { maNv: string }) {
-  const danhSach = useHopDongList(maNv);
+  const {
+    items: danhSach,
+    isLoading,
+    isError,
+    error,
+  } = useHopDongList(maNv);
   const xoaHopDong = useXoaHopDong();
 
   const [formOpen, setFormOpen] = useState(false);
@@ -148,13 +154,29 @@ export default function HopDongTab({ maNv }: { maNv: string }) {
             {danhSach.length === 0 && (
               <TableRow>
                 <TableCell colSpan={11}>
-                  <Typography
-                    variant="body2"
-                    color="text.disabled"
-                    sx={{ textAlign: "center", py: 4 }}
-                  >
-                    Chưa có hợp đồng nào.
-                  </Typography>
+                  {/* Lỗi tải KHÔNG được hiện thành "chưa có hợp đồng" — người dùng sẽ đi ký
+                      lại một hợp đồng đã tồn tại. */}
+                  {isLoading ? (
+                    <Stack sx={{ alignItems: "center", py: 4 }}>
+                      <CircularProgress size={24} />
+                    </Stack>
+                  ) : isError ? (
+                    <Typography
+                      variant="body2"
+                      color="error"
+                      sx={{ textAlign: "center", py: 4 }}
+                    >
+                      {getErrorMessage(error, "Không tải được lịch sử hợp đồng.")}
+                    </Typography>
+                  ) : (
+                    <Typography
+                      variant="body2"
+                      color="text.disabled"
+                      sx={{ textAlign: "center", py: 4 }}
+                    >
+                      Chưa có hợp đồng nào.
+                    </Typography>
+                  )}
                 </TableCell>
               </TableRow>
             )}

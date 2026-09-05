@@ -33,8 +33,8 @@ model User {
 
   // Chủ tài khoản (owner) = đơn vị billing. Nhân viên trỏ ownerId về owner; owner/admin = null.
   ownerId   String?
-  owner     User?  @relation("AccountMembers", fields: [ownerId], references: [id], onDelete: Cascade)
-  employees User[] @relation("AccountMembers")
+  owner     User?   @relation("AccountMembers", fields: [ownerId], references: [id], onDelete: Cascade)
+  employees User[]  @relation("AccountMembers")
 
   // Các MST owner sở hữu (do owner tạo) + thuê bao của owner (1:1, chỉ owner)
   ownedDonVi   DonVi[]       @relation("DonViOwner")
@@ -84,6 +84,20 @@ model DonVi {
   dvcPasswordCipher String? // ciphertext (base64)
   dvcPasswordIv     String? // IV/nonce 12 byte (base64)
   dvcPasswordTag    String? // GCM auth tag (base64)
+
+  // Google Drive của công ty — nơi lưu FILE SCAN hồ sơ nhân sự (dữ liệu nhập liệu vẫn ở DB
+  // tenant). Cùng cơ chế mã hóa AES-256-GCM với gdtPassword*/dvcPassword* ở trên: refresh token
+  // phải giải ngược được để backend gọi Drive hộ, nên mã hóa chứ không hash.
+  //
+  // File nằm trên Drive CỦA KHÁCH, không phải của maxv — mất tài khoản Google là mất file, mình
+  // không khôi phục được (đã cân nhắc: đổi lại là không phải mua Workspace, không tốn dung lượng,
+  // và ảnh CCCD nhân viên của khách không nằm trong tài khoản của mình).
+  driveEmail              String? // tài khoản Google đã kết nối — để màn hình nói rõ đang dùng Drive của ai
+  driveRootFolderId       String? // ID thư mục gốc "maxv/<mst>-<tên cty>". Lưu ID chứ KHÔNG tra theo tên:
+  // Drive cho trùng tên thư mục, và khách đổi tên/kéo thả lúc nào cũng được.
+  driveRefreshTokenCipher String?
+  driveRefreshTokenIv     String?
+  driveRefreshTokenTag    String?
 
   // Owner sở hữu MST này (đếm giới hạn gói + xác định ai quản lý/nhân viên thuộc account nào)
   ownerId String
@@ -261,9 +275,9 @@ model PasswordResetOtp {
   userId String
   user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-  otpHash String // bcrypt hash của mã 6 số
+  otpHash      String // bcrypt hash của mã 6 số
   /// Số lần nhập sai — chạm trần thì OTP coi như chết (chống dò 6 chữ số).
-  attemptCount Int @default(0)
+  attemptCount Int    @default(0)
 
   expiresAt DateTime
   /// Khác null = đã dùng để đổi mật khẩu, không dùng lại được.

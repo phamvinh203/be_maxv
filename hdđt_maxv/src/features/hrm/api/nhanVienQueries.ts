@@ -21,7 +21,13 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useCallback, useMemo } from "react";
 import { useAuth } from "@/features/auth/useAuth";
-import { hrmNhanVienKeys, hrmNptKeys, hrmPhongBanKeys } from "./hrmKeys";
+import {
+  hrmHopDongKeys,
+  hrmNhanVienKeys,
+  hrmNptKeys,
+  hrmPhongBanKeys,
+  hrmTaiLieuKeys,
+} from "./hrmKeys";
 import { sinhMaNhanVien } from "../cay";
 import { CHUC_VU, PB_CHUA_GAN } from "../constants";
 import { homNay, nhan } from "../format";
@@ -33,6 +39,7 @@ import type {
   NhanVienRow,
   ThemNhanVienPayload,
 } from "../types";
+import { createHopDong } from "./hopDongApi";
 import {
   createNhanVien,
   deleteNhanVien,
@@ -275,8 +282,8 @@ export function useNhanVienDetail(maNv: string | null): NhanVien | null {
 /**
  * Làm mới sau khi ghi. Đụng cả ba nhóm vì số liệu móc vào nhau:
  *   - phòng ban: cột `so_nv` do BE đếm, thêm/xóa nhân viên là sai ngay
- *   - người phụ thuộc: NPT bị ẩn theo nhân viên xóa mềm, không nạp lại thì màn NPT vẫn liệt
- *     kê người của hồ sơ đã xóa và bấm Sửa sẽ ra 404
+ *   - người phụ thuộc và hồ sơ tài liệu: đều bị ẩn theo nhân viên xóa mềm, không nạp lại thì
+ *     hai màn đó vẫn liệt kê dữ liệu của hồ sơ đã xóa và bấm Sửa sẽ ra 404
  */
 function useLamMoi() {
   const qc = useQueryClient();
@@ -284,6 +291,8 @@ function useLamMoi() {
     void qc.invalidateQueries({ queryKey: hrmNhanVienKeys.all });
     void qc.invalidateQueries({ queryKey: hrmPhongBanKeys.all });
     void qc.invalidateQueries({ queryKey: hrmNptKeys.all });
+    void qc.invalidateQueries({ queryKey: hrmTaiLieuKeys.all });
+    void qc.invalidateQueries({ queryKey: hrmHopDongKeys.all });
   };
 }
 
@@ -297,7 +306,7 @@ export function useThemNhanVien() {
       const nv = payload.nhan_vien;
       if (!nv.ho_ten.trim()) throw new Error("Họ và tên không được để trống.");
 
-      await them.mutateAsync({
+      const ketQua = await them.mutateAsync({
         ma_nv: nv.ma_nv.trim() || null,
         ...thongTinVeApi(nv),
         // Dialog đã quyết "người dùng có động vào nhóm hợp đồng chưa" và truyền null nếu chưa —
@@ -305,6 +314,26 @@ export function useThemNhanVien() {
         ...hopDongKhiTao(nv, payload.hop_dong),
         mien_cham_cong: false,
       });
+
+      // Nhóm hợp đồng có nhập ĐỦ (số HĐ + ngày bắt đầu) thì ghi luôn một dòng vào lịch sử hợp
+      // đồng. Không làm bước này thì tab Lịch sử trống trơn trong khi hồ sơ nhân viên lại hiện
+      // số hợp đồng — người dùng tưởng dữ liệu bị mất. BE tự đồng bộ lại bản sao sau đó.
+      const hd = payload.hop_dong;
+      if (hd?.so_hd.trim() && hd.ngay_bat_dau) {
+        await createHopDong({
+          ma_nv: ketQua.ma_nv,
+          so_hd: hd.so_hd.trim(),
+          loai_hd: hd.loai_hd,
+          kieu_luong: hd.kieu_luong === "NET" ? "net" : "gross",
+          luong_chinh: hd.luong_chinh,
+          luong_bhxh: hd.luong_bhxh,
+          ngay_bat_dau: hd.ngay_bat_dau,
+          ngay_ket_thuc: hd.ngay_ket_thuc.trim() || null,
+          trich_bhxh: hd.trich_bhxh,
+          tinh_tncn: hd.tinh_tncn,
+          ghi_chu: hd.ghi_chu.trim() || null,
+        });
+      }
     },
     [them],
   );

@@ -1,4 +1,12 @@
-/** Hook nghiệp vụ hồ sơ/tài liệu. Xem ghi chú về chữ ký ở `hooks/phongBan.ts`. */
+/**
+ * Hook nghiệp vụ hồ sơ/tài liệu — BẢN MOCK, KHÔNG CÒN MÀN NÀO DÙNG.
+ *
+ * Tab Hồ sơ trong hồ sơ nhân viên đã chuyển sang API thật ở `../../api/taiLieuQueries.ts`.
+ * Giữ file lại vì kho mock vẫn còn dữ liệu tài liệu cho các màn chưa nối API. Đừng import từ
+ * đây cho màn mới.
+ *
+ * Xem ghi chú về chữ ký ở `hooks/phongBan.ts`.
+ */
 
 import { useCallback, useMemo } from "react";
 import type { TaiLieu, TaiLieuFormValues } from "../../types";

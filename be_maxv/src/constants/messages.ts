@@ -11,7 +11,8 @@ export const MESSAGES = {
     // Ba thông điệp dưới dùng cho lỗi ràng buộc Postgres (xem errorHandler.plugin.ts).
     DUPLICATE_KEY: 'Dữ liệu bị trùng, vui lòng thử lại',
     RECORD_GONE: 'Bản ghi không còn tồn tại, vui lòng tải lại danh sách',
-    STILL_REFERENCED: 'Dữ liệu đang được sử dụng ở nơi khác, không thể thực hiện',
+    STILL_REFERENCED:
+      'Dữ liệu đang được sử dụng ở nơi khác, không thể thực hiện',
   },
 
   AUTH: {
@@ -52,7 +53,8 @@ export const MESSAGES = {
     INVITE_NOTIFY_FAILED:
       'Không thể gửi email thông báo cho quản trị viên, vui lòng thử lại',
     INVITE_NOT_FOUND: 'Lời mời không tồn tại',
-    INVITE_NOT_PENDING: 'Lời mời này đã được xử lý (không còn ở trạng thái chờ duyệt)',
+    INVITE_NOT_PENDING:
+      'Lời mời này đã được xử lý (không còn ở trạng thái chờ duyệt)',
     INVITE_WELCOME_MAIL_FAILED:
       'Không thể gửi email mật khẩu cho nhân viên, vui lòng thử lại',
   },
@@ -112,6 +114,18 @@ export const MESSAGES = {
   HRM: {
     NHAN_VIEN_NOT_FOUND: 'Không tìm thấy nhân viên',
     NGUOI_PHU_THUOC_NOT_FOUND: 'Không tìm thấy người phụ thuộc',
+    TAI_LIEU_NOT_FOUND: 'Không tìm thấy tài liệu',
+    HOP_DONG_NOT_FOUND: 'Không tìm thấy hợp đồng',
+    DRIVE_CHUA_KET_NOI:
+      'Công ty chưa kết nối Google Drive — bấm "Thêm file" để đăng nhập Google và kết nối.',
+    DRIVE_CAN_KET_NOI_LAI:
+      'Kết nối Google Drive đã hết hiệu lực (bị thu hồi quyền), vui lòng kết nối lại.',
+    DRIVE_FILE_DA_BI_XOA:
+      'File đã bị xóa trên Google Drive nên không xem được nữa. Vui lòng tải lại file scan.',
+    DRIVE_LOI_GOOGLE:
+      'Google Drive đang không phản hồi đúng nên chưa xử lý được file scan. Vui lòng thử lại sau ít phút; nếu vẫn lỗi, báo quản trị viên kiểm tra cấu hình Google Drive.',
+    DRIVE_KHONG_KET_NOI_DUOC:
+      'Máy chủ không kết nối được tới Google nên chưa xử lý được file scan. Đây là sự cố mạng phía máy chủ, không phải do dữ liệu bạn nhập — vui lòng thử lại sau ít phút hoặc báo quản trị viên.',
     PHONG_BAN_NOT_FOUND: 'Không tìm thấy phòng ban',
     PHONG_BAN_ME_NOT_FOUND: 'Phòng ban cha không tồn tại',
     PHONG_BAN_ME_SELF: 'Phòng ban cha không thể là chính nó',
