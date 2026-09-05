@@ -38,15 +38,12 @@ export async function update(req: FastifyRequest, reply: FastifyReply) {
   const db = await resolveTenantDb(req);
   const { ma_pb } = validateParams(phongBanParamSchema, req.params);
   const body = validateBody(phongBanUpdateSchema, req.body);
-  return sendOk(
-    reply,
-    await updatePhongBan(db, decodeURIComponent(ma_pb), body),
-  );
+  return sendOk(reply, await updatePhongBan(db, ma_pb, body));
 }
 
 // DELETE /api/v1/hrm/phong-ban/:ma_pb
 export async function remove(req: FastifyRequest, reply: FastifyReply) {
   const db = await resolveTenantDb(req);
   const { ma_pb } = validateParams(phongBanParamSchema, req.params);
-  return sendOk(reply, await deletePhongBan(db, decodeURIComponent(ma_pb)));
+  return sendOk(reply, await deletePhongBan(db, ma_pb));
 }

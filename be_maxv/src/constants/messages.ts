@@ -8,6 +8,10 @@ export const MESSAGES = {
   COMMON: {
     INTERNAL_ERROR: 'Lỗi máy chủ nội bộ',
     VALIDATION_FAILED: 'Dữ liệu không hợp lệ',
+    // Ba thông điệp dưới dùng cho lỗi ràng buộc Postgres (xem errorHandler.plugin.ts).
+    DUPLICATE_KEY: 'Dữ liệu bị trùng, vui lòng thử lại',
+    RECORD_GONE: 'Bản ghi không còn tồn tại, vui lòng tải lại danh sách',
+    STILL_REFERENCED: 'Dữ liệu đang được sử dụng ở nơi khác, không thể thực hiện',
   },
 
   AUTH: {

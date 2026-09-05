@@ -35,6 +35,9 @@ function kiemTraDoDaiMa(ma: string): string {
  * chỗ cấp — FE tự sinh thì hai người tạo cùng lúc trên hai máy dễ ra trùng mã.
  * Mã chỉ phản ánh vị trí LÚC TẠO: đổi "trực thuộc" sau này không đổi mã, vì mã đã nằm trên
  * chứng từ kế toán bên fe_maxv.
+ *
+ * CỐ Ý quét CẢ phòng ban đã xóa mềm (`da_xoa = true`): mã của đơn vị đã xóa không được cấp
+ * lại cho đơn vị khác, nếu không thì chứng từ cũ bị gán sang đơn vị mới mà không ai hay.
  */
 async function sinhMaPhongBan(
   db: PrismaClient,
@@ -69,8 +72,8 @@ async function assertPhongBanMeHopLe(
   }
   await findOrThrow(
     () =>
-      db.hrm_phong_ban.findUnique({
-        where: { ma_pb: maPbMe },
+      db.hrm_phong_ban.findFirst({
+        where: { ma_pb: maPbMe, da_xoa: false },
         select: { ma_pb: true },
       }),
     new NotFoundError(MESSAGES.HRM.PHONG_BAN_ME_NOT_FOUND),
@@ -111,7 +114,7 @@ async function assertKhongVongLap(
  * Danh mục phòng ban vốn nhỏ nên lấy hết 1 lượt rồi map trong bộ nhớ — không thêm query.
  */
 export async function listPhongBan(db: PrismaClient, q: PhongBanListQuery) {
-  const and: Prisma.hrm_phong_banWhereInput[] = [];
+  const and: Prisma.hrm_phong_banWhereInput[] = [{ da_xoa: false }];
   if (q.ma_pb) and.push({ ma_pb: { contains: q.ma_pb, mode: 'insensitive' } });
   if (q.ten_pb)
     and.push({ ten_pb: { contains: q.ten_pb, mode: 'insensitive' } });
@@ -119,14 +122,24 @@ export async function listPhongBan(db: PrismaClient, q: PhongBanListQuery) {
 
   const [rows, tatCa, demNhanVien] = await Promise.all([
     db.hrm_phong_ban.findMany({
-      where: and.length ? { AND: and } : undefined,
+      where: { AND: and },
       select: phongBanSelect,
       orderBy: { ma_pb: 'asc' },
     }),
     // Lấy riêng danh sách tên: phòng ban cha có thể bị lọc khỏi `rows` (vd lọc theo tên con)
     // nhưng vẫn phải hiện đúng tên cha.
-    db.hrm_phong_ban.findMany({ select: { ma_pb: true, ten_pb: true } }),
-    db.hrm_nhan_vien.groupBy({ by: ['ma_pb'], _count: { _all: true } }),
+    db.hrm_phong_ban.findMany({
+      where: { da_xoa: false },
+      select: { ma_pb: true, ten_pb: true },
+    }),
+    // `so_nv` chỉ đếm người ĐANG LÀM (status '1'): cột này trả lời "phòng ban có bao nhiêu
+    // người làm việc", gộp cả người đã nghỉ vào là con số không dùng được để làm gì.
+    // Guard lúc xóa thì đếm khác — xem `deletePhongBan`.
+    db.hrm_nhan_vien.groupBy({
+      by: ['ma_pb'],
+      where: { da_xoa: false, status: '1' },
+      _count: { _all: true },
+    }),
   ]);
 
   const tenTheoMa = new Map(tatCa.map((r) => [r.ma_pb, r.ten_pb]));
@@ -185,8 +198,8 @@ export async function updatePhongBan(
 ) {
   await findOrThrow(
     () =>
-      db.hrm_phong_ban.findUnique({
-        where: { ma_pb: maPb },
+      db.hrm_phong_ban.findFirst({
+        where: { ma_pb: maPb, da_xoa: false },
         select: { ma_pb: true },
       }),
     new NotFoundError(MESSAGES.HRM.PHONG_BAN_NOT_FOUND),
@@ -204,12 +217,16 @@ export async function updatePhongBan(
   return { ma_pb: maPb };
 }
 
-/** DELETE — chặn nếu còn phòng ban trực thuộc hoặc còn nhân viên đang thuộc phòng ban này. */
+/**
+ * DELETE — XÓA MỀM (đặt `da_xoa = true`), không xóa dòng.
+ * Giữ dòng lại để `ma_pb` không bao giờ được cấp lại; xem ghi chú ở `sinhMaPhongBan`.
+ * Vẫn chặn nếu còn phòng ban trực thuộc hoặc còn nhân viên (chỉ đếm bản ghi CHƯA xóa).
+ */
 export async function deletePhongBan(db: PrismaClient, maPb: string) {
   await findOrThrow(
     () =>
-      db.hrm_phong_ban.findUnique({
-        where: { ma_pb: maPb },
+      db.hrm_phong_ban.findFirst({
+        where: { ma_pb: maPb, da_xoa: false },
         select: { ma_pb: true },
       }),
     new NotFoundError(MESSAGES.HRM.PHONG_BAN_NOT_FOUND),
@@ -217,9 +234,14 @@ export async function deletePhongBan(db: PrismaClient, maPb: string) {
 
   // Hai tham chiếu này là FK MỀM (không ràng buộc ở DB, xem schema.prisma) nên phải tự chặn:
   // xóa thẳng sẽ để lại nhân viên/phòng ban con trỏ vào mã không còn tồn tại.
-  const [soPhongBanCon, soNhanVien] = await Promise.all([
-    db.hrm_phong_ban.count({ where: { ma_pb_me: maPb } }),
-    db.hrm_nhan_vien.count({ where: { ma_pb: maPb } }),
+  // Guard đếm CẢ người đã nghỉ (khác `so_nv` ở danh sách): hồ sơ người đã nghỉ vẫn trỏ vào
+  // phòng ban này và còn phải dùng khi quyết toán thuế — xóa đi là bỏ lại tham chiếu chết.
+  const [soPhongBanCon, soNhanVien, soDangLam] = await Promise.all([
+    db.hrm_phong_ban.count({ where: { ma_pb_me: maPb, da_xoa: false } }),
+    db.hrm_nhan_vien.count({ where: { ma_pb: maPb, da_xoa: false } }),
+    db.hrm_nhan_vien.count({
+      where: { ma_pb: maPb, da_xoa: false, status: '1' },
+    }),
   ]);
   if (soPhongBanCon > 0) {
     throw new ConflictError(
@@ -227,11 +249,21 @@ export async function deletePhongBan(db: PrismaClient, maPb: string) {
     );
   }
   if (soNhanVien > 0) {
+    // Nói rõ cả hai con số: nếu chỉ báo tổng thì người dùng thấy cột "Nhân viên" hiện 0
+    // (chỉ đếm người đang làm) mà vẫn bị chặn, không hiểu vì sao.
+    const daNghi = soNhanVien - soDangLam;
+    const chiTiet =
+      daNghi > 0
+        ? `${soNhanVien} nhân viên (${soDangLam} đang làm, ${daNghi} đã nghỉ)`
+        : `${soNhanVien} nhân viên`;
     throw new ConflictError(
-      `Phòng ban "${maPb}" đang có ${soNhanVien} nhân viên, không thể xóa.`,
+      `Phòng ban "${maPb}" đang có ${chiTiet}, không thể xóa.`,
     );
   }
 
-  await db.hrm_phong_ban.delete({ where: { ma_pb: maPb } });
+  await db.hrm_phong_ban.update({
+    where: { ma_pb: maPb },
+    data: { da_xoa: true, datetime2: new Date() },
+  });
   return { ma_pb: maPb };
 }

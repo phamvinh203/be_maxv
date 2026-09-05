@@ -838,7 +838,13 @@ model hrm_phong_ban {
   ma_pb_me String? @db.VarChar(24) // phòng ban cha — null = phòng ban gốc (hrm_phong_ban.ma_pb)
   ghi_chu  String? @db.VarChar(512)
 
-  status    String   @default("1") @db.VarChar(1) // 1 đang hoạt động, 0 ngừng hoạt động
+  status String @default("1") @db.VarChar(1) // 1 đang hoạt động, 0 ngừng hoạt động
+
+  /// Xóa MỀM. Dòng ở lại để `ma_pb` không bao giờ được cấp lại cho phòng ban khác — mã đã
+  /// nằm trên chứng từ kế toán, cấp lại là gán lịch sử của đơn vị này sang đơn vị khác.
+  /// Cột riêng, KHÔNG mượn `status`: "ngừng hoạt động" và "đã xóa" là hai chuyện khác nhau.
+  da_xoa Boolean @default(false)
+
   datetime0 DateTime @default(now())
   datetime2 DateTime @default(now())
 
@@ -884,7 +890,13 @@ model hrm_nhan_vien {
 
   ghi_chu String? @db.VarChar(2000)
 
-  status    String   @default("1") @db.VarChar(1) // 1 đang làm, 0 đã nghỉ
+  status String @default("1") @db.VarChar(1) // 1 đang làm, 0 đã nghỉ
+
+  /// Xóa MỀM — xem ghi chú ở `hrm_phong_ban.da_xoa`. Tách khỏi `status` vì "đã nghỉ việc" là
+  /// dữ liệu nhân sự thật (còn phải quyết toán thuế, còn trong báo cáo), khác hẳn "nhập nhầm
+  /// nên xóa"; gộp chung thì người nhập nhầm nằm lại trong báo cáo nhân sự mãi mãi.
+  da_xoa Boolean @default(false)
+
   datetime0 DateTime @default(now())
   datetime2 DateTime @default(now())
 
@@ -919,5 +931,10 @@ model hrm_nguoi_phu_thuoc {
 
   nhan_vien hrm_nhan_vien @relation(fields: [ma_nv], references: [ma_nv], onDelete: Cascade, onUpdate: Cascade)
 
+  /// Một người phụ thuộc chỉ được đăng ký MỘT lần cho cùng một nhân viên (khóa theo MST cá
+  /// nhân của người phụ thuộc). Trùng là giảm trừ gia cảnh tính hai lần -> sai thuế TNCN, mà
+  /// không có gì báo. Postgres coi các NULL là khác nhau nên hồ sơ chưa có MST vẫn nhập được
+  /// nhiều dòng, đúng ý: chỉ chặn khi đã biết MST.
+  @@unique([ma_nv, mst])
   @@index([ma_nv])
 }

@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { optText } from '../shared/primitives';
+import { optMst, optText } from '../shared/primitives';
 
 /** Text tùy chọn có giới hạn độ dài — chặn ở đây để tràn cột trả 400 thay vì 500 từ Postgres. */
 function optTextMax(max: number, nhan: string) {
@@ -86,7 +86,7 @@ const thanBody = z.object({
   quan_he: optTextMax(50, 'Quan hệ'),
   ngay_sinh: ngaySinhVn,
   so_cccd: optTextMax(20, 'Số CCCD'),
-  mst: optTextMax(20, 'MST'),
+  mst: optMst,
   dien_thoai: optTextMax(20, 'Số điện thoại'),
   dia_chi: optTextMax(255, 'Địa chỉ'),
 
@@ -162,7 +162,13 @@ export const nguoiPhuThuocUpdateSchema = thanBody
 
 /** Query danh sách (lọc theo nhân viên / họ tên). */
 export const nguoiPhuThuocListQuerySchema = z.object({
-  ma_nv: z.string().trim().optional().default(''),
+  // In hoa cho khớp cách ghi — xem ghi chú cùng loại ở nhanVien.validator.
+  ma_nv: z
+    .string()
+    .trim()
+    .optional()
+    .default('')
+    .transform((s) => s.toUpperCase()),
   ho_ten: z.string().trim().optional().default(''),
 });
 
