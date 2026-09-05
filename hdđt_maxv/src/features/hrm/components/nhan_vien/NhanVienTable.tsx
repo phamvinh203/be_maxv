@@ -2,6 +2,7 @@ import { useMemo, useState } from "react";
 import { toast } from "react-toastify";
 import Box from "@mui/material/Box";
 import Stack from "@mui/material/Stack";
+import CircularProgress from "@mui/material/CircularProgress";
 import Paper from "@mui/material/Paper";
 import Table from "@mui/material/Table";
 import TableBody from "@mui/material/TableBody";
@@ -27,8 +28,8 @@ import { getErrorMessage } from "../../../../lib/errors";
 import { sapXepCay } from "../../cay";
 import { KIEU_LUONG, PB_CHUA_GAN, TRANG_THAI_NV } from "../../constants";
 import { ngayVn, nhan } from "../../format";
-import { useNhanVienRows, useXoaNhanVien } from "../../mock/hooks/nhanVien";
-import { usePhongBanList } from "../../mock/hooks/phongBan";
+import { useNhanVienRows, useXoaNhanVien } from "../../api/nhanVienQueries";
+import { usePhongBanList } from "../../api/phongBanQueries";
 import type { NhanVienFilters, NhanVienRow, TrangThai } from "../../types";
 import XacNhanXoaDialog from "../XacNhanXoaDialog";
 import NhanVienDialog from "./NhanVienDialog";
@@ -37,7 +38,7 @@ import NhanVienChiTietDialog from "./chi_tiet/NhanVienChiTietDialog";
 export default function NhanVienTable() {
   // Mặc định chỉ xem người đang làm — danh sách nhân sự hằng ngày là danh sách này.
   const [filters, setFilters] = useState<NhanVienFilters>({ q: "", ma_pb: "", status: "1" });
-  const rows = useNhanVienRows(filters);
+  const { rows, isLoading, isError, error } = useNhanVienRows(filters);
   const phongBan = usePhongBanList();
   const xoaNhanVien = useXoaNhanVien();
 
@@ -237,13 +238,29 @@ export default function NhanVienTable() {
             {rows.length === 0 && (
               <TableRow>
                 <TableCell colSpan={12}>
-                  <Typography
-                    variant="body2"
-                    color="text.disabled"
-                    sx={{ textAlign: "center", py: 4 }}
-                  >
-                    Không có nhân viên nào khớp bộ lọc.
-                  </Typography>
+                  {/* Phân biệt đang tải / lỗi tải / thật sự không có: gộp chung thì lỗi mạng
+                      trông y hệt "chưa có nhân viên nào", người dùng sẽ nhập lại từ đầu. */}
+                  {isLoading ? (
+                    <Stack sx={{ alignItems: "center", py: 4 }}>
+                      <CircularProgress size={24} />
+                    </Stack>
+                  ) : isError ? (
+                    <Typography
+                      variant="body2"
+                      color="error"
+                      sx={{ textAlign: "center", py: 4 }}
+                    >
+                      {getErrorMessage(error, "Không tải được danh sách nhân viên.")}
+                    </Typography>
+                  ) : (
+                    <Typography
+                      variant="body2"
+                      color="text.disabled"
+                      sx={{ textAlign: "center", py: 4 }}
+                    >
+                      Không có nhân viên nào khớp bộ lọc.
+                    </Typography>
+                  )}
                 </TableCell>
               </TableRow>
             )}

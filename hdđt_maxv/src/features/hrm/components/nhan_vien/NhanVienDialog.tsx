@@ -15,13 +15,15 @@ import { getErrorMessage } from "../../../../lib/errors";
 import { hopDongHienHanh } from "../../cay";
 import { homNay } from "../../format";
 import { hopDongRong, nhanVienRong } from "../../formDefaults";
-import { useHopDongList } from "../../mock/hooks/hopDong";
+// Nhân viên đã chạy API thật; còn lịch sử hợp đồng (và các tab Hồ sơ / Người phụ thuộc bên
+// trong) vẫn là mock — khóa theo ma_nv nên nhân viên tạo mới sẽ thấy các tab đó trống.
 import {
   useMaNhanVienMoi,
   useNhanVienDetail,
   useSuaNhanVien,
   useThemNhanVien,
-} from "../../mock/hooks/nhanVien";
+} from "../../api/nhanVienQueries";
+import { useHopDongList } from "../../mock/hooks/hopDong";
 import type { HopDongFormValues, NhanVien } from "../../types";
 import HopDongTab from "./tabs/HopDongTab";
 import HoSoTab from "./tabs/HoSoTab";

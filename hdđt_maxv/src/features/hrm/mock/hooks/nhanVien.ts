@@ -1,4 +1,13 @@
-/** Hook nghiệp vụ nhân viên. Xem ghi chú về chữ ký ở `hooks/phongBan.ts`. */
+/**
+ * Hook nghiệp vụ nhân viên — BẢN MOCK.
+ *
+ * ĐỌC TRƯỚC KHI DÙNG: màn Nhân viên (bảng, form thêm/sửa, dialog chi tiết) đã chuyển sang API
+ * thật ở `../../api/nhanVienQueries.ts`. File này chỉ còn phục vụ các màn CHƯA nối API — các
+ * dialog "Tái sử dụng…" của Dữ liệu lương, Set lương, form Người phụ thuộc và Gán nhanh phòng
+ * ban — vì chúng vẫn đọc/ghi kho mock. Thêm màn mới thì dùng bản API, đừng import từ đây.
+ *
+ * Xem ghi chú về chữ ký ở `hooks/phongBan.ts`.
+ */
 
 import { useCallback, useMemo } from "react";
 import { hopDongHienHanh, sinhMaNhanVien } from "../../cay";

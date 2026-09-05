@@ -21,7 +21,8 @@ import {
   TRANG_THAI_NV,
 } from "../../../constants";
 import { ngayVn, nhan, tienVn } from "../../../format";
-import { usePhongBanList } from "../../../mock/hooks/phongBan";
+// Phải là danh sách phòng ban THẬT: BE chặn ma_pb không tồn tại, chọn từ mock sẽ lưu lỗi 404.
+import { usePhongBanList } from "../../../api/phongBanQueries";
 import type {
   GioiTinh,
   HopDong,

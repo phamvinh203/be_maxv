@@ -14,8 +14,9 @@ import CloseRounded from "@mui/icons-material/CloseRounded";
 import EditRounded from "@mui/icons-material/EditRounded";
 import { hopDongHienHanh } from "../../../cay";
 import { homNay } from "../../../format";
+import { useNhanVienDetail } from "../../../api/nhanVienQueries";
+// Lịch sử hợp đồng vẫn mock — khóa theo ma_nv nên nhân viên tạo qua API sẽ thấy phần này trống.
 import { useHopDongList } from "../../../mock/hooks/hopDong";
-import { useNhanVienDetail } from "../../../mock/hooks/nhanVien";
 import HoSoTab from "../tabs/HoSoTab";
 import NguoiPhuThuocTab from "../tabs/NguoiPhuThuocTab";
 import ThayDoiHopDongDialog from "../ThayDoiHopDongDialog";

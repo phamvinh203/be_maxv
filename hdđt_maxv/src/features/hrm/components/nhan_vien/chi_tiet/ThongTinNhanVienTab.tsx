@@ -19,7 +19,7 @@ import {
 } from "../../../constants";
 import { homNay, ngayVn, nhan, tienVn } from "../../../format";
 import { trangThaiHopDong } from "../../../cay";
-import { usePhongBanList } from "../../../mock/hooks/phongBan";
+import { usePhongBanList } from "../../../api/phongBanQueries";
 import type { HopDong, NhanVien } from "../../../types";
 import OThongTin from "../../OThongTin";
 
