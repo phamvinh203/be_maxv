@@ -10,14 +10,21 @@ const ghiChu = optText.refine(
   'Ghi chú tối đa 512 ký tự',
 );
 
+/**
+ * Mã phòng ban khi TẠO MỚI: bỏ trống thì service tự sinh theo cây (`PB01`, `PB01.01`…),
+ * có nhập thì tôn trọng mã người dùng đặt. Để server cấp mã vì hai người tạo cùng lúc trên
+ * hai máy không thể tự thỏa thuận với nhau mã kế tiếp là gì.
+ */
+const maPbTuyChon = optText
+  .refine(
+    (v) => v === null || v.length <= 24,
+    'Mã phòng ban tối đa 24 ký tự',
+  )
+  .transform((v) => (v ? v.toUpperCase() : null));
+
 /** Thân request tạo mới 1 phòng ban HRM (hrm_phong_ban). */
 export const phongBanBodySchema = z.object({
-  ma_pb: z
-    .string()
-    .trim()
-    .min(1, 'Mã phòng ban không được để trống')
-    .max(24, 'Mã phòng ban tối đa 24 ký tự')
-    .transform((s) => s.toUpperCase()),
+  ma_pb: maPbTuyChon,
   ten_pb: z
     .string()
     .trim()
