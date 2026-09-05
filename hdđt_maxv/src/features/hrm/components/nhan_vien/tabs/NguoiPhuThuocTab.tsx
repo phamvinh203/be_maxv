@@ -22,7 +22,7 @@ import { kyGiamTru, ngayVn, nhan } from "../../../format";
 import {
   useNguoiPhuThuocList,
   useXoaNguoiPhuThuoc,
-} from "../../../mock/hooks/nguoiPhuThuoc";
+} from "../../../api/nguoiPhuThuocQueries";
 import type { NguoiPhuThuoc } from "../../../types";
 import XacNhanXoaDialog from "../../XacNhanXoaDialog";
 import NguoiPhuThuocFormDialog from "../../nguoi_phu_thuoc/NguoiPhuThuocFormDialog";

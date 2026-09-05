@@ -2,6 +2,7 @@ import { useState } from "react";
 import { toast } from "react-toastify";
 import Box from "@mui/material/Box";
 import Stack from "@mui/material/Stack";
+import CircularProgress from "@mui/material/CircularProgress";
 import Paper from "@mui/material/Paper";
 import Table from "@mui/material/Table";
 import TableBody from "@mui/material/TableBody";
@@ -25,14 +26,14 @@ import { kyGiamTru, ngayVn, nhan } from "../../format";
 import {
   useNguoiPhuThuocRows,
   useXoaNguoiPhuThuoc,
-} from "../../mock/hooks/nguoiPhuThuoc";
+} from "../../api/nguoiPhuThuocQueries";
 import type { NguoiPhuThuocRow } from "../../types";
 import XacNhanXoaDialog from "../XacNhanXoaDialog";
 import NguoiPhuThuocFormDialog from "./NguoiPhuThuocFormDialog";
 
 export default function NguoiPhuThuocTable() {
   const [tuKhoa, setTuKhoa] = useState("");
-  const rows = useNguoiPhuThuocRows(tuKhoa);
+  const { rows, isLoading, isError, error } = useNguoiPhuThuocRows(tuKhoa);
   const xoaNpt = useXoaNguoiPhuThuoc();
 
   const [formOpen, setFormOpen] = useState(false);
@@ -143,15 +144,31 @@ export default function NguoiPhuThuocTable() {
             {rows.length === 0 && (
               <TableRow>
                 <TableCell colSpan={9}>
-                  <Typography
-                    variant="body2"
-                    color="text.disabled"
-                    sx={{ textAlign: "center", py: 4 }}
-                  >
-                    {tuKhoa
-                      ? "Không có người phụ thuộc nào khớp."
-                      : "Chưa có người phụ thuộc nào."}
-                  </Typography>
+                  {/* Tách "đang tải" và "lỗi tải" khỏi "chưa có": gộp chung thì lỗi mạng
+                      trông y hệt danh sách rỗng, người dùng sẽ nhập lại từ đầu. */}
+                  {isLoading ? (
+                    <Stack sx={{ alignItems: "center", py: 4 }}>
+                      <CircularProgress size={24} />
+                    </Stack>
+                  ) : isError ? (
+                    <Typography
+                      variant="body2"
+                      color="error"
+                      sx={{ textAlign: "center", py: 4 }}
+                    >
+                      {getErrorMessage(error, "Không tải được danh sách người phụ thuộc.")}
+                    </Typography>
+                  ) : (
+                    <Typography
+                      variant="body2"
+                      color="text.disabled"
+                      sx={{ textAlign: "center", py: 4 }}
+                    >
+                      {tuKhoa
+                        ? "Không có người phụ thuộc nào khớp."
+                        : "Chưa có người phụ thuộc nào."}
+                    </Typography>
+                  )}
                 </TableCell>
               </TableRow>
             )}

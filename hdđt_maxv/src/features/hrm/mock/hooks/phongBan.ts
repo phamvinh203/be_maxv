@@ -1,5 +1,11 @@
 /**
- * Hook nghiệp vụ phòng ban.
+ * Hook nghiệp vụ phòng ban — BẢN MOCK.
+ *
+ * ĐỌC TRƯỚC KHI DÙNG: màn Phòng ban đã chuyển sang API thật ở `../../api/phongBanQueries.ts`.
+ * File này chỉ còn phục vụ các màn CHƯA nối API (bộ lọc bảng lương, kỳ lương, set lương, bảng
+ * và tab nhân viên) vì chúng vẫn đọc nhân viên từ mock store. Hai nơi đang giữ hai danh sách
+ * phòng ban khác nhau — cố ý, sẽ hết khi API nhân viên xong. Thêm màn mới thì dùng bản API,
+ * đừng import từ đây.
  *
  * Mọi hàm ghi đều `async` và **ném `Error` có thông điệp tiếng Việt** khi vi
  * phạm ràng buộc — component chỉ việc `try/catch` rồi toast. Giữ đúng chữ ký

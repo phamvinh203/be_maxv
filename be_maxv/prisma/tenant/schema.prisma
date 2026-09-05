@@ -369,7 +369,7 @@ model d81 {
   tk_gv   String? @db.VarChar(24)
   tk_cpbh String? @db.VarChar(24)
 
-  gia2 Decimal @default(0) @db.Decimal(18, 4)
+  gia2  Decimal @default(0) @db.Decimal(18, 4)
   tien2 Decimal @default(0) @db.Decimal(18, 4)
   ck    Decimal @default(0) @db.Decimal(18, 4)
   thue  Decimal @default(0) @db.Decimal(18, 4)
@@ -441,7 +441,7 @@ model vct50view {
   thtttoan String? @db.VarChar(32) // Hình thức thanh toán
   gchu     String? @db.VarChar(1024) // Ghi chú
 
-  detail Json?   // Chi tiết hóa đơn tải riêng từ GDT (/query/invoices/detail); null nếu chưa tải
+  detail Json? // Chi tiết hóa đơn tải riêng từ GDT (/query/invoices/detail); null nếu chưa tải
   tt_tai String? @db.VarChar(16) // Trạng thái tải chi tiết: "OK" | "error"
 
   /// Hóa đơn XML GỐC đã ký số (rút từ gói ZIP của /query/invoices/export-xml).
@@ -498,7 +498,7 @@ model vct60view {
   thtttoan String? @db.VarChar(32) // Hình thức thanh toán
   gchu     String? @db.VarChar(1024) // Ghi chú
 
-  detail Json?   // Chi tiết hóa đơn tải riêng từ GDT (/query/invoices/detail); null nếu chưa tải
+  detail Json? // Chi tiết hóa đơn tải riêng từ GDT (/query/invoices/detail); null nếu chưa tải
   tt_tai String? @db.VarChar(16) // Trạng thái tải chi tiết: "OK" | "error"
 
   /// Hóa đơn XML GỐC đã ký số (rút từ gói ZIP của /query/invoices/export-xml).
@@ -517,8 +517,9 @@ model vct60view {
   @@index([nmmst])
 }
 
-/// Danh mục phòng ban (dmpb) — thuộc Tổng hợp, dùng CHUNG với HRM.
-/// fe_maxv nhập các cột kế toán (dia_chi, ma_td1…); HRM nhập ten_pb / ma_pb_me / ghi_chu.
+/// Danh mục phòng ban (dmpb) — thuộc Tổng hợp (Kế toán). KHÔNG dùng cho HRM: HRM có bảng
+/// phòng ban riêng `hrm_phong_ban` (xem khối "HRM › DANH MỤC NHÂN SỰ" bên dưới). Khi API HRM
+/// ổn định, màn Kế toán sẽ chuyển sang dùng chung `hrm_phong_ban` rồi bỏ bảng này.
 model dmpb {
   ma_pb      String  @id @db.VarChar(24)
   ten_pb     String  @db.VarChar(254)
@@ -555,46 +556,6 @@ model sync_log {
 }
 
 // ============================================================
-//  HRM › DANH MỤC NHÂN SỰ
-//  Phòng ban KHÔNG có bảng riêng — dùng chung dmpb (cột ma_pb_me).
-//  Lát 1 chỉ tạo bảng nhân viên để đếm; màn hình nhân viên ở lát 2.
-// ============================================================
-
-/// Danh mục nhân viên (HRM). Liên kết dmpb qua ma_pb, hrm_chuc_vu qua ma_cv (lát 2).
-model hrm_nhan_vien {
-  ma_nv  String @id @db.VarChar(24)
-  ho_ten String @db.VarChar(254)
-
-  // Thông tin cá nhân
-  so_cccd     String?   @db.VarChar(24) // KHÔNG unique: hồ sơ nhập dần, nhiều NV chưa có CCCD
-  mst_ca_nhan String?   @db.VarChar(24)
-  ngay_sinh   DateTime?
-  gioi_tinh   String?   @db.VarChar(8) // nam | nu | khac
-  dien_thoai  String?   @db.VarChar(32)
-  email       String?   @db.VarChar(254)
-  dia_chi     String?   @db.VarChar(254)
-  ghi_chu     String?   @db.VarChar(512)
-
-  // Công việc & lương
-  ma_pb     String?   @db.VarChar(24) // phòng ban (dmpb)
-  ma_cv     String?   @db.VarChar(24) // chức vụ (hrm_chuc_vu — lát 2)
-  cap_bac   String?   @db.VarChar(64) // chữ tự do, không phải danh mục
-  cong_doan Boolean   @default(false) // trích 1% phí công đoàn trên lương đóng BHXH
-  ngay_vao  DateTime?
-
-  // Tài khoản ngân hàng
-  ngan_hang String? @db.VarChar(128)
-  so_tk     String? @db.VarChar(32)
-  chu_tk    String? @db.VarChar(254)
-
-  status    String   @default("1") @db.VarChar(1) // 1 đang làm, 0 đã nghỉ
-  datetime0 DateTime @default(now())
-  datetime2 DateTime @default(now())
-
-  @@index([ma_pb])
-}
-
-// ============================================================
 //  DỊCH VỤ CÔNG › CACHE HỒ SƠ ĐÃ NỘP (dich-vu-cong)
 //  Cùng chiến lược cache như vct50view: cột chính bóc sẵn + `raw` Json
 //  giữ nguyên dữ liệu cổng, file cache VĨNH VIỄN trong cột Bytes
@@ -615,18 +576,18 @@ model dvc_ho_so {
   /// Mặc định "dvc": mọi dòng lưu trước khi có cột này đều đến từ tab Dịch vụ công.
   nguon String @default("dvc") @db.VarChar(8)
 
-  ten_tthc     String? @db.VarChar(512) // Tên TTHC
-  to_khai      String? @db.VarChar(512) // Tờ khai / phụ lục
-  ky_tinh_thue String? @db.VarChar(32)
-  loai_to_khai String? @db.VarChar(64) // Chính thức / bổ sung...
-  lan_nop      String? @db.VarChar(16)
-  lan_bo_sung  String? @db.VarChar(16) // "Lần nộp bổ sung" bên cổng
-  ngay_nop     String? @db.VarChar(32) // Dạng thô cổng trả (dd/MM/yyyy...), không parse Date
+  ten_tthc      String?   @db.VarChar(512) // Tên TTHC
+  to_khai       String?   @db.VarChar(512) // Tờ khai / phụ lục
+  ky_tinh_thue  String?   @db.VarChar(32)
+  loai_to_khai  String?   @db.VarChar(64) // Chính thức / bổ sung...
+  lan_nop       String?   @db.VarChar(16)
+  lan_bo_sung   String?   @db.VarChar(16) // "Lần nộp bổ sung" bên cổng
+  ngay_nop      String?   @db.VarChar(32) // Dạng thô cổng trả (dd/MM/yyyy...), không parse Date
   /// Suy từ `ngay_nop` (parse best-effort dd/MM/yyyy) CHỈ để lọc/sắp xếp theo khoảng ngày ở
   /// `timHoSoDaDongBo` — hiển thị vẫn dùng `ngay_nop` (chuỗi thô), cột này không xuất ra FE.
   ngay_nop_date DateTime? @db.Date
-  noi_nop      String? @db.VarChar(254) // "Cơ quan thuế tiếp nhận"
-  trang_thai   String? @db.VarChar(254) // Ghi đè mỗi lần tra cứu — KHÔNG cache vĩnh viễn
+  noi_nop       String?   @db.VarChar(254) // "Cơ quan thuế tiếp nhận"
+  trang_thai    String?   @db.VarChar(254) // Ghi đè mỗi lần tra cứu — KHÔNG cache vĩnh viễn
 
   /// Tờ khai gốc NGUYÊN BYTE (bóc từ gói ZIP của POST /tchs/downloadhoso). Cache vĩnh viễn:
   /// null = chưa tải; đã có thì lượt "Tải file" sau đọc thẳng DB, không gọi lại cổng.
@@ -636,12 +597,12 @@ model dvc_ho_so {
   xml_to_khai_bin Bytes?
   /// MIME của `xml_to_khai_bin` — hầu hết là `application/xml`, nhưng phải lưu để không đoán bừa.
   /// null = dòng cũ chưa có cột này; đọc ra thì đoán theo đuôi `ten_file_xml`.
-  content_type String? @db.VarChar(128)
+  content_type    String? @db.VarChar(128)
   /// CŨ — chỉ còn để ĐỌC bản đã cache trước khi có `xml_to_khai_bin`; KHÔNG ghi mới vào đây nữa.
   /// Giữ lại thay vì đổi kiểu tại chỗ vì `prisma db push` sẽ DROP cột (text không cast được sang
   /// bytea), xóa sạch tờ khai đã cache trên MỌI tenant. Xem chú thích `dvc_tai_lieu.noi_dung`.
-  xml_to_khai   String? @db.Text
-  ten_file_xml  String? @db.VarChar(254) // Tên file thật cổng đặt, dùng lại khi trả về FE
+  xml_to_khai     String? @db.Text
+  ten_file_xml    String? @db.VarChar(254) // Tên file thật cổng đặt, dùng lại khi trả về FE
 
   /// Đã đồng bộ TRỌN VẸN (xml + danh sách thông báo + nội dung TỪNG thông báo) ít nhất 1 lần.
   /// KHÔNG gồm "tệp đính kèm" — cổng chưa có bộ bóc tin cậy cho phần đó, xem `dongBoChiTietHoSo`.
@@ -673,9 +634,9 @@ model dvc_tai_lieu {
   loai String @db.VarChar(16)
   khoa String @db.VarChar(64)
 
-  ma_ho_so String  @db.VarChar(64)
-  tieu_de  String? @db.VarChar(512) // Tiêu đề thông báo (vd "V/v: Tiếp nhận hồ sơ...")
-  ngay_gui String? @db.VarChar(32) // Dạng thô cổng trả (vd "06:58 29/07/2026")
+  ma_ho_so     String  @db.VarChar(64)
+  tieu_de      String? @db.VarChar(512) // Tiêu đề thông báo (vd "V/v: Tiếp nhận hồ sơ...")
+  ngay_gui     String? @db.VarChar(32) // Dạng thô cổng trả (vd "06:58 29/07/2026")
   /// Nội dung file NGUYÊN BYTE — null = chưa tải. Dùng `Bytes` chứ không `Text` vì cổng trả
   /// thông báo dưới nhiều định dạng: XML, nhưng cũng có PDF/ZIP. Ép nhị phân qua
   /// `bytes.toString("utf8")` để nhét vào cột Text làm Postgres từ chối cả dòng
@@ -689,8 +650,8 @@ model dvc_tai_lieu {
   /// (xem `sync-tenants.ts`): Postgres không cast được text -> bytea nên push sẽ DROP cột, xóa sạch
   /// thông báo đã cache trên MỌI tenant. Xóa cột này ở một lượt dọn riêng khi đã chắc không còn dòng
   /// nào chỉ có `noi_dung`.
-  noi_dung String? @db.Text
-  ten_file String? @db.VarChar(254) // Tên file thật cổng đặt khi tải
+  noi_dung     String? @db.Text
+  ten_file     String? @db.VarChar(254) // Tên file thật cổng đặt khi tải
 
   raw Json
 
@@ -711,8 +672,8 @@ model dvc_tai_lieu {
 model dvc_dong_bo_log {
   id String @id @db.VarChar(64)
 
-  loai    String @db.VarChar(32) // khớp TAB_DVC.value: to-khai-dvc | giay-nop-tien
-  tu_ngay DateTime
+  loai     String   @db.VarChar(32) // khớp TAB_DVC.value: to-khai-dvc | giay-nop-tien
+  tu_ngay  DateTime
   den_ngay DateTime
 
   tong_ho_so   Int @default(0) // Tổng hồ sơ cổng trả trong khoảng ngày
@@ -740,25 +701,25 @@ model dvc_giay_nop_tien {
   /// "id chứng từ" nội bộ cổng — dùng gọi bước detail/download (xem `taiPdfGnt`). KHÔNG lộ ra FE.
   ctu_id String @unique @db.VarChar(64)
 
-  so_giay_nop_tien String? @db.VarChar(128)
-  so_tien Decimal? @db.Decimal(18, 2)
-  loai_tien String? @db.VarChar(8)
-  trang_thai String? @db.VarChar(254)
-  so_chung_tu String? @db.VarChar(128)
-  ngay_lap_gnt String? @db.VarChar(32)
+  so_giay_nop_tien    String?   @db.VarChar(128)
+  so_tien             Decimal?  @db.Decimal(18, 2)
+  loai_tien           String?   @db.VarChar(8)
+  trang_thai          String?   @db.VarChar(254)
+  so_chung_tu         String?   @db.VarChar(128)
+  ngay_lap_gnt        String?   @db.VarChar(32)
   /// Suy từ "Ngày lập GNT" (best-effort) CHỈ để lọc/sắp theo khoảng ngày — cột nào đúng nhất trong
   /// 4 cột ngày của GNT (lập/gửi/nộp thuế/nộp DS chi tiết) cần xác minh, xem mục 7.6 của spec.
-  ngay_nop_date DateTime? @db.Date
-  ngan_hang String? @db.VarChar(254)
-  tai_khoan_ngan_hang String? @db.VarChar(64)
+  ngay_nop_date       DateTime? @db.Date
+  ngan_hang           String?   @db.VarChar(254)
+  tai_khoan_ngan_hang String?   @db.VarChar(64)
 
   /// PDF cache — mẫu giống `dvc_ho_so.xml_to_khai_bin`, null = chưa tải.
   file_pdf_bin Bytes?
   content_type String? @db.VarChar(128)
-  ten_file String? @db.VarChar(254)
+  ten_file     String? @db.VarChar(254)
 
   /// Nguyên dòng cổng trả ({tiêu đề cột: giá trị}) — cổng thêm cột không cần migration.
-  raw Json
+  raw        Json
   da_dong_bo Boolean @default(false)
 
   datetime0 DateTime @default(now())
@@ -791,7 +752,7 @@ model tokhai_ky_hoa_don {
   ky_so   Int // 1..12 (tháng) hoặc 1..4 (quý)
 
   /// Cột "Kê khai/không kê khai" trên bảng kê. Mặc định true khi vừa gán kỳ; kế toán đổi được.
-  ke_khai Boolean @default(true)
+  ke_khai            Boolean @default(true)
   /// Cột "Chỉ tiêu tăng giảm" — để trống cho tới khi kế toán chọn.
   chi_tieu_tang_giam String? @db.VarChar(32)
   ghi_chu            String? @db.VarChar(512)
@@ -818,7 +779,7 @@ model tokhai_gtgt01 {
   trang_thai String @default("nhap") @db.VarChar(16) // nhap | chot
 
   /// Bộ chỉ tiêu CUỐI — số đem đi nộp: { ct22, ct23, ..., ct43 }.
-  ct Json
+  ct     Json
   /// Số máy tự tính, giữ nguyên kể cả sau khi kế toán ghi đè — để trả lời "máy ra bao nhiêu".
   ct_may Json
   /// Ô kế toán sửa tay + lý do: { ct25: { gia: 1234, lyDo: "..." } }. Lượt tính lại KHÔNG xóa.
@@ -839,13 +800,13 @@ model tokhai_gtgt01 {
   /// giữ nguyên nếu kế toán đã sửa. `null` = kỳ chưa tính hoặc không có hàng 8%.
   phu_luc Json?
 
-  so_hd_ban Int @default(0)
-  so_hd_mua Int @default(0)
+  so_hd_ban           Int @default(0)
+  so_hd_mua           Int @default(0)
   /// Số hóa đơn kế toán đã đánh "Không kê khai" — nhìn bản tờ khai là biết đã loại bao nhiêu tờ,
   /// khỏi phải mở lại bảng kê để đếm.
   so_hd_khong_ke_khai Int @default(0)
   /// Hóa đơn BÁN RA thiếu `detail` nên chưa tách được thuế suất; bản đáng tin phải là 0.
-  hd_thieu_detail Int @default(0)
+  hd_thieu_detail     Int @default(0)
 
   /// Câu cảnh báo của lượt "Tính lại" GẦN NHẤT (`soatToKhai.ts`), vd "N hóa đơn thay thế có tổng
   /// NHỎ HƠN hóa đơn gốc". LƯU LẠI để mở lại bản cũ vẫn thấy đủ — không phải bấm "Tính lại" mới
@@ -864,4 +825,99 @@ model tokhai_gtgt01 {
   datetime2 DateTime @updatedAt
 
   @@id([nam, ky_loai, ky_so])
+}
+
+// ============================================================
+//  HRM › DANH MỤC NHÂN SỰ
+// ============================================================
+
+// Danh mục phòng ban (hrm_phong_ban) — thuộc HRM. 
+model hrm_phong_ban {
+  ma_pb    String  @id @db.VarChar(24)
+  ten_pb   String  @db.VarChar(254)
+  ma_pb_me String? @db.VarChar(24) // phòng ban cha — null = phòng ban gốc (hrm_phong_ban.ma_pb)
+  ghi_chu  String? @db.VarChar(512)
+
+  status    String   @default("1") @db.VarChar(1) // 1 đang hoạt động, 0 ngừng hoạt động
+  datetime0 DateTime @default(now())
+  datetime2 DateTime @default(now())
+
+  @@index([ma_pb_me])
+}
+
+/// Danh mục nhân viên (HRM).
+model hrm_nhan_vien {
+  ma_nv  String @id @db.VarChar(24) // để trống thì service tự sinh mã kế tiếp, không trùng
+  ho_ten String @db.VarChar(254)
+
+  // Thông tin cá nhân
+  ngay_sinh   DateTime? @db.Date
+  so_cccd     String?   @db.VarChar(20) // KHÔNG unique: hồ sơ nhập dần, nhiều NV chưa có CCCD
+  mst_ca_nhan String?   @db.VarChar(20)
+  dien_thoai  String?   @db.VarChar(20)
+  email       String?   @db.VarChar(254)
+  dia_chi     String?   @db.VarChar(500)
+  gioi_tinh   String?   @db.VarChar(8) // nam | nu | khac
+
+  // Công việc
+  ma_pb   String? @db.VarChar(24) // phòng ban (hrm_phong_ban.ma_pb)
+  chuc_vu String? @db.VarChar(100) // chữ tự do, không phải danh mục
+  cap_bac String? @db.VarChar(64) // chữ tự do (vd "Quản lý cấp trung"), không phải danh mục
+
+  // Hợp đồng & lương
+  so_hop_dong       String    @db.VarChar(100) // vd "HĐLĐ-001/2026"
+  loai_hop_dong     String    @db.VarChar(16) // thu_viec | hdld | hdvc
+  kieu_luong        String    @db.VarChar(8) // gross | net
+  ngay_vao_lam      DateTime  @db.Date // = hiệu lực TỪ của hợp đồng ban đầu
+  ngay_hieu_luc_toi DateTime? @db.Date // null = vô thời hạn; phải sau ngay_vao_lam (validator)
+
+  // Chế độ — service quy về true/false trước khi lưu (Excel để trống = mặc định dưới đây)
+  bhxh           Boolean @default(true)
+  tncn           Boolean @default(true)
+  mien_cham_cong Boolean @default(false)
+  cong_doan      Boolean @default(true) // service tự ép false khi loai_hop_dong = hdvc
+
+  // Tài khoản ngân hàng
+  so_tai_khoan  String? @db.VarChar(30)
+  ten_tai_khoan String? @db.VarChar(100)
+  ngan_hang     String? @db.VarChar(128) // chọn từ danh sách cố định hoặc "Khác" (validator)
+
+  ghi_chu String? @db.VarChar(2000)
+
+  status    String   @default("1") @db.VarChar(1) // 1 đang làm, 0 đã nghỉ
+  datetime0 DateTime @default(now())
+  datetime2 DateTime @default(now())
+
+  nguoi_phu_thuoc hrm_nguoi_phu_thuoc[]
+
+  @@index([ma_pb])
+  @@index([so_cccd])
+}
+
+/// Người phụ thuộc (giảm trừ gia cảnh TNCN) của nhân viên — bản ghi con thật sự, xoá nhân
+/// viên thì xoá theo (cascade). KHÔNG lưu cột "tên nhân viên": FE join qua `ho_ten` của
+/// `hrm_nhan_vien` khi hiển thị/xuất Excel, tránh dữ liệu trùng lặp có thể lệch khi NV đổi tên.
+model hrm_nguoi_phu_thuoc {
+  id     String @id @db.VarChar(64) // sinh tự động (uuid) ở service khi tạo
+  ma_nv  String @db.VarChar(24)
+  ho_ten String @db.VarChar(200) // họ tên người phụ thuộc
+
+  quan_he    String? @db.VarChar(50) // vo | chong | con | bo | me | anh_chi_em | khac (validator)
+  ngay_sinh  String? @db.VarChar(10) // dd/MM/yyyy dạng CHỮ (không parse Date) — nhiều hồ sơ NPT chỉ nhớ ước lượng, khác nhân viên
+  so_cccd    String? @db.VarChar(20)
+  mst        String? @db.VarChar(20)
+  dien_thoai String? @db.VarChar(20)
+  dia_chi    String? @db.VarChar(255)
+
+  dk_tu_thang  Int? // 1..12 (validator)
+  dk_tu_nam    Int? // 2000..2100 (validator)
+  dk_den_thang Int? // 1..12 (validator)
+  dk_den_nam   Int? // 2000..2100 (validator)
+
+  datetime0 DateTime @default(now())
+  datetime2 DateTime @default(now())
+
+  nhan_vien hrm_nhan_vien @relation(fields: [ma_nv], references: [ma_nv], onDelete: Cascade, onUpdate: Cascade)
+
+  @@index([ma_nv])
 }

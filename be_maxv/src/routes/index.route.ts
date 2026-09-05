@@ -16,6 +16,7 @@ import { taiKhoanRoutes } from './accounting/tongHop/taiKhoan.route';
 import { phongBanRoutes } from './accounting/tongHop/phongBan.route';
 import { khachHangRoutes } from './accounting/banHang/khachHang.route';
 import { hoaDonBanHangRoutes } from './accounting/banHang/hoaDonBanHang.route';
+import { hrmRoutes } from './hrm/hrm.route';
 import gdtRoutes from './hddt/gdt.route';
 import gdtDvcRoutes from './dich_vu_cong/gdt-dvc.route';
 import toKhaiRoutes from './to_khai/toKhai.route';
@@ -42,6 +43,9 @@ export async function registerRoutes(app: FastifyInstance) {
   // Bán hàng
   await app.register(khachHangRoutes, { prefix: '/api/v1/ban-hang' });
   await app.register(hoaDonBanHangRoutes, { prefix: '/api/v1/ban-hang' });
+
+  // HRM (nhân sự) — bảng hrm_*
+  await app.register(hrmRoutes, { prefix: '/api/v1/hrm' });
 
   // hóa đơn điện tử
   await app.register(gdtRoutes, { prefix: '/api/v1/gdt' });

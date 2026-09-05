@@ -11,7 +11,7 @@ import Stack from "@mui/material/Stack";
 import { getErrorMessage } from "../../../../lib/errors";
 import { layConChau, sapXepCay } from "../../cay";
 import { TRANG_THAI_PB } from "../../constants";
-import { useLuuPhongBan, usePhongBanList } from "../../mock/hooks/phongBan";
+import { useLuuPhongBan, usePhongBanList } from "../../api/phongBanQueries";
 import type { PhongBanRow, TrangThai } from "../../types";
 
 interface Props {

@@ -105,6 +105,16 @@ export const MESSAGES = {
     HOA_DON_NOT_FOUND: 'Không tìm thấy hóa đơn bán hàng',
   },
 
+  HRM: {
+    NHAN_VIEN_NOT_FOUND: 'Không tìm thấy nhân viên',
+    NGUOI_PHU_THUOC_NOT_FOUND: 'Không tìm thấy người phụ thuộc',
+    PHONG_BAN_NOT_FOUND: 'Không tìm thấy phòng ban',
+    PHONG_BAN_ME_NOT_FOUND: 'Phòng ban cha không tồn tại',
+    PHONG_BAN_ME_SELF: 'Phòng ban cha không thể là chính nó',
+    PHONG_BAN_ME_VONG_LAP:
+      'Không thể chọn phòng ban cấp dưới làm phòng ban cha (tạo vòng lặp trong cây tổ chức)',
+  },
+
   VALIDATION: {
     INVALID_MST: 'Mã số thuế không hợp lệ',
     INVALID_NAME: 'Họ tên không hợp lệ',

@@ -1,0 +1,24 @@
+-- File migration GỐC bị mất — migration này đã áp dụng thẳng lên DB dev (localhost:5432) từ
+-- 2026-09-03 (_prisma_migrations ghi applied_steps_count=1) nhưng chưa từng được commit vào
+-- bất kỳ nhánh nào trong git (đã kiểm tra local + remote, mọi nhánh — không tìm thấy).
+--
+-- Đã đối chiếu information_schema.columns của bảng "don_vi" trên DB thật với model DonVi hiện
+-- tại trong schema.prisma: KHỚP 100%, không có cột nào dư ra liên quan "thông tin tờ khai".
+-- Đối chiếu luôn danh sách bảng toàn schema "public": không có bảng lạ nào khác ngoài 9 bảng
+-- đã map trong schema.prisma. Kết luận: dù bước SQL gốc từng làm gì, hiệu lực của nó KHÔNG còn
+-- tồn tại trên DB hiện tại — có thể đã bị rollback/sửa tay ở đâu đó ngoài Prisma.
+--
+-- => File này để TRỐNG (no-op) là phản ánh ĐÚNG trạng thái thật, thay vì đoán bừa một
+-- ALTER TABLE ADD COLUMN không có căn cứ (nếu đoán sai, DB dựng mới từ đầu — máy khác/CI —
+-- sẽ lệch so với DB dev hiện tại, tạo ra bug khó tìm hơn chính vấn đề đang sửa).
+--
+-- Nếu tính năng "thông tin tờ khai" cho DonVi vẫn còn cần làm, hãy thêm field mới vào
+-- model DonVi trong schema.prisma rồi tạo migration MỚI (npm run migrate:sys) — đừng sửa file
+-- này, vì checksum của nó đã được Prisma ghi nhận từ lần áp dụng gốc (không khớp file này, do
+-- nội dung gốc không có; xem lưu ý bên dưới).
+--
+-- Lưu ý: checksum SHA-256 mà Prisma lưu trong _prisma_migrations cho migration này thuộc về
+-- file gốc đã mất, KHÔNG khớp nội dung file này. `prisma migrate status`/`dev` ở bản Prisma 7
+-- đang dùng không chặn vì việc này (đã verify), nhưng nếu sau này nâng cấp Prisma và gặp lỗi
+-- checksum mismatch khi deploy, chạy: npx prisma migrate resolve --applied
+-- 20260903031817_add_thong_tin_to_khai_to_donvi --schema=prisma/sys/schema.prisma
