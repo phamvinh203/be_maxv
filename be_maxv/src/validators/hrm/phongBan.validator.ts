@@ -1,8 +1,18 @@
 import { z } from 'zod';
 import { optText } from '../shared/primitives';
 
-/** Mã phòng ban cha: '' -> null; có giá trị -> in hoa (khớp cách chuẩn hóa ma_pb). */
-const maPbMe = optText.transform((v) => (v ? v.toUpperCase() : null));
+/**
+ * Mã phòng ban cha: '' -> null; có giá trị -> in hoa (khớp cách chuẩn hóa ma_pb).
+ * Giới hạn 24 ký tự y như `ma_pb`: hiện chuỗi quá dài chỉ trượt vì `findFirst` không khớp
+ * (ra 404 "phòng ban cha không tồn tại"), nhưng đó là chặn NHỜ MAY — đổi thứ tự kiểm tra hay
+ * thêm một đường ghi khác là nó đi thẳng vào cột VarChar(24) và Postgres trả 500.
+ */
+const maPbMe = optText
+  .refine(
+    (v) => v === null || v.length <= 24,
+    'Mã phòng ban cha tối đa 24 ký tự',
+  )
+  .transform((v) => (v ? v.toUpperCase() : null));
 
 /** Ghi chú — chặn ở tầng validator để tràn cột VarChar(512) trả 400 thay vì 500 từ Postgres. */
 const ghiChu = optText.refine(
@@ -16,10 +26,7 @@ const ghiChu = optText.refine(
  * hai máy không thể tự thỏa thuận với nhau mã kế tiếp là gì.
  */
 const maPbTuyChon = optText
-  .refine(
-    (v) => v === null || v.length <= 24,
-    'Mã phòng ban tối đa 24 ký tự',
-  )
+  .refine((v) => v === null || v.length <= 24, 'Mã phòng ban tối đa 24 ký tự')
   .transform((v) => (v ? v.toUpperCase() : null));
 
 /** Thân request tạo mới 1 phòng ban HRM (hrm_phong_ban). */

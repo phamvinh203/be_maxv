@@ -2,6 +2,7 @@ import { useState } from "react";
 import { toast } from "react-toastify";
 import Box from "@mui/material/Box";
 import Stack from "@mui/material/Stack";
+import CircularProgress from "@mui/material/CircularProgress";
 import Paper from "@mui/material/Paper";
 import Table from "@mui/material/Table";
 import TableBody from "@mui/material/TableBody";
@@ -29,7 +30,12 @@ import NguoiPhuThuocFormDialog from "../../nguoi_phu_thuoc/NguoiPhuThuocFormDial
 
 /** Tab người phụ thuộc trong hồ sơ nhân viên — dùng chung form với màn hình độc lập. */
 export default function NguoiPhuThuocTab({ maNv }: { maNv: string }) {
-  const danhSach = useNguoiPhuThuocList(maNv);
+  const {
+    items: danhSach,
+    isLoading,
+    isError,
+    error,
+  } = useNguoiPhuThuocList(maNv);
   const xoaNpt = useXoaNguoiPhuThuoc();
 
   const [formOpen, setFormOpen] = useState(false);
@@ -115,13 +121,29 @@ export default function NguoiPhuThuocTab({ maNv }: { maNv: string }) {
             {danhSach.length === 0 && (
               <TableRow>
                 <TableCell colSpan={8}>
-                  <Typography
-                    variant="body2"
-                    color="text.disabled"
-                    sx={{ textAlign: "center", py: 4 }}
-                  >
-                    Chưa có người phụ thuộc nào.
-                  </Typography>
+                  {/* Lỗi tải KHÔNG được hiện thành "chưa có" — người dùng sẽ nhập lại
+                      một bản trùng cho người phụ thuộc đã đăng ký. */}
+                  {isLoading ? (
+                    <Stack sx={{ alignItems: "center", py: 4 }}>
+                      <CircularProgress size={24} />
+                    </Stack>
+                  ) : isError ? (
+                    <Typography
+                      variant="body2"
+                      color="error"
+                      sx={{ textAlign: "center", py: 4 }}
+                    >
+                      {getErrorMessage(error, "Không tải được người phụ thuộc.")}
+                    </Typography>
+                  ) : (
+                    <Typography
+                      variant="body2"
+                      color="text.disabled"
+                      sx={{ textAlign: "center", py: 4 }}
+                    >
+                      Chưa có người phụ thuộc nào.
+                    </Typography>
+                  )}
                 </TableCell>
               </TableRow>
             )}

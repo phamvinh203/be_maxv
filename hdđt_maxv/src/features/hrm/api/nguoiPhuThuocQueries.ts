@@ -12,6 +12,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useCallback, useMemo } from "react";
 import { useAuth } from "@/features/auth/useAuth";
+import { hrmNhanVienKeys, hrmNptKeys } from "./hrmKeys";
 import type {
   NguoiPhuThuoc,
   NguoiPhuThuocFormValues,
@@ -26,12 +27,6 @@ import {
   type NguoiPhuThuocApiBody,
   type NguoiPhuThuocApiRow,
 } from "./nguoiPhuThuocApi";
-
-export const hrmNptKeys = {
-  all: ["hrm-nguoi-phu-thuoc"] as const,
-  list: (companyId: string | null) =>
-    ["hrm-nguoi-phu-thuoc", companyId, "list"] as const,
-};
 
 /** `dd/MM/yyyy` (BE) -> `YYYY-MM-DD` cho ô nhập ngày. Sai dạng thì trả rỗng, không đoán bừa. */
 function ngaySinhVeFe(s: string | null): string {
@@ -102,24 +97,37 @@ function veKieuApi(values: NguoiPhuThuocFormValues): NguoiPhuThuocApiBody {
  */
 function useDanhSachNpt() {
   const { isAuthenticated, currentCompanyId } = useAuth();
+  // KHÔNG dùng `placeholderData: (prev) => prev`: nó giữ dữ liệu cũ xuyên qua việc ĐỔI query
+  // key, mà key ở đây gắn `currentCompanyId` — đổi công ty sẽ hiện nguyên danh sách người phụ thuộc của
+  // công ty trước dưới tên công ty mới, `isLoading` lại là false nên không có dấu hiệu nào.
+  // Ba truy vấn này không phân trang nên cũng chẳng được lợi gì từ nó.
   return useQuery({
     queryKey: hrmNptKeys.list(currentCompanyId),
     queryFn: () => listNguoiPhuThuoc(),
-    placeholderData: (prev) => prev,
     enabled: isAuthenticated && !!currentCompanyId,
   });
 }
 
-/** Người phụ thuộc của một nhân viên. */
-export function useNguoiPhuThuocList(maNv: string | null): NguoiPhuThuoc[] {
-  const { data } = useDanhSachNpt();
-  return useMemo(
+/**
+ * Người phụ thuộc của một nhân viên, kèm trạng thái tải.
+ *
+ * Trả kèm `isLoading`/`isError` chứ không trả mảng trần như bản mock: tab này nằm trong hồ sơ
+ * nhân viên, mảng rỗng lúc lỗi mạng đọc thành "chưa có người phụ thuộc" và người dùng sẽ nhập
+ * lại một bản trùng.
+ */
+export function useNguoiPhuThuocList(maNv: string | null): {
+  items: NguoiPhuThuoc[];
+  isLoading: boolean;
+  isError: boolean;
+  error: unknown;
+} {
+  const { data, isLoading, isError, error } = useDanhSachNpt();
+  const items = useMemo(
     () =>
-      maNv
-        ? (data ?? []).filter((r) => r.ma_nv === maNv).map(veKieuFe)
-        : [],
+      maNv ? (data ?? []).filter((r) => r.ma_nv === maNv).map(veKieuFe) : [],
     [data, maNv],
   );
+  return { items, isLoading, isError, error };
 }
 
 /** Toàn công ty, kèm tên nhân viên — cho màn hình độc lập. `q` lọc theo tên/mã/CCCD. */
@@ -150,9 +158,16 @@ export function useNguoiPhuThuocRows(q: string): {
   return { rows, isLoading, isError, error };
 }
 
+/**
+ * Làm mới sau khi ghi. Phải đụng cả danh sách NHÂN VIÊN: cột `so_npt` ở bảng nhân viên do BE
+ * đếm, thêm/xóa người phụ thuộc mà không nạp lại thì con số đứng im.
+ */
 function useLamMoi() {
   const qc = useQueryClient();
-  return () => void qc.invalidateQueries({ queryKey: hrmNptKeys.all });
+  return () => {
+    void qc.invalidateQueries({ queryKey: hrmNptKeys.all });
+    void qc.invalidateQueries({ queryKey: hrmNhanVienKeys.all });
+  };
 }
 
 /**

@@ -47,6 +47,10 @@ const MA_NV_MAX = 24;
  * phòng ban: mã phải do MỘT chỗ cấp, không thì hai máy tạo cùng lúc ra trùng mã.
  * Chỉ quét mã đúng dạng `NV####` — mã người dùng tự đặt (vd "GD-01") không được phép làm lệch
  * bộ đếm.
+ *
+ * CỐ Ý quét CẢ nhân viên đã xóa mềm (`da_xoa = true`): mã của người đã xóa không được cấp lại
+ * cho người khác, nếu không thì bảng lương / chấm công cũ khóa theo `ma_nv` sẽ bị gán sang
+ * người mới, im lặng và không cách nào phát hiện về sau.
  */
 async function sinhMaNhanVien(db: PrismaClient): Promise<string> {
   const rows = await db.hrm_nhan_vien.findMany({
@@ -78,8 +82,8 @@ async function assertPhongBanTonTai(
 ): Promise<void> {
   await findOrThrow(
     () =>
-      db.hrm_phong_ban.findUnique({
-        where: { ma_pb: maPb },
+      db.hrm_phong_ban.findFirst({
+        where: { ma_pb: maPb, da_xoa: false },
         select: { ma_pb: true },
       }),
     new NotFoundError(MESSAGES.HRM.PHONG_BAN_NOT_FOUND),
@@ -99,7 +103,7 @@ function chuanHoaCongDoan<T extends { loai_hop_dong: string; cong_doan: boolean 
 
 /** GET danh sách + lọc, kèm `ten_pb` (thay LEFT JOIN hrm_phong_ban). */
 export async function listNhanVien(db: PrismaClient, q: NhanVienListQuery) {
-  const and: Prisma.hrm_nhan_vienWhereInput[] = [];
+  const and: Prisma.hrm_nhan_vienWhereInput[] = [{ da_xoa: false }];
   if (q.ma_nv) and.push({ ma_nv: { contains: q.ma_nv, mode: 'insensitive' } });
   if (q.ho_ten)
     and.push({ ho_ten: { contains: q.ho_ten, mode: 'insensitive' } });
@@ -108,11 +112,14 @@ export async function listNhanVien(db: PrismaClient, q: NhanVienListQuery) {
 
   const [rows, phongBan, demNpt] = await Promise.all([
     db.hrm_nhan_vien.findMany({
-      where: and.length ? { AND: and } : undefined,
+      where: { AND: and },
       select: nhanVienSelect,
       orderBy: { ma_nv: 'asc' },
     }),
-    db.hrm_phong_ban.findMany({ select: { ma_pb: true, ten_pb: true } }),
+    db.hrm_phong_ban.findMany({
+      where: { da_xoa: false },
+      select: { ma_pb: true, ten_pb: true },
+    }),
     db.hrm_nguoi_phu_thuoc.groupBy({ by: ['ma_nv'], _count: { _all: true } }),
   ]);
 
@@ -130,8 +137,8 @@ export async function listNhanVien(db: PrismaClient, q: NhanVienListQuery) {
 export async function getNhanVien(db: PrismaClient, maNv: string) {
   return findOrThrow(
     () =>
-      db.hrm_nhan_vien.findUnique({
-        where: { ma_nv: maNv },
+      db.hrm_nhan_vien.findFirst({
+        where: { ma_nv: maNv, da_xoa: false },
         select: nhanVienSelect,
       }),
     new NotFoundError(MESSAGES.HRM.NHAN_VIEN_NOT_FOUND),
@@ -149,8 +156,8 @@ export async function createNhanVien(
 
   await assertNotExists(
     () =>
-      db.hrm_nhan_vien.findUnique({
-        where: { ma_nv: maNv },
+      db.hrm_nhan_vien.findFirst({
+        where: { ma_nv: maNv, da_xoa: false },
         select: { ma_nv: true },
       }),
     new ConflictError(`Mã nhân viên "${maNv}" đã tồn tại`),
@@ -169,8 +176,8 @@ export async function updateNhanVien(
 ) {
   await findOrThrow(
     () =>
-      db.hrm_nhan_vien.findUnique({
-        where: { ma_nv: maNv },
+      db.hrm_nhan_vien.findFirst({
+        where: { ma_nv: maNv, da_xoa: false },
         select: { ma_nv: true },
       }),
     new NotFoundError(MESSAGES.HRM.NHAN_VIEN_NOT_FOUND),
@@ -185,21 +192,27 @@ export async function updateNhanVien(
 }
 
 /**
- * DELETE — người phụ thuộc của nhân viên bị xóa THEO (FK cascade khai trong schema).
- * Trả kèm `so_npt_da_xoa` để màn hình nói được "đã xóa kèm N người phụ thuộc" thay vì âm thầm
- * dọn dữ liệu người dùng không biết.
+ * DELETE — XÓA MỀM (đặt `da_xoa = true`), không xóa dòng.
+ * Giữ dòng lại để `ma_nv` không bao giờ được cấp lại; xem ghi chú ở `sinhMaNhanVien`.
+ *
+ * Người phụ thuộc KHÔNG bị xóa theo nữa (cascade chỉ chạy khi xóa cứng) — chúng bị ẩn cùng
+ * nhân viên vì mọi truy vấn NPT đều lọc theo nhân viên chưa xóa. Vẫn trả số lượng để màn hình
+ * nói được "ẩn kèm N người phụ thuộc" thay vì âm thầm.
  */
 export async function deleteNhanVien(db: PrismaClient, maNv: string) {
   await findOrThrow(
     () =>
-      db.hrm_nhan_vien.findUnique({
-        where: { ma_nv: maNv },
+      db.hrm_nhan_vien.findFirst({
+        where: { ma_nv: maNv, da_xoa: false },
         select: { ma_nv: true },
       }),
     new NotFoundError(MESSAGES.HRM.NHAN_VIEN_NOT_FOUND),
   );
 
   const soNpt = await db.hrm_nguoi_phu_thuoc.count({ where: { ma_nv: maNv } });
-  await db.hrm_nhan_vien.delete({ where: { ma_nv: maNv } });
-  return { ma_nv: maNv, so_npt_da_xoa: soNpt };
+  await db.hrm_nhan_vien.update({
+    where: { ma_nv: maNv },
+    data: { da_xoa: true, datetime2: new Date() },
+  });
+  return { ma_nv: maNv, so_npt_an_theo: soNpt };
 }

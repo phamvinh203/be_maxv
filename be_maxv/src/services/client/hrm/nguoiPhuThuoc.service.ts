@@ -1,7 +1,7 @@
 import { randomUUID } from 'crypto';
 import type { Prisma, PrismaClient } from '../../../generated/tenant';
-import { NotFoundError } from '../../../helpers/errors';
-import { findOrThrow } from '../../../helpers/crudGuards';
+import { ConflictError, NotFoundError } from '../../../helpers/errors';
+import { assertNotExists, findOrThrow } from '../../../helpers/crudGuards';
 import { MESSAGES } from '../../../constants/messages';
 import type {
   NguoiPhuThuocBodyInput,
@@ -36,8 +36,8 @@ async function assertNhanVienTonTai(
 ): Promise<void> {
   await findOrThrow(
     () =>
-      db.hrm_nhan_vien.findUnique({
-        where: { ma_nv: maNv },
+      db.hrm_nhan_vien.findFirst({
+        where: { ma_nv: maNv, da_xoa: false },
         select: { ma_nv: true },
       }),
     new NotFoundError(MESSAGES.HRM.NHAN_VIEN_NOT_FOUND),
@@ -54,13 +54,17 @@ export async function listNguoiPhuThuoc(
   db: PrismaClient,
   q: NguoiPhuThuocListQuery,
 ) {
-  const and: Prisma.hrm_nguoi_phu_thuocWhereInput[] = [];
+  // Ẩn người phụ thuộc của nhân viên đã xóa mềm: dòng NPT vẫn nằm trong DB (cascade chỉ chạy
+  // khi xóa cứng) nên nếu không lọc ở đây thì màn danh sách vẫn liệt kê người của hồ sơ đã xóa.
+  const and: Prisma.hrm_nguoi_phu_thuocWhereInput[] = [
+    { nhan_vien: { da_xoa: false } },
+  ];
   if (q.ma_nv) and.push({ ma_nv: q.ma_nv });
   if (q.ho_ten)
     and.push({ ho_ten: { contains: q.ho_ten, mode: 'insensitive' } });
 
   const rows = await db.hrm_nguoi_phu_thuoc.findMany({
-    where: and.length ? { AND: and } : undefined,
+    where: { AND: and },
     select: nptSelect,
     orderBy: [{ ma_nv: 'asc' }, { ho_ten: 'asc' }],
   });
@@ -79,12 +83,39 @@ export async function listNguoiPhuThuoc(
   }));
 }
 
+/**
+ * Cùng một nhân viên không được đăng ký hai lần cho cùng một MST người phụ thuộc.
+ *
+ * DB đã có `@@unique([ma_nv, mst])` chặn cứng, nhưng để Postgres ném ra thì client chỉ nhận
+ * được câu chung chung "dữ liệu bị trùng"; kiểm ở đây để nói rõ trùng ai. Ràng buộc DB vẫn
+ * cần vì nó là chốt cuối khi hai request vào cùng lúc.
+ */
+async function assertKhongTrungMst(
+  db: PrismaClient,
+  maNv: string,
+  mst: string | null,
+  boQuaId?: string,
+): Promise<void> {
+  if (!mst) return; // chưa biết MST thì chưa có cơ sở nói là trùng
+  await assertNotExists(
+    () =>
+      db.hrm_nguoi_phu_thuoc.findFirst({
+        where: { ma_nv: maNv, mst, ...(boQuaId ? { id: { not: boQuaId } } : {}) },
+        select: { ho_ten: true },
+      }),
+    new ConflictError(
+      `Nhân viên ${maNv} đã có người phụ thuộc mang MST ${mst} — đăng ký trùng sẽ tính giảm trừ gia cảnh hai lần.`,
+    ),
+  );
+}
+
 /** POST tạo mới. */
 export async function createNguoiPhuThuoc(
   db: PrismaClient,
   body: NguoiPhuThuocBodyInput,
 ) {
   await assertNhanVienTonTai(db, body.ma_nv);
+  await assertKhongTrungMst(db, body.ma_nv, body.mst);
 
   const id = randomUUID();
   await db.hrm_nguoi_phu_thuoc.create({ data: { ...body, id } });
@@ -97,11 +128,16 @@ export async function updateNguoiPhuThuoc(
   id: string,
   body: NguoiPhuThuocUpdateInput,
 ) {
-  await findOrThrow(
+  const hienTai = await findOrThrow(
     () =>
-      db.hrm_nguoi_phu_thuoc.findUnique({ where: { id }, select: { id: true } }),
+      db.hrm_nguoi_phu_thuoc.findFirst({
+        where: { id, nhan_vien: { da_xoa: false } },
+        select: { id: true, ma_nv: true },
+      }),
     new NotFoundError(MESSAGES.HRM.NGUOI_PHU_THUOC_NOT_FOUND),
   );
+  // Bỏ qua chính dòng đang sửa, không thì sửa tên mà giữ MST cũ cũng bị coi là trùng.
+  await assertKhongTrungMst(db, hienTai.ma_nv, body.mst, id);
 
   await db.hrm_nguoi_phu_thuoc.update({
     where: { id },
@@ -114,10 +150,14 @@ export async function updateNguoiPhuThuoc(
 export async function deleteNguoiPhuThuoc(db: PrismaClient, id: string) {
   await findOrThrow(
     () =>
-      db.hrm_nguoi_phu_thuoc.findUnique({ where: { id }, select: { id: true } }),
+      db.hrm_nguoi_phu_thuoc.findFirst({
+        where: { id, nhan_vien: { da_xoa: false } },
+        select: { id: true },
+      }),
     new NotFoundError(MESSAGES.HRM.NGUOI_PHU_THUOC_NOT_FOUND),
   );
 
+  // NPT xóa CỨNG: khóa chính là uuid, không có chuyện cấp lại mã nên không cần giữ dòng.
   await db.hrm_nguoi_phu_thuoc.delete({ where: { id } });
   return { id };
 }

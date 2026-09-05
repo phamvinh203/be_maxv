@@ -1,13 +1,18 @@
 /**
- * Dữ liệu mẫu của khu HRM — pha dựng giao diện, chưa nối backend.
+ * Dữ liệu mẫu của khu HRM — cho các màn CHƯA nối backend (hợp đồng, hồ sơ, chấm công, lương).
+ *
+ * MỌI mã ở đây bắt buộc mang tiền tố `MOCK-`. ĐỪNG bỏ tiền tố này.
+ * Lý do: phòng ban và nhân viên đã chạy API thật, và backend sinh mã từ `NV0001`, `PB01` —
+ * đúng dải mà seed từng chiếm. Trùng mã thì hồ sơ của một nhân viên THẬT sẽ hiện hợp đồng,
+ * lương và giấy tờ của một người trong seed, không báo lỗi gì (đã xảy ra thật trước khi đổi).
  *
  * Cố ý cài sẵn các trường hợp biên để bấm thử là thấy ngay:
- * - `NV0011` chưa gán phòng ban → thử bộ lọc "Chưa có phòng ban" của Gán nhanh.
- * - `NV0012` đã nghỉ → thử dòng hiển thị mờ và bộ lọc trạng thái.
- * - `NV0003` có hai đời hợp đồng (thử việc đã hết hạn + chính thức) → thử luật
+ * - `MOCK-NV0011` chưa gán phòng ban → thử bộ lọc "Chưa có phòng ban" của Gán nhanh.
+ * - `MOCK-NV0012` đã nghỉ → thử dòng hiển thị mờ và bộ lọc trạng thái.
+ * - `MOCK-NV0003` có hai đời hợp đồng (thử việc đã hết hạn + chính thức) → thử luật
  *   chọn hợp đồng hiện hành.
  * - `NPT005` đã hết kỳ đăng ký giảm trừ → cột "ĐK giảm trừ" có cả hai dạng.
- * - `PB01` không có phòng ban con nhưng còn nhân viên → thử chặn xóa.
+ * - `MOCK-PB01` không có phòng ban con nhưng còn nhân viên → thử chặn xóa.
  */
 
 import { ngayLeChuanVN } from "../ngayLeChuan";
@@ -44,137 +49,137 @@ import type {
 } from "../types";
 
 export const PHONG_BAN_MAU: PhongBan[] = [
-  { ma_pb: "PB01", ten_pb: "Ban giám đốc", ma_pb_me: null, ghi_chu: "Ban điều hành công ty", status: "1" },
-  { ma_pb: "PB02", ten_pb: "Khối kinh doanh", ma_pb_me: null, ghi_chu: "", status: "1" },
-  { ma_pb: "PB02.01", ten_pb: "Phòng Kinh doanh 1", ma_pb_me: "PB02", ghi_chu: "Khách hàng doanh nghiệp", status: "1" },
-  { ma_pb: "PB02.02", ten_pb: "Phòng Kinh doanh 2", ma_pb_me: "PB02", ghi_chu: "Khách hàng cá nhân", status: "1" },
-  { ma_pb: "PB03", ten_pb: "Khối hỗ trợ", ma_pb_me: null, ghi_chu: "", status: "1" },
-  { ma_pb: "PB03.01", ten_pb: "Phòng Kế toán", ma_pb_me: "PB03", ghi_chu: "", status: "1" },
-  { ma_pb: "PB03.02", ten_pb: "Phòng Nhân sự", ma_pb_me: "PB03", ghi_chu: "", status: "1" },
-  { ma_pb: "PB03.03", ten_pb: "Phòng Công nghệ thông tin", ma_pb_me: "PB03", ghi_chu: "", status: "1" },
+  { ma_pb: "MOCK-PB01", ten_pb: "Ban giám đốc", ma_pb_me: null, ghi_chu: "Ban điều hành công ty", status: "1" },
+  { ma_pb: "MOCK-PB02", ten_pb: "Khối kinh doanh", ma_pb_me: null, ghi_chu: "", status: "1" },
+  { ma_pb: "MOCK-PB02.01", ten_pb: "Phòng Kinh doanh 1", ma_pb_me: "MOCK-PB02", ghi_chu: "Khách hàng doanh nghiệp", status: "1" },
+  { ma_pb: "MOCK-PB02.02", ten_pb: "Phòng Kinh doanh 2", ma_pb_me: "MOCK-PB02", ghi_chu: "Khách hàng cá nhân", status: "1" },
+  { ma_pb: "MOCK-PB03", ten_pb: "Khối hỗ trợ", ma_pb_me: null, ghi_chu: "", status: "1" },
+  { ma_pb: "MOCK-PB03.01", ten_pb: "Phòng Kế toán", ma_pb_me: "MOCK-PB03", ghi_chu: "", status: "1" },
+  { ma_pb: "MOCK-PB03.02", ten_pb: "Phòng Nhân sự", ma_pb_me: "MOCK-PB03", ghi_chu: "", status: "1" },
+  { ma_pb: "MOCK-PB03.03", ten_pb: "Phòng Công nghệ thông tin", ma_pb_me: "MOCK-PB03", ghi_chu: "", status: "1" },
 ];
 
 export const NHAN_VIEN_MAU: NhanVien[] = [
   {
-    ma_nv: "NV0001", ho_ten: "Nguyễn Văn Hùng", so_cccd: "001085001234", mst_ca_nhan: "8012345678",
+    ma_nv: "MOCK-NV0001", ho_ten: "Nguyễn Văn Hùng", so_cccd: "001085001234", mst_ca_nhan: "8012345678",
     ngay_sinh: "1985-04-12", gioi_tinh: "nam", dien_thoai: "0912345678", email: "hung.nv@maxv.vn",
     dia_chi: "12 Nguyễn Trãi, Thanh Xuân, Hà Nội", ghi_chu: "",
-    ma_pb: "PB01", ma_cv: "CV01", cap_bac: "C-level", cong_doan: false, ngay_vao: "2019-03-01",
+    ma_pb: "MOCK-PB01", ma_cv: "CV01", cap_bac: "C-level", cong_doan: false, ngay_vao: "2019-03-01",
     ngan_hang: "Vietcombank", so_tk: "0011004567890", chu_tk: "NGUYEN VAN HUNG", status: "1",
   },
   {
-    ma_nv: "NV0002", ho_ten: "Trần Thị Mai", so_cccd: "001188002345", mst_ca_nhan: "8023456789",
+    ma_nv: "MOCK-NV0002", ho_ten: "Trần Thị Mai", so_cccd: "001188002345", mst_ca_nhan: "8023456789",
     ngay_sinh: "1988-09-30", gioi_tinh: "nu", dien_thoai: "0987654321", email: "mai.tt@maxv.vn",
     dia_chi: "45 Lê Lợi, Hoàn Kiếm, Hà Nội", ghi_chu: "",
-    ma_pb: "PB01", ma_cv: "CV02", cap_bac: "C-level", cong_doan: false, ngay_vao: "2020-06-15",
+    ma_pb: "MOCK-PB01", ma_cv: "CV02", cap_bac: "C-level", cong_doan: false, ngay_vao: "2020-06-15",
     ngan_hang: "Techcombank", so_tk: "19035678901234", chu_tk: "TRAN THI MAI", status: "1",
   },
   {
-    ma_nv: "NV0003", ho_ten: "Lê Minh Quân", so_cccd: "001090003456", mst_ca_nhan: "8034567890",
+    ma_nv: "MOCK-NV0003", ho_ten: "Lê Minh Quân", so_cccd: "001090003456", mst_ca_nhan: "8034567890",
     ngay_sinh: "1990-01-20", gioi_tinh: "nam", dien_thoai: "0903112233", email: "quan.lm@maxv.vn",
     dia_chi: "78 Trần Hưng Đạo, Hai Bà Trưng, Hà Nội", ghi_chu: "",
-    ma_pb: "PB02.01", ma_cv: "CV03", cap_bac: "Quản lý cấp trung", cong_doan: true, ngay_vao: "2021-02-01",
+    ma_pb: "MOCK-PB02.01", ma_cv: "CV03", cap_bac: "Quản lý cấp trung", cong_doan: true, ngay_vao: "2021-02-01",
     ngan_hang: "BIDV", so_tk: "21010001234567", chu_tk: "LE MINH QUAN", status: "1",
   },
   {
-    ma_nv: "NV0004", ho_ten: "Phạm Thu Hà", so_cccd: "001193004567", mst_ca_nhan: "8045678901",
+    ma_nv: "MOCK-NV0004", ho_ten: "Phạm Thu Hà", so_cccd: "001193004567", mst_ca_nhan: "8045678901",
     ngay_sinh: "1993-07-08", gioi_tinh: "nu", dien_thoai: "0934556677", email: "ha.pt@maxv.vn",
     dia_chi: "9 Ngõ 100 Cầu Giấy, Hà Nội", ghi_chu: "",
-    ma_pb: "PB02.01", ma_cv: "CV07", cap_bac: "Nhân viên chính", cong_doan: true, ngay_vao: "2022-05-16",
+    ma_pb: "MOCK-PB02.01", ma_cv: "CV07", cap_bac: "Nhân viên chính", cong_doan: true, ngay_vao: "2022-05-16",
     ngan_hang: "MB Bank", so_tk: "0001234567899", chu_tk: "PHAM THU HA", status: "1",
   },
   {
-    ma_nv: "NV0005", ho_ten: "Đỗ Văn Thành", so_cccd: "001087005678", mst_ca_nhan: "8056789012",
+    ma_nv: "MOCK-NV0005", ho_ten: "Đỗ Văn Thành", so_cccd: "001087005678", mst_ca_nhan: "8056789012",
     ngay_sinh: "1987-11-25", gioi_tinh: "nam", dien_thoai: "0977889900", email: "thanh.dv@maxv.vn",
     dia_chi: "234 Giải Phóng, Hoàng Mai, Hà Nội", ghi_chu: "",
-    ma_pb: "PB02.02", ma_cv: "CV03", cap_bac: "Quản lý cấp trung", cong_doan: false, ngay_vao: "2020-09-01",
+    ma_pb: "MOCK-PB02.02", ma_cv: "CV03", cap_bac: "Quản lý cấp trung", cong_doan: false, ngay_vao: "2020-09-01",
     ngan_hang: "VPBank", so_tk: "192837465500", chu_tk: "DO VAN THANH", status: "1",
   },
   {
-    ma_nv: "NV0006", ho_ten: "Vũ Thị Ngọc", so_cccd: "001195006789", mst_ca_nhan: "8067890123",
+    ma_nv: "MOCK-NV0006", ho_ten: "Vũ Thị Ngọc", so_cccd: "001195006789", mst_ca_nhan: "8067890123",
     ngay_sinh: "1995-03-14", gioi_tinh: "nu", dien_thoai: "0965443322", email: "ngoc.vt@maxv.vn",
     dia_chi: "56 Kim Mã, Ba Đình, Hà Nội", ghi_chu: "",
-    ma_pb: "PB02.02", ma_cv: "CV07", cap_bac: "Nhân viên", cong_doan: true, ngay_vao: "2023-01-09",
+    ma_pb: "MOCK-PB02.02", ma_cv: "CV07", cap_bac: "Nhân viên", cong_doan: true, ngay_vao: "2023-01-09",
     ngan_hang: "ACB", so_tk: "2468013579", chu_tk: "VU THI NGOC", status: "1",
   },
   {
-    ma_nv: "NV0007", ho_ten: "Hoàng Anh Tuấn", so_cccd: "001086007890", mst_ca_nhan: "8078901234",
+    ma_nv: "MOCK-NV0007", ho_ten: "Hoàng Anh Tuấn", so_cccd: "001086007890", mst_ca_nhan: "8078901234",
     ngay_sinh: "1986-06-02", gioi_tinh: "nam", dien_thoai: "0918273645", email: "tuan.ha@maxv.vn",
     dia_chi: "17 Tôn Đức Thắng, Đống Đa, Hà Nội", ghi_chu: "Kiêm phụ trách thuế",
-    ma_pb: "PB03.01", ma_cv: "CV05", cap_bac: "Quản lý cấp trung", cong_doan: true, ngay_vao: "2019-08-01",
+    ma_pb: "MOCK-PB03.01", ma_cv: "CV05", cap_bac: "Quản lý cấp trung", cong_doan: true, ngay_vao: "2019-08-01",
     ngan_hang: "Vietcombank", so_tk: "0011009876543", chu_tk: "HOANG ANH TUAN", status: "1",
   },
   {
-    ma_nv: "NV0008", ho_ten: "Bùi Thị Lan", so_cccd: "001194008901", mst_ca_nhan: "8089012345",
+    ma_nv: "MOCK-NV0008", ho_ten: "Bùi Thị Lan", so_cccd: "001194008901", mst_ca_nhan: "8089012345",
     ngay_sinh: "1994-12-19", gioi_tinh: "nu", dien_thoai: "0946372819", email: "lan.bt@maxv.vn",
     dia_chi: "88 Nguyễn Chí Thanh, Đống Đa, Hà Nội", ghi_chu: "",
-    ma_pb: "PB03.01", ma_cv: "CV06", cap_bac: "Nhân viên", cong_doan: false, ngay_vao: "2023-04-03",
+    ma_pb: "MOCK-PB03.01", ma_cv: "CV06", cap_bac: "Nhân viên", cong_doan: false, ngay_vao: "2023-04-03",
     ngan_hang: "Sacombank", so_tk: "060012345678", chu_tk: "BUI THI LAN", status: "1",
   },
   {
-    ma_nv: "NV0009", ho_ten: "Đặng Quốc Bảo", so_cccd: "001089009012", mst_ca_nhan: "8090123456",
+    ma_nv: "MOCK-NV0009", ho_ten: "Đặng Quốc Bảo", so_cccd: "001089009012", mst_ca_nhan: "8090123456",
     ngay_sinh: "1989-02-27", gioi_tinh: "nam", dien_thoai: "0902938475", email: "bao.dq@maxv.vn",
     dia_chi: "301 Trường Chinh, Thanh Xuân, Hà Nội", ghi_chu: "",
-    ma_pb: "PB03.02", ma_cv: "CV03", cap_bac: "Quản lý cấp trung", cong_doan: true, ngay_vao: "2021-07-12",
+    ma_pb: "MOCK-PB03.02", ma_cv: "CV03", cap_bac: "Quản lý cấp trung", cong_doan: true, ngay_vao: "2021-07-12",
     ngan_hang: "TPBank", so_tk: "0339988776655", chu_tk: "DANG QUOC BAO", status: "1",
   },
   {
-    ma_nv: "NV0010", ho_ten: "Ngô Thị Hương", so_cccd: "001196010123", mst_ca_nhan: "8101234567",
+    ma_nv: "MOCK-NV0010", ho_ten: "Ngô Thị Hương", so_cccd: "001196010123", mst_ca_nhan: "8101234567",
     ngay_sinh: "1996-08-05", gioi_tinh: "nu", dien_thoai: "0923456781", email: "huong.nt@maxv.vn",
     dia_chi: "5 Duy Tân, Cầu Giấy, Hà Nội", ghi_chu: "",
-    ma_pb: "PB03.03", ma_cv: "CV09", cap_bac: "Nhân viên chính", cong_doan: false, ngay_vao: "2022-11-21",
+    ma_pb: "MOCK-PB03.03", ma_cv: "CV09", cap_bac: "Nhân viên chính", cong_doan: false, ngay_vao: "2022-11-21",
     ngan_hang: "Techcombank", so_tk: "19087654321098", chu_tk: "NGO THI HUONG", status: "1",
   },
   {
-    ma_nv: "NV0011", ho_ten: "Trịnh Văn Sơn", so_cccd: "001199011234", mst_ca_nhan: "",
+    ma_nv: "MOCK-NV0011", ho_ten: "Trịnh Văn Sơn", so_cccd: "001199011234", mst_ca_nhan: "",
     ngay_sinh: "1999-10-10", gioi_tinh: "nam", dien_thoai: "0956789012", email: "son.tv@maxv.vn",
     dia_chi: "22 Lạc Long Quân, Tây Hồ, Hà Nội", ghi_chu: "Mới tuyển, chưa phân phòng ban",
     ma_pb: null, ma_cv: "CV10", cap_bac: "", cong_doan: false, ngay_vao: "2026-08-03",
     ngan_hang: "", so_tk: "", chu_tk: "", status: "1",
   },
   {
-    ma_nv: "NV0012", ho_ten: "Lý Thị Bích", so_cccd: "001192012345", mst_ca_nhan: "8112345678",
+    ma_nv: "MOCK-NV0012", ho_ten: "Lý Thị Bích", so_cccd: "001192012345", mst_ca_nhan: "8112345678",
     ngay_sinh: "1992-05-17", gioi_tinh: "nu", dien_thoai: "0938475612", email: "bich.lt@maxv.vn",
     dia_chi: "140 Xuân Thủy, Cầu Giấy, Hà Nội", ghi_chu: "Nghỉ việc từ 30/06/2026",
-    ma_pb: "PB02.01", ma_cv: "CV07", cap_bac: "Nhân viên", cong_doan: false, ngay_vao: "2022-03-07",
+    ma_pb: "MOCK-PB02.01", ma_cv: "CV07", cap_bac: "Nhân viên", cong_doan: false, ngay_vao: "2022-03-07",
     ngan_hang: "VIB", so_tk: "601234567890", chu_tk: "LY THI BICH", status: "0",
   },
 ];
 
 export const HOP_DONG_MAU: HopDong[] = [
-  { id: "HD001", ma_nv: "NV0001", so_hd: "HĐLĐ-2019/001", loai_hd: "khong_xac_dinh", kieu_luong: "NET", luong_chinh: 60000000, luong_bhxh: 36000000, ngay_bat_dau: "2019-03-01", ngay_ket_thuc: "", trich_bhxh: true, tinh_tncn: true, ghi_chu: "" },
-  { id: "HD002", ma_nv: "NV0002", so_hd: "HĐLĐ-2020/014", loai_hd: "khong_xac_dinh", kieu_luong: "GROSS", luong_chinh: 45000000, luong_bhxh: 30000000, ngay_bat_dau: "2020-06-15", ngay_ket_thuc: "", trich_bhxh: true, tinh_tncn: true, ghi_chu: "" },
+  { id: "HD001", ma_nv: "MOCK-NV0001", so_hd: "HĐLĐ-2019/001", loai_hd: "khong_xac_dinh", kieu_luong: "NET", luong_chinh: 60000000, luong_bhxh: 36000000, ngay_bat_dau: "2019-03-01", ngay_ket_thuc: "", trich_bhxh: true, tinh_tncn: true, ghi_chu: "" },
+  { id: "HD002", ma_nv: "MOCK-NV0002", so_hd: "HĐLĐ-2020/014", loai_hd: "khong_xac_dinh", kieu_luong: "GROSS", luong_chinh: 45000000, luong_bhxh: 30000000, ngay_bat_dau: "2020-06-15", ngay_ket_thuc: "", trich_bhxh: true, tinh_tncn: true, ghi_chu: "" },
   // Hai đời hợp đồng: thử việc đã hết hạn rồi lên chính thức.
-  { id: "HD003", ma_nv: "NV0003", so_hd: "HĐTV-2021/003", loai_hd: "thu_viec", kieu_luong: "GROSS", luong_chinh: 16000000, luong_bhxh: 0, ngay_bat_dau: "2021-02-01", ngay_ket_thuc: "2021-03-31", trich_bhxh: false, tinh_tncn: true, ghi_chu: "Thử việc 2 tháng" },
-  { id: "HD004", ma_nv: "NV0003", so_hd: "HĐLĐ-2021/021", loai_hd: "khong_xac_dinh", kieu_luong: "GROSS", luong_chinh: 28000000, luong_bhxh: 20000000, ngay_bat_dau: "2021-04-01", ngay_ket_thuc: "", trich_bhxh: true, tinh_tncn: true, ghi_chu: "" },
-  { id: "HD005", ma_nv: "NV0004", so_hd: "HĐLĐ-2022/045", loai_hd: "xac_dinh", kieu_luong: "GROSS", luong_chinh: 18000000, luong_bhxh: 15000000, ngay_bat_dau: "2025-05-16", ngay_ket_thuc: "2027-05-15", trich_bhxh: true, tinh_tncn: true, ghi_chu: "Gia hạn lần 1" },
-  { id: "HD006", ma_nv: "NV0005", so_hd: "HĐLĐ-2020/030", loai_hd: "khong_xac_dinh", kieu_luong: "GROSS", luong_chinh: 27000000, luong_bhxh: 20000000, ngay_bat_dau: "2020-09-01", ngay_ket_thuc: "", trich_bhxh: true, tinh_tncn: true, ghi_chu: "" },
-  { id: "HD007", ma_nv: "NV0006", so_hd: "HĐLĐ-2023/002", loai_hd: "xac_dinh", kieu_luong: "NET", luong_chinh: 15000000, luong_bhxh: 13000000, ngay_bat_dau: "2025-01-09", ngay_ket_thuc: "2027-01-08", trich_bhxh: true, tinh_tncn: true, ghi_chu: "" },
-  { id: "HD008", ma_nv: "NV0007", so_hd: "HĐLĐ-2019/019", loai_hd: "khong_xac_dinh", kieu_luong: "GROSS", luong_chinh: 32000000, luong_bhxh: 24000000, ngay_bat_dau: "2019-08-01", ngay_ket_thuc: "", trich_bhxh: true, tinh_tncn: true, ghi_chu: "" },
-  { id: "HD009", ma_nv: "NV0008", so_hd: "HĐLĐ-2023/018", loai_hd: "xac_dinh", kieu_luong: "GROSS", luong_chinh: 14000000, luong_bhxh: 12000000, ngay_bat_dau: "2025-04-03", ngay_ket_thuc: "2027-04-02", trich_bhxh: true, tinh_tncn: true, ghi_chu: "" },
-  { id: "HD010", ma_nv: "NV0009", so_hd: "HĐLĐ-2021/033", loai_hd: "khong_xac_dinh", kieu_luong: "GROSS", luong_chinh: 26000000, luong_bhxh: 20000000, ngay_bat_dau: "2021-07-12", ngay_ket_thuc: "", trich_bhxh: true, tinh_tncn: true, ghi_chu: "" },
-  { id: "HD011", ma_nv: "NV0010", so_hd: "HĐLĐ-2022/061", loai_hd: "khong_xac_dinh", kieu_luong: "NET", luong_chinh: 25000000, luong_bhxh: 18000000, ngay_bat_dau: "2022-11-21", ngay_ket_thuc: "", trich_bhxh: true, tinh_tncn: true, ghi_chu: "" },
-  { id: "HD012", ma_nv: "NV0011", so_hd: "HĐTV-2026/007", loai_hd: "thu_viec", kieu_luong: "GROSS", luong_chinh: 12000000, luong_bhxh: 0, ngay_bat_dau: "2026-08-03", ngay_ket_thuc: "2026-10-02", trich_bhxh: false, tinh_tncn: true, ghi_chu: "Thử việc 2 tháng" },
+  { id: "HD003", ma_nv: "MOCK-NV0003", so_hd: "HĐTV-2021/003", loai_hd: "thu_viec", kieu_luong: "GROSS", luong_chinh: 16000000, luong_bhxh: 0, ngay_bat_dau: "2021-02-01", ngay_ket_thuc: "2021-03-31", trich_bhxh: false, tinh_tncn: true, ghi_chu: "Thử việc 2 tháng" },
+  { id: "HD004", ma_nv: "MOCK-NV0003", so_hd: "HĐLĐ-2021/021", loai_hd: "khong_xac_dinh", kieu_luong: "GROSS", luong_chinh: 28000000, luong_bhxh: 20000000, ngay_bat_dau: "2021-04-01", ngay_ket_thuc: "", trich_bhxh: true, tinh_tncn: true, ghi_chu: "" },
+  { id: "HD005", ma_nv: "MOCK-NV0004", so_hd: "HĐLĐ-2022/045", loai_hd: "xac_dinh", kieu_luong: "GROSS", luong_chinh: 18000000, luong_bhxh: 15000000, ngay_bat_dau: "2025-05-16", ngay_ket_thuc: "2027-05-15", trich_bhxh: true, tinh_tncn: true, ghi_chu: "Gia hạn lần 1" },
+  { id: "HD006", ma_nv: "MOCK-NV0005", so_hd: "HĐLĐ-2020/030", loai_hd: "khong_xac_dinh", kieu_luong: "GROSS", luong_chinh: 27000000, luong_bhxh: 20000000, ngay_bat_dau: "2020-09-01", ngay_ket_thuc: "", trich_bhxh: true, tinh_tncn: true, ghi_chu: "" },
+  { id: "HD007", ma_nv: "MOCK-NV0006", so_hd: "HĐLĐ-2023/002", loai_hd: "xac_dinh", kieu_luong: "NET", luong_chinh: 15000000, luong_bhxh: 13000000, ngay_bat_dau: "2025-01-09", ngay_ket_thuc: "2027-01-08", trich_bhxh: true, tinh_tncn: true, ghi_chu: "" },
+  { id: "HD008", ma_nv: "MOCK-NV0007", so_hd: "HĐLĐ-2019/019", loai_hd: "khong_xac_dinh", kieu_luong: "GROSS", luong_chinh: 32000000, luong_bhxh: 24000000, ngay_bat_dau: "2019-08-01", ngay_ket_thuc: "", trich_bhxh: true, tinh_tncn: true, ghi_chu: "" },
+  { id: "HD009", ma_nv: "MOCK-NV0008", so_hd: "HĐLĐ-2023/018", loai_hd: "xac_dinh", kieu_luong: "GROSS", luong_chinh: 14000000, luong_bhxh: 12000000, ngay_bat_dau: "2025-04-03", ngay_ket_thuc: "2027-04-02", trich_bhxh: true, tinh_tncn: true, ghi_chu: "" },
+  { id: "HD010", ma_nv: "MOCK-NV0009", so_hd: "HĐLĐ-2021/033", loai_hd: "khong_xac_dinh", kieu_luong: "GROSS", luong_chinh: 26000000, luong_bhxh: 20000000, ngay_bat_dau: "2021-07-12", ngay_ket_thuc: "", trich_bhxh: true, tinh_tncn: true, ghi_chu: "" },
+  { id: "HD011", ma_nv: "MOCK-NV0010", so_hd: "HĐLĐ-2022/061", loai_hd: "khong_xac_dinh", kieu_luong: "NET", luong_chinh: 25000000, luong_bhxh: 18000000, ngay_bat_dau: "2022-11-21", ngay_ket_thuc: "", trich_bhxh: true, tinh_tncn: true, ghi_chu: "" },
+  { id: "HD012", ma_nv: "MOCK-NV0011", so_hd: "HĐTV-2026/007", loai_hd: "thu_viec", kieu_luong: "GROSS", luong_chinh: 12000000, luong_bhxh: 0, ngay_bat_dau: "2026-08-03", ngay_ket_thuc: "2026-10-02", trich_bhxh: false, tinh_tncn: true, ghi_chu: "Thử việc 2 tháng" },
   // Đã hết hạn và không ký tiếp — bảng vẫn phải hiện hợp đồng gần nhất.
-  { id: "HD013", ma_nv: "NV0012", so_hd: "HĐLĐ-2022/012", loai_hd: "xac_dinh", kieu_luong: "GROSS", luong_chinh: 16000000, luong_bhxh: 14000000, ngay_bat_dau: "2024-03-07", ngay_ket_thuc: "2026-06-30", trich_bhxh: true, tinh_tncn: true, ghi_chu: "Chấm dứt theo thỏa thuận" },
+  { id: "HD013", ma_nv: "MOCK-NV0012", so_hd: "HĐLĐ-2022/012", loai_hd: "xac_dinh", kieu_luong: "GROSS", luong_chinh: 16000000, luong_bhxh: 14000000, ngay_bat_dau: "2024-03-07", ngay_ket_thuc: "2026-06-30", trich_bhxh: true, tinh_tncn: true, ghi_chu: "Chấm dứt theo thỏa thuận" },
 ];
 
 export const TAI_LIEU_MAU: TaiLieu[] = [
-  { id: "TL001", ma_nv: "NV0001", loai: "cccd", so_hieu: "001085001234", ngay_cap: "2021-06-10", noi_cap: "Cục Cảnh sát QLHC về TTXH", ghi_chu: "" },
-  { id: "TL002", ma_nv: "NV0001", loai: "bang_cap", so_hieu: "ĐHKTQD-2007-1123", ngay_cap: "2007-07-01", noi_cap: "Đại học Kinh tế Quốc dân", ghi_chu: "Cử nhân Quản trị kinh doanh" },
-  { id: "TL003", ma_nv: "NV0003", loai: "cccd", so_hieu: "001090003456", ngay_cap: "2022-01-18", noi_cap: "Cục Cảnh sát QLHC về TTXH", ghi_chu: "" },
-  { id: "TL004", ma_nv: "NV0007", loai: "chung_chi", so_hieu: "KTV-2018-0456", ngay_cap: "2018-11-20", noi_cap: "Bộ Tài chính", ghi_chu: "Chứng chỉ hành nghề kế toán" },
-  { id: "TL005", ma_nv: "NV0010", loai: "so_yeu_ly_lich", so_hieu: "", ngay_cap: "2022-11-15", noi_cap: "UBND phường Dịch Vọng", ghi_chu: "Có xác nhận địa phương" },
+  { id: "TL001", ma_nv: "MOCK-NV0001", loai: "cccd", so_hieu: "001085001234", ngay_cap: "2021-06-10", noi_cap: "Cục Cảnh sát QLHC về TTXH", ghi_chu: "" },
+  { id: "TL002", ma_nv: "MOCK-NV0001", loai: "bang_cap", so_hieu: "ĐHKTQD-2007-1123", ngay_cap: "2007-07-01", noi_cap: "Đại học Kinh tế Quốc dân", ghi_chu: "Cử nhân Quản trị kinh doanh" },
+  { id: "TL003", ma_nv: "MOCK-NV0003", loai: "cccd", so_hieu: "001090003456", ngay_cap: "2022-01-18", noi_cap: "Cục Cảnh sát QLHC về TTXH", ghi_chu: "" },
+  { id: "TL004", ma_nv: "MOCK-NV0007", loai: "chung_chi", so_hieu: "KTV-2018-0456", ngay_cap: "2018-11-20", noi_cap: "Bộ Tài chính", ghi_chu: "Chứng chỉ hành nghề kế toán" },
+  { id: "TL005", ma_nv: "MOCK-NV0010", loai: "so_yeu_ly_lich", so_hieu: "", ngay_cap: "2022-11-15", noi_cap: "UBND phường Dịch Vọng", ghi_chu: "Có xác nhận địa phương" },
 ];
 
 export const NGUOI_PHU_THUOC_MAU: NguoiPhuThuoc[] = [
-  { id: "NPT001", ma_nv: "NV0001", ho_ten: "Nguyễn Minh Khôi", quan_he: "con", ngay_sinh: "2015-09-02", so_cccd: "", mst_ca_nhan: "", dien_thoai: "", dia_chi: "12 Nguyễn Trãi, Thanh Xuân, Hà Nội", gt_tu_thang: "2021-01", gt_den_thang: "" },
-  { id: "NPT002", ma_nv: "NV0001", ho_ten: "Nguyễn Ngọc Diệp", quan_he: "con", ngay_sinh: "2019-04-25", so_cccd: "", mst_ca_nhan: "", dien_thoai: "", dia_chi: "12 Nguyễn Trãi, Thanh Xuân, Hà Nội", gt_tu_thang: "2022-06", gt_den_thang: "" },
-  { id: "NPT003", ma_nv: "NV0003", ho_ten: "Lê Bảo An", quan_he: "con", ngay_sinh: "2018-12-11", so_cccd: "", mst_ca_nhan: "", dien_thoai: "", dia_chi: "78 Trần Hưng Đạo, Hai Bà Trưng, Hà Nội", gt_tu_thang: "2021-05", gt_den_thang: "" },
-  { id: "NPT004", ma_nv: "NV0004", ho_ten: "Phạm Gia Bảo", quan_he: "con", ngay_sinh: "2021-03-30", so_cccd: "", mst_ca_nhan: "", dien_thoai: "", dia_chi: "9 Ngõ 100 Cầu Giấy, Hà Nội", gt_tu_thang: "2022-07", gt_den_thang: "" },
+  { id: "NPT001", ma_nv: "MOCK-NV0001", ho_ten: "Nguyễn Minh Khôi", quan_he: "con", ngay_sinh: "2015-09-02", so_cccd: "", mst_ca_nhan: "", dien_thoai: "", dia_chi: "12 Nguyễn Trãi, Thanh Xuân, Hà Nội", gt_tu_thang: "2021-01", gt_den_thang: "" },
+  { id: "NPT002", ma_nv: "MOCK-NV0001", ho_ten: "Nguyễn Ngọc Diệp", quan_he: "con", ngay_sinh: "2019-04-25", so_cccd: "", mst_ca_nhan: "", dien_thoai: "", dia_chi: "12 Nguyễn Trãi, Thanh Xuân, Hà Nội", gt_tu_thang: "2022-06", gt_den_thang: "" },
+  { id: "NPT003", ma_nv: "MOCK-NV0003", ho_ten: "Lê Bảo An", quan_he: "con", ngay_sinh: "2018-12-11", so_cccd: "", mst_ca_nhan: "", dien_thoai: "", dia_chi: "78 Trần Hưng Đạo, Hai Bà Trưng, Hà Nội", gt_tu_thang: "2021-05", gt_den_thang: "" },
+  { id: "NPT004", ma_nv: "MOCK-NV0004", ho_ten: "Phạm Gia Bảo", quan_he: "con", ngay_sinh: "2021-03-30", so_cccd: "", mst_ca_nhan: "", dien_thoai: "", dia_chi: "9 Ngõ 100 Cầu Giấy, Hà Nội", gt_tu_thang: "2022-07", gt_den_thang: "" },
   // Kỳ đăng ký đã kết thúc — cột "ĐK giảm trừ" hiện đủ hai đầu ngày.
-  { id: "NPT005", ma_nv: "NV0007", ho_ten: "Nguyễn Thị Vân", quan_he: "me", ngay_sinh: "1958-02-14", so_cccd: "001158099887", mst_ca_nhan: "8123456780", dien_thoai: "0913222111", dia_chi: "17 Tôn Đức Thắng, Đống Đa, Hà Nội", gt_tu_thang: "2023-01", gt_den_thang: "2025-12" },
-  { id: "NPT006", ma_nv: "NV0009", ho_ten: "Đặng Khánh Linh", quan_he: "con", ngay_sinh: "2016-07-19", so_cccd: "", mst_ca_nhan: "", dien_thoai: "", dia_chi: "301 Trường Chinh, Thanh Xuân, Hà Nội", gt_tu_thang: "2021-09", gt_den_thang: "" },
+  { id: "NPT005", ma_nv: "MOCK-NV0007", ho_ten: "Nguyễn Thị Vân", quan_he: "me", ngay_sinh: "1958-02-14", so_cccd: "001158099887", mst_ca_nhan: "8123456780", dien_thoai: "0913222111", dia_chi: "17 Tôn Đức Thắng, Đống Đa, Hà Nội", gt_tu_thang: "2023-01", gt_den_thang: "2025-12" },
+  { id: "NPT006", ma_nv: "MOCK-NV0009", ho_ten: "Đặng Khánh Linh", quan_he: "con", ngay_sinh: "2016-07-19", so_cccd: "", mst_ca_nhan: "", dien_thoai: "", dia_chi: "301 Trường Chinh, Thanh Xuân, Hà Nội", gt_tu_thang: "2021-09", gt_den_thang: "" },
 ];
 
 /**
@@ -324,37 +329,37 @@ export const CAU_TRUC_LUONG_MAU: CauTrucLuong = {
  */
 export const SET_LUONG_MAU: SetLuongNhanVien[] = [
   {
-    ma_nv: "NV0001", lan_thiet_lap: 3, hieu_luc_tu: "2026-01-01", hieu_luc_den: "2026-12-31",
+    ma_nv: "MOCK-NV0001", lan_thiet_lap: 3, hieu_luc_tu: "2026-01-01", hieu_luc_den: "2026-12-31",
     trang_thai: "da_duyet",
     khoan: { KL01: 40000000, KL02: 8000000, KL04: 0, KL06: 3000000, KL07: 500000, KL08: 730000 },
   },
   {
-    ma_nv: "NV0002", lan_thiet_lap: 2, hieu_luc_tu: "2026-01-01", hieu_luc_den: "2026-12-31",
+    ma_nv: "MOCK-NV0002", lan_thiet_lap: 2, hieu_luc_tu: "2026-01-01", hieu_luc_den: "2026-12-31",
     trang_thai: "da_duyet",
     khoan: { KL01: 30000000, KL02: 6000000, KL06: 3000000, KL07: 500000, KL08: 730000 },
   },
   {
-    ma_nv: "NV0003", lan_thiet_lap: 2, hieu_luc_tu: "2026-01-01", hieu_luc_den: "2026-12-31",
+    ma_nv: "MOCK-NV0003", lan_thiet_lap: 2, hieu_luc_tu: "2026-01-01", hieu_luc_den: "2026-12-31",
     trang_thai: "da_duyet",
     khoan: { KL01: 20000000, KL02: 3000000, KL05: 500000, KL08: 730000, KL17: 500000 },
   },
   {
-    ma_nv: "NV0004", lan_thiet_lap: 1, hieu_luc_tu: "2026-07-01", hieu_luc_den: "2026-12-31",
+    ma_nv: "MOCK-NV0004", lan_thiet_lap: 1, hieu_luc_tu: "2026-07-01", hieu_luc_den: "2026-12-31",
     trang_thai: "cho_duyet",
     khoan: { KL01: 15000000, KL03: 1000000, KL05: 500000, KL08: 730000, KL17: 500000 },
   },
   {
-    ma_nv: "NV0005", lan_thiet_lap: 2, hieu_luc_tu: "2026-01-01", hieu_luc_den: "2026-12-31",
+    ma_nv: "MOCK-NV0005", lan_thiet_lap: 2, hieu_luc_tu: "2026-01-01", hieu_luc_den: "2026-12-31",
     trang_thai: "da_duyet",
     khoan: { KL01: 20000000, KL02: 3000000, KL07: 300000, KL08: 730000 },
   },
   {
-    ma_nv: "NV0006", lan_thiet_lap: 1, hieu_luc_tu: "2026-07-01", hieu_luc_den: "",
+    ma_nv: "MOCK-NV0006", lan_thiet_lap: 1, hieu_luc_tu: "2026-07-01", hieu_luc_den: "",
     trang_thai: "cho_duyet",
     khoan: { KL01: 13000000, KL03: 800000, KL08: 730000, KL17: 500000 },
   },
   {
-    ma_nv: "NV0007", lan_thiet_lap: 1, hieu_luc_tu: "2026-08-01", hieu_luc_den: "",
+    ma_nv: "MOCK-NV0007", lan_thiet_lap: 1, hieu_luc_tu: "2026-08-01", hieu_luc_den: "",
     trang_thai: "nhap",
     khoan: { KL01: 24000000, KL02: 4000000, KL04: 800000, KL08: 730000 },
   },
@@ -389,13 +394,13 @@ export const MAU_KPI_MAU: DongKpi[] = [
 /**
  * KPI đã áp cho 5 trong 11 nhân viên đang làm.
  *
- * Cố ý cài sẵn ba mức hiệu suất — `NV0003` vượt chỉ tiêu, `NV0004` gần đạt,
- * `NV0006` kém xa — để thấy đủ ba màu ở cột "Hiệu suất"; sáu người còn lại chưa
+ * Cố ý cài sẵn ba mức hiệu suất — `MOCK-NV0003` vượt chỉ tiêu, `MOCK-NV0004` gần đạt,
+ * `MOCK-NV0006` kém xa — để thấy đủ ba màu ở cột "Hiệu suất"; sáu người còn lại chưa
  * có KPI nên cột đó hiện gạch ngang.
  */
 export const BAN_KPI_MAU: BanKpiNhanVien[] = [
   {
-    ma_nv: "NV0003", lan_luong: 3,
+    ma_nv: "MOCK-NV0003", lan_luong: 3,
     dong: [
       { id: "DK101", ma_kpi: "KPI01", trong_so: 50, muc_tieu: 800000000, thuc_thi: 910000000 },
       { id: "DK102", ma_kpi: "KPI04", trong_so: 30, muc_tieu: 12, thuc_thi: 13 },
@@ -403,7 +408,7 @@ export const BAN_KPI_MAU: BanKpiNhanVien[] = [
     ],
   },
   {
-    ma_nv: "NV0004", lan_luong: 2,
+    ma_nv: "MOCK-NV0004", lan_luong: 2,
     dong: [
       { id: "DK111", ma_kpi: "KPI01", trong_so: 40, muc_tieu: 500000000, thuc_thi: 430000000 },
       { id: "DK112", ma_kpi: "KPI02", trong_so: 20, muc_tieu: 120, thuc_thi: 131 },
@@ -413,21 +418,21 @@ export const BAN_KPI_MAU: BanKpiNhanVien[] = [
     ],
   },
   {
-    ma_nv: "NV0005", lan_luong: 2,
+    ma_nv: "MOCK-NV0005", lan_luong: 2,
     dong: [
       { id: "DK121", ma_kpi: "KPI01", trong_so: 60, muc_tieu: 400000000, thuc_thi: 402000000 },
       { id: "DK122", ma_kpi: "KPI04", trong_so: 40, muc_tieu: 8, thuc_thi: 8 },
     ],
   },
   {
-    ma_nv: "NV0006", lan_luong: 1,
+    ma_nv: "MOCK-NV0006", lan_luong: 1,
     dong: [
       { id: "DK131", ma_kpi: "KPI01", trong_so: 60, muc_tieu: 400000000, thuc_thi: 180000000 },
       { id: "DK132", ma_kpi: "KPI04", trong_so: 40, muc_tieu: 8, thuc_thi: 5 },
     ],
   },
   {
-    ma_nv: "NV0007", lan_luong: 1,
+    ma_nv: "MOCK-NV0007", lan_luong: 1,
     dong: [
       { id: "DK141", ma_kpi: "KPI03", trong_so: 60, muc_tieu: 98, thuc_thi: 96 },
       { id: "DK142", ma_kpi: "KPI05", trong_so: 40, muc_tieu: 12, thuc_thi: 11 },
@@ -451,7 +456,7 @@ export const MAU_THUONG_MAU: DongThuong[] = [
  */
 export const BAN_THUONG_MAU: BanThuongNhanVien[] = [
   {
-    ma_nv: "NV0003",
+    ma_nv: "MOCK-NV0003",
     dong: [
       { id: "DT101", ma_khoan: "KL14", so_tien: 3000000 },
       { id: "DT102", ma_khoan: "KL15", so_tien: 5000000 },
@@ -459,18 +464,18 @@ export const BAN_THUONG_MAU: BanThuongNhanVien[] = [
     ],
   },
   {
-    ma_nv: "NV0004",
+    ma_nv: "MOCK-NV0004",
     dong: [
       { id: "DT111", ma_khoan: "KL14", so_tien: 2000000 },
       { id: "DT112", ma_khoan: "KL16", so_tien: 1500000 },
     ],
   },
   {
-    ma_nv: "NV0005",
+    ma_nv: "MOCK-NV0005",
     dong: [{ id: "DT121", ma_khoan: "KL14", so_tien: 2000000 }],
   },
   {
-    ma_nv: "NV0008",
+    ma_nv: "MOCK-NV0008",
     dong: [
       { id: "DT131", ma_khoan: "KL14", so_tien: 2000000 },
       { id: "DT132", ma_khoan: "KL15", so_tien: 1000000 },
@@ -489,13 +494,13 @@ export const MAU_TANG_CA_MAU: DongTangCa[] = [
  *
  * Cố ý cài sẵn các mức chạm ngưỡng của Cấu hình mặc định (40h/tháng, cảnh báo
  * 200h/năm, vượt mức 300h/năm) để thấy đủ ba màu ở hai cột giờ:
- * - `NV0003` 44h tháng → vượt trần tháng, và 224h năm → chạm cảnh báo năm;
- * - `NV0006` 314h năm → vượt mức năm;
- * - `NV0004` và `NV0009` còn trong ngưỡng an toàn.
+ * - `MOCK-NV0003` 44h tháng → vượt trần tháng, và 224h năm → chạm cảnh báo năm;
+ * - `MOCK-NV0006` 314h năm → vượt mức năm;
+ * - `MOCK-NV0004` và `MOCK-NV0009` còn trong ngưỡng an toàn.
  */
 export const BAN_TANG_CA_MAU: BanTangCaNhanVien[] = [
   {
-    ma_nv: "NV0003",
+    ma_nv: "MOCK-NV0003",
     gio_luy_ke_nam: 180,
     dong: [
       { id: "DO101", loai: "ngay_thuong_ngay", so_gio: 30 },
@@ -503,12 +508,12 @@ export const BAN_TANG_CA_MAU: BanTangCaNhanVien[] = [
     ],
   },
   {
-    ma_nv: "NV0004",
+    ma_nv: "MOCK-NV0004",
     gio_luy_ke_nam: 60,
     dong: [{ id: "DO111", loai: "ngay_thuong_ngay", so_gio: 16 }],
   },
   {
-    ma_nv: "NV0006",
+    ma_nv: "MOCK-NV0006",
     gio_luy_ke_nam: 280,
     dong: [
       { id: "DO121", loai: "ngay_thuong_ngay", so_gio: 20 },
@@ -517,7 +522,7 @@ export const BAN_TANG_CA_MAU: BanTangCaNhanVien[] = [
     ],
   },
   {
-    ma_nv: "NV0009",
+    ma_nv: "MOCK-NV0009",
     gio_luy_ke_nam: 24,
     dong: [{ id: "DO131", loai: "ngay_thuong_ngay", so_gio: 8 }],
   },
@@ -546,30 +551,30 @@ export const MAU_LUONG_SAN_PHAM_MAU: DongLuongSanPham[] = [
 /**
  * Lương sản phẩm đã áp cho 4 trong 11 nhân viên đang làm.
  *
- * `NV0006` cố ý giữ đơn giá cũ 22.000 khác bảng giá hiện hành 25.000 — thử được
+ * `MOCK-NV0006` cố ý giữ đơn giá cũ 22.000 khác bảng giá hiện hành 25.000 — thử được
  * trường hợp đơn giá chốt theo kỳ, không chạy theo danh mục.
  */
 export const BAN_LUONG_SAN_PHAM_MAU: BanLuongSanPhamNhanVien[] = [
   {
-    ma_nv: "NV0005",
+    ma_nv: "MOCK-NV0005",
     dong: [
       { id: "DS101", ma_sp: "SP01", don_gia: 25000, so_luong: 210 },
       { id: "DS102", ma_sp: "SP02", don_gia: 32000, so_luong: 85 },
     ],
   },
   {
-    ma_nv: "NV0006",
+    ma_nv: "MOCK-NV0006",
     dong: [{ id: "DS111", ma_sp: "SP01", don_gia: 22000, so_luong: 195 }],
   },
   {
-    ma_nv: "NV0008",
+    ma_nv: "MOCK-NV0008",
     dong: [
       { id: "DS121", ma_sp: "SP03", don_gia: 8000, so_luong: 120 },
       { id: "DS122", ma_sp: "SP04", don_gia: 15000, so_luong: 76 },
     ],
   },
   {
-    ma_nv: "NV0010",
+    ma_nv: "MOCK-NV0010",
     dong: [{ id: "DS131", ma_sp: "SP05", don_gia: 12000, so_luong: 140 }],
   },
 ];
@@ -582,30 +587,30 @@ export const MAU_LUONG_PHAN_TRAM_MAU: DongLuongPhanTram[] = [
 
 /**
  * Lương phần trăm đã áp cho 4 trong 11 nhân viên đang làm — toàn người khối kinh
- * doanh, đúng nhóm ăn hoa hồng. `NV0006` giữ tỷ lệ 2,5% khác mặc định 3% để thử
+ * doanh, đúng nhóm ăn hoa hồng. `MOCK-NV0006` giữ tỷ lệ 2,5% khác mặc định 3% để thử
  * trường hợp tỷ lệ chốt theo kỳ, không chạy theo danh mục.
  */
 export const BAN_LUONG_PHAN_TRAM_MAU: BanLuongPhanTramNhanVien[] = [
   {
-    ma_nv: "NV0003",
+    ma_nv: "MOCK-NV0003",
     dong: [
       { id: "DP101", ma_khoan: "KL12", ty_le: 3, so_tien_co_so: 910000000 },
       { id: "DP102", ma_khoan: "KL19", ty_le: 2, so_tien_co_so: 110000000 },
     ],
   },
   {
-    ma_nv: "NV0004",
+    ma_nv: "MOCK-NV0004",
     dong: [{ id: "DP111", ma_khoan: "KL12", ty_le: 3, so_tien_co_so: 430000000 }],
   },
   {
-    ma_nv: "NV0005",
+    ma_nv: "MOCK-NV0005",
     dong: [
       { id: "DP121", ma_khoan: "KL12", ty_le: 3, so_tien_co_so: 402000000 },
       { id: "DP122", ma_khoan: "KL18", ty_le: 5, so_tien_co_so: 96000000 },
     ],
   },
   {
-    ma_nv: "NV0006",
+    ma_nv: "MOCK-NV0006",
     dong: [{ id: "DP131", ma_khoan: "KL12", ty_le: 2.5, so_tien_co_so: 180000000 }],
   },
 ];
@@ -632,26 +637,26 @@ export const MAU_CHUYEN_CAN_MAU: DongChuyenCan[] = [
 /**
  * Chuyên cần đã áp cho 4 trong 11 nhân viên đang làm, cài sẵn đủ các trường hợp
  * của cột "Thành tiền":
- * - `NV0003` trừ một phần (đi trễ + quên chấm công);
- * - `NV0004` dính lỗi mất toàn bộ → còn 0 đ;
- * - `NV0006` bảng **rỗng** — đã chốt kỳ, không vi phạm gì nên nhận đủ;
- * - `NV0008` chưa set lương nên đơn giá rơi về mức của Cấu trúc lương.
+ * - `MOCK-NV0003` trừ một phần (đi trễ + quên chấm công);
+ * - `MOCK-NV0004` dính lỗi mất toàn bộ → còn 0 đ;
+ * - `MOCK-NV0006` bảng **rỗng** — đã chốt kỳ, không vi phạm gì nên nhận đủ;
+ * - `MOCK-NV0008` chưa set lương nên đơn giá rơi về mức của Cấu trúc lương.
  */
 export const BAN_CHUYEN_CAN_MAU: BanChuyenCanNhanVien[] = [
   {
-    ma_nv: "NV0003",
+    ma_nv: "MOCK-NV0003",
     dong: [
       { id: "DC101", ma_cc: "CC01", so_gio: 2.5, ngay: "2026-08-05" },
       { id: "DC102", ma_cc: "CC05", so_gio: 0, ngay: "2026-08-12" },
     ],
   },
   {
-    ma_nv: "NV0004",
+    ma_nv: "MOCK-NV0004",
     dong: [{ id: "DC111", ma_cc: "CC03", so_gio: 8, ngay: "2026-08-07" }],
   },
-  { ma_nv: "NV0006", dong: [] },
+  { ma_nv: "MOCK-NV0006", dong: [] },
   {
-    ma_nv: "NV0008",
+    ma_nv: "MOCK-NV0008",
     dong: [{ id: "DC131", ma_cc: "CC01", so_gio: 1, ngay: "2026-08-03" }],
   },
 ];
@@ -678,30 +683,30 @@ export const MAU_BU_TRU_MAU: DongBuTru[] = [
 
 /**
  * Ứng - bù trừ đã áp cho 4 trong 11 nhân viên đang làm, cài sẵn đủ ba dấu của
- * cột "Tổng bị trừ": `NV0003` bị trừ nhiều, `NV0004` trừ có bù một phần,
- * `NV0005` **được nhận thêm** (chỉ có khoản bù), `NV0009` chỉ bị phạt.
+ * cột "Tổng bị trừ": `MOCK-NV0003` bị trừ nhiều, `MOCK-NV0004` trừ có bù một phần,
+ * `MOCK-NV0005` **được nhận thêm** (chỉ có khoản bù), `MOCK-NV0009` chỉ bị phạt.
  */
 export const BAN_BU_TRU_MAU: BanBuTruNhanVien[] = [
   {
-    ma_nv: "NV0003",
+    ma_nv: "MOCK-NV0003",
     dong: [
       { id: "DB101", ma_bt: "BT01", so_tien: 3000000 },
       { id: "DB102", ma_bt: "BT03", so_tien: 300000 },
     ],
   },
   {
-    ma_nv: "NV0004",
+    ma_nv: "MOCK-NV0004",
     dong: [
       { id: "DB111", ma_bt: "BT02", so_tien: 1500000 },
       { id: "DB112", ma_bt: "BT05", so_tien: 800000 },
     ],
   },
   {
-    ma_nv: "NV0005",
+    ma_nv: "MOCK-NV0005",
     dong: [{ id: "DB121", ma_bt: "BT06", so_tien: 1200000 }],
   },
   {
-    ma_nv: "NV0009",
+    ma_nv: "MOCK-NV0009",
     dong: [{ id: "DB131", ma_bt: "BT04", so_tien: 500000 }],
   },
 ];

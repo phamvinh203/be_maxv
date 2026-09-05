@@ -212,6 +212,13 @@ export default function ThongTinTab({
               {item.label}
             </MenuItem>
           ))}
+          {/* Backend lưu chức vụ dưới dạng CHỮ tự do, nên giá trị đọc về có thể không nằm
+              trong danh mục (hồ sơ nhập từ nguồn khác, hoặc danh mục đổi tên). Không thêm
+              dòng này thì ô hiện TRỐNG dù dữ liệu vẫn còn — ô nói dối về thứ đang lưu. */}
+          {nhanVien.ma_cv &&
+            !CHUC_VU.some((item) => item.value === nhanVien.ma_cv) && (
+              <MenuItem value={nhanVien.ma_cv}>{nhanVien.ma_cv}</MenuItem>
+            )}
         </TextField>
         <TextField
           label="Cấp bậc"
@@ -227,6 +234,7 @@ export default function ThongTinTab({
           value={nhanVien.ngay_vao}
           onChange={(e) => dat("ngay_vao", e.target.value)}
           slotProps={{ inputLabel: { shrink: true } }}
+          helperText="Cũng là ngày hiệu lực TỪ của hợp đồng."
         />
         {/* Chỉ có ở chế độ sửa — nhân viên mới luôn "Đang làm". */}
         {laSua && (
@@ -372,16 +380,22 @@ export default function ThongTinTab({
                 </MenuItem>
               ))}
             </TextField>
+            {/* Khóa tạm: backend nhân viên chưa có cột tiền lương (spec chỉ có Gross/Net), nên
+                số nhập vào sẽ rơi mất khi lưu. Thà chặn còn hơn để người dùng gõ rồi mở lại
+                thấy 0. Mở lại khi API bảng lương xong. */}
             <TienField
               label="Lương chính"
               value={hopDong.luong_chinh}
               onChange={(v) => datHd("luong_chinh", v)}
+              disabled
+              helperText="Nhập ở màn Lương (chưa nối API)."
             />
             <TienField
               label="Lương đóng BHXH"
               value={hopDong.luong_bhxh}
               onChange={(v) => datHd("luong_bhxh", v)}
-              helperText="Gốc tính phí công đoàn 1%."
+              disabled
+              helperText="Gốc tính phí công đoàn 1% — nhập ở màn Lương (chưa nối API)."
             />
             <Box />
             <TextField
