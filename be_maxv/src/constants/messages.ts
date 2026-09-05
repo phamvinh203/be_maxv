@@ -115,6 +115,7 @@ export const MESSAGES = {
     NHAN_VIEN_NOT_FOUND: 'Không tìm thấy nhân viên',
     NGUOI_PHU_THUOC_NOT_FOUND: 'Không tìm thấy người phụ thuộc',
     TAI_LIEU_NOT_FOUND: 'Không tìm thấy tài liệu',
+    HOP_DONG_NOT_FOUND: 'Không tìm thấy hợp đồng',
     PHONG_BAN_NOT_FOUND: 'Không tìm thấy phòng ban',
     PHONG_BAN_ME_NOT_FOUND: 'Phòng ban cha không tồn tại',
     PHONG_BAN_ME_SELF: 'Phòng ban cha không thể là chính nó',

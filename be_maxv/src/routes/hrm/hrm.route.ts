@@ -1,5 +1,6 @@
 import type { FastifyInstance } from 'fastify';
 import { requireModule } from '../../services/shared/modules.service';
+import { hrmHopDongRoutes } from './hopDong.route';
 import { hrmNguoiPhuThuocRoutes } from './nguoiPhuThuoc.route';
 import { hrmNhanVienRoutes } from './nhanVien.route';
 import { hrmPhongBanRoutes } from './phongBan.route';
@@ -23,4 +24,5 @@ export async function hrmRoutes(app: FastifyInstance) {
   await app.register(hrmNhanVienRoutes);
   await app.register(hrmNguoiPhuThuocRoutes);
   await app.register(hrmTaiLieuRoutes);
+  await app.register(hrmHopDongRoutes);
 }
