@@ -1,3 +1,4 @@
+import { randomBytes } from 'node:crypto';
 import type { FastifyRequest, FastifyReply } from 'fastify';
 import {
   validateBody,
@@ -95,6 +96,31 @@ export async function driveLienKet(req: FastifyRequest, reply: FastifyReply) {
 }
 
 /**
+ * Escape 5 ký tự có nghĩa trong HTML trước khi nhét chuỗi vào trang.
+ *
+ * Callback Drive là chỗ DUY NHẤT trong dự án trả về HTML tự dựng bằng nối chuỗi, và nó lại là
+ * route cố ý miễn đăng nhập (xem taiLieu.route.ts) — nên bất kỳ dữ liệu ngoài nào lọt vào trang
+ * đều thành XSS phản chiếu ngay trên origin đang giữ cookie phiên. `httpOnly` KHÔNG cứu được:
+ * nó chặn script ĐỌC cookie, chứ script cùng origin vẫn gọi API kèm cookie bình thường; và
+ * `SameSite=Strict` cũng không chặn, vì người dùng điều hướng top-level tới đây.
+ *
+ * Dùng hàm này cho MỌI thứ đưa vào trang, kể cả chuỗi trông có vẻ vô hại (email Google trả về).
+ */
+function thoatHtml(s: string): string {
+  return s.replace(
+    /[&<>"']/g,
+    (c) =>
+      ({
+        '&': '&amp;',
+        '<': '&lt;',
+        '>': '&gt;',
+        '"': '&quot;',
+        "'": '&#39;',
+      })[c] as string,
+  );
+}
+
+/**
  * GET /api/v1/hrm/tai-lieu/drive/callback — Google chuyển trình duyệt về đây kèm `code`.
  *
  * Trả HTML (không phải JSON) vì đây là một cửa sổ popup thật đang hiển thị cho người dùng:
@@ -107,15 +133,26 @@ export async function driveCallback(req: FastifyRequest, reply: FastifyReply) {
     error?: string;
   };
 
+  // Nonce cho CSP — mới mỗi lần trả trang. Xem ghi chú ở `thoatHtml`.
+  const nonce = randomBytes(16).toString('base64');
+
   const dong = (thanhCong: boolean, thongDiep: string) =>
     reply
       .status(HttpStatus.OK)
       .type('text/html; charset=utf-8')
+      // Lớp phòng thủ thứ hai sau `thoatHtml`: chỉ script mang đúng nonce này được chạy, nên
+      // thẻ <script> hay thuộc tính onerror lọt vào trang cũng vô hiệu. `default-src 'none'`
+      // chặn luôn việc gọi ra ngoài — trang này không cần tải bất cứ tài nguyên nào.
+      .header(
+        'content-security-policy',
+        `default-src 'none'; script-src 'nonce-${nonce}'; style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'`,
+      )
+      .header('x-content-type-options', 'nosniff')
       .send(
         `<!doctype html><meta charset="utf-8"><title>Kết nối Google Drive</title>
 <body style="font-family:system-ui;padding:24px;text-align:center">
-<p>${thongDiep}</p>
-<script>
+<p>${thoatHtml(thongDiep)}</p>
+<script nonce="${nonce}">
   // Báo về trang cha rồi tự đóng. Trang cha đang giữ file người dùng đã chọn và sẽ tải lên tiếp.
   try { window.opener && window.opener.postMessage(
     { nguon: 'maxv-drive', thanh_cong: ${thanhCong ? 'true' : 'false'} }, window.location.origin); } catch (e) {}
@@ -123,7 +160,11 @@ export async function driveCallback(req: FastifyRequest, reply: FastifyReply) {
 </script></body>`,
       );
 
-  if (error) return dong(false, `Bạn đã từ chối cấp quyền (${error}).`);
+  if (error) {
+    // Giá trị thật của `error` CHỈ vào log: nó là tham số URL, ai cũng đặt được.
+    req.log.warn({ error }, 'Google trả lỗi ở callback Drive');
+    return dong(false, 'Bạn chưa cấp quyền truy cập Google Drive.');
+  }
   if (!code || !state) return dong(false, 'Thiếu tham số trả về từ Google.');
 
   const donViId = docState(state);
@@ -135,9 +176,15 @@ export async function driveCallback(req: FastifyRequest, reply: FastifyReply) {
     const { email } = await luuKetNoiDrive(donViId, code);
     return dong(true, `Đã kết nối Google Drive${email ? ` (${email})` : ''}.`);
   } catch (err) {
+    req.log.error(err);
+    // Chỉ hiện thông điệp của lỗi nghiệp vụ do CHÍNH MÌNH đặt (chuỗi tiếng Việt cố định, vd
+    // thiếu khóa mã hóa) — người dùng xử lý được. Lỗi từ Google mang văn bản tiếng Anh do bên
+    // ngoài soạn (`DriveApiError` nhúng tới 200 byte body Google trả về), không đưa lên trang.
     return dong(
       false,
-      err instanceof Error ? err.message : 'Không kết nối được Google Drive.',
+      err instanceof ConflictError
+        ? err.message
+        : 'Không kết nối được Google Drive. Vui lòng thử lại.',
     );
   }
 }
