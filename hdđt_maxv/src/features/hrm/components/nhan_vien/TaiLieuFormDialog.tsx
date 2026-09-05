@@ -13,7 +13,7 @@ import Stack from "@mui/material/Stack";
 import { getErrorMessage } from "../../../../lib/errors";
 import { LOAI_TAI_LIEU } from "../../constants";
 import { taiLieuRong } from "../../formDefaults";
-import { useLuuTaiLieu } from "../../mock/hooks/taiLieu";
+import { useLuuTaiLieu } from "../../api/taiLieuQueries";
 import type { LoaiTaiLieu, TaiLieu, TaiLieuFormValues } from "../../types";
 
 interface Props {

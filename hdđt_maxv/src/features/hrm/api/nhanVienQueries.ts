@@ -21,7 +21,12 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useCallback, useMemo } from "react";
 import { useAuth } from "@/features/auth/useAuth";
-import { hrmNhanVienKeys, hrmNptKeys, hrmPhongBanKeys } from "./hrmKeys";
+import {
+  hrmNhanVienKeys,
+  hrmNptKeys,
+  hrmPhongBanKeys,
+  hrmTaiLieuKeys,
+} from "./hrmKeys";
 import { sinhMaNhanVien } from "../cay";
 import { CHUC_VU, PB_CHUA_GAN } from "../constants";
 import { homNay, nhan } from "../format";
@@ -275,8 +280,8 @@ export function useNhanVienDetail(maNv: string | null): NhanVien | null {
 /**
  * Làm mới sau khi ghi. Đụng cả ba nhóm vì số liệu móc vào nhau:
  *   - phòng ban: cột `so_nv` do BE đếm, thêm/xóa nhân viên là sai ngay
- *   - người phụ thuộc: NPT bị ẩn theo nhân viên xóa mềm, không nạp lại thì màn NPT vẫn liệt
- *     kê người của hồ sơ đã xóa và bấm Sửa sẽ ra 404
+ *   - người phụ thuộc và hồ sơ tài liệu: đều bị ẩn theo nhân viên xóa mềm, không nạp lại thì
+ *     hai màn đó vẫn liệt kê dữ liệu của hồ sơ đã xóa và bấm Sửa sẽ ra 404
  */
 function useLamMoi() {
   const qc = useQueryClient();
@@ -284,6 +289,7 @@ function useLamMoi() {
     void qc.invalidateQueries({ queryKey: hrmNhanVienKeys.all });
     void qc.invalidateQueries({ queryKey: hrmPhongBanKeys.all });
     void qc.invalidateQueries({ queryKey: hrmNptKeys.all });
+    void qc.invalidateQueries({ queryKey: hrmTaiLieuKeys.all });
   };
 }
 

@@ -2,6 +2,7 @@ import { useState } from "react";
 import { toast } from "react-toastify";
 import Box from "@mui/material/Box";
 import Stack from "@mui/material/Stack";
+import CircularProgress from "@mui/material/CircularProgress";
 import Paper from "@mui/material/Paper";
 import Table from "@mui/material/Table";
 import TableBody from "@mui/material/TableBody";
@@ -20,13 +21,18 @@ import DeleteRounded from "@mui/icons-material/DeleteRounded";
 import { getErrorMessage } from "../../../../../lib/errors";
 import { LOAI_TAI_LIEU } from "../../../constants";
 import { ngayVn, nhan } from "../../../format";
-import { useTaiLieuList, useXoaTaiLieu } from "../../../mock/hooks/taiLieu";
+import { useTaiLieuList, useXoaTaiLieu } from "../../../api/taiLieuQueries";
 import type { TaiLieu } from "../../../types";
 import XacNhanXoaDialog from "../../XacNhanXoaDialog";
 import TaiLieuFormDialog from "../TaiLieuFormDialog";
 
 export default function HoSoTab({ maNv }: { maNv: string }) {
-  const danhSach = useTaiLieuList(maNv);
+  const {
+    items: danhSach,
+    isLoading,
+    isError,
+    error,
+  } = useTaiLieuList(maNv);
   const xoaTaiLieu = useXoaTaiLieu();
 
   const [formOpen, setFormOpen] = useState(false);
@@ -113,13 +119,29 @@ export default function HoSoTab({ maNv }: { maNv: string }) {
             {danhSach.length === 0 && (
               <TableRow>
                 <TableCell colSpan={6}>
-                  <Typography
-                    variant="body2"
-                    color="text.disabled"
-                    sx={{ textAlign: "center", py: 4 }}
-                  >
-                    Chưa có tài liệu nào.
-                  </Typography>
+                  {/* Lỗi tải KHÔNG được hiện thành "chưa có" — người dùng sẽ đi nhập lại
+                      giấy tờ đã có, tạo bản trùng trong hồ sơ. */}
+                  {isLoading ? (
+                    <Stack sx={{ alignItems: "center", py: 4 }}>
+                      <CircularProgress size={24} />
+                    </Stack>
+                  ) : isError ? (
+                    <Typography
+                      variant="body2"
+                      color="error"
+                      sx={{ textAlign: "center", py: 4 }}
+                    >
+                      {getErrorMessage(error, "Không tải được hồ sơ tài liệu.")}
+                    </Typography>
+                  ) : (
+                    <Typography
+                      variant="body2"
+                      color="text.disabled"
+                      sx={{ textAlign: "center", py: 4 }}
+                    >
+                      Chưa có tài liệu nào.
+                    </Typography>
+                  )}
                 </TableCell>
               </TableRow>
             )}
