@@ -65,16 +65,12 @@ const namDangKy = z
   .optional()
   .default(null);
 
-export const QUAN_HE = [
-  'vo',
-  'chong',
-  'con',
-  'bo',
-  'me',
-  'anh_chi_em',
-  'khac',
-] as const;
-
+/**
+ * Quan hệ để CHỮ TỰ DO (≤50) chứ không ép enum — đúng như yêu cầu nghiệp vụ ghi kiểu dữ liệu
+ * là "Chuỗi" (khác Giới tính ghi rõ "chọn từ list"). Danh sách gợi ý Vợ/Chồng/Con/Bố/Mẹ/Anh
+ * chị em/Khác nằm ở FE. Ép enum ở đây sẽ chặn oan các quan hệ có thật khác (ông bà, cháu…)
+ * mà luật TNCN vẫn cho đăng ký giảm trừ.
+ */
 const thanBody = z.object({
   ma_nv: z
     .string()
@@ -87,7 +83,7 @@ const thanBody = z.object({
     .trim()
     .min(1, 'Họ tên người phụ thuộc không được để trống')
     .max(200, 'Họ tên người phụ thuộc tối đa 200 ký tự'),
-  quan_he: z.enum(QUAN_HE).nullable().optional().default(null),
+  quan_he: optTextMax(50, 'Quan hệ'),
   ngay_sinh: ngaySinhVn,
   so_cccd: optTextMax(20, 'Số CCCD'),
   mst: optTextMax(20, 'MST'),

@@ -10,8 +10,9 @@ import Button from "@mui/material/Button";
 import Stack from "@mui/material/Stack";
 import { getErrorMessage } from "../../../../lib/errors";
 import { nptRong } from "../../formDefaults";
-import { useLuuNguoiPhuThuoc } from "../../mock/hooks/nguoiPhuThuoc";
-import { useNhanVienList } from "../../mock/hooks/nhanVien";
+import { useLuuNguoiPhuThuoc } from "../../api/nguoiPhuThuocQueries";
+// Phải là danh sách nhân viên THẬT: BE chặn ma_nv không tồn tại, chọn từ mock sẽ lưu lỗi 404.
+import { useNhanVienList } from "../../api/nhanVienQueries";
 import type { NguoiPhuThuoc, NguoiPhuThuocFormValues } from "../../types";
 import NguoiPhuThuocForm from "./NguoiPhuThuocForm";
 

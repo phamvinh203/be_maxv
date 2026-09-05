@@ -1,9 +1,10 @@
 /**
- * Hook nghiệp vụ người phụ thuộc.
+ * Hook nghiệp vụ người phụ thuộc — BẢN MOCK, KHÔNG CÒN MÀN NÀO DÙNG.
  *
- * Hai lối vào — tab trong hồ sơ nhân viên và màn hình độc lập — dùng chung các
- * hook này, chỉ khác chỗ lấy `ma_nv`: tab lấy từ nhân viên đang mở, màn hình
- * độc lập lấy từ ô chọn nhân viên trên form.
+ * Cả hai lối vào (tab trong hồ sơ nhân viên và màn hình độc lập) đã chuyển sang API thật ở
+ * `../../api/nguoiPhuThuocQueries.ts`. Giữ file lại vì kho mock vẫn còn dữ liệu người phụ
+ * thuộc phục vụ các màn khác (vd đếm số NPT trong bảng lương mock). Đừng import từ đây cho
+ * màn mới.
  */
 
 import { useCallback, useMemo } from "react";
