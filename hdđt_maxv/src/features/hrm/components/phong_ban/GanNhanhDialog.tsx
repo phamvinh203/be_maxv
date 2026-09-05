@@ -20,12 +20,12 @@ import Divider from "@mui/material/Divider";
 import { getErrorMessage } from "../../../../lib/errors";
 import { sapXepCay } from "../../cay";
 import { PB_CHUA_GAN } from "../../constants";
-// Danh sách phòng ban lấy từ API thật (cùng nguồn với bảng phía sau dialog); còn danh sách
-// nhân viên và thao tác gán vẫn là mock cho tới khi API nhân viên xong — nghĩa là gán xong,
-// bảng Nhân viên (đọc mock) sẽ chưa tra được tên phòng ban thật.
+// Cả ba nguồn đều là API thật: phòng ban, danh sách nhân viên, và thao tác gán.
 import { usePhongBanList } from "../../api/phongBanQueries";
-import { useGanNhanhPhongBan } from "../../mock/hooks/phongBan";
-import { useNhanVienList } from "../../mock/hooks/nhanVien";
+import {
+  useGanNhanhPhongBan,
+  useNhanVienList,
+} from "../../api/nhanVienQueries";
 
 interface Props {
   open: boolean;

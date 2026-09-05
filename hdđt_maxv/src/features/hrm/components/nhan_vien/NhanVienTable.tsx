@@ -2,6 +2,7 @@ import { useMemo, useState } from "react";
 import { toast } from "react-toastify";
 import Box from "@mui/material/Box";
 import Stack from "@mui/material/Stack";
+import Alert from "@mui/material/Alert";
 import CircularProgress from "@mui/material/CircularProgress";
 import Paper from "@mui/material/Paper";
 import Table from "@mui/material/Table";
@@ -148,6 +149,14 @@ export default function NhanVienTable() {
           Thêm nhân viên
         </Button>
       </Stack>
+
+      {/* Lỗi để NGOÀI bảng: nhánh trong TableBody chỉ chạy khi bảng rỗng, nên lỗi
+          refetch lúc đang có dòng sẽ không hiện gì và người dùng ngồi nhìn dữ liệu cũ. */}
+      {isError && (
+        <Alert severity="error" sx={{ mb: 2 }}>
+          {getErrorMessage(error, "Không tải được danh sách nhân viên.")}
+        </Alert>
+      )}
 
       <TableContainer component={Paper} variant="outlined">
         <Table size="small">

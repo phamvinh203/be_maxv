@@ -14,6 +14,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useCallback, useMemo } from "react";
 import { useAuth } from "@/features/auth/useAuth";
+import { hrmNhanVienKeys, hrmPhongBanKeys } from "./hrmKeys";
 import { sapXepCay } from "../cay";
 import type { PhongBan, PhongBanFormValues, PhongBanRow } from "../types";
 import {
@@ -24,13 +25,6 @@ import {
   type PhongBanApiBody,
   type PhongBanApiRow,
 } from "./phongBanApi";
-
-export const hrmPhongBanKeys = {
-  all: ["hrm-phong-ban"] as const,
-  // Gắn companyId: mọi API đi theo tenant qua cookie, đổi công ty phải nạp lại danh sách khác.
-  list: (companyId: string | null) =>
-    ["hrm-phong-ban", companyId, "list"] as const,
-};
 
 /** BE để null cho ô trống, type FE dùng chuỗi rỗng — quy đổi ngay tại biên, không rò xuống dưới. */
 function veKieuFe(r: PhongBanApiRow): PhongBan {
@@ -45,10 +39,13 @@ function veKieuFe(r: PhongBanApiRow): PhongBan {
 
 function useDanhSachPhongBan() {
   const { isAuthenticated, currentCompanyId } = useAuth();
+  // KHÔNG dùng `placeholderData: (prev) => prev`: nó giữ dữ liệu cũ xuyên qua việc ĐỔI query
+  // key, mà key ở đây gắn `currentCompanyId` — đổi công ty sẽ hiện nguyên danh sách phòng ban của
+  // công ty trước dưới tên công ty mới, `isLoading` lại là false nên không có dấu hiệu nào.
+  // Ba truy vấn này không phân trang nên cũng chẳng được lợi gì từ nó.
   return useQuery({
     queryKey: hrmPhongBanKeys.list(currentCompanyId),
     queryFn: () => listPhongBan(),
-    placeholderData: (prev) => prev,
     enabled: isAuthenticated && !!currentCompanyId,
   });
 }
@@ -88,9 +85,16 @@ export function usePhongBanRows(): {
   return { rows, isLoading, isError, error };
 }
 
+/**
+ * Làm mới sau khi ghi. Phải đụng cả danh sách NHÂN VIÊN: mỗi dòng nhân viên mang `ten_pb` do
+ * BE tra sẵn, đổi tên hoặc xóa phòng ban mà không nạp lại thì bảng nhân viên còn hiện tên cũ.
+ */
 function useLamMoi() {
   const qc = useQueryClient();
-  return () => void qc.invalidateQueries({ queryKey: hrmPhongBanKeys.all });
+  return () => {
+    void qc.invalidateQueries({ queryKey: hrmPhongBanKeys.all });
+    void qc.invalidateQueries({ queryKey: hrmNhanVienKeys.all });
+  };
 }
 
 /**

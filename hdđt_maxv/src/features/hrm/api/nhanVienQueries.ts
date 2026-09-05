@@ -9,9 +9,9 @@
  * đồng hiện hành vào chính bản ghi nhân viên (theo spec: số HĐ / loại HĐ / kiểu lương /
  * ngày hiệu lực từ-tới là trường bắt buộc của nhân viên).
  *
- * Trong đợt này tab Lịch sử hợp đồng / Hồ sơ / Người phụ thuộc VẪN chạy mock, nên:
- *   - THÊM: form có nhóm hợp đồng (tùy chọn) -> lấy sang; bỏ trống thì điền GIÁ TRỊ TẠM
- *     (xem `hopDongTam`) để qua được ràng buộc bắt buộc của BE.
+ * Trong đợt này tab Lịch sử hợp đồng / Hồ sơ VẪN chạy mock, nên:
+ *   - THÊM: form có nhóm hợp đồng (tùy chọn) -> giữ đúng thứ người dùng đã gõ, chỉ bù phần
+ *     thiếu để qua ràng buộc bắt buộc của BE (xem `hopDongKhiTao`).
  *   - SỬA: form không có ô hợp đồng -> đọc lại bản ghi trên BE rồi GIỮ NGUYÊN phần hợp
  *     đồng, chỉ ghi đè phần thông tin cá nhân. Không bịa lại giá trị mới.
  *
@@ -21,6 +21,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useCallback, useMemo } from "react";
 import { useAuth } from "@/features/auth/useAuth";
+import { hrmNhanVienKeys, hrmNptKeys, hrmPhongBanKeys } from "./hrmKeys";
 import { sinhMaNhanVien } from "../cay";
 import { CHUC_VU, PB_CHUA_GAN } from "../constants";
 import { homNay, nhan } from "../format";
@@ -43,12 +44,6 @@ import {
   type NhanVienApiBody,
   type NhanVienApiRow,
 } from "./nhanVienApi";
-
-export const hrmNhanVienKeys = {
-  all: ["hrm-nhan-vien"] as const,
-  list: (companyId: string | null) =>
-    ["hrm-nhan-vien", companyId, "list"] as const,
-};
 
 /** ISO của BE (`2026-03-01T00:00:00.000Z`) -> `YYYY-MM-DD` cho `<input type="date">`. */
 function veNgayInput(iso: string | null): string {
@@ -82,6 +77,14 @@ function loaiHopDongVeApi(loaiHd: string): LoaiHopDongApi {
   return "hdld"; // khong_xac_dinh | xac_dinh | thoi_vu đều là hợp đồng lao động
 }
 
+/**
+ * BE 3 giá trị -> FE 5 giá trị: KHÔNG khôi phục được nguyên bản ("Không xác định thời hạn" và
+ * "Thời vụ" đều đã gom về `hdld` lúc ghi, đọc về chỉ ra được một trong hai).
+ *
+ * CHỈ được dùng cho phần hiển thị của `hopDongTuApi` — hiện tại bảng nhân viên chỉ đọc `so_hd`
+ * và `kieu_luong` từ đó nên chưa lộ. ĐỪNG đổ giá trị này vào ô Select "Loại hợp đồng" hay
+ * `ThayDoiHopDongDialog`: người dùng sẽ thấy loại hợp đồng khác thứ họ đã chọn.
+ */
 function loaiHopDongVeFe(loai: LoaiHopDongApi): HopDong["loai_hd"] {
   if (loai === "thu_viec") return "thu_viec";
   if (loai === "hdvc") return "khoan";
@@ -131,46 +134,32 @@ function hopDongTuApi(r: NhanVienApiRow): HopDong {
   };
 }
 
-/** Phần hợp đồng của body BE, lấy từ nhóm hợp đồng trên form (nếu người dùng có nhập). */
-function hopDongVeApi(
-  hd: HopDongFormValues,
-): Pick<
-  NhanVienApiBody,
-  | "so_hop_dong"
-  | "loai_hop_dong"
-  | "kieu_luong"
-  | "ngay_vao_lam"
-  | "ngay_hieu_luc_toi"
-  | "bhxh"
-  | "tncn"
-> {
-  return {
-    so_hop_dong: hd.so_hd.trim(),
-    loai_hop_dong: loaiHopDongVeApi(hd.loai_hd),
-    kieu_luong: (hd.kieu_luong === "NET" ? "net" : "gross") as KieuLuongApi,
-    ngay_vao_lam: hd.ngay_bat_dau,
-    ngay_hieu_luc_toi: veNgayApi(hd.ngay_ket_thuc),
-    bhxh: hd.trich_bhxh,
-    tncn: hd.tinh_tncn,
-  };
-}
-
 /**
- * Giá trị TẠM khi thêm nhân viên mà bỏ trống nhóm hợp đồng.
+ * Phần hợp đồng gửi lên BE khi TẠO nhân viên.
  *
- * BE bắt buộc số HĐ / loại HĐ / kiểu lương / ngày vào làm (spec đánh dấu *), còn form hiện tại
- * cho phép "ký hợp đồng sau". Điền tạm để tạo được hồ sơ và xem màn hình chạy; số HĐ đặt dạng
- * `TAM-<mã NV>` để nhìn là biết cần sửa lại, không phải dữ liệu thật.
+ * BE bắt buộc số HĐ / loại HĐ / kiểu lương / ngày vào làm (spec đánh dấu *), còn form cho phép
+ * "ký hợp đồng sau" nên nhóm hợp đồng có thể trống hoặc mới điền một nửa. Quy tắc ở đây:
+ * **giữ bằng được thứ người dùng đã gõ**, chỉ bù phần còn thiếu.
+ *
+ * Trước đây hàm gọi dùng điều kiện AND còn dialog dùng OR, nên nhập số HĐ mà quên ngày là mất
+ * sạch cả số HĐ lẫn loại HĐ và kiểu lương đã chọn — thay bằng `TAM-…`/HĐLĐ/Gross, không báo gì.
+ *
+ * Ngày vào làm ưu tiên ô "Ngày vào" ở tab Thông tin: theo spec đó mới là trường của nhân viên
+ * ("Ngày vào làm / Hiệu lực TỪ"), ngày bắt đầu trong nhóm hợp đồng chỉ là nguồn dự phòng.
  */
-function hopDongTam(maNv: string, ngayVao: string) {
+function hopDongKhiTao(nv: NhanVien, hd: HopDongFormValues | null) {
+  const soHd = hd?.so_hd.trim();
+  const ngayVaoLam = nv.ngay_vao || hd?.ngay_bat_dau || homNay();
+
   return {
-    so_hop_dong: `TAM-${maNv || Date.now().toString().slice(-6)}`,
-    loai_hop_dong: "hdld" as LoaiHopDongApi,
-    kieu_luong: "gross" as KieuLuongApi,
-    ngay_vao_lam: ngayVao || homNay(),
-    ngay_hieu_luc_toi: null,
-    bhxh: true,
-    tncn: true,
+    // `TAM-<mã NV>` để nhìn là biết cần sửa lại, không lẫn với số hợp đồng thật.
+    so_hop_dong: soHd || `TAM-${nv.ma_nv.trim() || ngayVaoLam}`,
+    loai_hop_dong: hd ? loaiHopDongVeApi(hd.loai_hd) : ("hdld" as LoaiHopDongApi),
+    kieu_luong: (hd?.kieu_luong === "NET" ? "net" : "gross") as KieuLuongApi,
+    ngay_vao_lam: ngayVaoLam,
+    ngay_hieu_luc_toi: hd ? veNgayApi(hd.ngay_ket_thuc) : null,
+    bhxh: hd ? hd.trich_bhxh : true,
+    tncn: hd ? hd.tinh_tncn : true,
   };
 }
 
@@ -211,10 +200,13 @@ function thongTinVeApi(
 
 function useDanhSachNhanVien() {
   const { isAuthenticated, currentCompanyId } = useAuth();
+  // KHÔNG dùng `placeholderData: (prev) => prev`: nó giữ dữ liệu cũ xuyên qua việc ĐỔI query
+  // key, mà key ở đây gắn `currentCompanyId` — đổi công ty sẽ hiện nguyên danh sách nhân viên của
+  // công ty trước dưới tên công ty mới, `isLoading` lại là false nên không có dấu hiệu nào.
+  // Ba truy vấn này không phân trang nên cũng chẳng được lợi gì từ nó.
   return useQuery({
     queryKey: hrmNhanVienKeys.list(currentCompanyId),
     queryFn: () => listNhanVien(),
-    placeholderData: (prev) => prev,
     enabled: isAuthenticated && !!currentCompanyId,
   });
 }
@@ -280,9 +272,19 @@ export function useNhanVienDetail(maNv: string | null): NhanVien | null {
   );
 }
 
+/**
+ * Làm mới sau khi ghi. Đụng cả ba nhóm vì số liệu móc vào nhau:
+ *   - phòng ban: cột `so_nv` do BE đếm, thêm/xóa nhân viên là sai ngay
+ *   - người phụ thuộc: NPT bị ẩn theo nhân viên xóa mềm, không nạp lại thì màn NPT vẫn liệt
+ *     kê người của hồ sơ đã xóa và bấm Sửa sẽ ra 404
+ */
 function useLamMoi() {
   const qc = useQueryClient();
-  return () => void qc.invalidateQueries({ queryKey: hrmNhanVienKeys.all });
+  return () => {
+    void qc.invalidateQueries({ queryKey: hrmNhanVienKeys.all });
+    void qc.invalidateQueries({ queryKey: hrmPhongBanKeys.all });
+    void qc.invalidateQueries({ queryKey: hrmNptKeys.all });
+  };
 }
 
 /** Tạo nhân viên. Nhóm hợp đồng trên form là tùy chọn — bỏ trống thì điền tạm (xem đầu file). */
@@ -295,17 +297,12 @@ export function useThemNhanVien() {
       const nv = payload.nhan_vien;
       if (!nv.ho_ten.trim()) throw new Error("Họ và tên không được để trống.");
 
-      const coNhapHopDong = Boolean(
-        payload.hop_dong?.so_hd.trim() && payload.hop_dong?.ngay_bat_dau,
-      );
-      const phanHopDong = coNhapHopDong
-        ? hopDongVeApi(payload.hop_dong as HopDongFormValues)
-        : hopDongTam(nv.ma_nv.trim(), nv.ngay_vao);
-
       await them.mutateAsync({
         ma_nv: nv.ma_nv.trim() || null,
         ...thongTinVeApi(nv),
-        ...phanHopDong,
+        // Dialog đã quyết "người dùng có động vào nhóm hợp đồng chưa" và truyền null nếu chưa —
+        // ở đây KHÔNG kiểm lại bằng điều kiện khác, đó chính là chỗ từng lệch OR/AND.
+        ...hopDongKhiTao(nv, payload.hop_dong),
         mien_cham_cong: false,
       });
     },
@@ -330,6 +327,17 @@ export function useSuaNhanVien() {
       if (!nv.ho_ten.trim()) throw new Error("Họ và tên không được để trống.");
 
       const hienTai = await getNhanVien(nv.ma_nv);
+
+      // BE bắt ngày hiệu lực TỚI phải sau ngày vào làm, mà form sửa không có ô "hiệu lực tới"
+      // — đẩy "Ngày vào" quá hạn hợp đồng sẽ nhận 400 nói về một trường không nhìn thấy trên
+      // màn hình. Báo trước cho rõ chuyện gì đang vướng và phải sửa ở đâu.
+      const ngayToi = hienTai.ngay_hieu_luc_toi?.slice(0, 10);
+      if (nv.ngay_vao && ngayToi && nv.ngay_vao >= ngayToi) {
+        throw new Error(
+          `Ngày vào (${nv.ngay_vao}) phải trước ngày hết hạn hợp đồng (${ngayToi}). Sửa hạn hợp đồng ở tab Hợp đồng trước.`,
+        );
+      }
+
       await sua.mutateAsync({
         maNv: nv.ma_nv,
         body: {
@@ -350,6 +358,88 @@ export function useSuaNhanVien() {
       });
     },
     [sua],
+  );
+}
+
+/** Bản ghi BE đọc về -> thân request PUT, để sửa được một trường mà không mất các trường khác. */
+function apiRowVeBody(r: NhanVienApiRow): NhanVienApiBody {
+  return {
+    ho_ten: r.ho_ten,
+    ngay_sinh: r.ngay_sinh ? r.ngay_sinh.slice(0, 10) : null,
+    so_cccd: r.so_cccd,
+    mst_ca_nhan: r.mst_ca_nhan,
+    dien_thoai: r.dien_thoai,
+    email: r.email,
+    dia_chi: r.dia_chi,
+    gioi_tinh: r.gioi_tinh,
+    ma_pb: r.ma_pb,
+    chuc_vu: r.chuc_vu,
+    cap_bac: r.cap_bac,
+    so_hop_dong: r.so_hop_dong,
+    loai_hop_dong: r.loai_hop_dong,
+    kieu_luong: r.kieu_luong,
+    ngay_vao_lam: r.ngay_vao_lam.slice(0, 10),
+    ngay_hieu_luc_toi: r.ngay_hieu_luc_toi
+      ? r.ngay_hieu_luc_toi.slice(0, 10)
+      : null,
+    bhxh: r.bhxh,
+    tncn: r.tncn,
+    mien_cham_cong: r.mien_cham_cong,
+    cong_doan: r.cong_doan,
+    so_tai_khoan: r.so_tai_khoan,
+    ten_tai_khoan: r.ten_tai_khoan,
+    ngan_hang: r.ngan_hang,
+    ghi_chu: r.ghi_chu,
+    status: r.status,
+  };
+}
+
+/**
+ * Gán hàng loạt nhân viên vào một phòng ban — chạy THẬT trên API.
+ *
+ * Trước đây hook này lấy từ kho mock trong khi danh sách phòng ban đã là thật: thao tác không
+ * gửi gì lên server nhưng vẫn báo "Đã gán N nhân viên", còn cột `so_nv` phía sau vẫn đứng 0.
+ *
+ * BE không có endpoint gán hàng loạt và `PUT` thay TOÀN BỘ bản ghi, nên phải đọc từng người
+ * rồi ghi lại kèm phòng ban mới. Làm tuần tự để lỗi ở giữa còn nói được đã gán tới đâu —
+ * báo "thành công" khi mới xong một nửa còn tệ hơn là báo lỗi.
+ */
+export function useGanNhanhPhongBan() {
+  const lamMoi = useLamMoi();
+  const gan = useMutation({
+    mutationFn: async ({
+      maPb,
+      maNvList,
+    }: {
+      maPb: string;
+      maNvList: string[];
+    }) => {
+      let xong = 0;
+      for (const maNv of maNvList) {
+        try {
+          const hienTai = await getNhanVien(maNv);
+          await updateNhanVien(maNv, { ...apiRowVeBody(hienTai), ma_pb: maPb });
+          xong += 1;
+        } catch (err) {
+          const lyDo = err instanceof Error ? err.message : "lỗi không rõ";
+          throw new Error(
+            `Đã gán ${xong}/${maNvList.length} nhân viên rồi dừng ở ${maNv}: ${lyDo}`,
+            { cause: err },
+          );
+        }
+      }
+    },
+    // onSettled chứ không onSuccess: hỏng giữa chừng thì phần đã gán vẫn phải hiện ra bảng.
+    onSettled: lamMoi,
+  });
+
+  return useCallback(
+    async (maPb: string, maNvList: string[]) => {
+      if (!maPb) throw new Error("Chưa chọn phòng ban đích.");
+      if (maNvList.length === 0) throw new Error("Chưa chọn nhân viên nào.");
+      await gan.mutateAsync({ maPb, maNvList });
+    },
+    [gan],
   );
 }
 
