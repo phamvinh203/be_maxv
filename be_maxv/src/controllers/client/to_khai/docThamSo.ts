@@ -6,8 +6,8 @@
  * nghĩa đi thẳng vào truy vấn hóa đơn.
  */
 
-import { kyHopLe, type Ky, type KyLoai } from "../../../services/client/to_khai/kySoThue";
-import type { Chieu } from "../../../services/client/to_khai/keKhaiKy.service";
+import { kyHopLe, type Ky, type KyLoai } from "../../../services/client/to_khai/domain/kySoThue";
+import type { Chieu } from "../../../services/client/to_khai/domain/chieuHoaDon";
 
 export interface KyInput {
   nam?: number | string;

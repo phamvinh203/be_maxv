@@ -1,8 +1,8 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { nguongLamTron, soatToKhai } from "../services/client/to_khai/soatToKhai";
-import type { CtGtgt01 } from "../services/client/to_khai/tinhGtgt01";
-import type { Ky } from "../services/client/to_khai/kySoThue";
+import { nguongLamTron, soatToKhai } from "../services/client/to_khai/domain/soatToKhai";
+import type { CtGtgt01 } from "../services/client/to_khai/domain/tinhGtgt01";
+import type { Ky } from "../services/client/to_khai/domain/kySoThue";
 
 /** npx tsx --test src/__tests__/soatToKhai.test.ts */
 

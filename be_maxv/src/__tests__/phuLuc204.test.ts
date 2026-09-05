@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { dungPhuLuc204 } from "../services/client/to_khai/phuLuc204";
-import { gomBanRa, gomMuaVao, type HoaDonGom } from "../services/client/to_khai/gomHoaDonGtgt";
+import { dungPhuLuc204 } from "../services/client/to_khai/domain/phuLuc204";
+import { gomBanRa, gomMuaVao, type HoaDonGom } from "../services/client/to_khai/domain/gomHoaDonGtgt";
 
 /**
  * npx tsx --test src/__tests__/phuLuc204.test.ts

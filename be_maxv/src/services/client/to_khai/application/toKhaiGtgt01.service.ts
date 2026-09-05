@@ -8,14 +8,15 @@
  * Mô-đun này CHỈ đọc/ghi DB tenant — không gọi cổng thuế, không nhận token GDT.
  */
 
-import type { PrismaClient, Prisma } from "../../../generated/tenant";
-import { kyLienTruoc, truocKy, thangKetThuc, type Ky, type KyLoai } from "./kySoThue";
-import { gomBanRa, gomMuaVao, type HoaDonGom, type HoaDonTreo } from "./gomHoaDonGtgt";
-import { tinhGtgt01, CT_NHAP_TAY, type CtGtgt01 } from "./tinhGtgt01";
-import { catMoTa, dungPhuLuc204, type PhuLuc204 } from "./phuLuc204";
-import { soatToKhai } from "./soatToKhai";
-import { docLogDongBo, phuKyTuLog } from "./phuKy";
-import { layThayTheHut, type Chieu } from "./keKhaiKy.service";
+import type { PrismaClient, Prisma } from "../../../../generated/tenant";
+import type { Ky } from "../domain/kySoThue";
+import { gomBanRa, gomMuaVao, type HoaDonTreo } from "../domain/gomHoaDonGtgt";
+import { tinhGtgt01, CT_NHAP_TAY, type CtGtgt01 } from "../domain/tinhGtgt01";
+import { catMoTa, dungPhuLuc204, type PhuLuc204 } from "../domain/phuLuc204";
+import { soatToKhai } from "../domain/soatToKhai";
+import { docLogDongBo, phuKyTuLog } from "../infrastructure/phuKy";
+import { layThayTheHut } from "../infrastructure/soatToKhai.repository";
+import { docHoaDonCuaKy, layCt22KyTruoc } from "../infrastructure/toKhaiGtgt01.reader";
 
 /** Nguồn của chỉ tiêu [22]. `ky_truoc_nhap` = kỳ trước còn là bản nháp nên [43] còn có thể đổi. */
 export type NguonCt22 = "ky_truoc" | "ky_truoc_nhap" | "nhap_tay";
@@ -85,108 +86,6 @@ export function locGhiDeHopLe(raw: unknown): Record<string, GhiDeItem> {
     out[khoa] = lyDo === undefined ? { gia } : { gia, lyDo };
   }
   return out;
-}
-
-/**
- * Số id mỗi lượt truy vấn `IN (...)`.
- *
- * Postgres extended protocol chỉ nhận 65.535 tham số một lượt, và mỗi id là một tham số — kỳ quý
- * của công ty lớn vượt ngưỡng đó sẽ ném lỗi driver khó lần ra. Đó là lý do DUY NHẤT: kết quả các
- * lô vẫn gom hết vào một mảng nên đỉnh bộ nhớ không đổi. Đọc tuần tự là chủ ý — hai chiều đã chạy
- * song song ở tầng trên, thêm song song trong từng chiều chỉ nhân đỉnh RAM và tranh connection.
- */
-const HD_MOI_LO = 5_000;
-
-/** Cắt mảng thành từng lô; mảng rỗng ra danh sách rỗng, không ra một lô rỗng. */
-export function chiaLo<T>(ds: readonly T[], moiLo: number): T[][] {
-  const ra: T[][] = [];
-  for (let i = 0; i < ds.length; i += moiLo) ra.push(ds.slice(i, i + moiLo));
-  return ra;
-}
-
-/** Các cột engine cần đọc — giữ hẹp vì `detail` là JSON nặng. */
-const SELECT_HD = {
-  id: true,
-  tthai: true,
-  dvtte: true,
-  tgia: true,
-  tgtcthue: true,
-  tgtthue: true,
-  detail: true,
-} satisfies Prisma.vct50viewSelect;
-
-/**
- * Hóa đơn của kỳ theo chiều, kèm hai con số phục vụ cảnh báo: số tờ kế toán đã loại và số tờ bán
- * ra thiếu chi tiết.
- *
- * Đếm `detail == null` thẳng ở đây thay vì soi chuỗi lý do trong `treo` — chuỗi đó là câu hiển thị
- * cho người đọc, đổi chữ một cái là con số sai âm thầm. Chỉ bán ra mới cần `detail` để tách thuế
- * suất; mua vào chỉ lấy tổng.
- */
-async function docHoaDonCuaKy(
-  db: PrismaClient,
-  ky: Ky,
-  chieu: Chieu,
-): Promise<{ rows: HoaDonGom[]; soLoai: number; soThieuDetail: number }> {
-  const daGan = await db.tokhai_ky_hoa_don.findMany({
-    where: { chieu, nam: ky.nam, ky_loai: ky.kyLoai, ky_so: ky.kySo },
-    select: { hoa_don_id: true, ke_khai: true },
-  });
-  const idKeKhai = daGan.filter((d) => d.ke_khai).map((d) => d.hoa_don_id);
-  const soLoai = daGan.length - idKeKhai.length;
-  if (idKeKhai.length === 0) return { rows: [], soLoai, soThieuDetail: 0 };
-
-  const doc = (ids: string[]) =>
-    chieu === "purchase"
-      ? db.vct60view.findMany({ where: { id: { in: ids } }, select: SELECT_HD })
-      : db.vct50view.findMany({ where: { id: { in: ids } }, select: SELECT_HD });
-
-  const rows: HoaDonGom[] = [];
-  for (const lo of chiaLo(idKeKhai, HD_MOI_LO)) {
-    rows.push(...((await doc(lo)) as unknown as HoaDonGom[]));
-  }
-
-  const soThieuDetail = chieu === "sold" ? rows.filter((r) => r.detail == null).length : 0;
-  return { rows, soLoai, soThieuDetail };
-}
-
-/**
- * [22] của kỳ này = [43] của kỳ liền trước; chưa lập kỳ trước -> `null` (kế toán nhập tay).
- *
- * Nhận CẢ bản nháp, không chỉ bản đã chốt: kỳ trước thường còn là nháp khi kế toán làm kỳ này, mà
- * bắt gõ tay một con số đã có sẵn trong máy là mời gõ sai. Đổi lại phải nói rõ nguồn — bản nháp
- * còn tính lại được, [43] của nó có thể đổi, nên `daChot` đi kèm để màn hình cảnh báo.
- */
-export async function layCt22KyTruoc(
-  db: PrismaClient,
-  ky: Ky,
-): Promise<{ gia: number; daChot: boolean; ky: Ky } | null> {
-  const truoc = kyLienTruoc(ky);
-  const ban = await db.tokhai_gtgt01.findUnique({
-    where: { nam_ky_loai_ky_so: { nam: truoc.nam, ky_loai: truoc.kyLoai, ky_so: truoc.kySo } },
-    select: { trang_thai: true, ct43: true },
-  });
-  if (ban) return { gia: Number(ban.ct43), daChot: ban.trang_thai === "chot", ky: truoc };
-
-  // Không có kỳ liền trước CÙNG LOẠI. Thường là công ty vừa đổi kỳ khai (quý -> tháng khi doanh
-  // thu vượt ngưỡng, hoặc ngược lại). Bỏ qua ca này thì [22] về 0 và công ty nộp thuế mình không
-  // nợ — đúng số đã được khấu trừ chuyển sang. Nên tra tiếp bản gần nhất KẾT THÚC trước khi kỳ
-  // này bắt đầu, bất kể loại kỳ.
-  const ungVien = await db.tokhai_gtgt01.findMany({
-    where: { nam: { gte: ky.nam - 2, lte: ky.nam } },
-    select: { nam: true, ky_loai: true, ky_so: true, trang_thai: true, ct43: true },
-  });
-
-  let tot: { moc: number; gia: number; daChot: boolean; ky: Ky } | null = null;
-  for (const r of ungVien) {
-    const kyR: Ky = { nam: r.nam, kyLoai: r.ky_loai as KyLoai, kySo: r.ky_so };
-    if (!truocKy(kyR, ky)) continue;
-    const moc = thangKetThuc(kyR);
-    if (tot && moc <= tot.moc) continue;
-    tot = { moc, gia: Number(r.ct43), daChot: r.trang_thai === "chot", ky: kyR };
-  }
-  if (!tot) return null;
-  return { gia: tot.gia, daChot: tot.daChot, ky: tot.ky };
 }
 
 /**

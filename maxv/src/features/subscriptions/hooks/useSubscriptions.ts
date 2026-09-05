@@ -11,6 +11,7 @@ import {
   deletePlan,
   listSubscriptions,
   changePlan,
+  renewSubscription,
   cancelSubscription,
   listSubscriptionHistory,
 } from '@/features/subscriptions/api/subscriptionsApi';
@@ -56,6 +57,14 @@ export function useChangePlan() {
   return useMutation({
     mutationFn: (v: { id: string; planId: string; ghiChu?: string }) =>
       changePlan(v.id, v.planId, v.ghiChu),
+    onSuccess: invalidate,
+  });
+}
+
+export function useRenewSubscription() {
+  const invalidate = useInvalidateSubs();
+  return useMutation({
+    mutationFn: (id: string) => renewSubscription(id),
     onSuccess: invalidate,
   });
 }

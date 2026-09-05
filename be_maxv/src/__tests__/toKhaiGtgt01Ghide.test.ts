@@ -1,7 +1,8 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { chiaLo, locGhiDeHopLe } from "../services/client/to_khai/toKhaiGtgt01.service";
-import { catMoTa, DAI_TOI_DA_MO_TA } from "../services/client/to_khai/phuLuc204";
+import { chiaLo } from "../services/client/to_khai/domain/chiaLo";
+import { locGhiDeHopLe } from "../services/client/to_khai/application/toKhaiGtgt01.service";
+import { catMoTa, DAI_TOI_DA_MO_TA } from "../services/client/to_khai/domain/phuLuc204";
 
 /**
  * npx tsx --test src/__tests__/toKhaiGtgt01Ghide.test.ts

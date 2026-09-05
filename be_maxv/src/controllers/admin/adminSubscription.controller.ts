@@ -14,6 +14,7 @@ import {
   adminListSubscriptions,
   adminChangePlan,
   adminCancelSubscription,
+  adminRenewSubscription,
   adminListSubscriptionHistory,
 } from '../../services/admin/adminSubscription.service';
 import {
@@ -68,6 +69,15 @@ export async function changePlan(req: FastifyRequest, reply: FastifyReply) {
   const { id } = validateParams(idParamSchema, req.params);
   const body = validateBody(changePlanSchema, req.body);
   return sendOk(reply, await adminChangePlan(id, body, req.user.userId));
+}
+
+/** POST /api/v1/admin/subscriptions/:id/renew — gia hạn theo chu kỳ của gói hiện tại. */
+export async function renewSubscription(
+  req: FastifyRequest,
+  reply: FastifyReply,
+) {
+  const { id } = validateParams(idParamSchema, req.params);
+  return sendOk(reply, await adminRenewSubscription(id, req.user.userId));
 }
 
 /** POST /api/v1/admin/subscriptions/:id/cancel */

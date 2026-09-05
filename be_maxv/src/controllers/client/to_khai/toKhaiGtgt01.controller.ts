@@ -2,8 +2,8 @@ import type { FastifyReply, FastifyRequest } from "fastify";
 import { resolveTenantDb, resolveTenantInfo } from "../../../helpers/resolveTenantDb";
 import { getTenantDb } from "../../../helpers/tenantClient";
 import { sysPrisma } from "../../../config/db.sys";
-import { dungXmlGtgt01, tenFileXml } from "../../../services/client/to_khai/xuatXmlGtgt01";
-import * as ToKhai from "../../../services/client/to_khai/toKhaiGtgt01.service";
+import { dungXmlGtgt01, tenFileXml } from "../../../services/client/to_khai/serialization/xuatXmlGtgt01";
+import * as ToKhai from "../../../services/client/to_khai/application/toKhaiGtgt01.service";
 import { docKy, type KyInput } from "./docThamSo";
 
 /**

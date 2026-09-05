@@ -15,10 +15,12 @@ import {
 import HistoryRoundedIcon from '@mui/icons-material/HistoryRounded';
 import SwapHorizRoundedIcon from '@mui/icons-material/SwapHorizRounded';
 import CancelRoundedIcon from '@mui/icons-material/CancelRounded';
+import AutorenewRoundedIcon from '@mui/icons-material/AutorenewRounded';
 import { SubStatusChip } from './SubStatusChip';
 import { tableCardSx, tableHeadRowSx } from '@/components/tableStyles';
 import { formatVnd, formatDate } from '@/lib/format';
 import type { Subscription } from '@/features/subscriptions/types/subscription';
+import { hetHanNhungStatusChuaDoi } from '@/features/subscriptions/hieuLuc';
 
 interface Props {
   rows: Subscription[];
@@ -29,6 +31,7 @@ interface Props {
   onPageSizeChange: (pageSize: number) => void;
   onChangePlan: (sub: Subscription) => void;
   onHistory: (sub: Subscription) => void;
+  onRenew: (sub: Subscription) => void;
   onCancel: (sub: Subscription) => void;
 }
 
@@ -41,6 +44,7 @@ export function SubscriptionsTable({
   onPageSizeChange,
   onChangePlan,
   onHistory,
+  onRenew,
   onCancel,
 }: Props): JSX.Element {
   return (
@@ -75,13 +79,22 @@ export function SubscriptionsTable({
                 </TableCell>
                 <TableCell>{formatVnd(s.plan.gia)}</TableCell>
                 <TableCell>
-                  <SubStatusChip status={s.status} />
+                  <SubStatusChip status={s.status} ketThuc={s.ketThuc} />
                 </TableCell>
                 <TableCell sx={{ color: 'text.secondary' }}>
                   {formatDate(s.batDau)}
                 </TableCell>
-                <TableCell sx={{ color: 'text.secondary' }}>
-                  {formatDate(s.ketThuc)}
+                <TableCell
+                  sx={{
+                    color: hetHanNhungStatusChuaDoi(s.status, s.ketThuc)
+                      ? 'error.main'
+                      : 'text.secondary',
+                    fontWeight: hetHanNhungStatusChuaDoi(s.status, s.ketThuc)
+                      ? 600
+                      : 400,
+                  }}
+                >
+                  {formatDate(s.ketThuc) || 'Không hết hạn'}
                 </TableCell>
                 <TableCell align="right">
                   <Stack
@@ -103,6 +116,18 @@ export function SubscriptionsTable({
                       onClick={() => onHistory(s)}
                     >
                       Lịch sử
+                    </Button>
+                    <Button
+                      size="small"
+                      color="success"
+                      startIcon={<AutorenewRoundedIcon />}
+                      // Thuê bao đã hủy phải mở lại bằng "Đổi gói" — hủy là quyết định
+                      // nghiệp vụ, gia hạn không được lặng lẽ đảo ngược nó (backend cũng
+                      // chặn, đây chỉ là chặn sớm cho đỡ tốn một lượt gọi).
+                      disabled={s.status === 'CANCELED'}
+                      onClick={() => onRenew(s)}
+                    >
+                      Gia hạn
                     </Button>
                     <Button
                       size="small"

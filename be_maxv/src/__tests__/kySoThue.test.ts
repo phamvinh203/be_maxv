@@ -7,7 +7,7 @@ import {
   nhanKy,
   thangKetThuc,
   truocKy,
-} from "../services/client/to_khai/kySoThue";
+} from "../services/client/to_khai/domain/kySoThue";
 
 /** npx tsx --test src/__tests__/kySoThue.test.ts */
 

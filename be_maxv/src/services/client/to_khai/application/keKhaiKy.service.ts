@@ -8,24 +8,21 @@
  * không), tuyệt đối không chép số tiền — xem ghi chú model trong `prisma/tenant/schema.prisma`.
  */
 
-import type { PrismaClient } from "../../../generated/tenant";
-import { vnDayEnd, vnDayStart, vnDayString } from "../../../utils/ngayVn";
-import * as GDTService from "../hddt/gdt.service";
-import { khoangCuaKy, type Ky } from "./kySoThue";
+import type { PrismaClient } from "../../../../generated/tenant";
+import { vnDayEnd, vnDayStart, vnDayString } from "../../../../utils/ngayVn";
+import * as GDTService from "../../hddt/gdt.service";
+import { khoangCuaKy, type Ky } from "../domain/kySoThue";
 import {
   chonTheoKyGoc,
+  ngayGocDuyNhat,
   ngayGocTuGhiChu,
   TTHAI_CO_GOC,
   type KetQuaChon,
   type ToCoGoc,
-} from "./kyThayThe";
-import { duocTinh } from "./gomHoaDonGtgt";
-import type { ThayTheHut } from "./soatToKhai";
-import { chiaLo } from "./toKhaiGtgt01.service";
-
-export type Chieu = "purchase" | "sold";
-
-const CA_HAI_CHIEU: Chieu[] = ["purchase", "sold"];
+} from "../domain/kyThayThe";
+import { duocTinh } from "../domain/gomHoaDonGtgt";
+import { chiaLo } from "../domain/chiaLo";
+import { CA_HAI_CHIEU, tenViewHoaDon, type Chieu } from "../domain/chieuHoaDon";
 
 /**
  * Số dòng upsert mỗi transaction. Một kỳ có thể vài nghìn hóa đơn; gom tất cả vào MỘT transaction
@@ -38,23 +35,22 @@ export interface KetQuaDanhDau {
   purchase: number;
   sold: number;
   /**
-   * Số hóa đơn thay thế/điều chỉnh KHÔNG suy được kỳ của hóa đơn gốc — chúng giữ nguyên theo ngày
-   * lập. Màn hình nói ra để kế toán tự kiểm, thay vì im lặng gán một kỳ có thể sai.
+   * Số hóa đơn thay thế/điều chỉnh KHÔNG suy được kỳ của hóa đơn gốc — chúng bị chặn khỏi bảng kê.
+   * Màn hình yêu cầu kế toán đồng bộ hoặc bổ sung dữ liệu hóa đơn gốc rồi kê khai lại.
    */
   khongRoKyGoc: number;
   /** Số hóa đơn bị GỠ khỏi kỳ vì lượt quét mới không còn nhận — xem `goKhoiKy`. */
   daGo: number;
-}
-
-/** Tên view theo chiều — `vct60view` là MUA VÀO, `vct50view` là BÁN RA (đúng, không ngược). */
-function tenView(chieu: Chieu): string {
-  return chieu === "purchase" ? "vct60view" : "vct50view";
+  /** Số bản ghi kỳ cũ bị gỡ vì hóa đơn không xác định được hóa đơn gốc. */
+  daGoKhongRoKyGoc: number;
 }
 
 /** Một hóa đơn thay thế/điều chỉnh kèm thông tin cần để suy ra kỳ của hóa đơn GỐC. */
 interface HoaDonCoGoc {
   id: string;
   tdlap: Date;
+  /** MST người bán; kết hợp với ký hiệu/số để xác định đúng hóa đơn gốc. */
+  nbmst: string;
   khhdgoc: string | null;
   shdgoc: string | null;
   gchdgoc: string | null;
@@ -73,13 +69,21 @@ async function ngayGocCuaHoaDon(
 ): Promise<string | null> {
   if (hd.khhdgoc && hd.shdgoc) {
     const goc = await db.$queryRawUnsafe<{ tdlap: Date }[]>(
-      `SELECT tdlap FROM "${tenView(chieu)}" WHERE khhdon = $1 AND shdon = $2 LIMIT 1`,
+      // Khóa tham chiếu GDT không luôn mang mẫu số, trong khi cùng người bán vẫn có thể có nhiều
+      // ứng viên cùng ký hiệu/số ở các mẫu số khác. Chỉ nhận kết quả nếu tất cả ứng viên có cùng
+      // ngày lịch; nếu không thì để nhánh ghi chú/chặn xử lý, tuyệt đối không chọn tùy tiện.
+      `SELECT tdlap
+         FROM "${tenViewHoaDon(chieu)}"
+        WHERE nbmst = $1 AND khhdon = $2 AND shdon = $3
+      `,
+      hd.nbmst,
       hd.khhdgoc,
       hd.shdgoc,
     );
     // Ngày GIỜ VN, không phải `toISOString()`: cổng thuế trả ngày lập lúc 00:00 giờ VN = 17:00 UTC
     // hôm trước, lấy ngày UTC là lùi hẳn một ngày (xem `utils/ngayVn.ts`).
-    if (goc.length > 0) return vnDayString(goc[0].tdlap) ?? null;
+    const ngayGoc = ngayGocDuyNhat(goc.map((ungVien) => vnDayString(ungVien.tdlap)));
+    if (ngayGoc) return ngayGoc;
   }
   return ngayGocTuGhiChu(hd.gchdgoc);
 }
@@ -87,11 +91,11 @@ async function ngayGocCuaHoaDon(
 /** Hóa đơn thay thế/điều chỉnh của một chiều, kèm ba trường trỏ về hóa đơn gốc. */
 async function layHoaDonCoGoc(db: PrismaClient, chieu: Chieu): Promise<HoaDonCoGoc[]> {
   return db.$queryRawUnsafe<HoaDonCoGoc[]>(
-    `SELECT id, tdlap,
-            detail->>'khhdgoc' AS khhdgoc,
-            detail->>'shdgoc'  AS shdgoc,
-            detail->>'gchdgoc' AS gchdgoc
-       FROM "${tenView(chieu)}"
+    `SELECT id, tdlap, nbmst,
+            COALESCE(NULLIF(BTRIM(detail->>'khhdgoc'), ''), NULLIF(BTRIM(raw->>'khhdgoc'), '')) AS khhdgoc,
+            COALESCE(NULLIF(BTRIM(detail->>'shdgoc'), ''),  NULLIF(BTRIM(raw->>'shdgoc'), ''))  AS shdgoc,
+            COALESCE(NULLIF(BTRIM(detail->>'gchdgoc'), ''), NULLIF(BTRIM(raw->>'gchdgoc'), '')) AS gchdgoc
+       FROM "${tenViewHoaDon(chieu)}"
       WHERE tthai = ANY($1::varchar[])`,
     [...TTHAI_CO_GOC],
   );
@@ -107,8 +111,9 @@ async function layHoaDonCoGoc(db: PrismaClient, chieu: Chieu): Promise<HoaDonCoG
  *     26/12/2025 phải rơi vào Q4/2025, không phải Q1/2026;
  *   - THÊM tờ lập ngoài kỳ này nhưng gốc rơi vào kỳ này.
  *
- * Không suy được kỳ gốc (hóa đơn gốc chưa đồng bộ VÀ ghi chú không theo mẫu) thì giữ nguyên theo
- * ngày lập và đếm vào `khongRoKyGoc` — đoán bừa một kỳ là đẩy doanh thu sang quý khác.
+ * Không suy được kỳ gốc (hóa đơn gốc chưa đồng bộ VÀ ghi chú không theo mẫu) thì KHÔNG gán tờ đó
+ * vào bất kỳ kỳ nào. Đếm vào `khongRoKyGoc` để yêu cầu bổ sung dữ liệu gốc, thay vì âm thầm dùng
+ * ngày lập của tờ điều chỉnh/thay thế.
  */
 async function layIdTrongKhoang(
   db: PrismaClient,
@@ -170,6 +175,24 @@ async function goKhoiKy(
 }
 
 /**
+ * Hóa đơn thay thế/điều chỉnh không xác định được hóa đơn gốc không được ở BẤT KỲ bảng kê nào.
+ * Xóa theo khóa hóa đơn thay vì chỉ kỳ đang quét để dọn cả lần gán theo ngày lập của phiên bản cũ.
+ */
+async function goHoaDonKhongRoKyGoc(
+  db: PrismaClient,
+  chieu: Chieu,
+  idsKhongRoKyGoc: readonly string[],
+): Promise<number> {
+  if (idsKhongRoKyGoc.length === 0) return 0;
+  return db.$executeRawUnsafe(
+    `DELETE FROM "tokhai_ky_hoa_don"
+      WHERE chieu = $1 AND hoa_don_id = ANY($2::varchar[])`,
+    chieu,
+    idsKhongRoKyGoc,
+  );
+}
+
+/**
  * Gán MỌI hóa đơn (cả hai chiều) THUỘC kỳ vào kỳ đó — "thuộc kỳ" tính theo luật, xem
  * `layIdTrongKhoang`: hóa đơn thay thế/điều chỉnh đi theo kỳ của hóa đơn GỐC.
  *
@@ -183,11 +206,23 @@ async function goKhoiKy(
  */
 export async function danhDauKy(db: PrismaClient, ky: Ky): Promise<KetQuaDanhDau> {
   const { tuNgay, denNgay } = khoangCuaKy(ky);
-  const ketQua: KetQuaDanhDau = { purchase: 0, sold: 0, khongRoKyGoc: 0, daGo: 0 };
+  const ketQua: KetQuaDanhDau = {
+    purchase: 0,
+    sold: 0,
+    khongRoKyGoc: 0,
+    daGo: 0,
+    daGoKhongRoKyGoc: 0,
+  };
 
   for (const chieu of CA_HAI_CHIEU) {
-    const { ids, khongRoKyGoc } = await layIdTrongKhoang(db, chieu, tuNgay, denNgay);
+    const { ids, khongRoKyGoc, idsKhongRoKyGoc } = await layIdTrongKhoang(
+      db,
+      chieu,
+      tuNgay,
+      denNgay,
+    );
     ketQua.khongRoKyGoc += khongRoKyGoc;
+    ketQua.daGoKhongRoKyGoc += await goHoaDonKhongRoKyGoc(db, chieu, idsKhongRoKyGoc);
     ketQua.daGo += await goKhoiKy(db, ky, chieu, ids);
     for (const lo of chiaLo(ids, CO_LO_UPSERT)) {
       await db.$transaction(
@@ -210,35 +245,6 @@ export async function danhDauKy(db: PrismaClient, ky: Ky): Promise<KetQuaDanhDau
   }
 
   return ketQua;
-}
-
-/**
- * Hóa đơn THAY THẾ của kỳ mà tổng nhỏ hơn hóa đơn gốc — dấu hiệu tờ thay thế bỏ sót dòng hàng.
- *
- * Chỉ xét tờ kế toán để `ke_khai`; tờ gốc tra theo `khhdgoc`/`shdgoc`, không tra được thì bỏ qua
- * (JOIN tự loại) — thà không báo còn hơn báo dựa trên một tờ gốc đoán ra.
- */
-export async function layThayTheHut(
-  db: PrismaClient,
-  ky: Ky,
-  chieu: Chieu,
-): Promise<ThayTheHut[]> {
-  return db.$queryRawUnsafe<ThayTheHut[]>(
-    `SELECT m.khhdon || '|' || m.shdon AS "hoaDon",
-            g.shdon                    AS "soGoc",
-            (g.tgtcthue - m.tgtcthue)::float8 AS hut
-       FROM "tokhai_ky_hoa_don" k
-       JOIN "${tenView(chieu)}" m ON m.id = k.hoa_don_id
-       JOIN "${tenView(chieu)}" g
-         ON g.khhdon = m.detail->>'khhdgoc' AND g.shdon = m.detail->>'shdgoc'
-      WHERE k.chieu = $1 AND k.nam = $2 AND k.ky_loai = $3 AND k.ky_so = $4
-        AND k.ke_khai AND m.tthai = '2' AND m.tgtcthue < g.tgtcthue
-      ORDER BY (g.tgtcthue - m.tgtcthue) DESC`,
-    chieu,
-    ky.nam,
-    ky.kyLoai,
-    ky.kySo,
-  );
 }
 
 /** Ba giá trị hợp lệ của cột "Chỉ tiêu tăng giảm"; rỗng = kế toán chưa chọn, hoặc xóa lựa chọn cũ. */
@@ -322,7 +328,7 @@ async function khoangDocBangKe(
   const { tuNgay, denNgay } = khoangCuaKy(ky);
   const bien = await db.$queryRawUnsafe<{ tu: Date | null; den: Date | null }[]>(
     `SELECT MIN(v.tdlap) AS tu, MAX(v.tdlap) AS den
-       FROM "${tenView(chieu)}" v
+       FROM "${tenViewHoaDon(chieu)}" v
        JOIN "tokhai_ky_hoa_don" k ON k.hoa_don_id = v.id AND k.chieu = $1
       WHERE k.nam = $2 AND k.ky_loai = $3 AND k.ky_so = $4`,
     chieu,

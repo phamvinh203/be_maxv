@@ -24,9 +24,9 @@
  * cấu trúc). Phần mềm không giữ những dữ liệu đó; kế toán nạp file vào HTKK, HTKK tự điền nơi nộp
  * theo MST rồi ký và nộp.
  */
-import { khoangCuaKy, type Ky } from "./kySoThue";
-import { catMoTa, type PhuLuc204 } from "./phuLuc204";
-import { ngayVn, vnDayString } from "../../../utils/ngayVn";
+import { khoangCuaKy, type Ky } from "../domain/kySoThue";
+import { catMoTa, type PhuLuc204 } from "../domain/phuLuc204";
+import { ngayVn, vnDayString } from "../../../../utils/ngayVn";
 
 /** Mã và tên mẫu — theo file thật đã nộp. */
 export const MA_TKHAI_GTGT01 = "842";

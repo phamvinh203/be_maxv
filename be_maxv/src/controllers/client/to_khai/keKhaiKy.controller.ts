@@ -1,8 +1,8 @@
 import type { FastifyReply, FastifyRequest } from "fastify";
 import { resolveTenantDb } from "../../../helpers/resolveTenantDb";
-import * as KeKhai from "../../../services/client/to_khai/keKhaiKy.service";
-import { kiemTraPhuKy } from "../../../services/client/to_khai/phuKy";
-import { nhanKy } from "../../../services/client/to_khai/kySoThue";
+import * as KeKhai from "../../../services/client/to_khai/application/keKhaiKy.service";
+import { kiemTraPhuKy } from "../../../services/client/to_khai/infrastructure/phuKy";
+import { nhanKy } from "../../../services/client/to_khai/domain/kySoThue";
 import { docChieu, docKy, type KyInput } from "./docThamSo";
 
 /**

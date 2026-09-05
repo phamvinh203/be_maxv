@@ -9,9 +9,9 @@
  * Chỉ đọc `sync_log` trong DB tenant — không gọi cổng thuế.
  */
 
-import type { PrismaClient } from "../../../generated/tenant";
-import { khoangCuaKy, type Ky } from "./kySoThue";
-import { ngayVn } from "../../../utils/ngayVn";
+import type { PrismaClient } from "../../../../generated/tenant";
+import { khoangCuaKy, type Ky } from "../domain/kySoThue";
+import { ngayVn } from "../../../../utils/ngayVn";
 
 /** Dòng `sync_log` rút gọn — chỉ phần cần để xét độ phủ. */
 export interface DongBoRef {

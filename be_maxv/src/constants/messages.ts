@@ -73,6 +73,8 @@ export const MESSAGES = {
     SUB_NOT_FOUND: 'Thuê bao không tồn tại',
     SAME_PLAN: 'Thuê bao đang dùng đúng gói này',
     ALREADY_CANCELED: 'Thuê bao đã bị hủy',
+    CANCELED_CANNOT_RENEW:
+      'Thuê bao đã bị hủy nên không gia hạn được, vui lòng đổi gói để kích hoạt lại',
     MST_LIMIT_REACHED: 'Gói hiện tại đã đạt giới hạn số công ty/MST được tạo',
     USER_LIMIT_REACHED: 'Gói hiện tại đã đạt giới hạn số nhân viên',
     MODULE_NOT_INCLUDED: 'Gói đăng ký hiện tại không bao gồm tính năng này',

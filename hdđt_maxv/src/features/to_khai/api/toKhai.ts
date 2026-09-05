@@ -12,8 +12,8 @@ export interface KetQuaKeKhai {
   sold: number;
   tong: number;
   /**
-   * Số hóa đơn thay thế/điều chỉnh không suy được kỳ của hóa đơn gốc — chúng giữ theo ngày lập.
-   * Nói ra để kế toán tự kiểm, thay vì im lặng gán một kỳ có thể sai.
+   * Số hóa đơn thay thế/điều chỉnh không suy được kỳ của hóa đơn gốc — chúng bị chặn khỏi bảng kê.
+   * Kế toán cần đồng bộ hoặc bổ sung hóa đơn gốc rồi kê khai lại.
    */
   khongRoKyGoc: number;
   /**
@@ -22,6 +22,8 @@ export interface KetQuaKeKhai {
    * theo, nên phải nói ra.
    */
   daGo: number;
+  /** Số dòng bảng kê cũ bị gỡ vì hóa đơn thay thế/điều chỉnh chưa xác định được hóa đơn gốc. */
+  daGoKhongRoKyGoc: number;
 }
 
 /**
@@ -35,7 +37,7 @@ export interface BangKeResult {
   thayThe: ReplacementRow[];
 }
 
-/** Gán mọi hóa đơn có ngày lập trong kỳ vào kỳ đó (cả hai chiều). */
+/** Gán hóa đơn thuộc kỳ vào kỳ đó; tờ điều chỉnh/thay thế được xếp theo ngày hóa đơn gốc. */
 export async function postKeKhai(ky: Ky): Promise<KetQuaKeKhai> {
   return apiFetch<KetQuaKeKhai>("/to-khai/ke-khai", {
     method: "POST",

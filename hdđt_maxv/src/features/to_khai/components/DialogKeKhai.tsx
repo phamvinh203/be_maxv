@@ -38,11 +38,11 @@ export default function DialogKeKhai({ open, onClose }: { open: boolean; onClose
     keKhai.mutate(ky, {
       onSuccess: (kq) => {
         if (kq.khongRoKyGoc > 0) {
-          // Hóa đơn thay thế đi theo kỳ của hóa đơn GỐC; không tra được gốc thì nó nằm lại theo
-          // ngày lập — có thể sai kỳ, phải để kế toán biết mà kiểm.
+          // Không có ngày hóa đơn gốc thì không thể gán kỳ đúng. Chặn tờ đó thay vì tự lấy ngày
+          // lập của hóa đơn điều chỉnh/thay thế, vì cách cũ có thể làm sai tờ khai.
           toast.warning(
-            `${kq.khongRoKyGoc} hóa đơn thay thế/điều chỉnh chưa tra được hóa đơn gốc nên vẫn ` +
-              `tính theo ngày lập. Đồng bộ kỳ của hóa đơn gốc rồi kê khai lại để chắc chắn.`,
+            `${kq.khongRoKyGoc} hóa đơn thay thế/điều chỉnh chưa tra được hóa đơn gốc nên chưa được ` +
+              `đưa vào bảng kê. Đồng bộ hoặc bổ sung hóa đơn gốc rồi kê khai lại.`,
           );
         }
         if (kq.daGo > 0) {
@@ -50,6 +50,12 @@ export default function DialogKeKhai({ open, onClose }: { open: boolean; onClose
           // kế toán tưởng mình chưa từng chỉnh.
           toast.info(
             `${kq.daGo} hóa đơn không còn thuộc kỳ ${kq.nhanKy} nên đã được gỡ khỏi bảng kê.`,
+          );
+        }
+        if (kq.daGoKhongRoKyGoc > 0) {
+          toast.info(
+            `Đã gỡ ${kq.daGoKhongRoKyGoc} hóa đơn thay thế/điều chỉnh khỏi bảng kê cũ vì chưa ` +
+              `xác định được hóa đơn gốc.`,
           );
         }
         toast.success(
@@ -67,8 +73,8 @@ export default function DialogKeKhai({ open, onClose }: { open: boolean; onClose
       <DialogTitle>Kê khai theo kỳ</DialogTitle>
       <DialogContent>
         <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-          Mọi hóa đơn mua vào và bán ra có ngày lập trong kỳ sẽ được đưa vào bảng kê của kỳ này.
-          Hóa đơn đã kê khai ở kỳ khác sẽ được chuyển sang kỳ vừa chọn.
+          Hóa đơn mua vào và bán ra thuộc kỳ sẽ được đưa vào bảng kê. Hóa đơn thay thế hoặc điều
+          chỉnh được xếp theo ngày hóa đơn gốc; không xác định được gốc sẽ bị chặn để tránh sai kỳ.
         </Typography>
 
         {/*

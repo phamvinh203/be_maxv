@@ -4,7 +4,7 @@ import {
   canhBaoPhuKy,
   phuChieuTuLog,
   type DongBoRef,
-} from "../services/client/to_khai/phuKy";
+} from "../services/client/to_khai/infrastructure/phuKy";
 
 /**
  * npx tsx --test src/__tests__/phuKy.test.ts
