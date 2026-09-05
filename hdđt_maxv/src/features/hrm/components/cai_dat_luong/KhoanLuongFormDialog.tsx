@@ -22,7 +22,7 @@ import type {
   LoaiKhoanLuong,
   TrangThai,
 } from "../../types";
-import SoField from "../cau_hinh/SoField";
+import SoField from "../cau_hinh_mac_dinh/SoField";
 
 interface Props {
   open: boolean;
