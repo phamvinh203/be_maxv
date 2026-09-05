@@ -1,4 +1,12 @@
-/** Hook nghiệp vụ hợp đồng lao động. Xem ghi chú về chữ ký ở `hooks/phongBan.ts`. */
+/**
+ * Hook nghiệp vụ hợp đồng lao động — BẢN MOCK, KHÔNG CÒN MÀN NÀO DÙNG.
+ *
+ * Tab Lịch sử hợp đồng và các dialog liên quan đã chuyển sang API thật ở
+ * `../../api/hopDongQueries.ts`. Giữ file lại vì kho mock vẫn còn dữ liệu hợp đồng phục vụ
+ * các màn lương chưa nối API. Đừng import từ đây cho màn mới.
+ *
+ * Xem ghi chú về chữ ký ở `hooks/phongBan.ts`.
+ */
 
 import { useCallback, useMemo } from "react";
 import type { HopDong, HopDongFormValues } from "../../types";

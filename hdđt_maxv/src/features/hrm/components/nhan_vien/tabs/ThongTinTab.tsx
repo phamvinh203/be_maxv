@@ -380,22 +380,16 @@ export default function ThongTinTab({
                 </MenuItem>
               ))}
             </TextField>
-            {/* Khóa tạm: backend nhân viên chưa có cột tiền lương (spec chỉ có Gross/Net), nên
-                số nhập vào sẽ rơi mất khi lưu. Thà chặn còn hơn để người dùng gõ rồi mở lại
-                thấy 0. Mở lại khi API bảng lương xong. */}
             <TienField
               label="Lương chính"
               value={hopDong.luong_chinh}
               onChange={(v) => datHd("luong_chinh", v)}
-              disabled
-              helperText="Nhập ở màn Lương (chưa nối API)."
             />
             <TienField
               label="Lương đóng BHXH"
               value={hopDong.luong_bhxh}
               onChange={(v) => datHd("luong_bhxh", v)}
-              disabled
-              helperText="Gốc tính phí công đoàn 1% — nhập ở màn Lương (chưa nối API)."
+              helperText="Gốc tính phí công đoàn 1%."
             />
             <Box />
             <TextField
