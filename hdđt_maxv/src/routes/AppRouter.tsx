@@ -54,6 +54,8 @@ import { MAN_HINH_HO_SO_LUONG } from "../features/hrm/components/ho_so_luong/tab
 import ProtectedRoute from "./ProtectedRoute";
 import ModuleRoute from "./ModuleRoute";
 import FullScreenLoader from "../components/FullScreenLoader";
+import FeatureUnderDevelopmentPage from "../pages/FeatureUnderDevelopmentPage";
+import { isModuleUnderDevelopment } from "../config/featureFlags";
 import { useAuth } from "../features/auth/useAuth";
 import type { ComponentType, ReactNode } from "react";
 
@@ -155,45 +157,80 @@ export default function AppRouter() {
               </ProtectedRoute>
             }
           />
-          <Route
-            path="accounting"
-            element={
-              <ProtectedRoute>
-                <ModuleRoute module="accounting">
-                  <Navigate to={defaultAccountingPath()} replace />
-                </ModuleRoute>
-              </ProtectedRoute>
-            }
-          />
-          {/* Trang danh mục/chứng từ đã dựng (khai báo trước :moduleSlug để khớp path sâu hơn) */}
-          {ACCOUNTING_BUILT_ROUTES.map(({ path, Page }) => (
+          {isModuleUnderDevelopment("accounting") ? (
+            // Kế toán đang chặn cả module — tắt cờ ở `config/featureFlags.ts` để dùng lại route thật bên dưới.
             <Route
-              key={path}
-              path={`accounting/${path}`}
+              path="accounting/*"
               element={
                 <ProtectedRoute>
                   <ModuleRoute module="accounting">
-                    <Page />
+                    <FeatureUnderDevelopmentPage
+                      ten="Kế toán"
+                      moTa="Phân hệ Kế toán đang được hoàn thiện. Vui lòng quay lại sau."
+                    />
                   </ModuleRoute>
                 </ProtectedRoute>
               }
             />
-          ))}
-          <Route
-            path="accounting/:moduleSlug"
-            element={
-              <ProtectedRoute>
-                <ModuleRoute module="accounting">
-                  <AccountingModulesPage />
-                </ModuleRoute>
-              </ProtectedRoute>
-            }
-          />
+          ) : (
+            <>
+              <Route
+                path="accounting"
+                element={
+                  <ProtectedRoute>
+                    <ModuleRoute module="accounting">
+                      <Navigate to={defaultAccountingPath()} replace />
+                    </ModuleRoute>
+                  </ProtectedRoute>
+                }
+              />
+              {/* Trang danh mục/chứng từ đã dựng (khai báo trước :moduleSlug để khớp path sâu hơn) */}
+              {ACCOUNTING_BUILT_ROUTES.map(({ path, Page }) => (
+                <Route
+                  key={path}
+                  path={`accounting/${path}`}
+                  element={
+                    <ProtectedRoute>
+                      <ModuleRoute module="accounting">
+                        <Page />
+                      </ModuleRoute>
+                    </ProtectedRoute>
+                  }
+                />
+              ))}
+              <Route
+                path="accounting/:moduleSlug"
+                element={
+                  <ProtectedRoute>
+                    <ModuleRoute module="accounting">
+                      <AccountingModulesPage />
+                    </ModuleRoute>
+                  </ProtectedRoute>
+                }
+              />
+            </>
+          )}
 
-          {/*
+          {isModuleUnderDevelopment("hrm") ? (
+            // HRM đang chặn cả module — tắt cờ ở `config/featureFlags.ts` để dùng lại route thật bên dưới.
+            <Route
+              path="hrm/*"
+              element={
+                <ProtectedRoute>
+                  <ModuleRoute module="hrm">
+                    <FeatureUnderDevelopmentPage
+                      ten="HRM"
+                      moTa="Phân hệ Nhân sự - Tiền lương đang được hoàn thiện. Vui lòng quay lại sau."
+                    />
+                  </ModuleRoute>
+                </ProtectedRoute>
+              }
+            />
+          ) : (
+          /*
             Khu HRM dùng route con thay vì tab state như SettingsPage: đây là
             cụm màn hình, cần gửi link tới đúng màn hình và F5 giữ nguyên vị trí.
-          */}
+          */
           <Route
             path="hrm"
             element={
@@ -289,6 +326,7 @@ export default function AppRouter() {
               ))}
             </Route>
           </Route>
+          )}
           {/* Bắt mọi path không khớp, tránh màn hình trắng khi gõ sai URL */}
           <Route path="*" element={<Navigate to="/" replace />} />
         </Route>
