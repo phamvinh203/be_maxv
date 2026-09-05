@@ -13,4 +13,19 @@ export async function hrmTaiLieuRoutes(app: FastifyInstance) {
   app.post('/tai-lieu', ctrl.create);
   app.put('/tai-lieu/:id', ctrl.update);
   app.delete('/tai-lieu/:id', ctrl.remove);
+
+  // ── File scan trên Google Drive của chính công ty ────────────────────────
+  // Đặt chung file route với tài liệu (không tách route riêng) vì đây là các thao tác của
+  // cùng một thực thể: một dòng tài liệu = thông tin giấy tờ (DB) + file scan (Drive).
+  //
+  // Đường `/tai-lieu/drive/...` khai TRƯỚC `/tai-lieu/:id/...` cho dễ đọc; Fastify tự ưu tiên
+  // đoạn tĩnh hơn tham số nên không có chuyện "drive" bị bắt nhầm thành một `:id`.
+  app.get('/tai-lieu/drive/trang-thai', ctrl.driveTrangThai);
+  app.get('/tai-lieu/drive/lien-ket', ctrl.driveLienKet);
+  app.get('/tai-lieu/drive/callback', ctrl.driveCallback);
+  app.delete('/tai-lieu/drive/ket-noi', ctrl.driveNgatKetNoi);
+
+  app.post('/tai-lieu/:id/file', ctrl.taiFileLenTaiLieu);
+  app.get('/tai-lieu/:id/file', ctrl.xemFileTaiLieu);
+  app.delete('/tai-lieu/:id/file', ctrl.goFileTaiLieu);
 }

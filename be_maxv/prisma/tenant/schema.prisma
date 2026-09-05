@@ -900,6 +900,10 @@ model hrm_nhan_vien {
   datetime0 DateTime @default(now())
   datetime2 DateTime @default(now())
 
+  /// ID thư mục Drive riêng của nhân viên ("<ma_nv> - <họ tên>"), tạo lười lúc tải file đầu
+  /// tiên. Lưu ID vì tên thư mục chỉ là nhãn — đổi tên nhân viên không được làm đứt liên kết.
+  drive_folder_id String? @db.VarChar(64)
+
   nguoi_phu_thuoc hrm_nguoi_phu_thuoc[]
   tai_lieu        hrm_tai_lieu[]
   hop_dong        hrm_hop_dong[]
@@ -1000,6 +1004,13 @@ model hrm_tai_lieu {
   ngay_cap DateTime? @db.Date
   noi_cap  String?   @db.VarChar(254)
   ghi_chu  String?   @db.VarChar(512)
+
+  /// File scan trên Google Drive của công ty. null = chỉ có thông tin giấy tờ, chưa đính file.
+  /// Giữ luôn tên/kiểu/kích thước để màn danh sách hiện được mà không phải gọi Drive từng dòng.
+  drive_file_id String? @db.VarChar(64)
+  ten_file      String? @db.VarChar(254)
+  mime_type     String? @db.VarChar(128)
+  kich_thuoc    Int? // byte
 
   datetime0 DateTime @default(now())
   datetime2 DateTime @default(now())

@@ -116,6 +116,12 @@ export const MESSAGES = {
     NGUOI_PHU_THUOC_NOT_FOUND: 'Không tìm thấy người phụ thuộc',
     TAI_LIEU_NOT_FOUND: 'Không tìm thấy tài liệu',
     HOP_DONG_NOT_FOUND: 'Không tìm thấy hợp đồng',
+    DRIVE_CHUA_KET_NOI:
+      'Công ty chưa kết nối Google Drive — bấm "Thêm file" để đăng nhập Google và kết nối.',
+    DRIVE_CAN_KET_NOI_LAI:
+      'Kết nối Google Drive đã hết hiệu lực (bị thu hồi quyền), vui lòng kết nối lại.',
+    DRIVE_FILE_DA_BI_XOA:
+      'File đã bị xóa trên Google Drive nên không xem được nữa. Vui lòng tải lại file scan.',
     PHONG_BAN_NOT_FOUND: 'Không tìm thấy phòng ban',
     PHONG_BAN_ME_NOT_FOUND: 'Phòng ban cha không tồn tại',
     PHONG_BAN_ME_SELF: 'Phòng ban cha không thể là chính nó',
