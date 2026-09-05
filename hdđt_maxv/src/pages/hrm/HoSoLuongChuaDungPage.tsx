@@ -1,5 +1,5 @@
 import { useLocation } from "react-router-dom";
-import ManHinhDangPhatTrien from "../../features/hrm/components/ManHinhDangPhatTrien";
+import ManHinhDangPhatTrien from "../../components/ManHinhDangPhatTrien";
 import { MAN_HINH_HO_SO_LUONG } from "../../features/hrm/components/ho_so_luong/tabs";
 
 /**
