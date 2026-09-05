@@ -1,5 +1,6 @@
 import type { FastifyInstance } from 'fastify';
 import { requireModule } from '../../services/shared/modules.service';
+import { hrmNhanVienRoutes } from './nhanVien.route';
 import { hrmPhongBanRoutes } from './phongBan.route';
 
 /**
@@ -17,4 +18,5 @@ export async function hrmRoutes(app: FastifyInstance) {
   app.addHook('preHandler', requireModule('hrm'));
 
   await app.register(hrmPhongBanRoutes);
+  await app.register(hrmNhanVienRoutes);
 }

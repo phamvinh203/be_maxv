@@ -106,6 +106,7 @@ export const MESSAGES = {
   },
 
   HRM: {
+    NHAN_VIEN_NOT_FOUND: 'Không tìm thấy nhân viên',
     PHONG_BAN_NOT_FOUND: 'Không tìm thấy phòng ban',
     PHONG_BAN_ME_NOT_FOUND: 'Phòng ban cha không tồn tại',
     PHONG_BAN_ME_SELF: 'Phòng ban cha không thể là chính nó',
