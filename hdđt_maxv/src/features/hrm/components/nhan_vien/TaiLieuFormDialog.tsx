@@ -8,7 +8,6 @@ import TextField from "@mui/material/TextField";
 import MenuItem from "@mui/material/MenuItem";
 import Button from "@mui/material/Button";
 import Box from "@mui/material/Box";
-import Alert from "@mui/material/Alert";
 import Stack from "@mui/material/Stack";
 import { getErrorMessage } from "../../../../lib/errors";
 import { LOAI_TAI_LIEU } from "../../constants";
@@ -18,6 +17,10 @@ import Typography from "@mui/material/Typography";
 import AttachFileRounded from "@mui/icons-material/AttachFileRounded";
 import { useLuuTaiLieu, useTaiFileLen } from "../../api/taiLieuQueries";
 import type { LoaiTaiLieu, TaiLieu, TaiLieuFormValues } from "../../types";
+
+/** Giữ KHỚP với GIOI_HAN_FILE_BYTE bên be_maxv (taiLieuDrive.service.ts). */
+const GIOI_HAN_FILE_MB = 10;
+const GIOI_HAN_FILE_BYTE = GIOI_HAN_FILE_MB * 1024 * 1024;
 
 interface Props {
   open: boolean;
@@ -29,6 +32,7 @@ interface Props {
 
 export default function TaiLieuFormDialog({ open, onClose, maNv, taiLieu }: Props) {
   const laSua = Boolean(taiLieu);
+  const nhanNutLuu = laSua ? "Lưu thay đổi" : "Thêm tài liệu";
   const luuTaiLieu = useLuuTaiLieu();
 
   const taiFileLen = useTaiFileLen();
@@ -37,11 +41,20 @@ export default function TaiLieuFormDialog({ open, onClose, maNv, taiLieu }: Prop
   const [dangLuu, setDangLuu] = useState(false);
   /** File người dùng vừa chọn, chưa tải lên — chỉ tải sau khi lưu xong dòng tài liệu. */
   const [fileChon, setFileChon] = useState<File | null>(null);
+  /**
+   * Id dòng tài liệu lần bấm trước ĐÃ tạo xong (chỉ bước tải file hỏng).
+   *
+   * Không nhớ lại thì lần bấm thứ hai vẫn là "thêm mới" — mỗi lần thử đính lại file lại đẻ thêm
+   * một dòng tài liệu rỗng. Tình huống này rất dễ gặp: lần đầu tải file trong công ty sẽ mở cửa
+   * sổ đăng nhập Google, người dùng đóng nó đi là bước tải file hỏng ngay.
+   */
+  const [idDaTao, setIdDaTao] = useState<string | null>(null);
 
   useEffect(() => {
     if (!open) return;
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setFileChon(null);
+    setIdDaTao(null);
     setValues(
       taiLieu
         ? {
@@ -59,27 +72,50 @@ export default function TaiLieuFormDialog({ open, onClose, maNv, taiLieu }: Prop
     setValues((cu) => ({ ...cu, [khoa]: giaTri }));
 
   const handleSubmit = async () => {
-    setDangLuu(true);
-    try {
-      // Lưu dòng tài liệu TRƯỚC rồi mới tải file: endpoint tải file khóa theo id của dòng,
-      // nên thêm mới thì phải có dòng đã.
-      const id = await luuTaiLieu(maNv, values, taiLieu?.id);
-      toast.success(laSua ? "Đã cập nhật tài liệu." : "Đã thêm tài liệu.");
+    // Chặn quá cỡ NGAY, trước khi tạo dòng: để máy chủ chặn thì dòng đã nằm trong DB rồi mới
+    // báo lỗi, và người dùng lại rơi vào vòng bấm-lại.
+    if (fileChon && fileChon.size > GIOI_HAN_FILE_BYTE) {
+      toast.error(
+        `File "${fileChon.name}" nặng ${(fileChon.size / 1024 / 1024).toFixed(1)}MB, vượt giới hạn ${GIOI_HAN_FILE_MB}MB. Vui lòng chọn file nhỏ hơn.`,
+      );
+      return;
+    }
 
-      if (fileChon) {
+    setDangLuu(true);
+
+    // Lưu dòng tài liệu TRƯỚC rồi mới tải file: endpoint tải file khóa theo id của dòng, nên
+    // thêm mới thì phải có dòng đã. `idDaTao` khiến lần bấm lại SỬA đúng dòng lần trước đã tạo.
+    let id: string;
+    try {
+      id = await luuTaiLieu(maNv, values, taiLieu?.id ?? idDaTao ?? undefined);
+      setIdDaTao(id);
+    } catch (err) {
+      toast.error(getErrorMessage(err, "Không lưu được tài liệu."));
+      setDangLuu(false);
+      return;
+    }
+
+    // Hai bước tách hẳn nhau: báo thành công CHỈ khi việc người dùng yêu cầu đã xong trọn vẹn.
+    // Gộp chung thì có trạng thái thật là "hiện Đã thêm tài liệu rồi mới hiện lỗi" — người dùng
+    // đọc thấy mâu thuẫn nên bấm lại, và đó chính là đường sinh ra dòng trùng.
+    if (fileChon) {
+      try {
         // Chưa kết nối Drive thì hook tự mở popup đăng nhập Google rồi mới tải lên.
         toast.info("Đang tải file lên Google Drive…");
         await taiFileLen(id, fileChon);
-        toast.success("Đã tải file scan lên Google Drive.");
+      } catch (err) {
+        toast.error(
+          `${getErrorMessage(err, "Không tải được file lên Google Drive.")} Thông tin tài liệu đã lưu rồi — không phải nhập lại, bấm "${nhanNutLuu}" lần nữa để thử đính file.`,
+        );
+        setDangLuu(false);
+        return;
       }
-      onClose();
-    } catch (err) {
-      // Dòng tài liệu có thể đã lưu xong mà chỉ hỏng bước tải file — nói rõ để người dùng biết
-      // là không phải nhập lại từ đầu, chỉ cần đính lại file.
-      toast.error(getErrorMessage(err, "Không lưu được tài liệu."));
-    } finally {
-      setDangLuu(false);
+      toast.success("Đã tải file scan lên Google Drive.");
     }
+
+    toast.success(laSua ? "Đã cập nhật tài liệu." : "Đã thêm tài liệu.");
+    setDangLuu(false);
+    onClose();
   };
 
   return (
@@ -87,11 +123,6 @@ export default function TaiLieuFormDialog({ open, onClose, maNv, taiLieu }: Prop
       <DialogTitle>{laSua ? "Sửa tài liệu" : "Thêm tài liệu"}</DialogTitle>
       <DialogContent dividers>
         <Stack spacing={2}>
-          <Alert severity="info">
-            Bản này chỉ lưu thông tin tài liệu dạng chữ. Đính kèm ảnh CCCD và file quét sẽ có ở
-            bản sau.
-          </Alert>
-
           <Box
             sx={{
               display: "grid",
@@ -166,13 +197,15 @@ export default function TaiLieuFormDialog({ open, onClose, maNv, taiLieu }: Prop
             >
               {fileChon
                 ? `${fileChon.name} — ${(fileChon.size / 1024 / 1024).toFixed(2)}MB`
-                : "Ảnh hoặc PDF, tối đa 10MB. Lần đầu sẽ mở cửa sổ đăng nhập Google để kết nối Drive của công ty."}
+                : `Ảnh hoặc PDF, tối đa ${GIOI_HAN_FILE_MB}MB. Lần đầu sẽ mở cửa sổ đăng nhập Google để kết nối Drive của công ty.`}
             </Typography>
           </Box>
         </Stack>
       </DialogContent>
       <DialogActions>
-        <Button onClick={onClose} sx={{ textTransform: "none" }}>
+        {/* Khóa khi đang lưu: đóng form giữa chừng thì việc vẫn chạy tiếp ở nền, xong mới hiện
+            toast từ một form đã biến mất — người dùng không hiểu chuyện gì vừa xảy ra. */}
+        <Button onClick={onClose} disabled={dangLuu} sx={{ textTransform: "none" }}>
           Hủy
         </Button>
         <Button
@@ -182,7 +215,7 @@ export default function TaiLieuFormDialog({ open, onClose, maNv, taiLieu }: Prop
           startIcon={dangLuu ? <CircularProgress size={16} /> : undefined}
           sx={{ textTransform: "none" }}
         >
-          {laSua ? "Lưu thay đổi" : "Thêm tài liệu"}
+          {nhanNutLuu}
         </Button>
       </DialogActions>
     </Dialog>

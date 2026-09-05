@@ -3,24 +3,25 @@
  * Giữ nguyên chữ ký hook bản mock nên component gần như chỉ đổi dòng import.
  *
  * ────────────────────────────────────────────────────────────────────────────
- * LỆCH MÔ HÌNH — đọc trước khi sửa file này
+ * HỢP ĐỒNG NẰM Ở BẢNG RIÊNG — đọc trước khi sửa file này
  *
- * Mock FE tách HỢP ĐỒNG thành bảng riêng (1 NV nhiều HĐ, có lịch sử). BE lại DẸT một hợp
- * đồng hiện hành vào chính bản ghi nhân viên (theo spec: số HĐ / loại HĐ / kiểu lương /
- * ngày hiệu lực từ-tới là trường bắt buộc của nhân viên).
+ * `hrm_hop_dong` là nguồn sự thật DUY NHẤT (1 NV nhiều HĐ, có lịch sử). Hồ sơ nhân viên KHÔNG
+ * lưu bản sao hợp đồng hiện hành nữa; BE tính lúc đọc và trả kèm trong `NhanVienApiRow` — mấy
+ * trường đó CHỈ ĐỌC, `null` khi nhân viên chưa có hợp đồng nào.
  *
- * Trong đợt này tab Lịch sử hợp đồng / Hồ sơ VẪN chạy mock, nên:
- *   - THÊM: form có nhóm hợp đồng (tùy chọn) -> giữ đúng thứ người dùng đã gõ, chỉ bù phần
- *     thiếu để qua ràng buộc bắt buộc của BE (xem `hopDongKhiTao`).
- *   - SỬA: form không có ô hợp đồng -> đọc lại bản ghi trên BE rồi GIỮ NGUYÊN phần hợp
- *     đồng, chỉ ghi đè phần thông tin cá nhân. Không bịa lại giá trị mới.
+ * Vì vậy ở đây KHÔNG còn:
+ *   - đoạn bịa `TAM-<mã NV>` khi người dùng để trống nhóm hợp đồng lúc thêm nhân viên;
+ *   - đoạn đọc lại bản ghi để "giữ nguyên phần hợp đồng" lúc sửa (PUT không đụng tới nữa).
  *
+ * Muốn đổi thông tin hợp đồng thì ghi vào `hrm_hop_dong` (tab Lịch sử hợp đồng), đừng thêm
+ * lại trường hợp đồng vào thân request nhân viên.
  * ────────────────────────────────────────────────────────────────────────────
  */
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useCallback, useMemo } from "react";
 import { useAuth } from "@/features/auth/useAuth";
+import { getErrorMessage } from "@/lib/errors";
 import {
   hrmHopDongKeys,
   hrmNhanVienKeys,
@@ -33,7 +34,6 @@ import { CHUC_VU, PB_CHUA_GAN } from "../constants";
 import { homNay, nhan } from "../format";
 import type {
   HopDong,
-  HopDongFormValues,
   NhanVien,
   NhanVienFilters,
   NhanVienRow,
@@ -46,7 +46,6 @@ import {
   getNhanVien,
   listNhanVien,
   updateNhanVien,
-  type KieuLuongApi,
   type LoaiHopDongApi,
   type NhanVienApiBody,
   type NhanVienApiRow,
@@ -75,13 +74,6 @@ function chucVuVeApi(maCv: string): string | null {
 function chucVuVeFe(chucVu: string | null): string {
   if (!chucVu) return "";
   return CHUC_VU.find((cv) => cv.label === chucVu)?.value ?? chucVu;
-}
-
-/** Loại HĐ: FE có 5 giá trị, BE (theo spec) có 3 — gom về 3. */
-function loaiHopDongVeApi(loaiHd: string): LoaiHopDongApi {
-  if (loaiHd === "thu_viec") return "thu_viec";
-  if (loaiHd === "khoan") return "hdvc";
-  return "hdld"; // khong_xac_dinh | xac_dinh | thoi_vu đều là hợp đồng lao động
 }
 
 /**
@@ -122,8 +114,14 @@ function veKieuFe(r: NhanVienApiRow): NhanVien {
   };
 }
 
-/** Dựng đối tượng hợp đồng từ phần đã dẹt vào nhân viên, để bảng hiện đúng cột Số HĐ/Kiểu lương. */
-function hopDongTuApi(r: NhanVienApiRow): HopDong {
+/**
+ * Dựng đối tượng hợp đồng từ phần BE TÍNH SẴN trên hồ sơ nhân viên, để bảng hiện cột Số HĐ /
+ * Kiểu lương mà không phải gọi thêm API lịch sử hợp đồng cho từng dòng.
+ *
+ * `null` khi nhân viên chưa có hợp đồng nào — bảng đã hiện "—" cho trường hợp đó.
+ */
+function hopDongTuApi(r: NhanVienApiRow): HopDong | null {
+  if (!r.so_hop_dong || !r.loai_hop_dong) return null;
   return {
     id: `nv-${r.ma_nv}`,
     ma_nv: r.ma_nv,
@@ -135,55 +133,16 @@ function hopDongTuApi(r: NhanVienApiRow): HopDong {
     luong_bhxh: 0,
     ngay_bat_dau: veNgayInput(r.ngay_vao_lam),
     ngay_ket_thuc: veNgayInput(r.ngay_hieu_luc_toi),
-    trich_bhxh: r.bhxh,
-    tinh_tncn: r.tncn,
+    trich_bhxh: r.bhxh ?? true,
+    tinh_tncn: r.tncn ?? true,
     ghi_chu: "",
-  };
-}
-
-/**
- * Phần hợp đồng gửi lên BE khi TẠO nhân viên.
- *
- * BE bắt buộc số HĐ / loại HĐ / kiểu lương / ngày vào làm (spec đánh dấu *), còn form cho phép
- * "ký hợp đồng sau" nên nhóm hợp đồng có thể trống hoặc mới điền một nửa. Quy tắc ở đây:
- * **giữ bằng được thứ người dùng đã gõ**, chỉ bù phần còn thiếu.
- *
- * Trước đây hàm gọi dùng điều kiện AND còn dialog dùng OR, nên nhập số HĐ mà quên ngày là mất
- * sạch cả số HĐ lẫn loại HĐ và kiểu lương đã chọn — thay bằng `TAM-…`/HĐLĐ/Gross, không báo gì.
- *
- * Ngày vào làm ưu tiên ô "Ngày vào" ở tab Thông tin: theo spec đó mới là trường của nhân viên
- * ("Ngày vào làm / Hiệu lực TỪ"), ngày bắt đầu trong nhóm hợp đồng chỉ là nguồn dự phòng.
- */
-function hopDongKhiTao(nv: NhanVien, hd: HopDongFormValues | null) {
-  const soHd = hd?.so_hd.trim();
-  const ngayVaoLam = nv.ngay_vao || hd?.ngay_bat_dau || homNay();
-
-  return {
-    // `TAM-<mã NV>` để nhìn là biết cần sửa lại, không lẫn với số hợp đồng thật.
-    so_hop_dong: soHd || `TAM-${nv.ma_nv.trim() || ngayVaoLam}`,
-    loai_hop_dong: hd ? loaiHopDongVeApi(hd.loai_hd) : ("hdld" as LoaiHopDongApi),
-    kieu_luong: (hd?.kieu_luong === "NET" ? "net" : "gross") as KieuLuongApi,
-    ngay_vao_lam: ngayVaoLam,
-    ngay_hieu_luc_toi: hd ? veNgayApi(hd.ngay_ket_thuc) : null,
-    bhxh: hd ? hd.trich_bhxh : true,
-    tncn: hd ? hd.tinh_tncn : true,
   };
 }
 
 /** Phần thông tin cá nhân — dùng chung cho cả thêm và sửa. */
 function thongTinVeApi(
   nv: NhanVien,
-): Omit<
-  NhanVienApiBody,
-  | "so_hop_dong"
-  | "loai_hop_dong"
-  | "kieu_luong"
-  | "ngay_vao_lam"
-  | "ngay_hieu_luc_toi"
-  | "bhxh"
-  | "tncn"
-  | "mien_cham_cong"
-> {
+): Omit<NhanVienApiBody, "ngay_vao_lam" | "mien_cham_cong"> {
   return {
     ho_ten: nv.ho_ten.trim(),
     ngay_sinh: veNgayApi(nv.ngay_sinh),
@@ -250,7 +209,11 @@ export function useNhanVienRows(filters: NhanVienFilters): {
       .filter((r) => {
         if (filters.status && r.status !== filters.status) return false;
         if (filters.ma_pb === PB_CHUA_GAN && r.ma_pb) return false;
-        if (filters.ma_pb && filters.ma_pb !== PB_CHUA_GAN && r.ma_pb !== filters.ma_pb) {
+        if (
+          filters.ma_pb &&
+          filters.ma_pb !== PB_CHUA_GAN &&
+          r.ma_pb !== filters.ma_pb
+        ) {
           return false;
         }
         if (!tuKhoa) return true;
@@ -260,7 +223,7 @@ export function useNhanVienRows(filters: NhanVienFilters): {
       })
       .map((r) => ({
         ...veKieuFe(r),
-        ten_pb: r.ten_pb ?? (r.ma_pb ?? ""),
+        ten_pb: r.ten_pb ?? r.ma_pb ?? "",
         ten_cv: r.chuc_vu ?? "",
         hop_dong: hopDongTuApi(r),
         so_npt: r.so_npt ?? 0,
@@ -299,19 +262,31 @@ function useLamMoi() {
 /** Tạo nhân viên. Nhóm hợp đồng trên form là tùy chọn — bỏ trống thì điền tạm (xem đầu file). */
 export function useThemNhanVien() {
   const lamMoi = useLamMoi();
-  const them = useMutation({ mutationFn: createNhanVien, onSuccess: lamMoi });
 
-  return useCallback(
-    async (payload: ThemNhanVienPayload) => {
+  /**
+   * CẢ HAI lần ghi nằm trong CÙNG một `mutationFn`, cố ý.
+   *
+   * TanStack chạy `onSuccess` TRƯỚC khi `mutateAsync` trả về. Nếu chỉ bọc `createNhanVien` thì
+   * lệnh nạp lại danh sách hợp đồng bắn đi trong lúc hợp đồng còn CHƯA được ghi — mà truy vấn
+   * hợp đồng luôn hoạt động (dialog chi tiết nhân viên vẫn gắn trên trang danh sách), nên nó
+   * gọi mạng ngay và gần như luôn về đích trước, ghi vào cache một danh sách thiếu dòng vừa tạo
+   * rồi đánh dấu là mới tinh. Kết quả người dùng thấy: tab "Thông tin" có số hợp đồng, tab
+   * "Lịch sử hợp đồng" trống trơn — đúng thứ đoạn code này sinh ra để tránh.
+   *
+   * Dùng `onSettled` chứ không `onSuccess`: ghi nhân viên xong mà hợp đồng hỏng thì nhân viên
+   * VẪN đã nằm trong DB, danh sách bắt buộc phải nạp lại, không thì màn hình thiếu người.
+   */
+  const them = useMutation({
+    mutationFn: async (payload: ThemNhanVienPayload) => {
       const nv = payload.nhan_vien;
-      if (!nv.ho_ten.trim()) throw new Error("Họ và tên không được để trống.");
-
-      const ketQua = await them.mutateAsync({
+      // Hồ sơ nhân viên KHÔNG còn mang thông tin hợp đồng: số HĐ / loại HĐ / kiểu lương /
+      // hiệu lực tới / BHXH / TNCN đều thuộc `hrm_hop_dong` và được BE tính lúc đọc. Nhờ vậy
+      // bỏ được đoạn bịa `TAM-<mã NV>` khi người dùng để trống nhóm hợp đồng — giờ để trống
+      // nghĩa là chưa có hợp đồng, và màn hình hiện đúng như vậy.
+      const ketQua = await createNhanVien({
         ma_nv: nv.ma_nv.trim() || null,
         ...thongTinVeApi(nv),
-        // Dialog đã quyết "người dùng có động vào nhóm hợp đồng chưa" và truyền null nếu chưa —
-        // ở đây KHÔNG kiểm lại bằng điều kiện khác, đó chính là chỗ từng lệch OR/AND.
-        ...hopDongKhiTao(nv, payload.hop_dong),
+        ngay_vao_lam: nv.ngay_vao || payload.hop_dong?.ngay_bat_dau || homNay(),
         mien_cham_cong: false,
       });
 
@@ -320,20 +295,41 @@ export function useThemNhanVien() {
       // số hợp đồng — người dùng tưởng dữ liệu bị mất. BE tự đồng bộ lại bản sao sau đó.
       const hd = payload.hop_dong;
       if (hd?.so_hd.trim() && hd.ngay_bat_dau) {
-        await createHopDong({
-          ma_nv: ketQua.ma_nv,
-          so_hd: hd.so_hd.trim(),
-          loai_hd: hd.loai_hd,
-          kieu_luong: hd.kieu_luong === "NET" ? "net" : "gross",
-          luong_chinh: hd.luong_chinh,
-          luong_bhxh: hd.luong_bhxh,
-          ngay_bat_dau: hd.ngay_bat_dau,
-          ngay_ket_thuc: hd.ngay_ket_thuc.trim() || null,
-          trich_bhxh: hd.trich_bhxh,
-          tinh_tncn: hd.tinh_tncn,
-          ghi_chu: hd.ghi_chu.trim() || null,
-        });
+        try {
+          await createHopDong({
+            ma_nv: ketQua.ma_nv,
+            so_hd: hd.so_hd.trim(),
+            loai_hd: hd.loai_hd,
+            kieu_luong: hd.kieu_luong === "NET" ? "net" : "gross",
+            luong_chinh: hd.luong_chinh,
+            luong_bhxh: hd.luong_bhxh,
+            ngay_bat_dau: hd.ngay_bat_dau,
+            ngay_ket_thuc: hd.ngay_ket_thuc.trim() || null,
+            trich_bhxh: hd.trich_bhxh,
+            tinh_tncn: hd.tinh_tncn,
+            ghi_chu: hd.ghi_chu.trim() || null,
+          });
+        } catch (err) {
+          // Nhân viên ĐÃ tạo xong. Báo "Không lưu được nhân viên." là sai sự thật và khiến người
+          // dùng bấm lưu lại -> tạo nhân viên thứ hai.
+          throw new Error(
+            `Đã tạo nhân viên ${ketQua.ma_nv} nhưng chưa ghi được lịch sử hợp đồng: ${getErrorMessage(
+              err,
+              "lỗi không xác định",
+            )} Mở hồ sơ nhân viên, vào tab Lịch sử hợp đồng để thêm lại.`,
+            { cause: err },
+          );
+        }
       }
+    },
+    onSettled: lamMoi,
+  });
+
+  return useCallback(
+    async (payload: ThemNhanVienPayload) => {
+      if (!payload.nhan_vien.ho_ten.trim())
+        throw new Error("Họ và tên không được để trống.");
+      await them.mutateAsync(payload);
     },
     [them],
   );
@@ -355,33 +351,16 @@ export function useSuaNhanVien() {
     async (nv: NhanVien) => {
       if (!nv.ho_ten.trim()) throw new Error("Họ và tên không được để trống.");
 
+      // Không còn phải đọc lại bản ghi để "giữ nguyên phần hợp đồng": PUT nhân viên không đụng
+      // tới hợp đồng nữa, nên cũng không thể vô tình đè mất. Bỏ luôn cảnh báo "ngày vào phải
+      // trước ngày hết hạn hợp đồng" — ràng buộc đó thuộc về `hrm_hop_dong`, form nhân viên
+      // không còn liên quan.
       const hienTai = await getNhanVien(nv.ma_nv);
-
-      // BE bắt ngày hiệu lực TỚI phải sau ngày vào làm, mà form sửa không có ô "hiệu lực tới"
-      // — đẩy "Ngày vào" quá hạn hợp đồng sẽ nhận 400 nói về một trường không nhìn thấy trên
-      // màn hình. Báo trước cho rõ chuyện gì đang vướng và phải sửa ở đâu.
-      const ngayToi = hienTai.ngay_hieu_luc_toi?.slice(0, 10);
-      if (nv.ngay_vao && ngayToi && nv.ngay_vao >= ngayToi) {
-        throw new Error(
-          `Ngày vào (${nv.ngay_vao}) phải trước ngày hết hạn hợp đồng (${ngayToi}). Sửa hạn hợp đồng ở tab Hợp đồng trước.`,
-        );
-      }
-
       await sua.mutateAsync({
         maNv: nv.ma_nv,
         body: {
           ...thongTinVeApi(nv),
-          so_hop_dong: hienTai.so_hop_dong,
-          loai_hop_dong: hienTai.loai_hop_dong,
-          kieu_luong: hienTai.kieu_luong,
-          // Ô "Ngày vào" trên form chính là ngày hiệu lực TỪ của hợp đồng — cho sửa;
-          // các trường hợp đồng còn lại giữ nguyên vì form không có ô tương ứng.
           ngay_vao_lam: nv.ngay_vao || hienTai.ngay_vao_lam.slice(0, 10),
-          ngay_hieu_luc_toi: hienTai.ngay_hieu_luc_toi
-            ? hienTai.ngay_hieu_luc_toi.slice(0, 10)
-            : null,
-          bhxh: hienTai.bhxh,
-          tncn: hienTai.tncn,
           mien_cham_cong: hienTai.mien_cham_cong,
         },
       });
@@ -404,15 +383,7 @@ function apiRowVeBody(r: NhanVienApiRow): NhanVienApiBody {
     ma_pb: r.ma_pb,
     chuc_vu: r.chuc_vu,
     cap_bac: r.cap_bac,
-    so_hop_dong: r.so_hop_dong,
-    loai_hop_dong: r.loai_hop_dong,
-    kieu_luong: r.kieu_luong,
     ngay_vao_lam: r.ngay_vao_lam.slice(0, 10),
-    ngay_hieu_luc_toi: r.ngay_hieu_luc_toi
-      ? r.ngay_hieu_luc_toi.slice(0, 10)
-      : null,
-    bhxh: r.bhxh,
-    tncn: r.tncn,
     mien_cham_cong: r.mien_cham_cong,
     cong_doan: r.cong_doan,
     so_tai_khoan: r.so_tai_khoan,
