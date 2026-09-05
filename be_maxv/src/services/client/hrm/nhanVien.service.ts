@@ -20,6 +20,7 @@ const nhanVienSelect = {
   gioi_tinh: true,
   ma_pb: true,
   chuc_vu: true,
+  cap_bac: true,
   so_hop_dong: true,
   loai_hop_dong: true,
   kieu_luong: true,

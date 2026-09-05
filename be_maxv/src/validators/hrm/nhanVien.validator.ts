@@ -77,6 +77,7 @@ export const nhanVienBodySchema = z
       v ? v.toUpperCase() : null,
     ),
     chuc_vu: optTextMax(100, 'Chức vụ'),
+    cap_bac: optTextMax(64, 'Cấp bậc'),
 
     // Hợp đồng & lương — 4 trường bắt buộc theo yêu cầu nghiệp vụ
     so_hop_dong: z

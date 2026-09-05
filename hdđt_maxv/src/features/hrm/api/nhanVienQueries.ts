@@ -15,8 +15,6 @@
  *   - SỬA: form không có ô hợp đồng -> đọc lại bản ghi trên BE rồi GIỮ NGUYÊN phần hợp
  *     đồng, chỉ ghi đè phần thông tin cá nhân. Không bịa lại giá trị mới.
  *
- * Trường `cap_bac` của FE KHÔNG có cột tương ứng ở BE nên không lưu được — nhập vào sẽ mất
- * sau khi tải lại. Cần giữ thì phải thêm cột ở BE.
  * ────────────────────────────────────────────────────────────────────────────
  */
 
@@ -104,7 +102,7 @@ function veKieuFe(r: NhanVienApiRow): NhanVien {
     ghi_chu: r.ghi_chu ?? "",
     ma_pb: r.ma_pb,
     ma_cv: chucVuVeFe(r.chuc_vu),
-    cap_bac: "", // BE chưa có cột — xem ghi chú đầu file
+    cap_bac: r.cap_bac ?? "",
     cong_doan: r.cong_doan,
     ngay_vao: veNgayInput(r.ngay_vao_lam),
     ngan_hang: r.ngan_hang ?? "",
@@ -201,6 +199,7 @@ function thongTinVeApi(
     gioi_tinh: nv.gioi_tinh,
     ma_pb: nv.ma_pb,
     chuc_vu: chucVuVeApi(nv.ma_cv),
+    cap_bac: nv.cap_bac.trim() || null,
     cong_doan: nv.cong_doan,
     so_tai_khoan: nv.so_tk.trim() || null,
     ten_tai_khoan: nv.chu_tk.trim() || null,

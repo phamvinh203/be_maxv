@@ -21,6 +21,7 @@ export interface NhanVienApiRow {
   gioi_tinh: GioiTinhApi | null;
   ma_pb: string | null;
   chuc_vu: string | null;
+  cap_bac: string | null;
   so_hop_dong: string;
   loai_hop_dong: LoaiHopDongApi;
   kieu_luong: KieuLuongApi;
@@ -52,6 +53,7 @@ export interface NhanVienApiBody {
   gioi_tinh: GioiTinhApi | null;
   ma_pb: string | null;
   chuc_vu: string | null;
+  cap_bac: string | null;
   so_hop_dong: string;
   loai_hop_dong: LoaiHopDongApi;
   kieu_luong: KieuLuongApi;
