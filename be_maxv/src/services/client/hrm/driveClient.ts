@@ -1,6 +1,6 @@
 import { createHmac, randomBytes, timingSafeEqual } from 'node:crypto';
 import { env } from '../../../config/env';
-import { ConflictError } from '../../../helpers/errors';
+import { ConflictError, DriveApiError } from '../../../helpers/errors';
 
 /**
  * Gọi Google Drive REST API bằng `fetch` thuần — CỐ Ý không kéo `googleapis` vào.
@@ -51,14 +51,33 @@ export class DriveChuaCauHinhError extends ConflictError {
   }
 }
 
-/** Lỗi do Google trả về — giữ nguyên status để tầng trên ánh xạ (401 = token hỏng, 404 = mất file). */
-export class DriveApiError extends Error {
-  constructor(
-    public readonly status: number,
-    message: string,
-  ) {
-    super(message);
-    this.name = 'DriveApiError';
+/**
+ * `fetch` nhưng đổi lỗi TẦNG MẠNG thành `DriveApiError` để errorHandler ánh xạ được.
+ *
+ * `doc()` bên dưới chỉ xử lý phản hồi ĐÃ VỀ mà mã lỗi; còn khi máy chủ không ra được internet
+ * (DNS không phân giải được, tường lửa/proxy chặn, hết thời gian chờ) thì `fetch` NÉM chứ không
+ * trả Response — lỗi đó là `TypeError: fetch failed` trần, lọt thẳng ra ngoài và bị hiểu nhầm
+ * thành "app tự vỡ" (500), trong khi thật ra máy chủ chỉ đang không gọi được Google.
+ *
+ * Giữ nguyên chữ ký của `fetch` để chỗ gọi không phải đổi cách viết.
+ */
+async function fetchGoogle(url: string, init?: RequestInit): Promise<Response> {
+  try {
+    return await fetch(url, init);
+  } catch (err) {
+    // Chỉ lấy phần host: URL đầy đủ có thể mang theo query nhạy cảm (mã đổi token).
+    const host = (() => {
+      try {
+        return new URL(url).host;
+      } catch {
+        return 'Google';
+      }
+    })();
+    throw new DriveApiError(
+      0,
+      `Máy chủ không kết nối được tới ${host}: ${err instanceof Error ? err.message : String(err)}`,
+      { cause: err },
+    );
   }
 }
 
@@ -106,7 +125,7 @@ export interface KetQuaKetNoi {
 export async function doiMaLayToken(code: string): Promise<KetQuaKetNoi> {
   if (!driveDaCauHinh()) throw new DriveChuaCauHinhError();
 
-  const res = await fetch(OAUTH_TOKEN, {
+  const res = await fetchGoogle(OAUTH_TOKEN, {
     method: 'POST',
     headers: { 'content-type': 'application/x-www-form-urlencoded' },
     body: new URLSearchParams({
@@ -138,7 +157,7 @@ export async function doiMaLayToken(code: string): Promise<KetQuaKetNoi> {
 }
 
 async function layEmail(accessToken: string): Promise<string | null> {
-  const res = await fetch(USERINFO, {
+  const res = await fetchGoogle(USERINFO, {
     headers: { authorization: `Bearer ${accessToken}` },
   });
   if (!res.ok) return null;
@@ -154,7 +173,7 @@ async function layEmail(accessToken: string): Promise<string | null> {
 export async function layAccessToken(refreshToken: string): Promise<string> {
   if (!driveDaCauHinh()) throw new DriveChuaCauHinhError();
 
-  const res = await fetch(OAUTH_TOKEN, {
+  const res = await fetchGoogle(OAUTH_TOKEN, {
     method: 'POST',
     headers: { 'content-type': 'application/x-www-form-urlencoded' },
     body: new URLSearchParams({
@@ -192,13 +211,13 @@ export async function taoThuMucNeuChua(
     fields: 'files(id)',
     pageSize: '1',
   });
-  const timRes = await fetch(`${DRIVE_FILES}?${q.toString()}`, {
+  const timRes = await fetchGoogle(`${DRIVE_FILES}?${q.toString()}`, {
     headers: { authorization: `Bearer ${accessToken}` },
   });
   const tim = await doc<{ files: { id: string }[] }>(timRes, 'tìm thư mục');
   if (tim.files[0]) return tim.files[0].id;
 
-  const taoRes = await fetch(`${DRIVE_FILES}?fields=id`, {
+  const taoRes = await fetchGoogle(`${DRIVE_FILES}?fields=id`, {
     method: 'POST',
     headers: {
       authorization: `Bearer ${accessToken}`,
@@ -252,7 +271,7 @@ export async function taiFileLen(
     Buffer.from(`\r\n--${bien}--`),
   ]);
 
-  const res = await fetch(
+  const res = await fetchGoogle(
     `${DRIVE_UPLOAD}?uploadType=multipart&fields=id,name,mimeType,size`,
     {
       method: 'POST',
@@ -292,7 +311,7 @@ export async function layNoiDungFile(
   accessToken: string,
   fileId: string,
 ): Promise<Buffer> {
-  const res = await fetch(
+  const res = await fetchGoogle(
     `${DRIVE_FILES}/${encodeURIComponent(fileId)}?alt=media`,
     { headers: { authorization: `Bearer ${accessToken}` } },
   );
@@ -311,10 +330,13 @@ export async function xoaFile(
   accessToken: string,
   fileId: string,
 ): Promise<void> {
-  const res = await fetch(`${DRIVE_FILES}/${encodeURIComponent(fileId)}`, {
-    method: 'DELETE',
-    headers: { authorization: `Bearer ${accessToken}` },
-  });
+  const res = await fetchGoogle(
+    `${DRIVE_FILES}/${encodeURIComponent(fileId)}`,
+    {
+      method: 'DELETE',
+      headers: { authorization: `Bearer ${accessToken}` },
+    },
+  );
   if (!res.ok && res.status !== 404) {
     throw new DriveApiError(
       res.status,

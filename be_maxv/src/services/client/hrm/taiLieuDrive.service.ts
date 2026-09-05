@@ -1,6 +1,10 @@
 import { sysPrisma } from '../../../config/db.sys';
 import type { PrismaClient } from '../../../generated/tenant';
-import { ConflictError, NotFoundError } from '../../../helpers/errors';
+import {
+  ConflictError,
+  DriveApiError,
+  NotFoundError,
+} from '../../../helpers/errors';
 import { findOrThrow } from '../../../helpers/crudGuards';
 import { MESSAGES } from '../../../constants/messages';
 import {
@@ -10,7 +14,6 @@ import {
 } from '../hddt/gdtCredential';
 import {
   DriveChuaCauHinhError,
-  DriveApiError,
   driveDaCauHinh,
   doiMaLayToken,
   layAccessToken,

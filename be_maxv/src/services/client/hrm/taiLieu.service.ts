@@ -17,6 +17,12 @@ const taiLieuSelect = {
   ngay_cap: true,
   noi_cap: true,
   ghi_chu: true,
+  // Con trỏ file scan trên Drive — trả kèm để bảng hiện được nút xem/gỡ file mà không phải
+  // gọi thêm một lượt API cho từng dòng.
+  drive_file_id: true,
+  ten_file: true,
+  mime_type: true,
+  kich_thuoc: true,
 } satisfies Prisma.hrm_tai_lieuSelect;
 
 /**

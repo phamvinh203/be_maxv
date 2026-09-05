@@ -22,7 +22,15 @@ export async function hrmTaiLieuRoutes(app: FastifyInstance) {
   // đoạn tĩnh hơn tham số nên không có chuyện "drive" bị bắt nhầm thành một `:id`.
   app.get('/tai-lieu/drive/trang-thai', ctrl.driveTrangThai);
   app.get('/tai-lieu/drive/lien-ket', ctrl.driveLienKet);
-  app.get('/tai-lieu/drive/callback', ctrl.driveCallback);
+  // Google điều hướng trình duyệt thẳng vào đây từ accounts.google.com. Đó là điều hướng
+  // khác site nên cookie access (SameSite=Strict) KHÔNG được gửi kèm — để guard chạy thì
+  // popup chỉ nhận về JSON 401 và không bao giờ đóng. Bù lại, danh tính công ty lấy từ
+  // `state` đã ký HMAC kèm hạn dùng (docState), nên vẫn không ai gọi khống được.
+  app.get(
+    '/tai-lieu/drive/callback',
+    { config: { khongCanAuth: true } },
+    ctrl.driveCallback,
+  );
   app.delete('/tai-lieu/drive/ket-noi', ctrl.driveNgatKetNoi);
 
   app.post('/tai-lieu/:id/file', ctrl.taiFileLenTaiLieu);

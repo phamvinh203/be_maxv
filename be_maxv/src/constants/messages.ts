@@ -122,6 +122,10 @@ export const MESSAGES = {
       'Kết nối Google Drive đã hết hiệu lực (bị thu hồi quyền), vui lòng kết nối lại.',
     DRIVE_FILE_DA_BI_XOA:
       'File đã bị xóa trên Google Drive nên không xem được nữa. Vui lòng tải lại file scan.',
+    DRIVE_LOI_GOOGLE:
+      'Google Drive đang không phản hồi đúng nên chưa xử lý được file scan. Vui lòng thử lại sau ít phút; nếu vẫn lỗi, báo quản trị viên kiểm tra cấu hình Google Drive.',
+    DRIVE_KHONG_KET_NOI_DUOC:
+      'Máy chủ không kết nối được tới Google nên chưa xử lý được file scan. Đây là sự cố mạng phía máy chủ, không phải do dữ liệu bạn nhập — vui lòng thử lại sau ít phút hoặc báo quản trị viên.',
     PHONG_BAN_NOT_FOUND: 'Không tìm thấy phòng ban',
     PHONG_BAN_ME_NOT_FOUND: 'Phòng ban cha không tồn tại',
     PHONG_BAN_ME_SELF: 'Phòng ban cha không thể là chính nó',
