@@ -10,6 +10,7 @@ import FormControlLabel from "@mui/material/FormControlLabel";
 import Checkbox from "@mui/material/Checkbox";
 import Button from "@mui/material/Button";
 import Divider from "@mui/material/Divider";
+import Alert from "@mui/material/Alert";
 import HistoryRounded from "@mui/icons-material/HistoryRounded";
 import { sapXepCay } from "../../../cay";
 import {
@@ -23,6 +24,10 @@ import {
 import { ngayVn, nhan, tienVn } from "../../../format";
 // Phải là danh sách phòng ban THẬT: BE chặn ma_pb không tồn tại, chọn từ mock sẽ lưu lỗi 404.
 import { usePhongBanList } from "../../../api/phongBanQueries";
+import {
+  LOI_KHONG_CO_QUYEN_LUONG,
+  useQuyenXemLuong,
+} from "../../../api/quyenLuongQueries";
 import type {
   GioiTinh,
   HopDong,
@@ -43,6 +48,8 @@ interface Props {
   onHopDongChange: (hopDong: HopDongFormValues) => void;
   /** Chế độ sửa: hợp đồng hiện hành để hiện tóm tắt chỉ đọc. */
   hopDongHienHanh: HopDong | null;
+  /** Câu lỗi khi KHÔNG tải được lịch sử hợp đồng — khác hẳn "chưa có hợp đồng nào". */
+  loiHopDong?: string;
   onXemLichSu: () => void;
 }
 
@@ -78,10 +85,19 @@ export default function ThongTinTab({
   hopDong,
   onHopDongChange,
   hopDongHienHanh,
+  loiHopDong,
   onXemLichSu,
 }: Props) {
   const phongBan = usePhongBanList();
   const cayPhongBan = sapXepCay(phongBan);
+  /*
+   * Không có quyền xem lương thì hai nhóm dưới đây phải biến mất khỏi form, không chỉ để trống:
+   *   - "Thông tin hợp đồng": mọi đường ghi `/hrm/hop-dong` đều 403 (QĐ #8), để ô nhập ở đây là
+   *     mời người dùng gõ xong rồi nhận lỗi lúc lưu.
+   *   - "Tài khoản ngân hàng": máy chủ XÓA HẲN ba trường khỏi phản hồi (contract 3.1c), nên ô
+   *     luôn rỗng; gõ vào thì cũng bị máy chủ bỏ qua — im lặng, không lỗi, không lưu.
+   */
+  const { biTuChoi: khongXemDuocLuong } = useQuyenXemLuong();
 
   const dat = <K extends keyof NhanVien>(khoa: K, giaTri: NhanVien[K]) =>
     onChange({ ...nhanVien, [khoa]: giaTri });
@@ -277,14 +293,22 @@ export default function ThongTinTab({
           Thông tin hợp đồng
         </Typography>
 
-        {laSua ? (
+        {khongXemDuocLuong ? (
+          <Alert severity="info" variant="outlined">
+            {LOI_KHONG_CO_QUYEN_LUONG}
+          </Alert>
+        ) : laSua ? (
           /*
            * Chế độ sửa chỉ hiện tóm tắt: hợp đồng ký mới / gia hạn / sửa đều làm
            * ở tab "Lịch sử hợp đồng". Hai đường ghi vào cùng một bảng sẽ sinh ra
            * hợp đồng trùng mà không ai biết cái nào là thật.
            */
           <Stack spacing={1.5}>
-            {hopDongHienHanh ? (
+            {loiHopDong ? (
+              <Alert severity="error" variant="outlined">
+                {loiHopDong}
+              </Alert>
+            ) : hopDongHienHanh ? (
               <Box
                 sx={{
                   display: "grid",
@@ -443,27 +467,37 @@ export default function ThongTinTab({
       </Paper>
 
       <Nhom tieuDe="Tài khoản ngân hàng">
-        <Autocomplete
-          freeSolo
-          options={NGAN_HANG_VN}
-          value={nhanVien.ngan_hang}
-          onChange={(_, giaTri) => dat("ngan_hang", giaTri ?? "")}
-          onInputChange={(_, giaTri) => dat("ngan_hang", giaTri)}
-          renderInput={(params) => <TextField {...params} label="Ngân hàng" size="small" />}
-        />
-        <TextField
-          label="Số tài khoản"
-          size="small"
-          value={nhanVien.so_tk}
-          onChange={(e) => dat("so_tk", e.target.value)}
-        />
-        <TextField
-          label="Tên chủ tài khoản"
-          size="small"
-          value={nhanVien.chu_tk}
-          onChange={(e) => dat("chu_tk", e.target.value.toUpperCase())}
-          helperText="Viết in hoa không dấu như trên thẻ."
-        />
+        {khongXemDuocLuong ? (
+          <CaHang>
+            <Alert severity="info" variant="outlined">
+              {LOI_KHONG_CO_QUYEN_LUONG}
+            </Alert>
+          </CaHang>
+        ) : (
+          <>
+            <Autocomplete
+              freeSolo
+              options={NGAN_HANG_VN}
+              value={nhanVien.ngan_hang}
+              onChange={(_, giaTri) => dat("ngan_hang", giaTri ?? "")}
+              onInputChange={(_, giaTri) => dat("ngan_hang", giaTri)}
+              renderInput={(params) => <TextField {...params} label="Ngân hàng" size="small" />}
+            />
+            <TextField
+              label="Số tài khoản"
+              size="small"
+              value={nhanVien.so_tk}
+              onChange={(e) => dat("so_tk", e.target.value)}
+            />
+            <TextField
+              label="Tên chủ tài khoản"
+              size="small"
+              value={nhanVien.chu_tk}
+              onChange={(e) => dat("chu_tk", e.target.value.toUpperCase())}
+              helperText="Viết in hoa không dấu như trên thẻ."
+            />
+          </>
+        )}
       </Nhom>
     </Stack>
   );

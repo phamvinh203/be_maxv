@@ -45,11 +45,25 @@ export interface HopDongApiCreateBody extends HopDongApiBody {
 /** Thân request "đổi hợp đồng": chốt HĐ cũ vào `ngay_chot` rồi ký HĐ mới, trong một lần ghi. */
 export interface DoiHopDongApiBody extends HopDongApiCreateBody {
   ngay_chot: string | null;
+  /**
+   * Loại hợp đồng CẦN CHỐT — **bắt buộc** từ QĐ #1 (BR-hrm-053), thiếu là 400.
+   *
+   * Từ khi hai hợp đồng khác nhóm nghiệp vụ được phép chạy song song (HĐLĐ chính + HĐ khoán),
+   * "hợp đồng đang hiệu lực" là khái niệm mơ hồ: BE dùng trường này gom về nhóm rồi CHỈ tìm
+   * hợp đồng trong đúng nhóm đó để chốt. Không có nó thì đổi HĐLĐ chính lại vô tình chốt mất
+   * hợp đồng khoán đang chạy, và không có gì báo.
+   *
+   * Gửi nguyên nhãn 5 giá trị của FE (`khong_xac_dinh` | `xac_dinh` | `thu_viec` | `thoi_vu` |
+   * `khoan`) — BE tự gom nhóm, FE KHÔNG gom trước.
+   */
+  loai_hd_can_chot: string;
 }
 
-export function listHopDong(params?: {
-  ma_nv?: string;
-}): Promise<HopDongApiRow[]> {
+/**
+ * Lịch sử hợp đồng của MỘT nhân viên. `ma_nv` là tham số bắt buộc — gọi trần trả 400
+ * (`hopDongListQuerySchema`, QĐ #8/FR-hrm-013).
+ */
+export function listHopDong(params: { ma_nv: string }): Promise<HopDongApiRow[]> {
   return api.get<HopDongApiRow[]>(BASE, { params });
 }
 

@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { toast } from "react-toastify";
+import Alert from "@mui/material/Alert";
 import Box from "@mui/material/Box";
 import Stack from "@mui/material/Stack";
 import CircularProgress from "@mui/material/CircularProgress";
@@ -25,6 +26,7 @@ import { trangThaiHopDong } from "../../../cay";
 import { KIEU_LUONG, LOAI_HD } from "../../../constants";
 import { homNay, ngayVn, nhan, tienVn } from "../../../format";
 import { useHopDongList, useXoaHopDong } from "../../../api/hopDongQueries";
+import { LOI_KHONG_CO_QUYEN_LUONG } from "../../../api/quyenLuongQueries";
 import type { HopDong } from "../../../types";
 import XacNhanXoaDialog from "../../XacNhanXoaDialog";
 import HopDongFormDialog from "../HopDongFormDialog";
@@ -42,6 +44,7 @@ export default function HopDongTab({ maNv }: { maNv: string }) {
     isLoading,
     isError,
     error,
+    coQuyenXemLuong,
   } = useHopDongList(maNv);
   const xoaHopDong = useXoaHopDong();
 
@@ -66,6 +69,20 @@ export default function HopDongTab({ maNv }: { maNv: string }) {
       setDangXoa(undefined);
     }
   };
+
+  /*
+   * Không có quyền xem lương -> KHÔNG dựng bảng.
+   *
+   * Toàn nhóm `/hrm/hop-dong` trả 403 E-hrm-058 (QĐ #8), nên bày bảng rỗng kèm nút "Thêm hợp
+   * đồng" là mời người dùng bấm để nhận lỗi. Nói thẳng lý do và ai cấp được quyền.
+   */
+  if (!coQuyenXemLuong) {
+    return (
+      <Alert severity="info" variant="outlined">
+        {LOI_KHONG_CO_QUYEN_LUONG}
+      </Alert>
+    );
+  }
 
   return (
     <Box>

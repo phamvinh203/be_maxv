@@ -14,7 +14,7 @@ import Checkbox from "@mui/material/Checkbox";
 import { getErrorMessage } from "../../../../lib/errors";
 import { KIEU_LUONG, LOAI_HD } from "../../constants";
 import { hopDongRong } from "../../formDefaults";
-import { useLuuHopDong } from "../../api/hopDongQueries";
+import { soatLuongHopDong, useLuuHopDong } from "../../api/hopDongQueries";
 import type { HopDong, HopDongFormValues, KieuLuong, LoaiHopDong } from "../../types";
 import TienField from "../TienField";
 
@@ -32,10 +32,14 @@ export default function HopDongFormDialog({ open, onClose, maNv, hopDong }: Prop
 
   const [values, setValues] = useState<HopDongFormValues>(hopDongRong);
   const [dangLuu, setDangLuu] = useState(false);
+  // Chỉ bật sau lần bấm Lưu đầu tiên — bôi đỏ ô người dùng chưa kịp gõ là phiền vô ích.
+  const [daBamLuu, setDaBamLuu] = useState(false);
+  const loiLuong = soatLuongHopDong(values);
 
   useEffect(() => {
     if (!open) return;
     // eslint-disable-next-line react-hooks/set-state-in-effect
+    setDaBamLuu(false);
     setValues(
       hopDong
         ? {
@@ -58,6 +62,11 @@ export default function HopDongFormDialog({ open, onClose, maNv, hopDong }: Prop
     setValues((cu) => ({ ...cu, [khoa]: giaTri }));
 
   const handleSubmit = async () => {
+    setDaBamLuu(true);
+    // Ràng buộc lương (E-hrm-056 / E-hrm-057) chặn tại chỗ: BE trả hai lỗi này dạng 400 Zod
+    // KHÔNG kèm `message`, gửi lên chỉ nhận về "Yêu cầu thất bại (400)" mà không biết ô nào sai.
+    if (loiLuong.luong_chinh || loiLuong.luong_bhxh) return;
+
     setDangLuu(true);
     try {
       await luuHopDong(maNv, values, hopDong?.id);
@@ -117,14 +126,21 @@ export default function HopDongFormDialog({ open, onClose, maNv, hopDong }: Prop
           </TextField>
           <TienField
             label="Lương chính"
+            required
             value={values.luong_chinh}
             onChange={(v) => dat("luong_chinh", v)}
+            error={daBamLuu && Boolean(loiLuong.luong_chinh)}
+            helperText={daBamLuu ? loiLuong.luong_chinh : undefined}
           />
           <TienField
             label="Lương đóng BHXH"
             value={values.luong_bhxh}
             onChange={(v) => dat("luong_bhxh", v)}
-            helperText="Gốc tính phí công đoàn 1%."
+            error={daBamLuu && Boolean(loiLuong.luong_bhxh)}
+            helperText={
+              (daBamLuu ? loiLuong.luong_bhxh : undefined) ??
+              "Gốc tính phí công đoàn 1%."
+            }
           />
           <Box />
           <TextField

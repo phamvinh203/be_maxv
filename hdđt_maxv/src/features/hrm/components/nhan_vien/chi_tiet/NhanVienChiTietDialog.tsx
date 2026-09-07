@@ -12,6 +12,7 @@ import Chip from "@mui/material/Chip";
 import Stack from "@mui/material/Stack";
 import CloseRounded from "@mui/icons-material/CloseRounded";
 import EditRounded from "@mui/icons-material/EditRounded";
+import { getErrorMessage } from "../../../../../lib/errors";
 import { hopDongHienHanh } from "../../../cay";
 import { homNay } from "../../../format";
 import { useNhanVienDetail } from "../../../api/nhanVienQueries";
@@ -41,7 +42,11 @@ const NHAN_TAB = ["Thông tin nhân viên", "Hồ sơ tài liệu", "Người ph
  */
 export default function NhanVienChiTietDialog({ open, onClose, maNv, onSua }: Props) {
   const nhanVien = useNhanVienDetail(maNv);
-  const { items: lichSuHopDong } = useHopDongList(maNv);
+  const {
+    items: lichSuHopDong,
+    isError: loiTaiHopDong,
+    error: chiTietLoiHopDong,
+  } = useHopDongList(maNv);
 
   const [tab, setTab] = useState(0);
   const [doiHopDongOpen, setDoiHopDongOpen] = useState(false);
@@ -109,6 +114,17 @@ export default function NhanVienChiTietDialog({ open, onClose, maNv, onSua }: Pr
           <ThongTinNhanVienTab
             nhanVien={nhanVien}
             hopDongHienTai={hdHienTai}
+            /* Tải hỏng (hay gặp nhất: quyền xem lương bị thu hồi giữa phiên -> 403 E-hrm-058)
+               thì phải nói ra. Để rơi vào nhánh "chưa có hợp đồng nào" là nói dối, và người
+               dùng sẽ đi ký lại một hợp đồng đang tồn tại. */
+            loiHopDong={
+              loiTaiHopDong
+                ? getErrorMessage(
+                    chiTietLoiHopDong,
+                    "Không tải được thông tin hợp đồng.",
+                  )
+                : undefined
+            }
             onThayDoiHopDong={() => setDoiHopDongOpen(true)}
           />
         )}

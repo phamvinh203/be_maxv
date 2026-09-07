@@ -24,6 +24,10 @@ import {
   useThemNhanVien,
 } from "../../api/nhanVienQueries";
 import { useHopDongList } from "../../api/hopDongQueries";
+import {
+  LOI_KHONG_CO_QUYEN_LUONG,
+  useQuyenXemLuong,
+} from "../../api/quyenLuongQueries";
 import type { HopDongFormValues, NhanVien } from "../../types";
 import HopDongTab from "./tabs/HopDongTab";
 import HoSoTab from "./tabs/HoSoTab";
@@ -45,7 +49,12 @@ export default function NhanVienDialog({ open, onClose, maNv }: Props) {
   const maMoi = useMaNhanVienMoi();
   const themNhanVien = useThemNhanVien();
   const suaNhanVien = useSuaNhanVien();
-  const { items: lichSuHopDong } = useHopDongList(maNv ?? null);
+  const {
+    items: lichSuHopDong,
+    isError: loiTaiHopDong,
+    error: chiTietLoiHopDong,
+  } = useHopDongList(maNv ?? null);
+  const { biTuChoi: khongXemDuocLuong } = useQuyenXemLuong();
 
   const [tab, setTab] = useState(0);
   const [nhanVien, setNhanVien] = useState<NhanVien>(() => nhanVienRong(""));
@@ -92,10 +101,28 @@ export default function NhanVienDialog({ open, onClose, maNv }: Props) {
     }
   };
 
+  /*
+   * `khoa` = lý do tab bị vô hiệu hóa, `undefined` là mở bình thường.
+   *
+   * Tab hợp đồng khóa theo QUYỀN XEM LƯƠNG (QĐ #8): cả nhóm `/hrm/hop-dong` trả 403, mở tab ra
+   * rồi mới báo lỗi là đúng thứ quyết định đó cấm. Hai tab kia chỉ khóa khi đang thêm mới.
+   */
   const tabPhu = [
-    { label: "Lịch sử hợp đồng", noiDung: () => <HopDongTab maNv={nhanVien.ma_nv} /> },
-    { label: "Hồ sơ, tài liệu", noiDung: () => <HoSoTab maNv={nhanVien.ma_nv} /> },
-    { label: "Người phụ thuộc", noiDung: () => <NguoiPhuThuocTab maNv={nhanVien.ma_nv} /> },
+    {
+      label: "Lịch sử hợp đồng",
+      khoa: khongXemDuocLuong ? LOI_KHONG_CO_QUYEN_LUONG : undefined,
+      noiDung: () => <HopDongTab maNv={nhanVien.ma_nv} />,
+    },
+    {
+      label: "Hồ sơ, tài liệu",
+      khoa: undefined,
+      noiDung: () => <HoSoTab maNv={nhanVien.ma_nv} />,
+    },
+    {
+      label: "Người phụ thuộc",
+      khoa: undefined,
+      noiDung: () => <NguoiPhuThuocTab maNv={nhanVien.ma_nv} />,
+    },
   ];
 
   return (
@@ -129,24 +156,27 @@ export default function NhanVienDialog({ open, onClose, maNv }: Props) {
           sx={{ px: 2 }}
         >
           <Tab label="Thông tin nhân viên" sx={{ textTransform: "none", fontWeight: 600 }} />
-          {tabPhu.map((item) => (
-            <Tab
-              key={item.label}
-              label={
-                laSua ? (
-                  item.label
-                ) : (
-                  /* Tooltip cần một phần tử nhận được sự kiện chuột — Tab đã
-                     disabled thì không phát hover, nên bọc thêm span. */
-                  <Tooltip title={KHOA_KHI_THEM}>
-                    <span>{item.label}</span>
-                  </Tooltip>
-                )
-              }
-              disabled={!laSua}
-              sx={{ textTransform: "none", fontWeight: 600 }}
-            />
-          ))}
+          {tabPhu.map((item) => {
+            const lyDoKhoa = !laSua ? KHOA_KHI_THEM : item.khoa;
+            return (
+              <Tab
+                key={item.label}
+                label={
+                  lyDoKhoa ? (
+                    /* Tooltip cần một phần tử nhận được sự kiện chuột — Tab đã
+                       disabled thì không phát hover, nên bọc thêm span. */
+                    <Tooltip title={lyDoKhoa}>
+                      <span>{item.label}</span>
+                    </Tooltip>
+                  ) : (
+                    item.label
+                  )
+                }
+                disabled={Boolean(lyDoKhoa)}
+                sx={{ textTransform: "none", fontWeight: 600 }}
+              />
+            );
+          })}
         </Tabs>
       </AppBar>
 
@@ -159,6 +189,16 @@ export default function NhanVienDialog({ open, onClose, maNv }: Props) {
             hopDong={hopDongDau}
             onHopDongChange={setHopDongDau}
             hopDongHienHanh={hdHienHanh}
+            /* Tải hỏng (thường là 403 khi quyền xem lương bị thu hồi giữa phiên) phải hiện ra
+               đúng câu của máy chủ, không được rơi vào nhánh "chưa có hợp đồng nào". */
+            loiHopDong={
+              loiTaiHopDong
+                ? getErrorMessage(
+                    chiTietLoiHopDong,
+                    "Không tải được thông tin hợp đồng.",
+                  )
+                : undefined
+            }
             onXemLichSu={() => setTab(1)}
           />
         )}

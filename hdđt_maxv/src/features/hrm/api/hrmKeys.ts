@@ -34,8 +34,16 @@ export const hrmTaiLieuKeys = {
     ["hrm-tai-lieu", companyId, "list"] as const,
 };
 
+/**
+ * Hợp đồng khóa THÊM theo `ma_nv`, không phải một danh sách chung.
+ *
+ * Từ QĐ #8, `GET /hrm/hop-dong` bắt buộc `ma_nv` (thiếu -> 400) và toàn nhóm chỉ mở cho người
+ * được cấp quyền xem lương (thiếu -> 403). Trước đây FE gọi trần một lần rồi `filter` phía
+ * trình duyệt, nghĩa là lương cả công ty nằm trong cache của mọi người mở màn hồ sơ
+ * (BUG-HRM-25). Mỗi nhân viên một khóa cache thì dữ liệu tải về đúng bằng thứ đang xem.
+ */
 export const hrmHopDongKeys = {
   all: ["hrm-hop-dong"] as const,
-  list: (companyId: string | null) =>
-    ["hrm-hop-dong", companyId, "list"] as const,
+  list: (companyId: string | null, maNv: string | null) =>
+    ["hrm-hop-dong", companyId, "list", maNv] as const,
 };

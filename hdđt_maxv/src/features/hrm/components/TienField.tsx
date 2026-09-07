@@ -9,6 +9,9 @@ interface Props {
   helperText?: string;
   /** Khóa ô khi giá trị chưa có chỗ lưu — xem ô lương ở ThongTinTab. */
   disabled?: boolean;
+  /** Bôi đỏ ô + `helperText` — dùng cho ràng buộc lương lớn hơn 0 (E-hrm-056 / E-hrm-057). */
+  error?: boolean;
+  required?: boolean;
 }
 
 /**
@@ -23,6 +26,8 @@ export default function TienField({
   onChange,
   helperText,
   disabled,
+  error,
+  required,
 }: Props) {
   return (
     <TextField
@@ -30,6 +35,8 @@ export default function TienField({
       size="small"
       fullWidth
       disabled={disabled}
+      error={error}
+      required={required}
       value={value ? tienVn(value) : ""}
       onChange={(e) => onChange(chiSo(e.target.value))}
       helperText={helperText}

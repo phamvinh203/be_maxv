@@ -40,7 +40,10 @@ import type {
   ThemNhanVienPayload,
 } from "../types";
 import { createHopDong } from "./hopDongApi";
+import { soatLuongHopDong } from "./hopDongQueries";
+import { useQuyenXemLuong } from "./quyenLuongQueries";
 import {
+  coTruongNganHang,
   createNhanVien,
   deleteNhanVien,
   getNhanVien,
@@ -139,9 +142,17 @@ function hopDongTuApi(r: NhanVienApiRow): HopDong | null {
   };
 }
 
-/** Phần thông tin cá nhân — dùng chung cho cả thêm và sửa. */
+/**
+ * Phần thông tin cá nhân — dùng chung cho cả thêm và sửa.
+ *
+ * `coQuyenLuong = false` thì **không gửi** ba trường ngân hàng: người không có quyền nhận
+ * payload đã bị BE xóa ba khóa đó (contract 3.1c), nên form của họ luôn hiện rỗng — gửi lên là
+ * tự khai "xóa trắng số tài khoản". BE cũng tự loại (`boTruongLuongKhiGhi`), nhưng dựa vào
+ * guard bên kia là dựa vào may mắn.
+ */
 function thongTinVeApi(
   nv: NhanVien,
+  coQuyenLuong: boolean,
 ): Omit<NhanVienApiBody, "ngay_vao_lam" | "mien_cham_cong"> {
   return {
     ho_ten: nv.ho_ten.trim(),
@@ -156,14 +167,25 @@ function thongTinVeApi(
     chuc_vu: chucVuVeApi(nv.ma_cv),
     cap_bac: nv.cap_bac.trim() || null,
     cong_doan: nv.cong_doan,
-    so_tai_khoan: nv.so_tk.trim() || null,
-    ten_tai_khoan: nv.chu_tk.trim() || null,
-    ngan_hang: nv.ngan_hang.trim() || null,
+    ...(coQuyenLuong
+      ? {
+          so_tai_khoan: nv.so_tk.trim() || null,
+          ten_tai_khoan: nv.chu_tk.trim() || null,
+          ngan_hang: nv.ngan_hang.trim() || null,
+        }
+      : {}),
     ghi_chu: nv.ghi_chu.trim() || null,
+    // BẮT BUỘC từ BR-hrm-067 — thiếu là 400, và trước đó nó âm thầm đưa người đã nghỉ về
+    // "đang làm" (BUG-HRM-26). Ô chọn trạng thái nằm ở `nhan_vien/tabs/ThongTinTab.tsx`.
     status: nv.status,
   };
 }
 
+/**
+ * Truy vấn gốc của danh sách nhân viên.
+ * `api/quyenLuongQueries.ts` khai lại ĐÚNG khóa và ĐÚNG hàm tải này để suy quyền xem lương —
+ * đổi `queryKey`/`queryFn`/`enabled` ở đây thì phải đổi cả bên đó.
+ */
 function useDanhSachNhanVien() {
   const { isAuthenticated, currentCompanyId } = useAuth();
   // KHÔNG dùng `placeholderData: (prev) => prev`: nó giữ dữ liệu cũ xuyên qua việc ĐỔI query
@@ -262,6 +284,7 @@ function useLamMoi() {
 /** Tạo nhân viên. Nhóm hợp đồng trên form là tùy chọn — bỏ trống thì điền tạm (xem đầu file). */
 export function useThemNhanVien() {
   const lamMoi = useLamMoi();
+  const { coQuyen: coQuyenLuong } = useQuyenXemLuong();
 
   /**
    * CẢ HAI lần ghi nằm trong CÙNG một `mutationFn`, cố ý.
@@ -279,13 +302,29 @@ export function useThemNhanVien() {
   const them = useMutation({
     mutationFn: async (payload: ThemNhanVienPayload) => {
       const nv = payload.nhan_vien;
+      const hd = payload.hop_dong;
+
+      /*
+       * Soát ràng buộc lương TRƯỚC khi tạo nhân viên (QĐ #5, E-hrm-056/057).
+       *
+       * Nếu để BE bắt thì nhân viên đã nằm trong DB rồi hợp đồng mới hỏng — người dùng nhận
+       * câu "đã tạo nhân viên nhưng chưa ghi được hợp đồng" cho một lỗi mà form tự biết trước.
+       * Tệ hơn nữa: BE trả lỗi này dạng 400 Zod không kèm `message` (xem `hopDongQueries.ts`),
+       * nên câu hiện ra sẽ là "Yêu cầu thất bại (400)".
+       */
+      if (hd?.so_hd.trim() && hd.ngay_bat_dau) {
+        const loiLuong = soatLuongHopDong(hd);
+        const cau = loiLuong.luong_chinh ?? loiLuong.luong_bhxh;
+        if (cau) throw new Error(cau);
+      }
+
       // Hồ sơ nhân viên KHÔNG còn mang thông tin hợp đồng: số HĐ / loại HĐ / kiểu lương /
       // hiệu lực tới / BHXH / TNCN đều thuộc `hrm_hop_dong` và được BE tính lúc đọc. Nhờ vậy
       // bỏ được đoạn bịa `TAM-<mã NV>` khi người dùng để trống nhóm hợp đồng — giờ để trống
       // nghĩa là chưa có hợp đồng, và màn hình hiện đúng như vậy.
       const ketQua = await createNhanVien({
         ma_nv: nv.ma_nv.trim() || null,
-        ...thongTinVeApi(nv),
+        ...thongTinVeApi(nv, coQuyenLuong),
         ngay_vao_lam: nv.ngay_vao || payload.hop_dong?.ngay_bat_dau || homNay(),
         mien_cham_cong: false,
       });
@@ -293,7 +332,6 @@ export function useThemNhanVien() {
       // Nhóm hợp đồng có nhập ĐỦ (số HĐ + ngày bắt đầu) thì ghi luôn một dòng vào lịch sử hợp
       // đồng. Không làm bước này thì tab Lịch sử trống trơn trong khi hồ sơ nhân viên lại hiện
       // số hợp đồng — người dùng tưởng dữ liệu bị mất. BE tự đồng bộ lại bản sao sau đó.
-      const hd = payload.hop_dong;
       if (hd?.so_hd.trim() && hd.ngay_bat_dau) {
         try {
           await createHopDong({
@@ -359,7 +397,10 @@ export function useSuaNhanVien() {
       await sua.mutateAsync({
         maNv: nv.ma_nv,
         body: {
-          ...thongTinVeApi(nv),
+          // Quyền lấy từ CHÍNH bản ghi vừa đọc: ba khóa ngân hàng có mặt nghĩa là phiên này
+          // được xem lương. Chính xác hơn suy từ danh sách vì nó là câu trả lời của đúng
+          // request này, không phải một ảnh chụp cũ trong cache.
+          ...thongTinVeApi(nv, coTruongNganHang(hienTai)),
           ngay_vao_lam: nv.ngay_vao || hienTai.ngay_vao_lam.slice(0, 10),
           mien_cham_cong: hienTai.mien_cham_cong,
         },
@@ -369,7 +410,13 @@ export function useSuaNhanVien() {
   );
 }
 
-/** Bản ghi BE đọc về -> thân request PUT, để sửa được một trường mà không mất các trường khác. */
+/**
+ * Bản ghi BE đọc về -> thân request PUT, để sửa được một trường mà không mất các trường khác.
+ *
+ * Ba trường ngân hàng chỉ đưa vào khi payload CÓ chúng — người không có quyền xem lương nhận
+ * bản ghi thiếu hẳn ba khóa, chép `undefined` vào thân request rồi để `JSON.stringify` nuốt là
+ * đúng kết quả nhưng vì một lý do tình cờ; ở đây nói thẳng ra.
+ */
 function apiRowVeBody(r: NhanVienApiRow): NhanVienApiBody {
   return {
     ho_ten: r.ho_ten,
@@ -386,9 +433,13 @@ function apiRowVeBody(r: NhanVienApiRow): NhanVienApiBody {
     ngay_vao_lam: r.ngay_vao_lam.slice(0, 10),
     mien_cham_cong: r.mien_cham_cong,
     cong_doan: r.cong_doan,
-    so_tai_khoan: r.so_tai_khoan,
-    ten_tai_khoan: r.ten_tai_khoan,
-    ngan_hang: r.ngan_hang,
+    ...(coTruongNganHang(r)
+      ? {
+          so_tai_khoan: r.so_tai_khoan ?? null,
+          ten_tai_khoan: r.ten_tai_khoan ?? null,
+          ngan_hang: r.ngan_hang ?? null,
+        }
+      : {}),
     ghi_chu: r.ghi_chu,
     status: r.status,
   };
@@ -443,14 +494,22 @@ export function useGanNhanhPhongBan() {
   );
 }
 
-/** Xóa — người phụ thuộc THẬT của nhân viên bị xóa theo (BE cascade). */
+/**
+ * Xóa MỀM nhân viên. Trả về số người phụ thuộc bị **ẩn theo** để màn hình nói được ra.
+ *
+ * KHÔNG phải cascade và cũng KHÔNG phải xóa: `deleteNhanVien` chỉ đặt `da_xoa = true`, các dòng
+ * người phụ thuộc / hợp đồng / tài liệu vẫn nằm nguyên trong DB, chỉ vô hình vì mọi truy vấn
+ * con lọc theo nhân viên chưa xóa. Bản trước ghi "cascade" trong chú thích và đọc trường
+ * `so_npt_da_xoa` không tồn tại (ĐS-04) — cả hai đều sai.
+ */
 export function useXoaNhanVien() {
   const lamMoi = useLamMoi();
   const xoa = useMutation({ mutationFn: deleteNhanVien, onSuccess: lamMoi });
 
   return useCallback(
-    async (maNv: string) => {
-      await xoa.mutateAsync(maNv);
+    async (maNv: string): Promise<{ soNptAnTheo: number }> => {
+      const ketQua = await xoa.mutateAsync(maNv);
+      return { soNptAnTheo: ketQua.so_npt_an_theo ?? 0 };
     },
     [xoa],
   );

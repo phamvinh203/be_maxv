@@ -17,15 +17,22 @@ import {
   LOAI_HD,
   TRANG_THAI_NV,
 } from "../../../constants";
+import Alert from "@mui/material/Alert";
 import { homNay, ngayVn, nhan, tienVn } from "../../../format";
 import { trangThaiHopDong } from "../../../cay";
 import { usePhongBanList } from "../../../api/phongBanQueries";
+import {
+  LOI_KHONG_CO_QUYEN_LUONG,
+  useQuyenXemLuong,
+} from "../../../api/quyenLuongQueries";
 import type { HopDong, NhanVien } from "../../../types";
 import OThongTin from "../../OThongTin";
 
 interface Props {
   nhanVien: NhanVien;
   hopDongHienTai: HopDong | null;
+  /** Câu lỗi khi KHÔNG tải được lịch sử hợp đồng — khác hẳn "chưa có hợp đồng nào". */
+  loiHopDong?: string;
   onThayDoiHopDong: () => void;
 }
 
@@ -72,11 +79,15 @@ function Nhom({
 export default function ThongTinNhanVienTab({
   nhanVien,
   hopDongHienTai,
+  loiHopDong,
   onThayDoiHopDong,
 }: Props) {
   const phongBan = usePhongBanList();
   const tenPb = phongBan.find((pb) => pb.ma_pb === nhanVien.ma_pb)?.ten_pb ?? "";
   const moc = homNay();
+  // Không có quyền: hai nhóm "Thông tin hợp đồng" và "Tài khoản ngân hàng" nói rõ lý do thay vì
+  // hiện toàn dấu "—" — người dùng sẽ tưởng hồ sơ thiếu dữ liệu và đi nhập lại (QĐ #8).
+  const { biTuChoi: khongXemDuocLuong } = useQuyenXemLuong();
 
   return (
     <Stack spacing={2.5}>
@@ -132,17 +143,31 @@ export default function ThongTinNhanVienTab({
         tieuDe="Thông tin hợp đồng"
         icon={<DescriptionRounded color="primary" />}
         hanhDong={
-          <Button
-            variant="outlined"
-            startIcon={<SwapHorizRounded />}
-            onClick={onThayDoiHopDong}
-            sx={{ textTransform: "none" }}
-          >
-            Thay đổi hợp đồng
-          </Button>
+          khongXemDuocLuong ? undefined : (
+            <Button
+              variant="outlined"
+              startIcon={<SwapHorizRounded />}
+              onClick={onThayDoiHopDong}
+              sx={{ textTransform: "none" }}
+            >
+              Thay đổi hợp đồng
+            </Button>
+          )
         }
       >
-        {hopDongHienTai ? (
+        {khongXemDuocLuong ? (
+          <Box sx={{ gridColumn: "1 / -1" }}>
+            <Alert severity="info" variant="outlined">
+              {LOI_KHONG_CO_QUYEN_LUONG}
+            </Alert>
+          </Box>
+        ) : loiHopDong ? (
+          <Box sx={{ gridColumn: "1 / -1" }}>
+            <Alert severity="error" variant="outlined">
+              {loiHopDong}
+            </Alert>
+          </Box>
+        ) : hopDongHienTai ? (
           <>
             <OThongTin nhan="Số hợp đồng" giaTri={hopDongHienTai.so_hd} />
             <OThongTin nhan="Loại hợp đồng" giaTri={nhan(LOAI_HD, hopDongHienTai.loai_hd)} />
@@ -202,9 +227,19 @@ export default function ThongTinNhanVienTab({
       </Nhom>
 
       <Nhom tieuDe="Tài khoản ngân hàng" icon={<AccountBalanceRounded color="primary" />}>
-        <OThongTin nhan="Ngân hàng" giaTri={nhanVien.ngan_hang} />
-        <OThongTin nhan="Số tài khoản" giaTri={nhanVien.so_tk} />
-        <OThongTin nhan="Tên chủ tài khoản" giaTri={nhanVien.chu_tk} />
+        {khongXemDuocLuong ? (
+          <Box sx={{ gridColumn: "1 / -1" }}>
+            <Alert severity="info" variant="outlined">
+              {LOI_KHONG_CO_QUYEN_LUONG}
+            </Alert>
+          </Box>
+        ) : (
+          <>
+            <OThongTin nhan="Ngân hàng" giaTri={nhanVien.ngan_hang} />
+            <OThongTin nhan="Số tài khoản" giaTri={nhanVien.so_tk} />
+            <OThongTin nhan="Tên chủ tài khoản" giaTri={nhanVien.chu_tk} />
+          </>
+        )}
       </Nhom>
     </Stack>
   );
