@@ -1,0 +1,27 @@
+{
+  "permissions": {
+    "allow": [
+      "Read",
+      "Glob",
+      "Grep",
+      "Write",
+      "Edit",
+      "Bash"
+    ],
+    "ask": []
+  },
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Write|Edit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash .claude/hooks/post-edit-check.sh"
+          }
+        ]
+      }
+    ]
+  },
+  "env": {}
+}

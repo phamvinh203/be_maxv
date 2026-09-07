@@ -18,7 +18,8 @@
     "lint": "eslint src",
     "lint:fix": "eslint src --fix",
     "format": "prettier --write \"src/**/*.ts\"",
-    "format:check": "prettier --check \"src/**/*.ts\""
+    "format:check": "prettier --check \"src/**/*.ts\"",
+    "test": "tsx --test src/__tests__/*.test.ts"
   },
   "keywords": [],
   "author": "",
