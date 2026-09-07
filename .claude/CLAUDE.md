@@ -2,14 +2,14 @@
 
 ## Luồng làm việc chuẩn (Shift-Left 3 Amigos & BA Final Sign-off)
 
-business-analyst (Autonomous Research, Brainstorming & Sơ đồ)
+business-analyst (Autonomous Research, Brainstorming & Đặc tả Markdown)
 → (architect ∥ tester-qa [Phase A: Spec Review & Test Design])
 → [GATE] BA Thẩm định & Chốt toàn bộ (Final Sign-off)
 → (backend-engineer ∥ frontend-engineer)
 → tester-qa [Phase B: Dynamic Test Execution]
 → code-reviewer
 
-- **BA Autonomous Research & Sơ đồ bắt buộc**: Tự khảo sát codebase/context (`be_maxv/`, `maxv/`, `hdđt_maxv/`, `fe_maxv/`), phân tích 2–3 phương án giải quyết (Options & Trade-offs Matrix), bắt buộc vẽ sơ đồ (Flows/States/ERD) xuất file vào `docs/<feature>/srs/`.
+- **BA Autonomous Research & Đặc tả Markdown**: Tự khảo sát codebase/context (`be_maxv/`, `maxv/`, `hdđt_maxv/`, `fe_maxv/`), phân tích 2–3 phương án giải quyết (Options & Trade-offs Matrix), tập trung xuất các file tài liệu Markdown `.md` (Spec/Flows/States/ERD) vào `docs/<feature>/srs/`. Tạm bỏ việc sinh file sơ đồ rời dạng `.svg`, `.puml`, `.png`; các luồng và mô hình biểu diễn trực tiếp bằng bảng biểu hoặc Mermaid inline trong file `.md`.
 - **Shift-Left Testing (Song song & Cuốn chiếu)**: Architect thiết kế phần nào thì Tester-QA tiếp nhận ngay phần đó, đối chiếu chéo với Acceptance Criteria của BA để bẫy lỗi ngay từ khâu đặc tả.
 - **BA Final Sign-off Gate (Bắt buộc)**: Sau khi Architect và Tester-QA thảo luận phản biện, BA là người đứng ra tổng duyệt, chốt lại toàn bộ tài liệu (Spec, Contract, Test Matrix), cập nhật trạng thái `Status: Ready for Implementation` vào `docs/<feature>/CONTEXT_SUMMARY.md`. **CHỈ KHI ĐÓ** các kỹ sư triển khai mới được phép khởi chạy.
 - **Implementation & Dynamic QA**: Backend/Frontend Engineer triển khai code bám sát Contract và Test Cases. Sau đó Tester-QA chạy test thực tế và bắt buộc xuất `issues-and-bugs.md`.
@@ -69,11 +69,11 @@ Cấu trúc chuẩn của một thư mục feature:
 ```
 docs/<feature>/
 ├── CONTEXT_SUMMARY.md           ← Bộ nhớ ngữ cảnh (entities, API routes, scope, tiến độ)
-├── srs/                         ← Toàn bộ kết quả và hình vẽ của Business Analyst
+├── srs/                         ← Toàn bộ tài liệu đặc tả (.md) của Business Analyst (tập trung .md, không sinh .svg/.puml/.png)
 │   ├── <feature>-spec.md        ← Đặc tả: User Stories, Acceptance Criteria (Given/When/Then), Business Rules
-│   ├── <feature>-flows.md       ← BẮT BUỘC: Sơ đồ luồng (/activity-swimlane hoặc /activity hoặc /sequence)
-│   ├── <feature>-states.md      ← BẮT BUỘC: Sơ đồ vòng đời trạng thái (/state nếu có entity đổi status)
-│   └── <feature>-erd.md         ← BẮT BUỘC: Sơ đồ dữ liệu (/erd nếu có entity mới)
+│   ├── <feature>-flows.md       ← BẮT BUỘC: Đặc tả luồng quy trình (mô tả step/bảng phân vai hoặc Mermaid inline trong .md)
+│   ├── <feature>-states.md      ← BẮT BUỘC: Đặc tả vòng đời trạng thái (bảng transition hoặc Mermaid state inline nếu có)
+│   └── <feature>-erd.md         ← BẮT BUỘC: Đặc tả mô hình dữ liệu (bảng entity/attribute hoặc Mermaid erDiagram inline nếu có)
 ├── architecture/                ← Toàn bộ thiết kế của Architect + dev-notes của Backend/Frontend Engineer
 │   ├── api-contract.md          ← Endpoints, Request/Response, Validation, HTTP Status
 │   ├── data-model.md            ← Database Schema, Tables, Constraints, Indexes
@@ -95,12 +95,13 @@ docs/<feature>/
 ### Business Analyst
 - Tạo thư mục `docs/<feature>/srs/`.
 - Cập nhật `docs/<feature>/CONTEXT_SUMMARY.md`.
-- **BẮT BUỘC VẼ SƠ ĐỒ (Hard Gate)**:
-  - Nếu quy trình có ≥ 2 bước hoặc nhiều vai trò ➔ **Bắt buộc gọi `/activity-swimlane` hoặc `/activity`** để xuất `<feature>-flows.md`.
-  - Nếu có luồng gọi API / tích hợp / xác thực ➔ **Bắt buộc gọi `/sequence`** nhúng vào `<feature>-flows.md`.
-  - Nếu có thực thể có trạng thái (status lifecycle) ➔ **Bắt buộc gọi `/state`** để xuất `<feature>-states.md`.
-  - Nếu có dữ liệu mới ➔ **Bắt buộc gọi `/erd`** để xuất `<feature>-erd.md`.
-- Tuyệt đối không bàn giao nếu thiếu các sơ đồ quy trình tương ứng.
+- **TẬP TRUNG TẠO FILE .MD (Tạm bỏ sinh file sơ đồ .svg, .puml, .png)**:
+  - Nếu quy trình có ≥ 2 bước hoặc nhiều vai trò ➔ Xuất file `<feature>-flows.md` (mô tả luồng chi tiết từng bước, bảng phân vai hoặc Mermaid inline).
+  - Nếu có luồng gọi API / tích hợp / xác thực ➔ Nhúng bảng tương tác hoặc Mermaid `sequenceDiagram` inline vào `<feature>-flows.md`.
+  - Nếu có thực thể có trạng thái (status lifecycle) ➔ Xuất file `<feature>-states.md` (bảng state transition hoặc Mermaid state inline).
+  - Nếu có dữ liệu mới ➔ Xuất file `<feature>-erd.md` (bảng thuộc tính hoặc Mermaid erDiagram inline).
+  - **Tuyệt đối không sinh file rời như `.svg`, `.puml`, `.png`**, không chạy toolchain bên thứ ba; toàn bộ nội dung nằm trọn vẹn trong các file `.md`.
+  - Bàn giao trọn bộ tài liệu `.md` cho Architect và QA.
 
 ### Architect
 - Tạo thư mục `docs/<feature>/architecture/`.
