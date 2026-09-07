@@ -11,11 +11,16 @@ function optTextMax(max: number, nhan: string) {
 
 /** Tiền: không âm, tối đa 2 số lẻ (khớp cột Decimal(18,2)). */
 function tien(nhan: string) {
-  return z
-    .number({ invalid_type_error: `${nhan} phải là số` })
-    .min(0, `${nhan} không được âm`)
-    .max(999_999_999_999.99, `${nhan} vượt giới hạn cho phép`)
-    .default(0);
+  return (
+    z
+      .number({ invalid_type_error: `${nhan} phải là số` })
+      .min(0, `${nhan} không được âm`)
+      .max(999_999_999_999.99, `${nhan} vượt giới hạn cho phép`)
+      // Cột là Decimal(18,2): quá 2 số lẻ thì Postgres LÀM TRÒN im lặng, mà response chỉ trả
+      // `{ id }` nên người dùng chỉ phát hiện số mình gõ bị đổi khi tải lại trang.
+      .multipleOf(0.01, `${nhan} chỉ được tối đa 2 số lẻ`)
+      .default(0)
+  );
 }
 
 const thanHopDong = z.object({

@@ -120,8 +120,15 @@ export const MESSAGES = {
       'Công ty chưa kết nối Google Drive — bấm "Thêm file" để đăng nhập Google và kết nối.',
     DRIVE_CAN_KET_NOI_LAI:
       'Kết nối Google Drive đã hết hiệu lực (bị thu hồi quyền), vui lòng kết nối lại.',
-    DRIVE_FILE_DA_BI_XOA:
-      'File đã bị xóa trên Google Drive nên không xem được nữa. Vui lòng tải lại file scan.',
+    DRIVE_DOI_TAI_KHOAN_CHI_OWNER:
+      'Công ty đã kết nối Google Drive. Chỉ chủ tài khoản mới đổi được sang tài khoản Google khác, vì việc đó chuyển toàn bộ file scan sau này sang Drive mới.',
+    DRIVE_NGAT_CHI_OWNER:
+      'Chỉ chủ tài khoản mới ngắt được kết nối Google Drive của công ty.',
+    // KHÔNG khẳng định "đã bị xóa": Drive trả 404 cho cả trường hợp file vẫn còn nguyên nhưng
+    // nằm ở tài khoản Google đã kết nối TRƯỚC ĐÂY (quyền drive.file chỉ thấy file do chính app
+    // tạo, trong chính tài khoản đó). Nói chắc là xóa mất sẽ làm khách tưởng mất giấy tờ thật.
+    DRIVE_FILE_KHONG_MO_DUOC:
+      'Không mở được file trên Google Drive. Có thể file đã bị xóa, hoặc nó nằm ở tài khoản Google mà công ty từng kết nối trước đây. Vui lòng kiểm tra tài khoản Drive đang kết nối, hoặc tải lại file scan.',
     DRIVE_LOI_GOOGLE:
       'Google Drive đang không phản hồi đúng nên chưa xử lý được file scan. Vui lòng thử lại sau ít phút; nếu vẫn lỗi, báo quản trị viên kiểm tra cấu hình Google Drive.',
     DRIVE_KHONG_KET_NOI_DUOC:

@@ -1,0 +1,587 @@
+# Quy ước dự án
+
+## Luồng làm việc chuẩn (Shift-Left 3 Amigos & BA Final Sign-off)
+
+business-analyst (Autonomous Research, Brainstorming & Sơ đồ)
+→ (architect ∥ tester-qa [Phase A: Spec Review & Test Design])
+→ [GATE] BA Thẩm định & Chốt toàn bộ (Final Sign-off)
+→ (backend-engineer ∥ frontend-engineer)
+→ tester-qa [Phase B: Dynamic Test Execution]
+→ code-reviewer
+
+- **BA Autonomous Research & Sơ đồ bắt buộc**: Tự khảo sát codebase/context (`be_maxv/`, `maxv/`, `hdđt_maxv/`, `fe_maxv/`), phân tích 2–3 phương án giải quyết (Options & Trade-offs Matrix), bắt buộc vẽ sơ đồ (Flows/States/ERD) xuất file vào `docs/<feature>/srs/`.
+- **Shift-Left Testing (Song song & Cuốn chiếu)**: Architect thiết kế phần nào thì Tester-QA tiếp nhận ngay phần đó, đối chiếu chéo với Acceptance Criteria của BA để bẫy lỗi ngay từ khâu đặc tả.
+- **BA Final Sign-off Gate (Bắt buộc)**: Sau khi Architect và Tester-QA thảo luận phản biện, BA là người đứng ra tổng duyệt, chốt lại toàn bộ tài liệu (Spec, Contract, Test Matrix), cập nhật trạng thái `Status: Ready for Implementation` vào `docs/<feature>/CONTEXT_SUMMARY.md`. **CHỈ KHI ĐÓ** các kỹ sư triển khai mới được phép khởi chạy.
+- **Implementation & Dynamic QA**: Backend/Frontend Engineer triển khai code bám sát Contract và Test Cases. Sau đó Tester-QA chạy test thực tế và bắt buộc xuất `issues-and-bugs.md`.
+
+---
+
+# Nguyên tắc chung
+
+## 0. Autonomous Execution (Thực thi tự động, liền mạch)
+
+- **Tự động thực hiện trọn vẹn (End-to-End)**: Khi nhận task, agent chủ động phân tích, tạo/sửa code, cập nhật test, chạy linter/typecheck/test và tự fix các lỗi phát sinh trong một mạch duy nhất mà không dừng lại xin phép từng bước nhỏ.
+- **Hạn chế hỏi không cần thiết**: Tuyệt đối không dừng lại xin quyền ghi file, chạy lệnh hay xác nhận các thay đổi hiển nhiên nằm trong phạm vi task đã giao.
+- **Chỉ dừng lại hỏi ý kiến khi**:
+  1. Có mâu thuẫn nghiệp vụ nghiêm trọng hoặc thiếu thông tin cốt lõi mà không thể suy luận từ PRD/SRS/Scope.
+  2. Thao tác có nguy cơ gây mất mát dữ liệu không thể phục hồi (ví dụ: drop database, xóa branch chính, xóa file quan trọng ngoài phạm vi).
+  3. Cần quyết định kiến trúc đột phá (breaking architectural changes) chưa từng được phê duyệt.
+
+---
+
+## 1. Requirement First
+
+Không bắt đầu implementation nếu chưa hiểu rõ requirement.
+
+Nếu requirement mơ hồ và ảnh hưởng trực tiếp đến implementation:
+
+- Hỏi lại BA.
+- Không tự đoán business rule quan trọng.
+
+---
+
+## 2. Traceability
+
+Mọi feature nên duy trì chuỗi:
+
+Requirement
+→ Acceptance Criteria
+→ API / Data Model
+→ Implementation
+→ Test Case
+→ Code Review
+
+Mỗi requirement nên có ID duy nhất để truy vết.
+
+Ví dụ:
+
+REQ-001
+REQ-002
+REQ-003
+
+---
+
+## 3. Quản lý Thư mục Tài liệu & Deliverables Bắt buộc (`docs/<feature>/`)
+
+**Quy tắc bất di bất dịch**: Mỗi khi bắt đầu một feature, module hoặc task nghiệp vụ mới, các agents **BẮT BUỘC** phải tạo (hoặc cập nhật) thư mục chuyên biệt tại **`docs/<feature>/`** để lưu trữ toàn bộ nội dung, kết quả, hình vẽ/sơ đồ và danh sách lỗi/issues. Không được để kết quả trôi nổi trong chat.
+
+Cấu trúc chuẩn của một thư mục feature:
+```
+docs/<feature>/
+├── CONTEXT_SUMMARY.md           ← Bộ nhớ ngữ cảnh (entities, API routes, scope, tiến độ)
+├── srs/                         ← Toàn bộ kết quả và hình vẽ của Business Analyst
+│   ├── <feature>-spec.md        ← Đặc tả: User Stories, Acceptance Criteria (Given/When/Then), Business Rules
+│   ├── <feature>-flows.md       ← BẮT BUỘC: Sơ đồ luồng (/activity-swimlane hoặc /activity hoặc /sequence)
+│   ├── <feature>-states.md      ← BẮT BUỘC: Sơ đồ vòng đời trạng thái (/state nếu có entity đổi status)
+│   └── <feature>-erd.md         ← BẮT BUỘC: Sơ đồ dữ liệu (/erd nếu có entity mới)
+├── architecture/                ← Toàn bộ thiết kế của Architect + dev-notes của Backend/Frontend Engineer
+│   ├── api-contract.md          ← Endpoints, Request/Response, Validation, HTTP Status
+│   ├── data-model.md            ← Database Schema, Tables, Constraints, Indexes
+│   ├── adr/                     ← Các quyết định kiến trúc quan trọng (ADR-xxx.md)
+│   └── dev-notes.md             ← Hướng dẫn đọc/sửa code: luồng dữ liệu, hàm nào làm gì, logic nằm ở đâu (Backend & Frontend Engineer cùng ghi, mỗi bên 1 section)
+└── qa/                          ← Toàn bộ kết quả kiểm thử & danh sách lỗi của Tester-QA
+    ├── test-matrix.md           ← Ma trận bao phủ kiểm thử (Phase A)
+    ├── test-cases.md            ← Chi tiết các ca kiểm thử: Happy path, Edge cases, Security (Phase A)
+    ├── test-report.md           ← Báo cáo kết quả chạy test thực tế (Phase B)
+    └── issues-and-bugs.md       ← BẮT BUỘC: Danh mục Bug, lỗi phát hiện và các Issues/Tasks cần làm/cần fix
+```
+
+---
+
+### Deliverables của từng Agent:
+
+> **Lưu ý**: `docs/nestjs/` trong repo là tài liệu **tham khảo/mẫu** (ví dụ minh hoạ đầy đủ workflow BA → Architect → QA, dùng nghiệp vụ HR/Payroll làm ví dụ) — KHÔNG phải feature thật của MAXV v2 (`be_maxv` dùng Fastify, không dùng NestJS). Agent KHÔNG được lấy nội dung nghiệp vụ trong đó làm dữ liệu MAXV thật, và không tạo feature mới trùng tên (`auth`, `hr`, `payroll`, `du_lieu_tinh_luong`) gây nhầm lẫn khi quét `docs/<feature>/`.
+
+### Business Analyst
+- Tạo thư mục `docs/<feature>/srs/`.
+- Cập nhật `docs/<feature>/CONTEXT_SUMMARY.md`.
+- **BẮT BUỘC VẼ SƠ ĐỒ (Hard Gate)**:
+  - Nếu quy trình có ≥ 2 bước hoặc nhiều vai trò ➔ **Bắt buộc gọi `/activity-swimlane` hoặc `/activity`** để xuất `<feature>-flows.md`.
+  - Nếu có luồng gọi API / tích hợp / xác thực ➔ **Bắt buộc gọi `/sequence`** nhúng vào `<feature>-flows.md`.
+  - Nếu có thực thể có trạng thái (status lifecycle) ➔ **Bắt buộc gọi `/state`** để xuất `<feature>-states.md`.
+  - Nếu có dữ liệu mới ➔ **Bắt buộc gọi `/erd`** để xuất `<feature>-erd.md`.
+- Tuyệt đối không bàn giao nếu thiếu các sơ đồ quy trình tương ứng.
+
+### Architect
+- Tạo thư mục `docs/<feature>/architecture/`.
+- Cập nhật `docs/<feature>/CONTEXT_SUMMARY.md`.
+- Xuất file `api-contract.md`, `data-model.md`.
+- Ghi nhận quyết định kỹ thuật vào `architecture/adr/`.
+- Bàn giao cuốn chiếu từng mục cho Tester-QA.
+
+### Backend & Frontend Engineer
+- Thực thi code dựa trên API Contract và Test Spec có sẵn.
+- Tự chạy linter, typecheck, unit test cục bộ.
+- Sau khi code xong và pass kiểm tra nội bộ, viết/cập nhật `docs/<feature>/architecture/dev-notes.md` — hướng dẫn ngắn cho dev đọc sau: mô hình nghiệp vụ trước khi đọc code, bảng "thao tác → hàm/route/component" quan trọng, logic/công thức nghiệp vụ nằm ở đâu, chỗ nào TUYỆT ĐỐI không được nhân đôi logic. Backend ghi section `## Backend (be_maxv)`, Frontend ghi section `## Frontend ({app})` — cùng 1 file, mỗi bên chỉ sửa phần của mình.
+
+### Tester QA
+- Tạo thư mục `docs/<feature>/qa/`.
+- **Giai đoạn Phase A (Song song với Architect)**:
+  - Soát lỗi đặc tả của BA & Architect.
+  - Xuất file `docs/<feature>/qa/test-matrix.md` và `docs/<feature>/qa/test-cases.md`.
+- **Giai đoạn Phase B (Sau khi Dev code xong)**:
+  - Chạy toàn bộ automated test suite, regression, security scan.
+  - Xuất file `docs/<feature>/qa/test-report.md`.
+  - **BẮT BUỘC xuất file `docs/<feature>/qa/issues-and-bugs.md`**: Ghi rõ từng Bug ID, mức độ nghiêm trọng (Severity), các bước tái hiện (Steps to reproduce), và toàn bộ các Issues còn tồn đọng cần fix tiếp.
+
+### Code Reviewer
+
+Output:
+
+- Review summary
+- 🔴 Blocking issues
+- 🟡 Non-blocking issues
+- 🟢 Suggestions
+- Security findings
+- Performance findings
+- Final recommendation
+
+### DevOps
+
+Output:
+
+- CI/CD
+- Build status
+- Deployment status
+- Infrastructure changes
+- Environment configuration
+- Monitoring
+- Logging
+- Health check
+- Rollback procedure
+
+---
+
+# Definition of Done
+
+Một feature chỉ được coi là hoàn thành khi các điều kiện phù hợp đã được đáp ứng:
+
+- Requirement rõ ràng.
+- Acceptance Criteria được xác định.
+- Architecture/contract được thống nhất nếu cần.
+- Implementation hoàn thành.
+- Validation đầy đủ.
+- Error handling đầy đủ.
+- Test đã được viết.
+- Test đã chạy.
+- Không còn known critical bug.
+- Code review hoàn thành.
+- Build/lint/typecheck pass nếu project có.
+- Documentation được cập nhật nếu cần.
+- Deployment được xác nhận nếu feature yêu cầu deployment.
+
+---
+
+# Coding Principles
+
+## Match Existing Repository
+
+Agent phải ưu tiên:
+
+- Existing architecture
+- Existing naming
+- Existing folder structure
+- Existing libraries
+- Existing patterns
+- Existing error handling
+- Existing testing conventions
+
+Không được rewrite project theo preference cá nhân nếu không có lý do.
+
+---
+
+# Security
+
+Không được:
+
+- Hardcode password.
+- Hardcode API key.
+- Hardcode token.
+- Commit private key.
+- Log credential.
+- Expose sensitive data.
+- Bypass authorization.
+- Tin tưởng dữ liệu từ client.
+
+Secret phải được quản lý thông qua:
+
+- Environment variables
+- Secret manager
+- Platform secret store
+
+tùy architecture của project.
+
+---
+
+# Database
+
+Mọi thay đổi database phải xem xét:
+
+- Migration
+- Constraint
+- Index
+- Foreign key
+- Transaction
+- Concurrency
+- Data integrity
+- Backward compatibility
+- Rollback
+
+Không tự ý xóa hoặc thay đổi dữ liệu production.
+
+---
+
+# API Contract
+
+Backend và Frontend phải sử dụng cùng contract.
+
+API contract cần rõ:
+
+- Method
+- Endpoint
+- Authentication
+- Authorization
+- Request
+- Response
+- Status code
+- Error format
+- Validation
+- Pagination
+- Filtering
+- Sorting
+
+Nếu cần breaking change:
+
+1. Xác định impact.
+2. Báo Architect.
+3. Cập nhật contract.
+4. Cập nhật Backend.
+5. Cập nhật Frontend.
+6. Cập nhật QA.
+
+---
+
+# Testing
+
+Ưu tiên:
+
+Unit
+→ Integration
+→ E2E
+
+Test phải bao gồm khi phù hợp:
+
+- Happy path
+- Edge case
+- Validation
+- Authorization
+- Error handling
+- Regression
+
+Test fail phải được báo cáo trung thực.
+
+Không được sửa production code chỉ để làm test pass nếu behavior thực tế vẫn sai requirement.
+
+---
+
+# Git
+
+Không được:
+
+- Force push vào protected branch nếu chưa được phép.
+- Rewrite history tùy tiện.
+- Xóa branch quan trọng.
+- Commit secret.
+- Commit build artifact không cần thiết.
+
+Commit nên có mục đích rõ ràng.
+
+---
+
+# Deployment
+
+Môi trường:
+
+- Development
+- Staging
+- Production
+
+Không được coi deployment production là thao tác thông thường.
+
+Các hành động có thể gây mất dữ liệu hoặc downtime phải được xác nhận trước:
+
+- Drop database
+- Destructive migration
+- Delete infrastructure
+- Production restart gây downtime
+- Production deployment có breaking change
+
+---
+
+# Cấu trúc Dự án & Tech Stack
+
+## 1. Backend (`be_maxv/`)
+- **Runtime & Framework**: Node.js 22+, TypeScript (strict, CommonJS/ESM), Fastify v5 (`@fastify/jwt`, `@fastify/cookie`, `@fastify/sensible`, `@fastify/cors`, `@fastify/rate-limit`).
+- **Data Layer**: PostgreSQL + Prisma 7 Multi-tenant:
+  - `prisma/sys/schema.prisma`: Control plane (`maxv2_sys`) quản lý tài khoản, công ty, gói cước thuê bao, lời mời, nhật ký.
+  - `prisma/tenant/schema.prisma`: Schema động cho từng công ty/MST (`maxv2_<MST>_app`), chứa danh mục vật tư (`dmvt`), chứng từ bán/mua (`m81`, `d81`, `vct50view`, `vct60view`), tờ khai, DVC, HRM.
+- **Tích hợp Cổng Thuế (GDT)**: Crawler chạy nền với `gdtPacer` giãn nhịp chống chặn; OCR Captcha qua `ddddocr-node`, `tesseract.js`, `sharp`, `puppeteer`.
+- **Render File**: Puppeteer Chromium headless sinh PDF vector; trích xuất XML từ zip GDT.
+- **Validation**: Schema validation type-safe bằng Zod (`zod`).
+- **Lệnh chính**:
+  - `npm run dev`: Chạy server dev với `tsx watch`
+  - `npm run build`: `tsc && npm run copy:generated`
+  - `npm run typecheck`: `tsc --noEmit`
+  - `npm run lint`: `eslint src`
+  - `npm test`: `tsx --test src/__tests__/*.test.ts`
+  - `npm run migrate:sys`: Di trú DB control plane
+
+## 2. Frontend Control Plane / Admin Portal (`maxv/`)
+- **Mục đích**: Quản lý tài khoản (Owner, Nhân viên), phân quyền, quản lý công ty, gói cước thuê bao (`subscriptions`), logs.
+- **Framework & UI**: React 19, Vite 8, MUI v9 (`@mui/material`, `@emotion`), Emotion.
+- **Routing & Data Fetching**: `@tanstack/react-router`, `@tanstack/react-query` v5, Axios.
+- **Lệnh chính**: `npm run dev`, `npm run build`, `npm run lint`.
+
+## 3. Frontend Kế toán & Hóa đơn điện tử (`hdđt_maxv/`)
+- **Mục đích**: Nghiệp vụ lấy hóa đơn GDT, tra cứu mua/bán, lập tờ khai thuế GTGT, DVC thuế, HRM.
+- **Framework & UI**: React 19, Vite 8, MUI v9, React Router DOM v7 (`react-router-dom`), `@tanstack/react-query` v5.
+- **Xuất file & Tiện ích**: `exceljs` (sinh Excel tại client), `pdf-lib`, `qrcode-generator`, `react-toastify`.
+- **Lệnh chính**: `npm run dev`, `npm run build`, `npm run lint`.
+
+## 4. Frontend Kế toán Core (`fe_maxv/`)
+- **Mục đích**: Bán hàng, Quản lý kho, Sổ cái tổng hợp (`ban_hang`, `ton_kho`, `tong_hop`).
+- **Framework & UI**: React 19, Vite 8, MUI v9, React Router DOM v7, TanStack Query v5.
+
+## 5. Hạ tầng & Vận hành
+- **Máy chủ**: Windows Server, quản lý tiến trình bằng **PM2** (`be_maxv/ecosystem.config.js`).
+- **Reverse Proxy**: Nginx / IIS phục vụ static build và proxy API `/api/v1/*` về Fastify.
+- **Git Hooks**: `.claude/hooks` (`pre-commit`, `pre-push`, `security-check.sh`, `format-check.sh`, `test-gate.sh`).
+
+---
+
+# Decision Making
+
+Khi có nhiều phương án:
+
+1. Xác định requirement.
+2. Xác định constraint.
+3. So sánh alternatives.
+4. Nêu trade-off.
+5. Chọn phương án phù hợp nhất.
+6. Ghi ADR nếu quyết định có ảnh hưởng kiến trúc.
+
+Không chọn công nghệ chỉ vì:
+
+- Popular
+- Hype
+- Cá nhân thích
+- Thấy project khác dùng
+
+---
+
+# Communication
+
+Ngôn ngữ trao đổi và tài liệu:
+
+- Bám theo ngôn ngữ người dùng.
+- Technical terminology có thể giữ nguyên tiếng Anh khi cần.
+
+Báo cáo phải:
+
+- Chính xác.
+- Có căn cứ.
+- Không che giấu lỗi.
+- Không tuyên bố test pass nếu chưa chạy.
+- Không tuyên bố deployment thành công nếu chưa xác nhận.
+- Không tuyên bố feature hoàn thành nếu còn blocking issue.
+
+---
+
+# Agent Responsibilities
+
+## Business Analyst
+
+Chịu trách nhiệm:
+
+Business requirement
+→ Specification
+
+Không chịu trách nhiệm quyết định technical implementation.
+
+---
+
+## Architect
+
+Chịu trách nhiệm:
+
+Specification
+→ Technical Design
+
+Không tự thay đổi business requirement.
+
+---
+
+## Backend Engineer
+
+Chịu trách nhiệm:
+
+Technical Design
+→ Backend Implementation
+
+Không tự ý thay đổi contract.
+
+---
+
+## Frontend Engineer
+
+Chịu trách nhiệm:
+
+Design + Contract
+→ Frontend Implementation
+
+Không tự ý thay đổi backend contract.
+
+---
+
+## Tester QA
+
+Chịu trách nhiệm:
+
+Requirement
+→ Verification
+
+Không sửa production code chỉ để test pass.
+
+---
+
+## Code Reviewer
+
+Chịu trách nhiệm:
+
+Implementation
+→ Quality Gate
+
+Chỉ review, không tự ý rewrite feature.
+
+---
+
+## DevOps Engineer
+
+Chịu trách nhiệm:
+
+Application
+→ Build / Deploy / Operate
+
+Các hành động production có rủi ro cao phải được xác nhận trước.
+
+---
+
+# Standard Workflow
+
+## Phase 1 — Discovery & Brainstorming
+
+business-analyst (sử dụng skill `brainstorming`)
+
+↓
+
+- Tự động quét context (codebase, schema, `CONTEXT_SUMMARY.md`)
+- Đề xuất 2–3 phương án nghiệp vụ kèm Trade-offs Matrix & Recommendation
+- PRD / SRS / User Story / Acceptance Criteria (Given/When/Then)
+- State Transitions Table & Danh mục Edge Cases
+
+---
+
+## Phase 2 — Shift-Left Architecture & Test Design (3 Amigos)
+
+architect ∥ tester-qa (Phase A)
+
+↓
+
+- **Architect**: Thiết kế cuốn chiếu Data Model, API Contract, DB Schema, ADRs
+- **Tester-QA**: Tiếp nhận từng mục, đối chiếu chéo với Acceptance Criteria của BA, phát hiện lỗ hổng logic/validation/constraints (tối đa 1–2 lượt phản biện)
+- Hai bên cùng thảo luận để hoàn thiện bản thiết kế và bộ kịch bản test trước khi bàn giao lại cho BA
+
+---
+
+## Phase 2.5 — [GATE] BA Final Sign-off (Thẩm định & Chốt)
+
+business-analyst
+
+↓
+
+- BA đối soát toàn diện giữa Spec, API Contract và Test Cases
+- Đảm bảo không có mâu thuẫn nghiệp vụ và mọi Acceptance Criteria đều có test case tương ứng
+- **BA CHÍNH THỨC CHỐT**: Cập nhật trạng thái `Status: Ready for Implementation` vào `docs/<feature>/CONTEXT_SUMMARY.md`
+- **Kích hoạt Backend Engineer và/hoặc Frontend Engineer** (CHỈ KHI BA ĐÃ CHỐT)
+
+---
+
+## Phase 3 — Implementation
+
+backend-engineer ∥ frontend-engineer
+
+↓
+
+- **Backend**: Triển khai code trong `be_maxv/` bám sát API Contract (`docs/<feature>/architecture/api-contract.md`) và Test Cases (`docs/<feature>/qa/test-cases.md`). Tự chạy `typecheck`, `lint` và unit test nội bộ.
+- **Frontend**: Triển khai code trong `maxv/` (Portal) hoặc `hdđt_maxv/` (Hóa đơn/Thuế). Tự chạy `npm run build` / `npm run lint`.
+
+---
+
+## Phase 4 — Dynamic Verification
+
+tester-qa (Phase B)
+
+↓
+
+- Kích hoạt automated test suite và test scenarios đã chuẩn bị
+- Regression testing & Security scanning
+- Xuất `docs/<feature>/qa/test-report.md`
+- **BẮT BUỘC xuất `docs/<feature>/qa/issues-and-bugs.md`**: Danh mục lỗi và issues cần xử lý tiếp theo
+
+Nếu fail:
+tester-qa → (backend-engineer / frontend-engineer) → tester-qa (lặp lại cho tới khi đạt yêu cầu).
+
+---
+
+## Phase 5 — Quality Gate
+
+code-reviewer
+
+↓
+
+- Soát code backend, frontend và test coverage
+- Nếu có 🔴 Blocking issue: code-reviewer → dev → code-reviewer
+- Nếu đạt: Approve
+
+---
+
+## Phase 6 — Deployment & Operation
+
+devops-engineer
+
+↓
+
+- Kiểm tra cấu hình môi trường, PM2 Windows Server, di trú Prisma DB, build production SPAs
+- Đảm bảo tính khả chuyển và rollback khi cần.
+
+Build
+→ Deploy
+→ Smoke Test
+→ Monitor
+
+---
+
+# Final Principle
+
+Không agent nào được giả định rằng công việc của agent trước đã hoàn thành nếu chưa kiểm tra artifact hoặc evidence tương ứng.
+
+Ưu tiên:
+
+Correctness
+→ Security
+→ Reliability
+→ Maintainability
+→ Performance
+→ Developer Experience
+
+Không over-engineer khi requirement chưa cần.

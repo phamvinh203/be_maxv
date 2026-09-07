@@ -25,25 +25,6 @@ const maNvTuyChon = optTextMax(24, 'Mã nhân viên').transform((v) =>
 );
 
 export const GIOI_TINH = ['nam', 'nu', 'khac'] as const;
-export const LOAI_HOP_DONG = ['thu_viec', 'hdld', 'hdvc'] as const;
-export const KIEU_LUONG = ['gross', 'net'] as const;
-
-/**
- * Ngày hiệu lực tới phải sau ngày vào làm. Tách thành hàm dùng chung cho cả schema tạo và sửa:
- * để rời rạc thì thêm luật mới ở một bên là bên kia lặng lẽ mất luật, không có lỗi biên dịch.
- */
-function soatNgayHopDong(
-  v: { ngay_vao_lam: Date; ngay_hieu_luc_toi: Date | null },
-  ctx: z.RefinementCtx,
-): void {
-  if (v.ngay_hieu_luc_toi && v.ngay_hieu_luc_toi <= v.ngay_vao_lam) {
-    ctx.addIssue({
-      code: z.ZodIssueCode.custom,
-      path: ['ngay_hieu_luc_toi'],
-      message: 'Ngày hiệu lực tới phải sau ngày vào làm',
-    });
-  }
-}
 
 const thanNhanVien = z.object({
   ma_nv: maNvTuyChon,
@@ -69,20 +50,17 @@ const thanNhanVien = z.object({
   chuc_vu: optTextMax(100, 'Chức vụ'),
   cap_bac: optTextMax(64, 'Cấp bậc'),
 
-  // Hợp đồng & lương — 4 trường bắt buộc theo yêu cầu nghiệp vụ
-  so_hop_dong: z
-    .string()
-    .trim()
-    .min(1, 'Số hợp đồng không được để trống')
-    .max(100, 'Số hợp đồng tối đa 100 ký tự'),
-  loai_hop_dong: z.enum(LOAI_HOP_DONG),
-  kieu_luong: z.enum(KIEU_LUONG),
+  /**
+   * Ngày vào làm ĐẦU TIÊN — thuộc về nhân viên, không phải hợp đồng: dùng tính thâm niên và
+   * phép năm, không đổi khi ký hợp đồng mới.
+   *
+   * Số hợp đồng / loại HĐ / kiểu lương / ngày hiệu lực tới / BHXH / TNCN KHÔNG còn ở đây: chúng
+   * thuộc `hrm_hop_dong` và được tính lúc đọc (xem `phanHopDong` ở nhanVien.service). Trước đây
+   * form nhân viên ghi thẳng vào bản sao của mấy trường đó, đè mất giá trị suy ra từ hợp đồng.
+   */
   ngay_vao_lam: ngayISO,
-  ngay_hieu_luc_toi: ngayTuyChon,
 
   // Chế độ — bỏ trống thì theo mặc định dưới đây (khớp mô tả cột trong file nhập Excel)
-  bhxh: z.boolean().default(true),
-  tncn: z.boolean().default(true),
   mien_cham_cong: z.boolean().default(false),
   cong_doan: z.boolean().default(true),
 
@@ -97,26 +75,21 @@ const thanNhanVien = z.object({
 });
 
 /** Thân request tạo mới 1 nhân viên (hrm_nhan_vien). */
-export const nhanVienBodySchema = thanNhanVien.superRefine(soatNgayHopDong);
+export const nhanVienBodySchema = thanNhanVien;
 
 /**
  * Thân request sửa: KHÔNG đổi khóa (ma_nv) — giống danh mục phòng ban.
  * `hrm_nguoi_phu_thuoc.ma_nv` và các bảng lương sau này đều trỏ vào mã này; đổi mã tại chỗ
  * là mời dữ liệu mồ côi. Muốn đổi mã thì xóa rồi tạo lại.
  *
- * Bốn cờ chế độ ở đây là BẮT BUỘC (khác lúc tạo, có mặc định): PUT thay TOÀN BỘ bản ghi, mà
+ * Hai cờ chế độ ở đây là BẮT BUỘC (khác lúc tạo, có mặc định): PUT thay TOÀN BỘ bản ghi, mà
  * schema không phân biệt được "không gửi" với "gửi true" — thiếu trường là âm thầm bật lại
- * BHXH/công đoàn cho người đã cố ý tắt. Bắt buộc thì client gửi thiếu sẽ nhận 400 rõ ràng.
+ * công đoàn cho người đã cố ý tắt. Bắt buộc thì client gửi thiếu sẽ nhận 400 rõ ràng.
  */
-export const nhanVienUpdateSchema = thanNhanVien
-  .omit({ ma_nv: true })
-  .extend({
-    bhxh: z.boolean(),
-    tncn: z.boolean(),
-    mien_cham_cong: z.boolean(),
-    cong_doan: z.boolean(),
-  })
-  .superRefine(soatNgayHopDong);
+export const nhanVienUpdateSchema = thanNhanVien.omit({ ma_nv: true }).extend({
+  mien_cham_cong: z.boolean(),
+  cong_doan: z.boolean(),
+});
 
 /** Query danh sách (lọc theo mã / họ tên / phòng ban / trạng thái). */
 export const nhanVienListQuerySchema = z.object({

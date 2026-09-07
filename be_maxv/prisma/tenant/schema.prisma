@@ -870,18 +870,23 @@ model hrm_nhan_vien {
   chuc_vu String? @db.VarChar(100) // chữ tự do, không phải danh mục
   cap_bac String? @db.VarChar(64) // chữ tự do (vd "Quản lý cấp trung"), không phải danh mục
 
-  // Hợp đồng & lương
-  so_hop_dong       String    @db.VarChar(100) // vd "HĐLĐ-001/2026"
-  loai_hop_dong     String    @db.VarChar(16) // thu_viec | hdld | hdvc
-  kieu_luong        String    @db.VarChar(8) // gross | net
-  ngay_vao_lam      DateTime  @db.Date // = hiệu lực TỪ của hợp đồng ban đầu
-  ngay_hieu_luc_toi DateTime? @db.Date // null = vô thời hạn; phải sau ngay_vao_lam (validator)
+  // Ngày vào làm ĐẦU TIÊN của nhân viên (thâm niên, phép năm) — KHÔNG đổi khi ký hợp đồng mới.
+  ngay_vao_lam DateTime @db.Date
+
+  // KHÔNG có bản sao "hợp đồng hiện hành" ở đây (bỏ 2026-09-05: so_hop_dong, loai_hop_dong,
+  // kieu_luong, ngay_hieu_luc_toi, bhxh, tncn).
+  //
+  // Nguồn sự thật DUY NHẤT là `hrm_hop_dong`; API tính hợp đồng hiện hành mỗi lần đọc (xem
+  // `hopDongHienHanhTheoNv`). Bản sao không giữ đúng được vì kết quả phụ thuộc NGÀY HÔM NAY:
+  // hợp đồng ký trước cho tương lai, tới ngày hiệu lực chẳng có thao tác ghi nào để tính lại,
+  // nên bản sao đứng im ở hợp đồng cũ. Ngoài ra form nhân viên ghi thẳng vào mấy cột đó nên
+  // sửa hồ sơ là âm thầm đè giá trị suy ra từ hợp đồng.
 
   // Chế độ — service quy về true/false trước khi lưu (Excel để trống = mặc định dưới đây)
-  bhxh           Boolean @default(true)
-  tncn           Boolean @default(true)
   mien_cham_cong Boolean @default(false)
-  cong_doan      Boolean @default(true) // service tự ép false khi loai_hop_dong = hdvc
+  // Lựa chọn của người lao động. `hopDong.service` ép false MỘT CHIỀU khi ký hợp đồng khoán,
+  // rời khỏi khoán KHÔNG tự bật lại.
+  cong_doan      Boolean @default(true)
 
   // Tài khoản ngân hàng
   so_tai_khoan  String? @db.VarChar(30)

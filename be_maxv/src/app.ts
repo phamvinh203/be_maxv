@@ -19,7 +19,33 @@ export async function buildApp(
   opts: { logger?: boolean } = {},
 ): Promise<FastifyInstance> {
   const app = Fastify({
-    logger: opts.logger ?? true,
+    logger:
+      opts.logger === false
+        ? false
+        : {
+            serializers: {
+              /**
+               * Cắt query string khỏi `url` trong log.
+               *
+               * Serializer mặc định ghi nguyên `req.url`, mà callback OAuth Drive nhận `code`
+               * (đổi được ra refresh token) và `state` ngay trên query — chúng sẽ nằm trong
+               * file log dạng thô, nơi được sao lưu và chia sẻ rộng hơn nhiều so với DB. Cắt
+               * cho MỌI route chứ không riêng callback: chỗ khác cũng có thể đưa dữ liệu nhạy
+               * cảm lên query, và path không kèm query vẫn đủ để lần vết request.
+               */
+              req(req) {
+                const url = req.url ?? '';
+                const hoi = url.indexOf('?');
+                return {
+                  method: req.method,
+                  url: hoi === -1 ? url : `${url.slice(0, hoi)}?…`,
+                  host: req.headers?.host,
+                  remoteAddress: req.socket?.remoteAddress,
+                  remotePort: req.socket?.remotePort,
+                };
+              },
+            },
+          },
     trustProxy: env.trustProxy,
   });
 

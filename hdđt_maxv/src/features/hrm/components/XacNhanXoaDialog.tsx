@@ -12,15 +12,18 @@ interface Props {
   noiDung: ReactNode;
   onClose: () => void;
   onXacNhan: () => void;
+  /** Chữ trên nút xác nhận. Mặc định "Xóa" — đổi khi việc không phải là xóa bản ghi. */
+  nhanXacNhan?: string;
 }
 
-/** Hỏi lại trước khi xóa — dùng chung cho cả bốn bảng của khu HRM. */
+/** Hỏi lại trước khi làm việc không lùi lại được — dùng chung cho khu HRM. */
 export default function XacNhanXoaDialog({
   open,
   tieuDe,
   noiDung,
   onClose,
   onXacNhan,
+  nhanXacNhan = "Xóa",
 }: Props) {
   return (
     <Dialog open={open} onClose={onClose} maxWidth="xs" fullWidth>
@@ -38,7 +41,7 @@ export default function XacNhanXoaDialog({
           onClick={onXacNhan}
           sx={{ textTransform: "none" }}
         >
-          Xóa
+          {nhanXacNhan}
         </Button>
       </DialogActions>
     </Dialog>

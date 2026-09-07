@@ -110,9 +110,17 @@ export function useTaiLieuList(maNv: string | null): {
   return { items, isLoading, isError, error };
 }
 
+/**
+ * `useCallback` để hàm giữ NGUYÊN tham chiếu giữa các lần render. Không bọc thì mọi
+ * `useCallback` khai nó trong mảng phụ thuộc đều dựng lại mỗi lần render — memo hóa thành vô
+ * nghĩa. Hiện chưa lộ vì không cái nào chạy trong `useEffect`, nhưng đó là cái bẫy cho lần sau.
+ */
 function useLamMoi() {
   const qc = useQueryClient();
-  return () => void qc.invalidateQueries({ queryKey: hrmTaiLieuKeys.all });
+  return useCallback(
+    () => void qc.invalidateQueries({ queryKey: hrmTaiLieuKeys.all }),
+    [qc],
+  );
 }
 
 /**

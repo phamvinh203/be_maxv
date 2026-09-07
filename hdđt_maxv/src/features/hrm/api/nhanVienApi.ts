@@ -22,13 +22,20 @@ export interface NhanVienApiRow {
   ma_pb: string | null;
   chuc_vu: string | null;
   cap_bac: string | null;
-  so_hop_dong: string;
-  loai_hop_dong: LoaiHopDongApi;
-  kieu_luong: KieuLuongApi;
   ngay_vao_lam: string;
+
+  /**
+   * Hợp đồng HIỆN HÀNH — BE TÍNH lúc đọc từ `hrm_hop_dong`, không phải cột lưu sẵn.
+   * `null` khi nhân viên chưa có hợp đồng nào. Chỉ đọc: KHÔNG gửi ngược lên trong PUT/POST,
+   * muốn đổi thì sửa ở tab Lịch sử hợp đồng.
+   */
+  so_hop_dong: string | null;
+  loai_hop_dong: LoaiHopDongApi | null;
+  kieu_luong: KieuLuongApi | null;
   ngay_hieu_luc_toi: string | null;
-  bhxh: boolean;
-  tncn: boolean;
+  bhxh: boolean | null;
+  tncn: boolean | null;
+
   mien_cham_cong: boolean;
   cong_doan: boolean;
   so_tai_khoan: string | null;
@@ -54,13 +61,7 @@ export interface NhanVienApiBody {
   ma_pb: string | null;
   chuc_vu: string | null;
   cap_bac: string | null;
-  so_hop_dong: string;
-  loai_hop_dong: LoaiHopDongApi;
-  kieu_luong: KieuLuongApi;
   ngay_vao_lam: string;
-  ngay_hieu_luc_toi: string | null;
-  bhxh: boolean;
-  tncn: boolean;
   mien_cham_cong: boolean;
   cong_doan: boolean;
   so_tai_khoan: string | null;

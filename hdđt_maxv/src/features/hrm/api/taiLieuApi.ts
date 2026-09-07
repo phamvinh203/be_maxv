@@ -118,9 +118,11 @@ export async function taiFileLen(
 /**
  * Tải nội dung file về dạng Blob để hiển thị trong app.
  *
- * KHÔNG dùng `<img src="...">` trỏ thẳng vào API: ảnh sẽ là request cross-origin lúc chạy dev
- * (FE 5173, API 4000) và không kèm cookie phiên -> 401. Lấy Blob qua đúng lớp `apiFetch` thì
- * dùng chung cơ chế cookie + tự làm mới token như mọi lời gọi khác.
+ * KHÔNG dùng `<img src="...">` trỏ thẳng vào API. Lý do KHÔNG phải cross-origin — Vite proxy
+ * `/api` sang cổng 4000 (xem vite.config.ts) và `API_BASE` là đường dẫn tương đối, nên lúc dev
+ * vẫn cùng origin. Lý do thật: thẻ `<img>` tự đi một request NGOÀI lớp `apiFetch`, nên gặp
+ * access token hết hạn thì nó chỉ nhận 401 và hiện hình vỡ, không kích hoạt được cơ chế tự làm
+ * mới token rồi thử lại. Lấy Blob qua `apiFetch` thì hưởng đúng cơ chế đó như mọi lời gọi khác.
  */
 export function taiFileVe(id: string): Promise<Blob> {
   return apiFetchBlob(`${BASE}/${encodeURIComponent(id)}/file`);
