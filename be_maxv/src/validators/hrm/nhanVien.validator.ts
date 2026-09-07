@@ -85,10 +85,20 @@ export const nhanVienBodySchema = thanNhanVien;
  * Hai cờ chế độ ở đây là BẮT BUỘC (khác lúc tạo, có mặc định): PUT thay TOÀN BỘ bản ghi, mà
  * schema không phân biệt được "không gửi" với "gửi true" — thiếu trường là âm thầm bật lại
  * công đoàn cho người đã cố ý tắt. Bắt buộc thì client gửi thiếu sẽ nhận 400 rõ ràng.
+ *
+ * `status` BẮT BUỘC theo đúng lý do đó — `[MỚI — BR-hrm-067]`, bịt BUG-HRM-26. Trước đây nó
+ * kế thừa mặc định `'1'` của schema tạo mới, nên **một yêu cầu sửa thiếu `status` âm thầm đưa
+ * nhân viên đã nghỉ trở lại đang làm**, trong khi ngày nghỉ và các hợp đồng đã bị chốt vẫn nằm
+ * nguyên — trạng thái không quy tắc nào mô tả. Đó chính là nhánh ngược mà OQ-hrm-12 tuyên bố
+ * chưa chốt nhưng đang đi được ngay hôm nay bằng một lần thiếu trường.
  */
 export const nhanVienUpdateSchema = thanNhanVien.omit({ ma_nv: true }).extend({
   mien_cham_cong: z.boolean(),
   cong_doan: z.boolean(),
+  status: z.enum(['0', '1'], {
+    required_error: 'Phải gửi trạng thái làm việc của nhân viên',
+    invalid_type_error: 'Phải gửi trạng thái làm việc của nhân viên',
+  }),
 });
 
 /** Query danh sách (lọc theo mã / họ tên / phòng ban / trạng thái). */

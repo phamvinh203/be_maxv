@@ -39,10 +39,40 @@ export const inviteUserSchema = z.object({
   donViIds: z.array(z.string().uuid()).min(1), // các MST (của owner) cấp cho nhân viên
 });
 
-// PUT /api/v1/companies/employees/:userId/access — đặt lại tập MST của 1 nhân viên (rỗng = thu hồi hết).
-export const setEmployeeAccessSchema = z.object({
-  donViIds: z.array(z.string().uuid()),
-});
+/**
+ * PUT /api/v1/companies/employees/:userId/access — đặt lại tập MST của 1 nhân viên
+ * (rỗng = thu hồi hết), kèm QUYỀN XEM DỮ LIỆU LƯƠNG cho từng công ty (QĐ #8, FR-hrm-044).
+ *
+ * Nhận HAI dạng thân yêu cầu:
+ *   - `access: [{ donViId, xemLuong }]` — dạng đầy đủ theo contract Mục 7C.1, dùng cho màn
+ *     phân quyền có ô tick quyền lương;
+ *   - `donViIds: ["..."]` — dạng cũ, GIỮ LẠI để giao diện `maxv/` hiện tại không chết ngay khi
+ *     máy chủ lên trước. Dạng cũ **không nói gì về quyền lương** nên máy chủ GIỮ NGUYÊN cờ của
+ *     các cặp đã có và để cặp mới ở mặc định "không được xem" — đúng tinh thần QĐ #17.
+ *
+ * Ít nhất một trong hai phải có mặt.
+ */
+export const setEmployeeAccessSchema = z
+  .object({
+    access: z
+      .array(
+        z.object({
+          donViId: z.string().uuid(),
+          // `optional` chứ không `default(false)`: "không gửi" phải mang nghĩa GIỮ NGUYÊN cờ cũ,
+          // khác hẳn "gửi false" = thu hồi. Gộp hai thứ đó là thu hồi quyền âm thầm.
+          xemLuong: z.boolean().optional(),
+        }),
+      )
+      .optional(),
+    donViIds: z.array(z.string().uuid()).optional(),
+  })
+  .refine((v) => v.access !== undefined || v.donViIds !== undefined, {
+    message: 'Phải gửi danh sách công ty (access hoặc donViIds)',
+    path: ['access'],
+  })
+  .transform((v) => ({
+    access: v.access ?? (v.donViIds ?? []).map((donViId) => ({ donViId })),
+  }));
 
 export type InviteUserInput = z.infer<typeof inviteUserSchema>;
 export type SetEmployeeAccessInput = z.infer<typeof setEmployeeAccessSchema>;

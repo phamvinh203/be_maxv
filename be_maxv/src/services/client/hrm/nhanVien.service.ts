@@ -40,6 +40,50 @@ const nhanVienSelect = {
 const MA_NV_MAX = 24;
 
 /**
+ * Các trường CHỈ HIỆN cho người được cấp quyền xem dữ liệu lương — BR-hrm-059, FR-hrm-042.
+ * (`luong_chinh`/`luong_bhxh` không nằm ở bảng nhân viên, chúng thuộc `/hop-dong` — nhóm đó bị
+ * chặn nguyên cụm ở controller.)
+ */
+const TRUONG_NHAY_CAM = ['so_tai_khoan', 'ten_tai_khoan', 'ngan_hang'] as const;
+
+/**
+ * BỎ HẲN trường khỏi phản hồi, KHÔNG trả `null`.
+ *
+ * Trả `null` là nói dối về dữ liệu: giao diện không phân biệt được "nhân viên chưa khai số tài
+ * khoản" với "bạn không được xem số tài khoản", và người dùng sẽ đi báo lỗi mất dữ liệu. Test
+ * của QA kiểm bằng "khóa vắng mặt" đúng vì lý do đó (TC-hrm-212).
+ */
+export function cheTruongLuong<T extends Record<string, unknown>>(
+  row: T,
+  xemLuong: boolean,
+): T {
+  if (xemLuong) return row;
+  const ban = { ...row };
+  for (const truong of TRUONG_NHAY_CAM) delete ban[truong];
+  return ban;
+}
+
+/**
+ * Người KHÔNG có quyền xem lương gửi lên ba trường ngân hàng thì server BỎ QUA, giữ nguyên
+ * giá trị cũ — contract Mục 3.1c.
+ *
+ * KHÔNG được nhận `null` rồi ghi đè: `PUT` là thay toàn bộ bản ghi, mà người không có quyền
+ * đọc thì màn hình của họ không có sẵn ba giá trị cũ để gửi lại. Nhận nguyên payload của họ là
+ * mỗi lần kế toán không có quyền sửa số điện thoại một nhân viên, số tài khoản ngân hàng của
+ * người đó bị xóa trắng — âm thầm, không lỗi.
+ */
+export function boTruongLuongKhiGhi<T extends Record<string, unknown>>(
+  body: T,
+  xemLuong: boolean,
+): Omit<T, (typeof TRUONG_NHAY_CAM)[number]> {
+  const ban = { ...body };
+  if (!xemLuong) {
+    for (const truong of TRUONG_NHAY_CAM) delete ban[truong];
+  }
+  return ban;
+}
+
+/**
  * Sinh mã nhân viên kế tiếp: `NV0001`, `NV0002`…
  *
  * Chuyển từ FE (`hdđt_maxv/src/features/hrm/cay.ts#sinhMaNhanVien`) về đây cùng lý do như mã
@@ -92,7 +136,11 @@ async function assertPhongBanTonTai(
 }
 
 /** GET danh sách + lọc, kèm `ten_pb` (thay LEFT JOIN hrm_phong_ban). */
-export async function listNhanVien(db: PrismaClient, q: NhanVienListQuery) {
+export async function listNhanVien(
+  db: PrismaClient,
+  q: NhanVienListQuery,
+  xemLuong: boolean,
+) {
   const and: Prisma.hrm_nhan_vienWhereInput[] = [{ da_xoa: false }];
   if (q.ma_nv) and.push({ ma_nv: { contains: q.ma_nv, mode: 'insensitive' } });
   if (q.ho_ten)
@@ -120,12 +168,17 @@ export async function listNhanVien(db: PrismaClient, q: NhanVienListQuery) {
     rows.map((r) => r.ma_nv),
   );
 
-  return rows.map((r) => ({
-    ...r,
-    ten_pb: r.ma_pb ? (tenPbTheoMa.get(r.ma_pb) ?? null) : null,
-    so_npt: soNptTheoMa.get(r.ma_nv) ?? 0,
-    ...phanHopDong(hopDongTheoMa.get(r.ma_nv)),
-  }));
+  return rows.map((r) =>
+    cheTruongLuong(
+      {
+        ...r,
+        ten_pb: r.ma_pb ? (tenPbTheoMa.get(r.ma_pb) ?? null) : null,
+        so_npt: soNptTheoMa.get(r.ma_nv) ?? 0,
+        ...phanHopDong(hopDongTheoMa.get(r.ma_nv)),
+      },
+      xemLuong,
+    ),
+  );
 }
 
 /**
@@ -153,7 +206,11 @@ function phanHopDong(hd: HopDongHienHanh | undefined) {
 }
 
 /** GET 1 nhân viên — màn chi tiết/sửa cần đủ trường, không lấy lại từ danh sách. */
-export async function getNhanVien(db: PrismaClient, maNv: string) {
+export async function getNhanVien(
+  db: PrismaClient,
+  maNv: string,
+  xemLuong: boolean,
+) {
   const nv = await findOrThrow(
     () =>
       db.hrm_nhan_vien.findFirst({
@@ -163,13 +220,17 @@ export async function getNhanVien(db: PrismaClient, maNv: string) {
     new NotFoundError(MESSAGES.HRM.NHAN_VIEN_NOT_FOUND),
   );
   const hopDongTheoMa = await hopDongHienHanhTheoNv(db, [maNv]);
-  return { ...nv, ...phanHopDong(hopDongTheoMa.get(maNv)) };
+  return cheTruongLuong(
+    { ...nv, ...phanHopDong(hopDongTheoMa.get(maNv)) },
+    xemLuong,
+  );
 }
 
 /** POST tạo mới. Bỏ trống `ma_nv` thì sinh tự động. */
 export async function createNhanVien(
   db: PrismaClient,
   body: NhanVienBodyInput,
+  xemLuong: boolean,
 ) {
   if (body.ma_pb) await assertPhongBanTonTai(db, body.ma_pb);
 
@@ -189,7 +250,9 @@ export async function createNhanVien(
   );
 
   const { ma_nv: _bo, ...phanConLai } = body;
-  await db.hrm_nhan_vien.create({ data: { ...phanConLai, ma_nv: maNv } });
+  await db.hrm_nhan_vien.create({
+    data: { ...boTruongLuongKhiGhi(phanConLai, xemLuong), ma_nv: maNv },
+  });
   return { ma_nv: maNv };
 }
 
@@ -198,6 +261,7 @@ export async function updateNhanVien(
   db: PrismaClient,
   maNv: string,
   body: NhanVienUpdateInput,
+  xemLuong: boolean,
 ) {
   await findOrThrow(
     () =>
@@ -211,7 +275,7 @@ export async function updateNhanVien(
 
   await db.hrm_nhan_vien.update({
     where: { ma_nv: maNv },
-    data: { ...body, datetime2: new Date() },
+    data: { ...boTruongLuongKhiGhi(body, xemLuong), datetime2: new Date() },
   });
   return { ma_nv: maNv };
 }

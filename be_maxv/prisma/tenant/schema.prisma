@@ -942,11 +942,21 @@ model hrm_nguoi_phu_thuoc {
 
   nhan_vien hrm_nhan_vien @relation(fields: [ma_nv], references: [ma_nv], onDelete: Cascade, onUpdate: Cascade)
 
-  /// Một người phụ thuộc chỉ được đăng ký MỘT lần cho cùng một nhân viên (khóa theo MST cá
-  /// nhân của người phụ thuộc). Trùng là giảm trừ gia cảnh tính hai lần -> sai thuế TNCN, mà
-  /// không có gì báo. Postgres coi các NULL là khác nhau nên hồ sơ chưa có MST vẫn nhập được
-  /// nhiều dòng, đúng ý: chỉ chặn khi đã biết MST.
-  @@unique([ma_nv, mst])
+  /// KHÓA DUY NHẤT CŨ `@@unique([ma_nv, mst])` ĐÃ BỎ (QĐ #7 + QĐ #19, BR-hrm-030).
+  ///
+  /// Nó SAI CẢ HAI CHIỀU: hẹp quá ở phạm vi (chỉ chặn trong một nhân viên, nên cùng một MST
+  /// đăng ký được cho hai nhân viên -> giảm trừ gia cảnh tính hai lần -> sai thuế TNCN,
+  /// BUG-HRM-05) và chặt quá ở thời gian (không xét kỳ giảm trừ, nên chặn oan ca chuyển người
+  /// kê khai giữa năm).
+  ///
+  /// Thay bằng RÀNG BUỘC LOẠI TRỪ trên (`mst`, khoảng kỳ giảm trừ) ở phạm vi toàn công ty:
+  ///   `hrm_npt_mst_khong_trung_ky` — xem `src/services/shared/hrmTenantConstraints.ts` và
+  ///   `docs/hrm/architecture/data-model.md` M-09.
+  /// Prisma DSL KHÔNG diễn tả được `EXCLUDE USING gist`, nên ràng buộc đó nằm ở script áp
+  /// ràng buộc chạy sau mỗi lần `prisma db push` (`npm run hrm:constraints`).
+  ///
+  /// PHẢI bỏ khai báo ở đây, không chỉ drop trong script: giữ lại thì mỗi lần `db push`
+  /// Prisma tạo lại khóa cũ, script lại drop đi — hai tầng đá nhau vô tận.
   @@index([ma_nv])
 }
 

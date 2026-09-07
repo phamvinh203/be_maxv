@@ -133,6 +133,12 @@ export const MESSAGES = {
       'Google Drive đang không phản hồi đúng nên chưa xử lý được file scan. Vui lòng thử lại sau ít phút; nếu vẫn lỗi, báo quản trị viên kiểm tra cấu hình Google Drive.',
     DRIVE_KHONG_KET_NOI_DUOC:
       'Máy chủ không kết nối được tới Google nên chưa xử lý được file scan. Đây là sự cố mạng phía máy chủ, không phải do dữ liệu bạn nhập — vui lòng thử lại sau ít phút hoặc báo quản trị viên.',
+    /**
+     * E-hrm-058 (403) — QĐ #8, BR-hrm-059. Áp cho TOÀN BỘ nhóm `/hrm/hop-dong`.
+     * Câu nói rõ đây là chuyện phân quyền và ai cấp được, để người dùng không đi báo lỗi hệ thống.
+     */
+    KHONG_CO_QUYEN_XEM_LUONG:
+      'Bạn không có quyền xem dữ liệu lương và hợp đồng của công ty này. Liên hệ chủ tài khoản để được cấp quyền.',
     PHONG_BAN_NOT_FOUND: 'Không tìm thấy phòng ban',
     PHONG_BAN_ME_NOT_FOUND: 'Phòng ban cha không tồn tại',
     PHONG_BAN_ME_SELF: 'Phòng ban cha không thể là chính nó',
