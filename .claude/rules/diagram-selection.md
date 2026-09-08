@@ -18,6 +18,13 @@ paths:
 
 > Guide cho IT-BA: chọn đúng loại diagram cho từng tình huống. Áp dụng khi viết `/srs`, `/brainstorm`, hoặc khi user hỏi "vẽ diagram cho X".
 
+> [!IMPORTANT]
+> **THÔNG BÁO TẠM THỜI (TẬP TRUNG FILE .MD — TẠM BỎ SƠ ĐỒ .SVG, .PUML, .PNG)**:
+> Hiện tại BA tạm ngưng hoàn toàn việc sinh file đồ họa rời (`.svg`, `.puml`, `.png`), không gọi PlantUML (`/activity-swimlane`, `/usecase-diagram`), không chạy script `render.sh` hay gọi `plantuml.com`, và không dùng D2 (`/d2-*`).
+> Mọi quy trình, tương tác, trạng thái và dữ liệu của BA **tập trung 100% vào định dạng Markdown (.md)**:
+> - Dùng mô tả từng bước (Step-by-step), bảng phân vai (Actor/Role Matrix), hoặc
+> - Nhúng trực tiếp khối mã Mermaid inline (` ```mermaid `) trong các file `.md` (`<feature>-flows.md`, `<feature>-states.md`, `<feature>-erd.md`) để GitHub/Obsidian tự render, hoàn toàn không xuất file ảnh riêng.
+
 ## Decision matrix
 
 | Tình huống nghiệp vụ | Diagram type | Skill | Output file (1 cố định) | Lý do |

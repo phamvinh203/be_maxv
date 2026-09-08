@@ -35,6 +35,7 @@ paths:
 **Tool-set khai trong frontmatter là trần cứng.** Skill chạy bên trong subagent KHÔNG vượt qua được — skill khai `allowed-tools` rộng hơn thì phần vượt sẽ im lặng không dùng được.
 
 - Agent nào **được khuyến nghị dùng skill sơ đồ** (`activity`, `sequence`, `erd`, `state`, `activity-swimlane`, `usecase-diagram`, `bpmn`, `d2-*`) **BẮT BUỘC có `Bash`** — mọi skill đó đều render/verify qua CLI (`mermaid-verify.mjs`, `render.sh`, `d2`, engine bpmn).
+  - *Lưu ý quan trọng cho BA*: Tạm thời **BỎ HOÀN TOÀN** việc sinh file sơ đồ rời dạng `.svg`, `.puml`, `.png`. Agent `business-analyst` tập trung 100% vào việc sinh tài liệu `.md` (mô tả text, bảng hoặc Mermaid inline trong `.md`), không gọi `activity-swimlane`, `usecase-diagram` hay `render.sh`.
 - Agent chỉ đọc/nhận xét (`code-reviewer`, `diagram-reviewer`) **KHÔNG cấp `Write`/`Edit`** — bảo đảm đúng vai "chỉ review, không tự sửa".
 - **Subagent không spawn được subagent.** Skill `/sequence` và `/activity` khai `Task` để gọi `diagram-reviewer`; bước đó chỉ chạy khi skill được gọi từ session chính. Agent chạy dưới dạng subagent gặp diagram phức tạp → báo lại session chính, không tự xử.
 
@@ -42,10 +43,10 @@ paths:
 
 | Skill | Phụ thuộc | Trạng thái |
 |---|---|---|
-| `activity` · `sequence` · `erd` · `state` | `mmdc` + Chrome (`~/.puppeteer-cache`) | ✅ chạy được |
-| `activity-swimlane` · `usecase-diagram` | `python3` + `curl` → `plantuml.com` | ✅ chạy được (gửi nội dung sơ đồ ra ngoài — cân nhắc `plantuml.jar` local, máy đã có Java 17) |
-| `d2-activity` · `d2-erd` · `d2-architect` | binary `d2` | ❌ chưa cài — skill dừng ngay bước 1 |
-| `bpmn` | `.claude/skills/bpmn/engine/node_modules` | ❌ chưa cài — chạy `npm install` trong thư mục engine |
+| `activity` · `sequence` · `erd` · `state` | `mmdc` + Chrome (`~/.puppeteer-cache`) | ✅ chạy được (dùng inline trong `.md`) |
+| `activity-swimlane` · `usecase-diagram` | `python3` + `curl` → `plantuml.com` | ⏸️ **Tạm ngưng cho BA** (không sinh file .puml/.svg/.png) |
+| `d2-activity` · `d2-erd` · `d2-architect` | binary `d2` | ❌ chưa cài — tạm ngưng |
+| `bpmn` | `.claude/skills/bpmn/engine/node_modules` | ❌ chưa cài — tạm ngưng |
 
 ## Chuỗi trạng thái bàn giao (single source)
 

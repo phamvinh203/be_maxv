@@ -72,8 +72,14 @@ export default function NhanVienTable() {
   const xacNhanXoa = async () => {
     if (!dangXoa) return;
     try {
-      await xoaNhanVien(dangXoa.ma_nv);
-      toast.success(`Đã xóa nhân viên ${dangXoa.ho_ten}.`);
+      // BE trả `so_npt_an_theo` — người phụ thuộc KHÔNG bị xóa, chỉ ẩn theo hồ sơ. Nói ra con
+      // số để người dùng biết dữ liệu con vừa biến mất khỏi các màn khác, không tưởng là lỗi.
+      const { soNptAnTheo } = await xoaNhanVien(dangXoa.ma_nv);
+      toast.success(
+        soNptAnTheo > 0
+          ? `Đã xóa nhân viên ${dangXoa.ho_ten}, ẩn kèm ${soNptAnTheo} người phụ thuộc.`
+          : `Đã xóa nhân viên ${dangXoa.ho_ten}.`,
+      );
     } catch (err) {
       toast.error(getErrorMessage(err, "Không xóa được nhân viên."));
     } finally {

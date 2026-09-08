@@ -122,9 +122,28 @@ model DonVi {
 // Owner KHÔNG cần dòng ở đây (owner thấy hết MST của mình qua DonVi.ownerId).
 // Mỗi dòng = 1 nhân viên được cấp quyền vào 1 MST cụ thể.
 model DonViAccess {
-  id        String   @id @default(uuid())
-  userId    String
-  donViId   String
+  id      String @id @default(uuid())
+  userId  String
+  donViId String
+
+  /// Quyền XEM DỮ LIỆU LƯƠNG của cặp (người dùng, công ty) — QĐ #8 + #17, ADR-007, M-13.
+  ///
+  /// Phạm vi che: luong_chinh, luong_bhxh, so_tai_khoan, ten_tai_khoan, ngan_hang và TOÀN BỘ
+  /// nhóm endpoint /hrm/hop-dong. OWNER luôn có quyền (không có dòng DonViAccess nào).
+  ///
+  /// Đặt ở đây chứ không tách bảng riêng: khóa của bảng đã đúng phạm vi cần — một kế toán
+  /// dịch vụ được xem lương ở công ty A mà không ở công ty B. Tách bảng chỉ để chứa một cờ
+  /// boolean là thêm một join cho mọi request mà không được gì.
+  ///
+  /// Mặc định false (siết người mới), NHƯNG migration kèm bước cấp quyền cho toàn bộ bản
+  /// ghi đang tồn tại (BR-hrm-069) — không có bước đó thì ngày triển khai mọi kế toán đang
+  /// làm việc mất màn hợp đồng cùng lúc.
+  ///
+  /// CẤM đưa cờ này vào vé đăng nhập (BR-hrm-068): vé sống 15 phút và cố ý không đối chiếu
+  /// dữ liệu mỗi lượt, nhét vào đó là thu hồi quyền trễ 15 phút, im lặng. Đọc trong đúng truy
+  /// vấn của resolveTenantInfo (helpers/resolveTenantDb.ts) — tốn 0 round-trip.
+  xemLuong Boolean @default(false)
+
   createdAt DateTime @default(now())
 
   user  User  @relation(fields: [userId], references: [id], onDelete: Cascade)

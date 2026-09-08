@@ -149,7 +149,7 @@ export async function listInvites(req: FastifyRequest, reply: FastifyReply) {
 // PUT /api/v1/companies/employees/:userId/access - owner đặt lại tập MST của 1 nhân viên
 export async function setAccess(req: FastifyRequest, reply: FastifyReply) {
   const { userId } = req.params as { userId: string };
-  const { donViIds } = validateBody(setEmployeeAccessSchema, req.body);
-  const data = await setEmployeeAccess(req.user.userId, userId, donViIds);
+  const { access } = validateBody(setEmployeeAccessSchema, req.body);
+  const data = await setEmployeeAccess(req.user.userId, userId, access);
   return sendOk(reply, data);
 }

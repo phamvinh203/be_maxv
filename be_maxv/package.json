@@ -14,6 +14,8 @@
     "migrate:sys:prod": "prisma migrate deploy --schema=prisma/sys/schema.prisma",
     "setup:test-app": "tsx src/scripts/setup-test-app.ts",
     "sync:tenants": "tsx src/scripts/sync-tenants.ts",
+    "hrm:ra-soat": "tsx src/scripts/ra-soat-hrm.ts",
+    "hrm:constraints": "tsx src/scripts/apply-hrm-constraints.ts",
     "typecheck": "tsc --noEmit",
     "lint": "eslint src",
     "lint:fix": "eslint src --fix",

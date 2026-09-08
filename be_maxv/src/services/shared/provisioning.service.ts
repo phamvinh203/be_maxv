@@ -5,6 +5,7 @@ import path from 'node:path';
 import { env } from '../../config/env';
 import { sysPrisma } from '../../config/db.sys';
 import { evictTenantDb } from '../../helpers/tenantClient';
+import { applyTenantConstraints } from './hrmTenantConstraints';
 import { tenantDbName, tenantUrl } from '../../utils/dbName';
 
 const execAsync = promisify(exec);
@@ -26,8 +27,15 @@ async function withAdminClient<T>(
  * Gọi sau khi đã tạo bản ghi don_vi (status=PROVISIONING).
  *   1) CREATE DATABASE bằng pg thô (Prisma không tạo được database)
  *   2) Đồng bộ schema template lên DB mới (prisma db push)
- *   3) Cập nhật don_vi -> READY + dbName + provisionedAt
+ *   3) Áp ràng buộc HRM không diễn tả được bằng Prisma DSL (EXCLUDE/EXTENSION/FUNCTION)
+ *   4) Cập nhật don_vi -> READY + dbName + provisionedAt
  * Lỗi bất kỳ bước nào -> don_vi.status = FAILED (cho retry).
+ *
+ * BƯỚC 3 KHÔNG ĐƯỢC BỎ. `db push` chỉ dựng bảng theo `schema.prisma`; ba loại ràng buộc HRM
+ * (`btree_gist`, hai hàm gom nhóm, hai ràng buộc loại trừ, unique số hợp đồng) Prisma không mô
+ * tả được nên tenant mới sẽ **không có ràng buộc nào** — công ty vừa mở là đã hở đúng những lỗ
+ * mà đợt này vừa vá cho công ty cũ. DB mới luôn rỗng nên bước này không bao giờ vướng dữ liệu;
+ * hỏng ở đây là hỏng hạ tầng thật, và SAGA đánh dấu FAILED thay vì để lại một DB nửa vời.
  */
 export async function provisionTenant(
   donViId: string,
@@ -38,6 +46,7 @@ export async function provisionTenant(
   try {
     await createDatabaseIfNotExists(dbName);
     await pushTenantSchema(dbName);
+    await applyTenantConstraints(dbName);
 
     // Chỉ đánh dấu vòng đời DB = READY. Billing (trial) do Subscription lo.
     await sysPrisma.donVi.update({

@@ -322,7 +322,9 @@ export async function listCompanyEmployees(ownerId: string | null) {
       status: true,
       isActive: true,
       createdAt: true,
-      donViAccess: { select: { donViId: true } },
+      // `xemLuong` đi kèm để màn phân quyền của `maxv/` tích sẵn đúng ô — không có nó thì
+      // cột dữ liệu M-13 tồn tại mà không ai cấp/thu hồi được (FR-hrm-044).
+      donViAccess: { select: { donViId: true, xemLuong: true } },
     },
   });
 }
@@ -349,15 +351,32 @@ export async function listCompanyInvites(ownerId: string | null) {
   });
 }
 
+/** Một dòng phân quyền: công ty + (tùy chọn) quyền xem dữ liệu lương. */
+export interface QuyenCongTy {
+  donViId: string;
+  /** `undefined` = KHÔNG đụng tới cờ hiện có (dạng thân yêu cầu cũ chỉ gửi danh sách công ty). */
+  xemLuong?: boolean;
+}
+
 /**
- * PUT /companies/employees/:userId/access — đặt lại tập MST của 1 nhân viên (replace-set).
- * donViIds rỗng = thu hồi hết. Chỉ owner của tài khoản thao tác; chỉ gán MST owner sở hữu.
+ * PUT /companies/employees/:userId/access — đặt lại tập MST của 1 nhân viên, kèm quyền xem
+ * dữ liệu lương từng công ty. Danh sách rỗng = thu hồi hết.
+ * Chỉ owner của tài khoản thao tác; chỉ gán MST owner sở hữu.
+ *
+ * 🚨 GHI THEO CẶP KHÓA, KHÔNG CÒN REPLACE-SET (BUG-HRM-28, ADR-007, M-13).
+ *
+ * Bản cũ `deleteMany({ userId })` rồi `createMany` lại toàn bộ. Cách đó chạy đúng khi bảng chỉ
+ * có cặp (user, công ty), nhưng từ khi có cột `xemLuong` thì **mỗi lần chủ tài khoản sửa danh
+ * sách công ty là xóa sạch mọi quyền xem lương đã cấp** — âm thầm, không lỗi, không nhật ký,
+ * và không ai biết cho tới khi kế toán báo mất màn hợp đồng. Giờ chỉ xóa cặp bị bỏ ra và
+ * `upsert` từng cặp còn lại; cặp cũ không gửi cờ thì GIỮ NGUYÊN cờ đang có.
  */
 export async function setEmployeeAccess(
   ownerId: string,
   employeeId: string,
-  donViIds: string[],
+  access: QuyenCongTy[],
 ) {
+  const donViIds = access.map((a) => a.donViId);
   const employee = await sysPrisma.user.findUnique({
     where: { id: employeeId },
     select: { id: true, role: true, ownerId: true },
@@ -381,23 +400,49 @@ export async function setEmployeeAccess(
     }
   }
 
-  // Replace-set: xóa toàn bộ quyền cũ rồi cấp lại theo danh sách mới (1 INSERT).
-  await sysPrisma.$transaction([
-    sysPrisma.donViAccess.deleteMany({ where: { userId: employeeId } }),
-    ...(donViIds.length > 0
-      ? [
-          sysPrisma.donViAccess.createMany({
-            data: donViIds.map((donViId) => ({ userId: employeeId, donViId })),
-          }),
-        ]
-      : []),
-  ]);
+  await sysPrisma.$transaction(async (tx) => {
+    // Chỉ thu hồi những công ty bị bỏ ra khỏi danh sách. Danh sách rỗng = thu hồi hết
+    // (`notIn: []` không diễn tả được ý đó nên tách nhánh riêng).
+    await tx.donViAccess.deleteMany({
+      where: {
+        userId: employeeId,
+        ...(donViIds.length > 0 ? { donViId: { notIn: donViIds } } : {}),
+      },
+    });
+
+    for (const item of access) {
+      await tx.donViAccess.upsert({
+        where: {
+          userId_donViId: { userId: employeeId, donViId: item.donViId },
+        },
+        create: {
+          userId: employeeId,
+          donViId: item.donViId,
+          // Cặp MỚI mà không nói gì về quyền lương -> theo mặc định của cột (không được xem).
+          // QĐ #17: "giữ nguyên người cũ, siết người mới".
+          xemLuong: item.xemLuong ?? false,
+        },
+        // Cặp CŨ: không gửi cờ -> `{}` -> giữ nguyên giá trị đang có, không đụng tới.
+        update: item.xemLuong === undefined ? {} : { xemLuong: item.xemLuong },
+      });
+    }
+  });
 
   await writeLog({
     hanhDong: 'SET_EMPLOYEE_ACCESS',
     userId: ownerId,
-    chiTiet: { employeeId, donViIds },
+    // Ghi cả cờ quyền lương, không chỉ danh sách công ty: thu hồi quyền lương là thao tác
+    // người dùng phải truy lại được, mà nhật ký chỉ có `donViIds` thì không thấy nó xảy ra.
+    chiTiet: {
+      employeeId,
+      access: access.map((a) => ({
+        donViId: a.donViId,
+        xemLuong: a.xemLuong ?? null,
+      })),
+    },
   });
 
-  return { userId: employeeId, donViIds };
+  // `donViIds` giữ lại trong phản hồi cho giao diện hiện tại; `so_cong_ty` là trường contract
+  // Mục 7C.1 yêu cầu. Thêm chứ không thay, để không phải sửa hai phía cùng lúc.
+  return { userId: employeeId, donViIds, so_cong_ty: donViIds.length };
 }

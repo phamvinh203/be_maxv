@@ -1,8 +1,9 @@
 import { randomUUID } from 'crypto';
 import type { Prisma, PrismaClient } from '../../../generated/tenant';
 import { ConflictError, NotFoundError } from '../../../helpers/errors';
-import { assertNotExists, findOrThrow } from '../../../helpers/crudGuards';
+import { findOrThrow } from '../../../helpers/crudGuards';
 import { MESSAGES } from '../../../constants/messages';
+import { ghiCoRangBuoc } from './rangBuocDb';
 import type {
   NguoiPhuThuocBodyInput,
   NguoiPhuThuocListQuery,
@@ -30,8 +31,11 @@ const nptSelect = {
  * DB có FK cứng nên ghi bừa cũng không lọt, nhưng để Prisma ném P2003 thì client nhận 500 kèm
  * thông điệp kỹ thuật — chặn ở đây để trả 404 nói đúng chuyện gì đang sai.
  */
+/** Nhận cả client thường lẫn client giao dịch — cùng quy ước với `hopDong.service.ts:31`. */
+type Db = PrismaClient | Prisma.TransactionClient;
+
 async function assertNhanVienTonTai(
-  db: PrismaClient,
+  db: Db,
   maNv: string,
 ): Promise<void> {
   await findOrThrow(
@@ -83,33 +87,99 @@ export async function listNguoiPhuThuoc(
   }));
 }
 
+/** Kỳ đăng ký giảm trừ, dạng 4 cột rời trong DB. `null` = chưa khai. */
+export interface KyGiamTru {
+  dk_tu_thang: number | null;
+  dk_tu_nam: number | null;
+  dk_den_thang: number | null;
+  dk_den_nam: number | null;
+}
+
 /**
- * Cùng một nhân viên không được đăng ký hai lần cho cùng một MST người phụ thuộc.
+ * Quy kỳ đăng ký (tháng/năm) về một khoảng SỐ THÁNG để so giao nhau: `nam * 12 + thang`.
  *
- * DB đã có `@@unique([ma_nv, mst])` chặn cứng, nhưng để Postgres ném ra thì client chỉ nhận
- * được câu chung chung "dữ liệu bị trùng"; kiểm ở đây để nói rõ trùng ai. Ràng buộc DB vẫn
- * cần vì nó là chốt cuối khi hai request vào cùng lúc.
+ * Quy ước phải KHỚP TỪNG CHỮ với hàm `hrm_ky_npt(...)` ở tầng cơ sở dữ liệu
+ * (`services/shared/hrmTenantConstraints.ts`), nếu không hai tầng nói khác nhau:
+ *   - thiếu **năm** bắt đầu -> `-vô cực`;  thiếu **năm** kết thúc -> `+vô cực`;
+ *   - có năm mà thiếu tháng -> tháng 1 (đầu kỳ) / tháng 12 (cuối kỳ).
+ */
+export function kyGiamTruTheoThang(k: KyGiamTru): { tu: number; den: number } {
+  const tu =
+    k.dk_tu_nam === null
+      ? Number.NEGATIVE_INFINITY
+      : k.dk_tu_nam * 12 + (k.dk_tu_thang ?? 1);
+  const den =
+    k.dk_den_nam === null
+      ? Number.POSITIVE_INFINITY
+      : k.dk_den_nam * 12 + (k.dk_den_thang ?? 12);
+  return { tu, den };
+}
+
+/**
+ * Hai kỳ giảm trừ có GIAO NHAU không — khoảng tính theo THÁNG, ĐÓNG Ở CẢ HAI ĐẦU.
+ *
+ * Chạm nhau đúng một tháng vẫn là giao nhau: trong tháng đó cả hai người nộp thuế đều được
+ * giảm trừ cho cùng một người phụ thuộc. Nối tiếp (A tới hết 06/2026, B từ 07/2026) thì KHÔNG
+ * giao — đó chính là ca chuyển người kê khai giữa năm mà QĐ #19 mở ra.
+ */
+export function kyGiamTruGiaoNhau(a: KyGiamTru, b: KyGiamTru): boolean {
+  const x = kyGiamTruTheoThang(a);
+  const y = kyGiamTruTheoThang(b);
+  return x.tu <= y.den && y.tu <= x.den;
+}
+
+/**
+ * Mã số thuế người phụ thuộc duy nhất TRONG PHẠM VI MỘT CÔNG TY, **có xét kỳ giảm trừ** —
+ * BR-hrm-030 (QĐ #7 + QĐ #19), E-hrm-026.
+ *
+ * KHÔNG phải khóa duy nhất phẳng theo `mst`: luật thuế TNCN nói mỗi người phụ thuộc chỉ được
+ * giảm trừ cho một người nộp thuế **tại một thời điểm**. Bỏ vế "tại một thời điểm" là chặn oan
+ * ca có thật và hợp pháp — vợ chồng cùng công ty đổi người kê khai giữa năm, hoặc người kê
+ * khai cũ nghỉ việc và người mới nhận kê khai từ tháng sau.
+ *
+ * Phạm vi mở rộng từ "trong cùng một nhân viên" lên "toàn công ty" (BUG-HRM-05, 🔴 Critical:
+ * cùng một mã số thuế đăng ký được cho hai nhân viên -> giảm trừ tính hai lần -> sai thuế).
+ *
+ * BỎ QUA dòng thuộc nhân viên **đã xóa mềm**: một lần nhập nhầm không được khóa vĩnh viễn mã
+ * số thuế đó khỏi cả công ty (BR-hrm-030, theo tinh thần BR-hrm-010).
+ *
+ * ⚠️ Ràng buộc ở tầng cơ sở dữ liệu **chặt hơn** luật này một chút — nó không tham chiếu được
+ * bảng nhân viên nên không bỏ qua được hồ sơ đã xóa mềm. Nợ kỹ thuật đã chấp nhận
+ * (`data-model.md` M-09): ca hiếm đó bị chặn kèm thông báo chung chung thay vì câu nghiệp vụ.
  */
 async function assertKhongTrungMst(
-  db: PrismaClient,
-  maNv: string,
+  db: Db,
   mst: string | null,
+  ky: KyGiamTru,
   boQuaId?: string,
 ): Promise<void> {
   if (!mst) return; // chưa biết MST thì chưa có cơ sở nói là trùng
-  await assertNotExists(
-    () =>
-      db.hrm_nguoi_phu_thuoc.findFirst({
-        where: {
-          ma_nv: maNv,
-          mst,
-          ...(boQuaId ? { id: { not: boQuaId } } : {}),
-        },
-        select: { ho_ten: true },
-      }),
-    new ConflictError(
-      `Nhân viên ${maNv} đã có người phụ thuộc mang MST ${mst} — đăng ký trùng sẽ tính giảm trừ gia cảnh hai lần.`,
-    ),
+
+  const cungMst = await db.hrm_nguoi_phu_thuoc.findMany({
+    where: {
+      mst,
+      nhan_vien: { da_xoa: false },
+      ...(boQuaId ? { id: { not: boQuaId } } : {}),
+    },
+    select: {
+      ma_nv: true,
+      dk_tu_thang: true,
+      dk_tu_nam: true,
+      dk_den_thang: true,
+      dk_den_nam: true,
+      nhan_vien: { select: { ho_ten: true } },
+    },
+    orderBy: [{ dk_tu_nam: 'asc' }, { dk_tu_thang: 'asc' }],
+  });
+
+  // Lọc giao kỳ ở tầng ứng dụng: khoảng kỳ là kết quả của một HÀM trên bốn cột rời, Prisma
+  // không diễn tả được trong `where`. Số dòng cùng một mã số thuế luôn rất nhỏ.
+  const trung = cungMst.find((r) => kyGiamTruGiaoNhau(ky, r));
+  if (!trung) return;
+
+  throw new ConflictError(
+    `Người phụ thuộc mang MST ${mst} đã được đăng ký cho nhân viên ${trung.ma_nv} — ${trung.nhan_vien.ho_ten}. ` +
+      `Mỗi người phụ thuộc chỉ được tính giảm trừ gia cảnh cho một người nộp thuế.`,
   );
 }
 
@@ -118,11 +188,18 @@ export async function createNguoiPhuThuoc(
   db: PrismaClient,
   body: NguoiPhuThuocBodyInput,
 ) {
-  await assertNhanVienTonTai(db, body.ma_nv);
-  await assertKhongTrungMst(db, body.ma_nv, body.mst);
-
+  // BUG-HRM-34: kiểm và ghi PHẢI nằm trong CÙNG một giao dịch, theo đúng mẫu của
+  // `createHopDong`. Trước đây hai bước tách rời, mà đợt này lại vừa gỡ khóa duy nhất cũ
+  // khỏi schema — nên trong khoảng giữa `db push` và `apply-hrm-constraints`, bảng này
+  // KHÔNG còn lớp phòng thủ nào ở tầng dữ liệu. Đúng kịch bản sai thuế TNCN của BUG-HRM-05.
   const id = randomUUID();
-  await db.hrm_nguoi_phu_thuoc.create({ data: { ...body, id } });
+  await ghiCoRangBuoc(() =>
+    db.$transaction(async (tx) => {
+      await assertNhanVienTonTai(tx, body.ma_nv);
+      await assertKhongTrungMst(tx, body.mst, body);
+      await tx.hrm_nguoi_phu_thuoc.create({ data: { ...body, id } });
+    }),
+  );
   return { id };
 }
 
@@ -132,21 +209,25 @@ export async function updateNguoiPhuThuoc(
   id: string,
   body: NguoiPhuThuocUpdateInput,
 ) {
-  const hienTai = await findOrThrow(
-    () =>
-      db.hrm_nguoi_phu_thuoc.findFirst({
-        where: { id, nhan_vien: { da_xoa: false } },
-        select: { id: true, ma_nv: true },
-      }),
-    new NotFoundError(MESSAGES.HRM.NGUOI_PHU_THUOC_NOT_FOUND),
+  // BUG-HRM-34: cùng lý do với createNguoiPhuThuoc — kiểm và ghi phải cùng giao dịch.
+  await ghiCoRangBuoc(() =>
+    db.$transaction(async (tx) => {
+      await findOrThrow(
+        () =>
+          tx.hrm_nguoi_phu_thuoc.findFirst({
+            where: { id, nhan_vien: { da_xoa: false } },
+            select: { id: true, ma_nv: true },
+          }),
+        new NotFoundError(MESSAGES.HRM.NGUOI_PHU_THUOC_NOT_FOUND),
+      );
+      // Bỏ qua chính dòng đang sửa, không thì sửa tên mà giữ MST cũ cũng bị coi là trùng.
+      await assertKhongTrungMst(tx, body.mst, body, id);
+      await tx.hrm_nguoi_phu_thuoc.update({
+        where: { id },
+        data: { ...body, datetime2: new Date() },
+      });
+    }),
   );
-  // Bỏ qua chính dòng đang sửa, không thì sửa tên mà giữ MST cũ cũng bị coi là trùng.
-  await assertKhongTrungMst(db, hienTai.ma_nv, body.mst, id);
-
-  await db.hrm_nguoi_phu_thuoc.update({
-    where: { id },
-    data: { ...body, datetime2: new Date() },
-  });
   return { id };
 }
 
