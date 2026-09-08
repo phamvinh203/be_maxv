@@ -11,7 +11,7 @@
 import type { PrismaClient } from "../../../../generated/tenant";
 import { vnDayEnd, vnDayStart, vnDayString } from "../../../../utils/ngayVn";
 import * as GDTService from "../../hddt/gdt.service";
-import { khoangCuaKy, type Ky } from "../domain/kySoThue";
+import { khoangCuaKy, nhanKy, type Ky } from "../domain/kySoThue";
 import {
   chonTheoKyGoc,
   ngayGocDuyNhat,
@@ -23,6 +23,8 @@ import {
 import { duocTinh } from "../domain/gomHoaDonGtgt";
 import { chiaLo } from "../domain/chiaLo";
 import { CA_HAI_CHIEU, tenViewHoaDon, type Chieu } from "../domain/chieuHoaDon";
+// Dùng chung lớp lỗi với vòng đời tờ khai để controller nào cũng trả về một mã `da_chot` duy nhất.
+import { BanDaChotError } from "./toKhaiGtgt01.service";
 
 /**
  * Số dòng upsert mỗi transaction. Một kỳ có thể vài nghìn hóa đơn; gom tất cả vào MỘT transaction
@@ -30,6 +32,12 @@ import { CA_HAI_CHIEU, tenViewHoaDon, type Chieu } from "../domain/chieuHoaDon";
  * cùng tinh thần `saveInvoices` bên module hóa đơn (upsert theo từng trang GDT trả).
  */
 const CO_LO_UPSERT = 200;
+
+/**
+ * Số id mỗi lượt tra "hóa đơn này đang nằm ở kỳ nào". Đây là lượt ĐỌC nên lô rộng hơn lô upsert
+ * (không giữ khóa ghi), vẫn xa trần 65.535 tham số của Postgres.
+ */
+const CO_LO_TRA_KY = 1000;
 
 export interface KetQuaDanhDau {
   purchase: number;
@@ -43,6 +51,13 @@ export interface KetQuaDanhDau {
   daGo: number;
   /** Số bản ghi kỳ cũ bị gỡ vì hóa đơn không xác định được hóa đơn gốc. */
   daGoKhongRoKyGoc: number;
+  /**
+   * Số hóa đơn ĐANG thuộc một kỳ đã CHỐT nên lượt này không đụng tới: không kéo sang kỳ đang kê
+   * khai, cũng không gỡ. Kỳ mới do đó THIẾU đúng ngần này hóa đơn — phải nói ra để kế toán quyết.
+   */
+  giuKyChot: number;
+  /** Nhãn các kỳ đã chốt đang giữ số hóa đơn trên, vd `["T6/2026"]` — để câu cảnh báo gọi tên. */
+  kyChotDangGiu: string[];
 }
 
 /** Một hóa đơn thay thế/điều chỉnh kèm thông tin cần để suy ra kỳ của hóa đơn GỐC. */
@@ -192,6 +207,49 @@ async function goHoaDonKhongRoKyGoc(
   );
 }
 
+/** Mọi kỳ đã CHỐT của tenant. Mỗi kỳ một dòng nên lấy trọn một lượt rồi đối chiếu trong bộ nhớ. */
+async function layKyDaChot(db: PrismaClient): Promise<Ky[]> {
+  const rows = await db.tokhai_gtgt01.findMany({
+    where: { trang_thai: "chot" },
+    select: { nam: true, ky_loai: true, ky_so: true },
+  });
+  return rows.map((r) => ({ nam: r.nam, kyLoai: r.ky_loai as Ky["kyLoai"], kySo: r.ky_so }));
+}
+
+/**
+ * Trong `ids`, tờ nào ĐANG được gán vào một kỳ đã chốt — kèm nhãn các kỳ đó.
+ *
+ * Bảng kê của kỳ đã chốt là bằng chứng cho số đã gửi cơ quan thuế, nên lượt kê khai kỳ khác không
+ * được đụng vào. Có hai đường đụng, đều âm thầm nếu không chặn:
+ *
+ *   - khóa chính `[hoa_don_id, chieu]` khiến upsert của kỳ mới KÉO hóa đơn ra khỏi kỳ chốt — rõ
+ *     nhất khi kê khai QUÝ chồng lên các THÁNG đã chốt, cả ba tháng bị rút sạch trong một lượt;
+ *   - `goHoaDonKhongRoKyGoc` xóa theo hóa đơn (cố ý không lọc kỳ) nên quét trúng cả kỳ chốt.
+ */
+async function traKyDangGiu(
+  db: PrismaClient,
+  chieu: Chieu,
+  ids: readonly string[],
+  kyChot: readonly Ky[],
+): Promise<{ giu: Set<string>; nhan: Set<string> }> {
+  const giu = new Set<string>();
+  const nhan = new Set<string>();
+  if (kyChot.length === 0 || ids.length === 0) return { giu, nhan };
+
+  const oKyChot = kyChot.map((k) => ({ nam: k.nam, ky_loai: k.kyLoai, ky_so: k.kySo }));
+  for (const lo of chiaLo(ids, CO_LO_TRA_KY)) {
+    const rows = await db.tokhai_ky_hoa_don.findMany({
+      where: { chieu, hoa_don_id: { in: lo }, OR: oKyChot },
+      select: { hoa_don_id: true, nam: true, ky_loai: true, ky_so: true },
+    });
+    for (const r of rows) {
+      giu.add(r.hoa_don_id);
+      nhan.add(nhanKy({ nam: r.nam, kyLoai: r.ky_loai as Ky["kyLoai"], kySo: r.ky_so }));
+    }
+  }
+  return { giu, nhan };
+}
+
 /**
  * Gán MỌI hóa đơn (cả hai chiều) THUỘC kỳ vào kỳ đó — "thuộc kỳ" tính theo luật, xem
  * `layIdTrongKhoang`: hóa đơn thay thế/điều chỉnh đi theo kỳ của hóa đơn GỐC.
@@ -203,8 +261,24 @@ async function goHoaDonKhongRoKyGoc(
  * Gỡ TRƯỚC rồi mới gán: gỡ sau thì lượt gỡ nhìn thấy cả dòng vừa gán, và một trục trặc giữa chừng
  * để lại kỳ vừa thừa vừa thiếu. Dòng bị gỡ mất luôn `ke_khai`/`ghi_chu` — chấp nhận, vì hóa đơn đó
  * không còn thuộc kỳ này nên quyết định của kế toán cho kỳ này cũng hết nghĩa.
+ *
+ * Kỳ ĐANG kê khai mà đã CHỐT thì từ chối cả lượt: bảng kê lúc đó là số đã nộp, mà lượt kê khai có
+ * quyền gỡ dòng (mất `ke_khai`/`ghi_chu`) trong khi bản tờ khai vẫn giữ số cũ — hai bên lệch nhau
+ * mà không ai thấy. Muốn kê khai lại thì "Mở khóa" trước, đúng như lượt tính lại.
+ *
+ * Hóa đơn đang thuộc một kỳ CHỐT KHÁC thì bỏ qua chứ không chặn cả lượt: để nguyên nó ở kỳ cũ,
+ * kỳ này thiếu đúng ngần ấy tờ và `giuKyChot`/`kyChotDangGiu` nói ra điều đó. Chặn cứng sẽ khóa
+ * luôn việc kê khai kỳ mới chỉ vì một kỳ cũ, còn kéo sang thì hỏng bằng chứng của kỳ đã nộp —
+ * chuyển hay không là quyết định thuế của kế toán, không phải của một lượt upsert.
  */
 export async function danhDauKy(db: PrismaClient, ky: Ky): Promise<KetQuaDanhDau> {
+  const kyChot = await layKyDaChot(db);
+  if (kyChot.some((k) => k.nam === ky.nam && k.kyLoai === ky.kyLoai && k.kySo === ky.kySo)) {
+    throw new BanDaChotError(
+      "Tờ khai kỳ này đã chốt nên không kê khai lại được. Mở khóa bản tờ khai của kỳ rồi thử lại.",
+    );
+  }
+
   const { tuNgay, denNgay } = khoangCuaKy(ky);
   const ketQua: KetQuaDanhDau = {
     purchase: 0,
@@ -212,7 +286,10 @@ export async function danhDauKy(db: PrismaClient, ky: Ky): Promise<KetQuaDanhDau
     khongRoKyGoc: 0,
     daGo: 0,
     daGoKhongRoKyGoc: 0,
+    giuKyChot: 0,
+    kyChotDangGiu: [],
   };
+  const nhanKyChot = new Set<string>();
 
   for (const chieu of CA_HAI_CHIEU) {
     const { ids, khongRoKyGoc, idsKhongRoKyGoc } = await layIdTrongKhoang(
@@ -222,9 +299,24 @@ export async function danhDauKy(db: PrismaClient, ky: Ky): Promise<KetQuaDanhDau
       denNgay,
     );
     ketQua.khongRoKyGoc += khongRoKyGoc;
-    ketQua.daGoKhongRoKyGoc += await goHoaDonKhongRoKyGoc(db, chieu, idsKhongRoKyGoc);
-    ketQua.daGo += await goKhoiKy(db, ky, chieu, ids);
-    for (const lo of chiaLo(ids, CO_LO_UPSERT)) {
+
+    // Hỏi MỘT lượt cho cả hai danh sách: tờ sắp gán và tờ sắp gỡ đều phải chừa kỳ đã chốt ra.
+    const { giu, nhan } = await traKyDangGiu(
+      db,
+      chieu,
+      [...ids, ...idsKhongRoKyGoc],
+      kyChot,
+    );
+    for (const n of nhan) nhanKyChot.add(n);
+    ketQua.giuKyChot += giu.size;
+    const idsGan = ids.filter((id) => !giu.has(id));
+    const idsGo = idsKhongRoKyGoc.filter((id) => !giu.has(id));
+
+    ketQua.daGoKhongRoKyGoc += await goHoaDonKhongRoKyGoc(db, chieu, idsGo);
+    // Tờ bị chừa lại không nằm trong kỳ này (một hóa đơn chỉ thuộc một kỳ) nên việc bỏ nó khỏi
+    // `idsGan` không khiến `goKhoiKy` xóa nhầm dòng nào của kỳ đang quét.
+    ketQua.daGo += await goKhoiKy(db, ky, chieu, idsGan);
+    for (const lo of chiaLo(idsGan, CO_LO_UPSERT)) {
       await db.$transaction(
         lo.map((hoaDonId) =>
           db.tokhai_ky_hoa_don.upsert({
@@ -241,9 +333,10 @@ export async function danhDauKy(db: PrismaClient, ky: Ky): Promise<KetQuaDanhDau
         ),
       );
     }
-    ketQua[chieu] = ids.length;
+    ketQua[chieu] = idsGan.length;
   }
 
+  ketQua.kyChotDangGiu = [...nhanKyChot].sort();
   return ketQua;
 }
 

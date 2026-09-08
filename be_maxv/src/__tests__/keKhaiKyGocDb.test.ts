@@ -10,10 +10,26 @@ interface RawCall {
   params: unknown[];
 }
 
-/** Mock tối thiểu của DB: đủ đi qua đúng đường đọc/gán kỳ, không cần Postgres thật. */
-function taoDbGia(ngayUngVien: Date[]) {
+/** Một dòng kỳ trong `tokhai_gtgt01` / `tokhai_ky_hoa_don` — dạng snake_case như Prisma trả. */
+interface DongKy {
+  nam: number;
+  ky_loai: string;
+  ky_so: number;
+}
+
+/**
+ * Mock tối thiểu của DB: đủ đi qua đúng đường đọc/gán kỳ, không cần Postgres thật.
+ *
+ * - `kyChot`: các kỳ đang ở trạng thái chốt (`danhDauKy` đọc trước tiên để chặn/chừa);
+ * - `giuBoi`: kỳ chốt đang giữ sẵn hóa đơn `tt-1` — mô phỏng tờ đã nằm ở kỳ đã nộp.
+ */
+function taoDbGia(
+  ngayUngVien: Date[],
+  { kyChot = [], giuBoi = null }: { kyChot?: DongKy[]; giuBoi?: DongKy | null } = {},
+) {
   const rawCalls: RawCall[] = [];
   const executeCalls: RawCall[] = [];
+  const upsertIds: string[] = [];
   const hoaDonThayThe = {
     id: "tt-1",
     tdlap: new Date("2026-01-15T00:00:00+07:00"),
@@ -37,11 +53,23 @@ function taoDbGia(ngayUngVien: Date[]) {
       return 0;
     },
     $transaction: async (ops: Promise<unknown>[]) => Promise.all(ops),
-    tokhai_ky_hoa_don: { upsert: async () => ({}) },
+    tokhai_ky_hoa_don: {
+      upsert: async (args: { where: { hoa_don_id_chieu: { hoa_don_id: string } } }) => {
+        upsertIds.push(args.where.hoa_don_id_chieu.hoa_don_id);
+        return {};
+      },
+      // Chỉ `tt-1` mới có khả năng đang nằm ở kỳ chốt — mock trả nó khi test dựng `giuBoi`.
+      findMany: async () =>
+        giuBoi === null ? [] : [{ hoa_don_id: hoaDonThayThe.id, ...giuBoi }],
+    },
+    tokhai_gtgt01: { findMany: async () => kyChot },
   } as unknown as PrismaClient;
 
-  return { db, rawCalls, executeCalls };
+  return { db, rawCalls, executeCalls, upsertIds };
 }
+
+const KY_Q1_2026_ROW: DongKy = { nam: 2026, ky_loai: "quy", ky_so: 1 };
+const KY_T12_2025_ROW: DongKy = { nam: 2025, ky_loai: "thang", ky_so: 12 };
 
 test("đọc khóa gốc từ detail/raw và tra hóa đơn gốc kèm MST", async () => {
   const { db, rawCalls } = taoDbGia([new Date("2026-01-10T00:00:00+07:00")]);
@@ -74,4 +102,51 @@ test("nhiều ứng viên gốc khác ngày: chặn hóa đơn và dọn gán k�
     ["purchase", ["tt-1"]],
     ["sold", ["tt-1"]],
   ]);
+});
+
+test("kỳ đã chốt: từ chối kê khai lại, không đụng vào bảng kê", async () => {
+  const { db, rawCalls, executeCalls } = taoDbGia([new Date("2026-01-10T00:00:00+07:00")], {
+    kyChot: [KY_Q1_2026_ROW],
+  });
+
+  await assert.rejects(() => danhDauKy(db, KY_Q1_2026), /đã chốt/);
+
+  // Chặn phải xảy ra TRƯỚC mọi lượt đọc/ghi bảng kê — gỡ rồi mới báo lỗi là đã mất dữ liệu.
+  assert.equal(rawCalls.length, 0);
+  assert.equal(executeCalls.length, 0);
+});
+
+test("hóa đơn đang thuộc kỳ chốt khác: giữ nguyên ở đó và nêu tên kỳ", async () => {
+  const { db, executeCalls, upsertIds } = taoDbGia([new Date("2026-01-10T00:00:00+07:00")], {
+    kyChot: [KY_T12_2025_ROW],
+    giuBoi: KY_T12_2025_ROW,
+  });
+
+  const ketQua = await danhDauKy(db, KY_Q1_2026);
+
+  // Không kéo sang kỳ đang kê khai...
+  assert.equal(upsertIds.length, 0);
+  assert.equal(ketQua.purchase, 0);
+  assert.equal(ketQua.sold, 0);
+  // ...cũng không xóa khỏi kỳ chốt (`goHoaDonKhongRoKyGoc` chỉ chạy khi có id để gỡ).
+  assert.equal(
+    executeCalls.filter((c) => c.sql.includes("WHERE chieu = $1 AND hoa_don_id")).length,
+    0,
+  );
+  // Và nói rõ vì sao kỳ mới thiếu tờ đó, kèm tên kỳ đang giữ.
+  assert.equal(ketQua.giuKyChot, 2); // một tờ mỗi chiều
+  assert.deepEqual(ketQua.kyChotDangGiu, ["T12/2025"]);
+});
+
+test("kỳ chốt không liên quan: kê khai kỳ khác vẫn chạy bình thường", async () => {
+  const { db } = taoDbGia([new Date("2026-01-10T00:00:00+07:00")], {
+    kyChot: [KY_T12_2025_ROW],
+  });
+
+  const ketQua = await danhDauKy(db, KY_Q1_2026);
+
+  assert.equal(ketQua.purchase, 1);
+  assert.equal(ketQua.sold, 1);
+  assert.equal(ketQua.giuKyChot, 0);
+  assert.deepEqual(ketQua.kyChotDangGiu, []);
 });

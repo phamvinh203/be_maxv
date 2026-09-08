@@ -415,9 +415,10 @@ export class KyChuaKeKhaiError extends Error {
   }
 }
 
+/** Lượt kê khai lại cũng ném lỗi này (xem `keKhaiKy.service`) nên câu chữ nhận từ nơi gọi. */
 export class BanDaChotError extends Error {
-  constructor() {
-    super("Tờ khai kỳ này đã chốt. Mở khóa trước khi sửa.");
+  constructor(message = "Tờ khai kỳ này đã chốt. Mở khóa trước khi sửa.") {
+    super(message);
   }
 }
 
