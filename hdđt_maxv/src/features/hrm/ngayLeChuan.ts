@@ -6,8 +6,41 @@
  * dương cần thuật toán lịch mặt trăng, không đáng đưa vào pha dựng giao diện.
  * Vì vậy "Tạo nhanh" chỉ mở các năm có trong bảng tra bên dưới.
  *
- * ⚠️ Ngày âm lịch trong bảng này cần đối chiếu lại với lịch chính thức trước khi
- * dùng cho nghiệp vụ thật, và nên thay hẳn bằng bộ quy đổi âm lịch khi nối backend.
+ * ⚠️ **Bảng này KHÔNG phải nguồn sự thật.** Nguồn thật là thuật toán âm lịch ở
+ * `be_maxv/src/services/client/hrm/amLich.util.ts` (Hồ Ngọc Đức, quy chiếu UTC+7);
+ * `POST /hrm/holidays/quick-generate` trả về `items[]` mới là thứ được ghi vào cơ sở
+ * dữ liệu.
+ *
+ * ───────────────────────────────────────────────────────────────────────────────
+ * TÌNH TRẠNG SỬ DỤNG `[cập nhật 2026-09-08]` — đọc trước khi định xóa file
+ * ───────────────────────────────────────────────────────────────────────────────
+ *
+ * **Đã hết dùng (đường chạy thật):**
+ *   - `components/cau_hinh_mac_dinh/ngay_le/TaoNhanhDialog.tsx` — bản xem trước nay đọc
+ *     `items[]` của máy chủ qua `useXemTruocTaoNhanh` (`dryRun: true`). Không còn import
+ *     `ngayLeChuanVN`.
+ *   - `NAM_HO_TRO` — dải năm của "Tạo nhanh" nay là `DAI_NAM_TAO_NHANH` ở
+ *     `api/holidaysApi.ts`, suy từ **validator máy chủ** (`min(2024).max(2030)`, `E-hrm-079`)
+ *     chứ không phải "những năm có trong bảng tra". Hằng số này **hiện không còn ai import**.
+ *
+ * ⚠️ Bảng tra 7 năm bên dưới (2024–2030) vì vậy **không còn dính gì tới dải năm của giao
+ * diện** — hai bên trùng nhau chỉ là tình cờ. Đừng đi bồi thêm năm vào bảng với ý "để hộp
+ * thoại Tạo nhanh mở được năm mới": muốn mở thêm năm thì nới validator máy chủ rồi sửa hai
+ * hằng số ở `holidaysApi.ts`. Chỉ bồi khi `mock/` cần dữ liệu giả cho năm đó.
+ *
+ * **Còn dùng (chỉ trong kho dữ liệu giả, chưa nối API):**
+ *   - `mock/hooks/ngayLe.ts:81` — `useTaoNhanhNgayLe` bản giả.
+ *   - `mock/seed.ts:286` — dựng lịch mẫu năm 2026 cho các màn chưa nối API.
+ *
+ * ⇒ **Chưa xóa được file này**, nhưng nó không còn nuôi màn hình thật nào. Đợt gỡ `mock/`
+ * sau này xóa hai chỗ trên là xóa được luôn cả file (kèm `NAM_HO_TRO`). Trong lúc chờ:
+ * **KHÔNG được import lại vào đường chạy thật** — làm vậy là dựng lại đúng cấu trúc
+ * hai-nguồn-sự-thật vừa gỡ, và nó đã sinh ra ba lỗi ngày lễ (`CONTEXT_SUMMARY` Mục 16.3).
+ *
+ * Ngày 2030-02-02 đã sửa 2026-09-08: bản cũ ghi `2030-02-03` — đó là ngày Tết theo
+ * **lịch Trung Quốc**. Sóc rơi 02/02/2030 lúc ~23:1x giờ Việt Nam (UTC+7), sang UTC+8
+ * thì đã là 03/02. Backend cũng sai đúng chỗ này và đã sửa cùng đợt. Lỗi lọt lâu vì
+ * hai bảng chép tay khớp nhau, nên phép đối chiếu BE↔FE báo "đúng".
  */
 
 import type { NgayLeFormValues } from "./types";
@@ -20,7 +53,7 @@ const MUNG_1_TET: Record<number, string> = {
   2027: "2027-02-06",
   2028: "2028-01-26",
   2029: "2029-02-13",
-  2030: "2030-02-03",
+  2030: "2030-02-02",
 };
 
 /** Giỗ Tổ Hùng Vương (10/3 âm lịch), dạng `YYYY-MM-DD`. */
@@ -34,7 +67,13 @@ const GIO_TO_HUNG_VUONG: Record<number, string> = {
   2030: "2030-04-12",
 };
 
-/** Các năm "Tạo nhanh" hỗ trợ — đúng những năm có ngày âm lịch trong bảng tra. */
+/**
+ * Các năm có ngày âm lịch trong bảng tra ở trên.
+ *
+ * ⚠️ **Không còn là dải năm của "Tạo nhanh"** kể từ 2026-09-08 đợt 3, và hiện **không nơi nào
+ * import**. Dải năm thật nằm ở `api/holidaysApi.ts` → `DAI_NAM_TAO_NHANH`, suy từ validator máy
+ * chủ. Giữ export ở đây cho `mock/` còn dựng được dữ liệu giả; đừng dùng để vẽ giao diện thật.
+ */
 export const NAM_HO_TRO: number[] = Object.keys(MUNG_1_TET)
   .map(Number)
   .sort((a, b) => a - b);

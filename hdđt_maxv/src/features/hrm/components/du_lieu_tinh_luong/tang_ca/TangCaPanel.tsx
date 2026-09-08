@@ -21,7 +21,7 @@ import { getErrorMessage } from "../../../../../lib/errors";
 import { PHAM_VI_AP_DUNG } from "../../../constants";
 import { nhan } from "../../../format";
 import { gioVn, tongGioOt, tongGioQuyDoi } from "../../../tangCa";
-import { useCauHinh } from "../../../mock/hooks/cauHinh";
+import { useCauHinh } from "../../../api/cauHinhQueries";
 import {
   useApDungTangCa,
   useLuuMauTangCa,

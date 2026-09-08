@@ -4,6 +4,32 @@ interface ApiErrorBody {
   message?: string;
   /** Mã lỗi máy đọc được, BE gắn cho vài trường hợp FE cần rẽ nhánh (vd `DVC_AUTO_LOGIN_FAILED`). */
   code?: string;
+  /**
+   * Lỗi thẩm định Zod. BE trả `{ success:false, errors: zodError.flatten() }` và **KHÔNG kèm
+   * `message`** (`errorHandler.plugin.ts`, nhánh `ValidationError`), nên nếu chỉ đọc `message`
+   * thì mọi lỗi 400 đều thành một câu chung chung không nói được sai ở ô nào.
+   */
+  errors?: {
+    formErrors?: string[];
+    fieldErrors?: Record<string, string[] | undefined>;
+  };
+}
+
+/**
+ * Dựng thông điệp từ thân lỗi. Ưu tiên `message` của BE; không có thì gom `errors` của Zod
+ * (tối đa 3 dòng, đủ để biết sai ô nào mà không đổ một bức tường chữ lên toast).
+ */
+function moTaLoi(body: ApiErrorBody, status: number): string {
+  if (body.message) return body.message;
+
+  const dong: string[] = [...(body.errors?.formErrors ?? [])];
+  for (const [truong, loi] of Object.entries(body.errors?.fieldErrors ?? {})) {
+    if (loi?.length) dong.push(`${truong}: ${loi.join(", ")}`);
+  }
+  if (dong.length === 0) return `Yêu cầu thất bại (${status})`;
+
+  const hienThi = dong.slice(0, 3).join(" · ");
+  return dong.length > 3 ? `${hienThi} (và ${dong.length - 3} lỗi khác)` : hienThi;
 }
 
 /**
@@ -126,7 +152,7 @@ async function apiFetchRaw(path: string, options: ApiFetchOptions = {}): Promise
 async function throwIfNotOk(res: Response): Promise<void> {
   if (res.ok) return;
   const body = (await res.json().catch(() => ({}))) as ApiErrorBody;
-  throw new ApiError(body.message || `Yêu cầu thất bại (${res.status})`, res.status, body.code);
+  throw new ApiError(moTaLoi(body, res.status), res.status, body.code);
 }
 
 /**
@@ -138,7 +164,7 @@ export async function apiFetch<T>(path: string, options: ApiFetchOptions = {}): 
   // Đọc body TRƯỚC khi kiểm ok: nhánh thành công cần chính body này, mà body chỉ đọc được 1 lần.
   const body = (await res.json().catch(() => ({}))) as T & ApiErrorBody;
   if (!res.ok) {
-    throw new ApiError(body.message || `Yêu cầu thất bại (${res.status})`, res.status, body.code);
+    throw new ApiError(moTaLoi(body, res.status), res.status, body.code);
   }
   return body;
 }

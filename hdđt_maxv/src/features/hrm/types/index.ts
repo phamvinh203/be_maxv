@@ -152,14 +152,21 @@ export type PhuongPhapNgayCong = "co_dinh_24" | "co_dinh_26" | "theo_thang";
 export type ChinhSachNgay = "lam_ca_ngay" | "lam_nua_ngay" | "nghi";
 
 /**
- * Một bậc của biểu thuế lũy tiến từng phần.
+ * Một bậc của biểu thuế lũy tiến từng phần (Điều 22 Luật Thuế TNCN).
  *
- * `khoang` mang nghĩa khác nhau theo vị trí, đúng như cách biểu thuế được đọc:
- * bậc 1 là **mức chịu thuế tối đa**, bậc 2–4 là **độ rộng khoảng** cộng thêm lên
- * bậc trước, bậc cuối không có khoảng (áp cho toàn bộ phần vượt) nên để `0`.
+ * `khoang` là **NGƯỠNG TRÊN LŨY KẾ** của thu nhập tính thuế trong tháng — mốc mà bậc đó áp
+ * đến — chứ KHÔNG phải độ rộng bậc. Một nghĩa duy nhất ở cả ba nơi: chỗ lưu, nội dung đi
+ * qua API, và ô người dùng nhập (BR-hrm-080, QĐ #24). Quy ước "độ rộng bậc" cũ đã bị bãi bỏ
+ * cùng hai hàm quy đổi ở `api/cauHinhQueries.ts`.
+ *
+ * Phần thu nhập chịu `thue_suat[i]` là khoảng `(khoang[i-1], khoang[i]]`, với `khoang[-1] = 0`.
+ *
+ * `khoang: null` là **bậc mở** — không có ngưỡng trên, ôm hết phần vượt bậc liền trước. Chỉ
+ * hợp lệ ở phần tử CUỐI và **bắt buộc** ở phần tử cuối (ADR-009 QĐ 1). Giá trị `0` không còn
+ * mang nghĩa gì và luôn bị máy chủ từ chối.
  */
 export interface BacThue {
-  khoang: number;
+  khoang: number | null;
   thue_suat: number;
 }
 
@@ -210,7 +217,11 @@ export interface CauHinhMacDinh {
   giam_tru_ban_than: number;
   giam_tru_npt: number;
 
-  /** Đúng 5 phần tử — biểu thuế lũy tiến rút gọn 5 bậc. */
+  /**
+   * Biểu thuế lũy tiến từng phần — **số bậc thay đổi được (N bậc)**, tối thiểu 2 bậc
+   * (BR-hrm-081/082). Biểu chuẩn theo Điều 22 là **7 bậc**, trần 35%; bậc cuối luôn là bậc
+   * mở (`khoang: null`). Bản 5 bậc dừng ở 25% trước đây là biểu cắt cụt, **sai luật**.
+   */
   bac_thue: BacThue[];
 }
 
@@ -223,9 +234,30 @@ export interface CaLamViec {
   /** Nghỉ giữa ca, tính bằng phút. */
   nghi_giua_ca: number;
   status: TrangThai;
+  /**
+   * Số giờ công **do máy chủ tính** (`workingHours`). Vắng mặt với ca chưa lưu.
+   *
+   * Bảng hiển thị nên ưu tiên con số này thay vì tự tính bằng `soGioCa()`: hai bên hiện dùng
+   * cùng một công thức, nhưng nếu máy chủ đổi luật thì bảng phải nói đúng thứ đang được lưu.
+   * `soGioCa()` chỉ còn dùng cho **bản xem trước trong form** — lúc đó chưa có số của máy chủ.
+   */
+  so_gio_cong?: number;
+  /**
+   * Mã cảnh báo do **máy chủ** sinh, vắng mặt khi ca không có gì bất thường.
+   * Hôm nay chỉ có một giá trị: `CANH_BAO_GIO_LAM_VUOT_TRAN_BLLD` (số giờ công > 12h,
+   * Điều 105 & 107 BLLĐ 2019 — ADR-009 QĐ 4).
+   *
+   * KHÔNG tự tính lại ngưỡng 12h ở giao diện: ngưỡng pháp luật thuộc về máy chủ, chép
+   * sang đây là hai nơi phải giữ đồng bộ.
+   */
+  canh_bao?: string;
 }
 
-export type CaLamViecFormValues = Omit<CaLamViec, "ma_ca">;
+/** Ô nhập của form ca — bỏ mọi thứ do máy chủ sinh: mã ca, số giờ công, cảnh báo. */
+export type CaLamViecFormValues = Omit<
+  CaLamViec,
+  "ma_ca" | "so_gio_cong" | "canh_bao"
+>;
 
 // ─────────────────────── Cài đặt lương › Danh mục khoản ───────────────────────
 

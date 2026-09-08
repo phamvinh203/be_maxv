@@ -421,11 +421,19 @@ export const LOAI_NGAY_LE: LuaChon<LoaiNgayLe>[] = [
   { value: "le_cong_ty", label: "Lễ riêng của công ty" },
 ];
 
-/** Nhãn của 5 bậc thuế — bậc 1 và bậc cuối đọc khác các bậc giữa. */
-export const NHAN_BAC_THUE = [
-  "Bậc 1: Mức chịu thuế tối đa",
-  "Bậc 2: Khoảng chịu thuế",
-  "Bậc 3: Khoảng chịu thuế",
-  "Bậc 4: Khoảng chịu thuế",
-  "Bậc 5: Phần vượt bậc 4",
-];
+/**
+ * Nhãn ô ngưỡng của một bậc thuế.
+ *
+ * Thay cho mảng `NHAN_BAC_THUE` 5 phần tử cũ — mảng đó vừa **chốt cứng 5 bậc** (bậc 6, 7 của
+ * biểu chuẩn ra `undefined`, và nó còn bị dùng làm khóa danh sách nên hai bậc thừa trùng khóa),
+ * vừa trộn **ba ngữ nghĩa** trong cùng một biểu mẫu: "Mức chịu thuế tối đa" (ngưỡng lũy kế),
+ * "Khoảng chịu thuế" (độ rộng bậc — đã bãi bỏ theo BR-hrm-080), "Phần vượt bậc 4" (bậc mở).
+ *
+ * Nay `khoang` chỉ có **một** nghĩa nên nhãn không đổi theo vị trí nữa; riêng bậc cuối là bậc
+ * mở, không có ngưỡng trên để nhập.
+ */
+export function nhanNguongBacThue(viTri: number, tongSoBac: number): string {
+  return viTri === tongSoBac - 1
+    ? `Bậc ${viTri + 1}: Bậc mở — không có ngưỡng trên`
+    : `Bậc ${viTri + 1}: Thu nhập tính thuế đến`;
+}

@@ -14,7 +14,7 @@ import Typography from "@mui/material/Typography";
 import DeleteRounded from "@mui/icons-material/DeleteRounded";
 import { getErrorMessage } from "../../../../../lib/errors";
 import { gioVn, mauGioTangCa } from "../../../tangCa";
-import { useCauHinh } from "../../../mock/hooks/cauHinh";
+import { useCauHinh } from "../../../api/cauHinhQueries";
 import { useXoaBanTangCa } from "../../../mock/hooks/tangCa";
 import type { LocNhanVienKyLuong, PhamViApDung, TangCaNhanVienRow } from "../../../types";
 import XacNhanXoaDialog from "../../XacNhanXoaDialog";

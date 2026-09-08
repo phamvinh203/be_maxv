@@ -1,4 +1,16 @@
-/** Hook nghiệp vụ cấu hình mặc định. Xem ghi chú về chữ ký ở `hooks/phongBan.ts`. */
+/**
+ * ⛔ **KHÔNG DÙNG NỮA — không còn file nào import file này** `[2026-09-08 đợt 3]`.
+ *
+ * Cấu hình mặc định và danh mục ca làm việc đã chạy trên API thật:
+ * `api/cauHinhQueries.ts` và `api/workShiftsQueries.ts`. Hai bộ hook **trùng tên hàm**
+ * (`useCauHinh`, `useLuuCauHinh`, `useCaLamViecList`…) nên nhập nhầm file này là âm thầm quay
+ * về kho giả: người dùng bấm Lưu, thấy báo đã lưu, mà máy chủ không nhận gì.
+ *
+ * Giữ lại (chưa xóa) vì kho giả vẫn còn `state.cauHinh` và các action `cauHinh/luu`, `ca/*` —
+ * dọn chúng thuộc đợt gỡ `mock/`, không thuộc đợt sửa lỗi này.
+ *
+ * Hook nghiệp vụ cấu hình mặc định. Xem ghi chú về chữ ký ở `hooks/phongBan.ts`.
+ */
 
 import { useCallback } from "react";
 import type { CaLamViec, CaLamViecFormValues, CauHinhMacDinh } from "../../types";

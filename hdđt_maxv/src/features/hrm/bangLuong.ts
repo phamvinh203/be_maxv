@@ -9,21 +9,57 @@
 import type { BacThue, CauHinhMacDinh, CheDoHienThi, DongBangLuong } from "./types";
 
 /**
+ * Câu báo khi biểu thuế của công ty không đủ bậc để tính.
+ *
+ * Để ở đây (cạnh công thức) chứ không viết rời hai nơi: màn Bảng lương chặn trước bằng
+ * `lyDoKhongTinhDuocLuong`, `thueLuyTien` ném cùng câu này khi vẫn bị gọi — một câu, một chỗ.
+ */
+export const LOI_BIEU_THUE_KHONG_DU_BAC =
+  "Biểu thuế lũy tiến của công ty đang có ít hơn 2 bậc nên chưa tính được thuế TNCN. " +
+  "Hãy mở Cấu hình mặc định › Thuế TNCN để kiểm tra lại biểu thuế.";
+
+/**
+ * Lý do bảng lương **không tính được** với bộ cấu hình đang có — `null` là bình thường.
+ *
+ * Tách khỏi `tinhDongBangLuong` để màn hình hỏi TRƯỚC khi tính: tính rồi mới ném lỗi giữa
+ * `useMemo` thì cả ứng dụng trắng màn (dự án chưa có `ErrorBoundary`).
+ */
+export function lyDoKhongTinhDuocLuong(cauHinh: CauHinhMacDinh): string | null {
+  return cauHinh.bac_thue.length < 2 ? LOI_BIEU_THUE_KHONG_DU_BAC : null;
+}
+
+/**
  * Thuế TNCN lũy tiến từng phần.
  *
- * `khoang` của mỗi bậc là **độ rộng** của bậc đó (bậc 1 rộng đúng bằng mức chịu
- * thuế tối đa của nó), riêng bậc cuối để `0` nghĩa là ôm hết phần còn lại — xem
- * ghi chú ở `BacThue`.
+ * `khoang` của mỗi bậc là **ngưỡng trên lũy kế**, không phải độ rộng bậc (BR-hrm-080) — xem
+ * ghi chú ở `BacThue`. Phần thu nhập chịu `thue_suat[i]` là khoảng `(khoang[i-1], khoang[i]]`.
+ * Bậc mở (`khoang: null`) ôm hết phần vượt ngưỡng bậc liền trước.
+ *
+ * Biểu không hợp lệ (ngưỡng giảm dần, bậc mở nằm giữa) thì máy chủ đã chặn ở chiều ghi
+ * (`E-hrm-080`/`E-hrm-082`); ở đây chỉ cần không chia cho 0 và không tính âm.
+ *
+ * 🔴 **NÉM LỖI khi biểu dưới 2 bậc, không trả 0.** Mảng rỗng cho vòng lặp chạy 0 vòng và hàm
+ * trả `0` — nghĩa là **khấu trừ 0 đồng, im lặng**, hướng nguy hiểm nhất cho một hàm tính thuế:
+ * bảng lương vẫn ra số, thực lĩnh cao hơn thực tế, và không ai biết cho tới kỳ quyết toán.
+ * Đường bình thường không tới đây (máy chủ chặn biểu dưới 2 bậc ở chiều ghi, và
+ * `useCauHinh()` lấy bộ chuẩn 7 bậc khi chưa tải xong), nên lỗi này chỉ nổ khi dữ liệu thật sự
+ * hỏng — đúng lúc cần nổ. Bên gọi phải chặn trước bằng `lyDoKhongTinhDuocLuong()` để người dùng
+ * thấy thông báo thay vì màn trắng (N6 của biên bản review 2026-09-08).
  */
 export function thueLuyTien(thuNhapTinhThue: number, bacThue: BacThue[]): number {
-  let conLai = Math.max(0, thuNhapTinhThue);
+  if (bacThue.length < 2) {
+    throw new Error(LOI_BIEU_THUE_KHONG_DU_BAC);
+  }
+  const thuNhap = Math.max(0, thuNhapTinhThue);
   let thue = 0;
+  let nguongDuoi = 0;
   for (const bac of bacThue) {
-    if (conLai <= 0) break;
-    const rong = bac.khoang > 0 ? bac.khoang : conLai;
-    const phan = Math.min(conLai, rong);
-    thue += (phan * bac.thue_suat) / 100;
-    conLai -= phan;
+    if (thuNhap <= nguongDuoi) break;
+    const nguongTren = bac.khoang ?? Number.POSITIVE_INFINITY;
+    const phan = Math.min(thuNhap, nguongTren) - nguongDuoi;
+    if (phan > 0) thue += (phan * bac.thue_suat) / 100;
+    // Ngưỡng đi lùi (dữ liệu hỏng) sẽ cho `phan <= 0` ở bậc sau, không cộng gì thêm.
+    nguongDuoi = Math.max(nguongDuoi, nguongTren);
   }
   return Math.round(thue);
 }

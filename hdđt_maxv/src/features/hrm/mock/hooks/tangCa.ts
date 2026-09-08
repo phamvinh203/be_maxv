@@ -1,6 +1,7 @@
 /** Hook nghiệp vụ Tăng ca. Xem ghi chú về chữ ký ở `hooks/phongBan.ts`. */
 
 import { useCallback, useMemo } from "react";
+import { useCauHinh } from "../../api/cauHinhQueries";
 import { moTaLoaiTangCa } from "../../constants";
 import { nhanBanDongTangCa, tongGioOt, tongGioQuyDoi } from "../../tangCa";
 import type {
@@ -29,6 +30,10 @@ export function useTangCaRows(
   filters: LocNhanVienKyLuong,
 ): TangCaNhanVienRow[] {
   const { state } = useHrmStore();
+  // Hệ số quy đổi lấy từ MÁY CHỦ, cùng nguồn với các thẻ hệ số hiện ngay trên màn Tăng ca
+  // `[2026-09-08 đợt 3]` — hai nơi lấy hai nguồn thì cột "Quy đổi" và dòng chú thích hệ số
+  // ngay bên dưới nó nói hai con số khác nhau.
+  const cauHinh = useCauHinh();
   const nhanVien = useNhanVienKyLuong(phamVi, filters);
 
   return useMemo(() => {
@@ -40,10 +45,10 @@ export function useTangCaRows(
         ...row,
         gio_thang: gioThang,
         gio_nam: (ban?.gio_luy_ke_nam ?? 0) + (gioThang ?? 0),
-        gio_quy_doi: ban ? tongGioQuyDoi(ban.dong, state.cauHinh) : 0,
+        gio_quy_doi: ban ? tongGioQuyDoi(ban.dong, cauHinh) : 0,
       };
     });
-  }, [nhanVien, state.banTangCa, state.cauHinh]);
+  }, [nhanVien, state.banTangCa, cauHinh]);
 }
 
 /**

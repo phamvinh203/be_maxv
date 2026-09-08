@@ -230,13 +230,17 @@ export const CAU_HINH_MAU: CauHinhMacDinh = {
   giam_tru_ban_than: 11000000,
   giam_tru_npt: 4400000,
 
-  // Lũy kế: 5tr → 10tr → 18tr → 32tr → phần vượt 32tr.
+  // Biểu 7 bậc Điều 22 Luật Thuế TNCN. `khoang` là NGƯỠNG TRÊN LŨY KẾ (BR-hrm-080), bậc
+  // cuối `null` = bậc mở. Bản 5 bậc dừng ở 25% trước đây cắt cụt ba bậc trên, khấu trừ
+  // thiếu với thu nhập tính thuế trên 52tr/tháng.
   bac_thue: [
     { khoang: 5000000, thue_suat: 5 },
-    { khoang: 5000000, thue_suat: 10 },
-    { khoang: 8000000, thue_suat: 15 },
-    { khoang: 14000000, thue_suat: 20 },
-    { khoang: 0, thue_suat: 25 },
+    { khoang: 10000000, thue_suat: 10 },
+    { khoang: 18000000, thue_suat: 15 },
+    { khoang: 32000000, thue_suat: 20 },
+    { khoang: 52000000, thue_suat: 25 },
+    { khoang: 80000000, thue_suat: 30 },
+    { khoang: null, thue_suat: 35 },
   ],
 };
 

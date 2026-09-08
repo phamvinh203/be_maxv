@@ -7,6 +7,7 @@ import Typography from "@mui/material/Typography";
 import TextField from "@mui/material/TextField";
 import MenuItem from "@mui/material/MenuItem";
 import Button from "@mui/material/Button";
+import Alert from "@mui/material/Alert";
 import FileDownloadRounded from "@mui/icons-material/FileDownloadRounded";
 import CalculateRounded from "@mui/icons-material/CalculateRounded";
 import SavingsRounded from "@mui/icons-material/SavingsRounded";
@@ -19,6 +20,7 @@ import { tienVn } from "../../format";
 import {
   useBangLuongRows,
   useKyBangLuong,
+  useLyDoKhongTinhDuocLuong,
   useSoNhanVienDangLam,
 } from "../../mock/hooks/bangLuong";
 import type { BangLuongFilters, CheDoHienThi, MucChiTiet } from "../../types";
@@ -104,6 +106,8 @@ export default function BangLuongPanel() {
 
   const rows = useBangLuongRows(filters, nonce);
   const tong = useMemo(() => tongBangLuong(rows), [rows]);
+  // Cấu hình hỏng thì bảng rỗng — mà bảng rỗng trông y hệt "chưa có nhân viên nào". Phải nói ra.
+  const loiCauHinh = useLyDoKhongTinhDuocLuong();
 
   const handleTinhLai = () => {
     setNonce((cu) => cu + 1);
@@ -196,6 +200,7 @@ export default function BangLuongPanel() {
               variant="contained"
               startIcon={<CalculateRounded />}
               onClick={handleTinhLai}
+              disabled={Boolean(loiCauHinh)}
               sx={{ textTransform: "none", whiteSpace: "nowrap" }}
             >
               Tính lại lương
@@ -206,6 +211,8 @@ export default function BangLuongPanel() {
           </Typography>
         </Stack>
       </Stack>
+
+      {loiCauHinh && <Alert severity="error">{loiCauHinh}</Alert>}
 
       <ThanhLocBangLuong
         filters={filters}

@@ -4,10 +4,24 @@
  * Đây là chỗ **duy nhất** biết bảy màn của khu Dữ liệu tính lương ghép vào bảng
  * lương như thế nào. Công thức nằm ở `features/hrm/bangLuong.ts`; file này chỉ
  * lo gom nguồn rồi gọi công thức đó.
+ *
+ * 🔴 **Bộ tham số tính lương lấy từ MÁY CHỦ, không lấy từ kho giả** `[2026-09-08 đợt 3]`.
+ * `state.cauHinh` (nạp từ `CAU_HINH_MAU`) **không** phản ánh cấu hình công ty đã lưu: người
+ * dùng sửa biểu thuế ở màn Cấu hình mặc định, bấm Lưu, thấy báo "đã lưu" mà bảng lương không
+ * đổi một con số nào (N5 của biên bản review 2026-09-08). Từ đợt này mọi tham số đi qua
+ * `useCauHinh()` của `api/cauHinhQueries.ts`.
+ *
+ * Số liệu nghiệp vụ (nhân viên, chấm công, tăng ca, thưởng…) **vẫn là dữ liệu giả** — đợt này
+ * chỉ đổi NGUỒN CẤU HÌNH, không nối bảng lương lên API.
  */
 
 import { useMemo } from "react";
-import { tinhDongBangLuong, type NguonTinhLuong } from "../../bangLuong";
+import { useCauHinh } from "../../api/cauHinhQueries";
+import {
+  lyDoKhongTinhDuocLuong,
+  tinhDongBangLuong,
+  type NguonTinhLuong,
+} from "../../bangLuong";
 import { tongBiTru } from "../../buTru";
 import { thangHienTai } from "../../chamCong";
 import { thanhTienChuyenCan, tongTruChuyenCan } from "../../chuyenCan";
@@ -56,10 +70,16 @@ export function useBangLuongRows(
   nonce: number,
 ): DongBangLuong[] {
   const { state } = useHrmStore();
+  const cauHinh = useCauHinh();
   const { nam, thang } = thangHienTai();
   const bangCong = useBangChamCong(nam, thang);
 
   return useMemo(() => {
+    // Cấu hình hỏng (biểu thuế dưới 2 bậc) thì KHÔNG tính bừa: `thueLuyTien` sẽ ném lỗi giữa
+    // `useMemo` và cả ứng dụng trắng màn. Trả bảng rỗng; lý do thì màn hình hiện ra qua
+    // `useLyDoKhongTinhDuocLuong()`.
+    if (lyDoKhongTinhDuocLuong(cauHinh)) return [];
+
     const tenPbTheoMa = new Map(state.phongBan.map((pb) => [pb.ma_pb, pb.ten_pb]));
     const khoanTheoMa = new Map(state.khoanLuong.map((kl) => [kl.ma_khoan, kl]));
     const setLuongTheoNv = new Map(state.setLuong.map((sl) => [sl.ma_nv, sl]));
@@ -162,7 +182,7 @@ export function useBangLuongRows(
           ngay_cong_chuan: bangCong.ngayCongChuan,
           gio_cong_chuan_ngay: bangCong.gioCongChuanNgay,
           gio_tang_ca: banTangCa ? tongGioOt(banTangCa.dong) : 0,
-          gio_quy_doi: banTangCa ? tongGioQuyDoi(banTangCa.dong, state.cauHinh) : 0,
+          gio_quy_doi: banTangCa ? tongGioQuyDoi(banTangCa.dong, cauHinh) : 0,
 
           luong_san_pham: tongTienSanPham(banSanPhamTheoNv.get(nv.ma_nv)?.dong ?? []),
           thuong: tongTienThuong(banThuongTheoNv.get(nv.ma_nv)?.dong ?? []),
@@ -182,7 +202,7 @@ export function useBangLuongRows(
           tinh_tncn: hd?.tinh_tncn ?? false,
         };
 
-        return tinhDongBangLuong(nguon, state.cauHinh);
+        return tinhDongBangLuong(nguon, cauHinh);
       })
       .filter((row) => {
         if (filters.ma_pb) {
@@ -197,7 +217,18 @@ export function useBangLuongRows(
       .sort((a, b) => a.ma_nv.localeCompare(b.ma_nv));
     // `nonce` cố ý nằm trong deps: nút "Tính lại lương" dựa vào nó để chạy lại.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [state, bangCong, nam, thang, filters, nonce]);
+  }, [state, cauHinh, bangCong, nam, thang, filters, nonce]);
+}
+
+/**
+ * Lý do bảng lương đang không tính được — `null` là bình thường.
+ *
+ * Màn hình phải hiện câu này thay cho bảng rỗng: bảng rỗng trông y hệt "công ty chưa có nhân
+ * viên nào", còn sự thật là biểu thuế hỏng và mọi con số đều không đáng tin.
+ */
+export function useLyDoKhongTinhDuocLuong(): string | null {
+  const cauHinh = useCauHinh();
+  return lyDoKhongTinhDuocLuong(cauHinh);
 }
 
 /** Kỳ lương đang hiển thị — hiện ở tiêu đề màn hình. */

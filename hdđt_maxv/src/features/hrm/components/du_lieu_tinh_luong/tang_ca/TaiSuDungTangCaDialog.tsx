@@ -12,7 +12,7 @@ import Chip from "@mui/material/Chip";
 import Typography from "@mui/material/Typography";
 import { moTaLoaiTangCa } from "../../../constants";
 import { gioVn, mauGioTangCa, nhanBanDongTangCa, tongGioOt } from "../../../tangCa";
-import { useCauHinh } from "../../../mock/hooks/cauHinh";
+import { useCauHinh } from "../../../api/cauHinhQueries";
 import { useBanTangCaList } from "../../../mock/hooks/tangCa";
 import { useNhanVienList } from "../../../mock/hooks/nhanVien";
 import type { DongTangCa } from "../../../types";

@@ -28,7 +28,7 @@ import {
   tongGioOt,
   tongGioQuyDoi,
 } from "../../../tangCa";
-import { useCauHinh } from "../../../mock/hooks/cauHinh";
+import { useCauHinh } from "../../../api/cauHinhQueries";
 import type { DongTangCa, LoaiTangCa } from "../../../types";
 
 interface Props {

@@ -3,9 +3,15 @@ import Stack from "@mui/material/Stack";
 import Typography from "@mui/material/Typography";
 import Chip from "@mui/material/Chip";
 import Paper from "@mui/material/Paper";
+import Button from "@mui/material/Button";
+import IconButton from "@mui/material/IconButton";
+import Tooltip from "@mui/material/Tooltip";
+import TextField from "@mui/material/TextField";
+import AddRounded from "@mui/icons-material/AddRounded";
+import DeleteOutlineRounded from "@mui/icons-material/DeleteOutlineRounded";
 import PersonRemoveRounded from "@mui/icons-material/PersonRemoveRounded";
 import AccountBalanceRounded from "@mui/icons-material/AccountBalanceRounded";
-import { NHAN_BAC_THUE } from "../../../constants";
+import { nhanNguongBacThue } from "../../../constants";
 import { tienVn } from "../../../format";
 import type { BacThue, CauHinhMacDinh } from "../../../types";
 import TienField from "../../TienField";
@@ -17,27 +23,52 @@ interface Props {
   onChange: (values: CauHinhMacDinh) => void;
 }
 
-/** Giảm trừ gia cảnh và biểu thuế lũy tiến rút gọn 5 bậc. */
+/** Số bậc tối thiểu máy chủ chấp nhận (BR-hrm-082 điều kiện 1, `E-hrm-081`). */
+const SO_BAC_TOI_THIEU = 2;
+
+/**
+ * Giảm trừ gia cảnh và biểu thuế TNCN lũy tiến từng phần.
+ *
+ * Ô ngưỡng mang thẳng nghĩa **ngưỡng trên lũy kế** (BR-hrm-080) — đúng cách Điều 22 diễn đạt
+ * ("Đến 5 triệu", "Trên 5 đến 10 triệu"), đối chiếu được thẳng với văn bản luật mà không phải
+ * cộng trừ gì. Quy ước "độ rộng bậc" cũ đã bị bãi bỏ cùng hai hàm quy đổi ở tầng API.
+ *
+ * Số bậc **thay đổi được**: bản trước chốt cứng 5 bậc vì nhãn là mảng 5 phần tử và mảng đó còn
+ * bị dùng làm khóa danh sách — biểu 7 bậc chuẩn sẽ có hai dòng khóa `undefined` trùng nhau.
+ * Nay khóa là vị trí bậc, và nhãn sinh theo vị trí.
+ *
+ * Dòng cuối là **bậc mở**: ô ngưỡng bị khóa và hiển thị "Không giới hạn", gửi lên `khoang: null`.
+ */
 export default function ThueSection({ values, onChange }: Props) {
+  const bacThue = values.bac_thue;
+  const soBac = bacThue.length;
+
   const dat = <K extends keyof CauHinhMacDinh>(khoa: K, giaTri: CauHinhMacDinh[K]) =>
     onChange({ ...values, [khoa]: giaTri });
 
   const datBac = (viTri: number, moi: Partial<BacThue>) =>
     onChange({
       ...values,
-      bac_thue: values.bac_thue.map((bac, i) => (i === viTri ? { ...bac, ...moi } : bac)),
+      bac_thue: bacThue.map((bac, i) => (i === viTri ? { ...bac, ...moi } : bac)),
     });
 
   /**
-   * Mốc lũy kế của từng bậc. Người dùng nhập độ rộng khoảng, nhưng cái họ cần
-   * kiểm tra là ngưỡng thu nhập — không hiện ra thì phải tự cộng dồn năm con số.
+   * Thêm một bậc **ngay trước bậc mở** — bậc mở phải luôn nằm cuối (`E-hrm-082`).
+   *
+   * Cả hai ô để trống (`0`) cho người dùng tự điền: đoán hộ một con số thuế là việc không nên
+   * làm. `TienField` hiện ô rỗng khi giá trị là 0, và phép kiểm trước khi gửi trong
+   * `useLuuCauHinh` sẽ nói rõ bậc nào còn thiếu nếu người dùng quên.
    */
-  const mocLuyKe: number[] = [];
-  let cong = 0;
-  for (const bac of values.bac_thue) {
-    cong += bac.khoang;
-    mocLuyKe.push(cong);
-  }
+  const themBac = () => {
+    const bacMoi: BacThue = { khoang: 0, thue_suat: 0 };
+    onChange({
+      ...values,
+      bac_thue: [...bacThue.slice(0, soBac - 1), bacMoi, ...bacThue.slice(soBac - 1)],
+    });
+  };
+
+  const xoaBac = (viTri: number) =>
+    onChange({ ...values, bac_thue: bacThue.filter((_, i) => i !== viTri) });
 
   return (
     <Stack spacing={2.5}>
@@ -61,51 +92,77 @@ export default function ThueSection({ values, onChange }: Props) {
       </NhomCauHinh>
 
       <Paper variant="outlined" sx={{ p: 2.5 }}>
-        <Stack direction="row" spacing={1.5} sx={{ alignItems: "center", mb: 0.5 }}>
-          <AccountBalanceRounded color="primary" />
-          <Typography variant="subtitle1" sx={{ fontWeight: 700 }}>
-            Bậc thuế TNCN (5 bậc lũy tiến)
-          </Typography>
+        <Stack
+          direction={{ xs: "column", sm: "row" }}
+          spacing={1.5}
+          sx={{ mb: 0.5, alignItems: { sm: "center" }, justifyContent: "space-between" }}
+        >
+          <Stack direction="row" spacing={1.5} sx={{ alignItems: "center" }}>
+            <AccountBalanceRounded color="primary" />
+            <Typography variant="subtitle1" sx={{ fontWeight: 700 }}>
+              Bậc thuế TNCN lũy tiến từng phần ({soBac} bậc)
+            </Typography>
+          </Stack>
+          <Button
+            size="small"
+            startIcon={<AddRounded />}
+            onClick={themBac}
+            sx={{ textTransform: "none", flexShrink: 0 }}
+          >
+            Thêm bậc
+          </Button>
         </Stack>
         <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-          Bậc 1 nhập mức chịu thuế tối đa, bậc 2–4 nhập độ rộng khoảng cộng thêm, bậc 5 áp
-          cho toàn bộ phần vượt bậc 4.
+          Mỗi ô là <strong>ngưỡng thu nhập tính thuế lũy kế</strong> mà bậc đó áp đến — đúng cách
+          Điều 22 Luật Thuế TNCN diễn đạt, không phải độ rộng của bậc. Bậc cuối là bậc mở, ôm hết
+          phần vượt ngưỡng bậc liền trước. Biểu chuẩn hiện hành có 7 bậc, trần 35%.
         </Typography>
 
         <Stack spacing={2}>
-          {values.bac_thue.map((bac, i) => {
-            const laBacCuoi = i === values.bac_thue.length - 1;
+          {bacThue.map((bac, i) => {
+            const laBacCuoi = i === soBac - 1;
+            const nguongTruoc = i > 0 ? (bacThue[i - 1]?.khoang ?? null) : 0;
+            // Độ rộng bậc là cột PHÁI SINH CHỈ-ĐỌC (hiệu hai ngưỡng liền kề) — được phép hiện
+            // cho dễ đọc, nhưng KHÔNG bao giờ là ô nhập và KHÔNG nằm trong nội dung gửi lên.
+            const doRong =
+              !laBacCuoi && bac.khoang != null && nguongTruoc != null
+                ? bac.khoang - nguongTruoc
+                : null;
+
             return (
               <Box
-                key={NHAN_BAC_THUE[i]}
+                // Khóa theo vị trí bậc: nhãn không còn là mảng cố định nên không dùng làm khóa
+                // được nữa (biểu 7 bậc sẽ có hai nhãn `undefined` trùng nhau).
+                key={`bac-thue-${i}`}
                 sx={{
                   display: "grid",
-                  gridTemplateColumns: { xs: "1fr", md: "minmax(0, 2fr) minmax(0, 1fr) auto" },
+                  gridTemplateColumns: {
+                    xs: "1fr",
+                    md: "minmax(0, 2fr) minmax(0, 1fr) auto auto",
+                  },
                   gap: 2,
                   alignItems: "center",
                 }}
               >
                 {laBacCuoi ? (
-                  <Box
-                    sx={{
-                      px: 2,
-                      py: 1,
-                      borderRadius: 1,
-                      bgcolor: "action.hover",
-                    }}
-                  >
-                    <Typography variant="caption" color="text.secondary">
-                      {NHAN_BAC_THUE[i]}
-                    </Typography>
-                    <Typography variant="body2" sx={{ fontWeight: 600 }}>
-                      Toàn bộ phần vượt {tienVn(mocLuyKe[i - 1] ?? 0)} ₫
-                    </Typography>
-                  </Box>
+                  <TextField
+                    label={nhanNguongBacThue(i, soBac)}
+                    size="small"
+                    fullWidth
+                    disabled
+                    value="Không giới hạn"
+                    helperText="Bậc mở — áp cho toàn bộ phần vượt ngưỡng bậc liền trước."
+                  />
                 ) : (
                   <TienField
-                    label={`${NHAN_BAC_THUE[i]} (VNĐ)`}
-                    value={bac.khoang}
+                    label={`${nhanNguongBacThue(i, soBac)} (VNĐ)`}
+                    value={bac.khoang ?? 0}
                     onChange={(v) => datBac(i, { khoang: v })}
+                    helperText={
+                      doRong != null && doRong > 0
+                        ? `Phần chịu thuế bậc này rộng ${tienVn(doRong)} ₫`
+                        : undefined
+                    }
                   />
                 )}
 
@@ -121,11 +178,33 @@ export default function ThueSection({ values, onChange }: Props) {
                   variant="outlined"
                   label={
                     laBacCuoi
-                      ? `Trên ${tienVn(mocLuyKe[i - 1] ?? 0)} ₫`
-                      : `Lũy kế đến ${tienVn(mocLuyKe[i] ?? 0)} ₫`
+                      ? `Trên ${tienVn(nguongTruoc ?? 0)} ₫`
+                      : `Từ trên ${tienVn(nguongTruoc ?? 0)} ₫ đến ${tienVn(bac.khoang ?? 0)} ₫`
                   }
                   sx={{ justifySelf: { xs: "start", md: "end" } }}
                 />
+
+                <Tooltip
+                  title={
+                    laBacCuoi
+                      ? "Bậc mở phải luôn là bậc cuối, không xóa được"
+                      : soBac <= SO_BAC_TOI_THIEU
+                        ? `Biểu thuế phải có ít nhất ${SO_BAC_TOI_THIEU} bậc`
+                        : "Xóa bậc này"
+                  }
+                >
+                  {/* Bọc `span`: nút bị `disabled` không phát sự kiện chuột nên Tooltip không hiện được. */}
+                  <span>
+                    <IconButton
+                      size="small"
+                      color="error"
+                      disabled={laBacCuoi || soBac <= SO_BAC_TOI_THIEU}
+                      onClick={() => xoaBac(i)}
+                    >
+                      <DeleteOutlineRounded fontSize="small" />
+                    </IconButton>
+                  </span>
+                </Tooltip>
               </Box>
             );
           })}
