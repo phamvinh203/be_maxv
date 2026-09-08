@@ -115,6 +115,20 @@ export const MESSAGES = {
     NHAN_VIEN_NOT_FOUND: 'Không tìm thấy nhân viên',
     NGUOI_PHU_THUOC_NOT_FOUND: 'Không tìm thấy người phụ thuộc',
     TAI_LIEU_NOT_FOUND: 'Không tìm thấy tài liệu',
+    /**
+     * E-hrm-037 (404) — dòng giấy tờ KHÔNG có file nào. Từ QĐ #21 câu này chỉ còn dùng cho
+     * đúng ca đó; sai `:fileId` mà dòng vẫn có file khác thì là TAI_LIEU_FILE_NOT_FOUND.
+     */
+    TAI_LIEU_CHUA_CO_FILE: 'Tài liệu này chưa đính file scan.',
+    /**
+     * E-hrm-066 (404) — QĐ #21. Xem hoặc gỡ một file KHÔNG thuộc dòng giấy tờ đang thao tác.
+     * Phép kiểm này là ranh giới an ninh, không phải chuyện thông báo cho đẹp: thiếu nó thì
+     * người có quyền vào công ty gỡ được file của giấy tờ bất kỳ chỉ bằng cách đoán id.
+     */
+    TAI_LIEU_FILE_NOT_FOUND: 'Không tìm thấy file scan này trong giấy tờ đã chọn.',
+    /** E-hrm-065 (409) — QĐ #21, BR-hrm-037. Trần 20 file mỗi dòng giấy tờ. */
+    TAI_LIEU_QUA_NHIEU_FILE:
+      'Mỗi giấy tờ giữ tối đa 20 file. Gỡ bớt file cũ rồi thử lại.',
     HOP_DONG_NOT_FOUND: 'Không tìm thấy hợp đồng',
     DRIVE_CHUA_KET_NOI:
       'Công ty chưa kết nối Google Drive — bấm "Thêm file" để đăng nhập Google và kết nối.',

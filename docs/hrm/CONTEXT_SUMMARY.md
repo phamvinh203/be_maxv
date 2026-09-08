@@ -415,3 +415,57 @@ Năm quyết định Backend tự đưa ra khi hợp đồng mơ hồ: QA thẩm
 3. Bổ sung ca cho nhánh "cùng nhân viên, kỳ nối tiếp → 201" (QA nêu, hiện chưa ca nào phủ dù hành vi đã xác nhận đúng).
 4. Sửa cột lý do của `TC-hrm-247` cho khớp QĐ #19.
 5. Đợt P1, rồi P2 khi chốt xong OQ-hrm-13 và OQ-hrm-14.
+
+---
+
+## 11. QĐ #21 — Một giấy tờ giữ nhiều file scan (2026-09-08)
+
+### 11.1. Vì sao đổi mô hình
+
+Chủ dự án phát hiện khi dùng thật: căn cước có **hai mặt** nhưng mỗi dòng giấy tờ chỉ ôm được một file. Cách chữa đầu tiên — cho chọn nhiều file rồi **mỗi file thành một dòng** — bị bác bỏ ngay: danh sách hiện ra hai dòng cùng tên "CCCD", người đọc không phân biệt được đó là một giấy tờ hai mặt hay hai giấy tờ khác nhau. **Sai bản chất nghiệp vụ**, không phải sai giao diện.
+
+**QĐ #21: bốn cột con trỏ file trên `hrm_tai_lieu` chuyển thành bảng con `hrm_tai_lieu_file`.** Một giấy tờ giữ tối đa 20 file; mỗi file vẫn ≤ 10MB.
+
+### 11.2. Đã làm
+
+| Tầng | Nội dung |
+|:---|:---|
+| Đặc tả | Viết lại BR-hrm-037 (thêm vào, không thay thế) · BR-hrm-038 (gỡ đích danh) · BR-hrm-039 (xóa dòng thì xóa mọi file) · FR-hrm-026/031/033 · thực thể mới Mục 4.7 · hai mã lỗi E-hrm-065, E-hrm-066 |
+| Thiết kế | `data-model.md` **M-14** — bảng con, và **trình tự bốn bước bắt buộc** để không mất dữ liệu |
+| Hợp đồng | `api-contract.md` Mục 6.1 (mảng `files`), 7.6 (thêm file + trần 20), 7.7 và 7.8 (đường dẫn thêm `:fileId`) |
+| Backend | Model mới, script chuyển dữ liệu `hrm:chuyen-file`, service/controller/route/validator, 16 ca kiểm thử mới |
+| Giao diện | Gỡ bỏ cách làm sai; chọn nhiều file gắn vào **cùng một** dòng; component `DanhSachFileScan` hiện file lồng trong hàng giấy tờ |
+
+### 11.3. Migration đã chạy và đối soát
+
+Trình tự M-14, chạy trên môi trường phát triển:
+
+| Bước | Kết quả |
+|:---|:---|
+| 1. `sync:tenants` — tạo bảng con, **giữ nguyên** bốn cột cũ | 10/10 tenant, 0 lỗi |
+| 2. `hrm:chuyen-file -- --thu` — chạy thử, không ghi | 10/10 tenant, 0 còn thiếu |
+| 3. `hrm:chuyen-file` — chuyển thật | 3 dòng chèn mới |
+| 4. **Đối soát** | **nguồn 3 = đích 3**, 0 tenant lệch; nội dung giữ nguyên (`kol_photo.jpg`, `mau_2.png` đủ tên/kiểu/dung lượng) |
+
+**Bốn cột cũ vẫn nằm nguyên trong `hrm_tai_lieu`** làm lưới an toàn — mã nguồn không còn đọc và không còn ghi chúng. Việc bỏ cột là **thao tác riêng của đợt sau**, chỉ làm khi đối soát vẫn khớp.
+
+> **Một ghi nhận về số liệu.** Lần đo đầu thấy 6 dòng có file, lúc chạy migration chỉ còn 3. Nguyên nhân là **chủ dự án đang thử tay trên giao diện** giữa hai lần đo — hai dòng còn lại ở một tenant đều là `loai=cccd` với con trỏ file rỗng, đúng thứ sinh ra khi thử cách làm sai. `db push` với cột còn nguyên không thể làm rỗng giá trị cột, nên đây **không phải mất dữ liệu do lệnh migration**.
+
+### 11.4. Đợt này cũng sửa lại tài liệu bị lệch
+
+Frontend đối chiếu hợp đồng với mã nguồn và bắt được **6 điểm lệch trong tài liệu**, đều đã sửa: tiêu đề Mục 7.7 thiếu `:fileId` · đoạn "Luồng" Mục 7.6 còn tả hành vi thay-thế cũ · bảng lỗi 7.6 thiếu E-hrm-065 · bảng idempotency còn ghi "ghi đè" · FR-hrm-031 và FR-hrm-033 viết theo mô hình cũ · FR-hrm-026 và một tiêu chí nghiệm thu còn nhắc "bốn trường con trỏ".
+
+Đối soát cuối: **279 ID định danh, không ID nào treo**; không còn chỗ nào mô tả bốn cột cũ như đang dùng.
+
+### 11.5. Còn nợ
+
+1. ✅ **Bỏ bốn cột cũ — ĐÃ XONG ngày 2026-09-08.** Chủ dự án chạy thử tay xong; đối soát lại vẫn khớp (đích 6 > nguồn 3, vì đã đính thêm file mới qua giao diện mới — bằng chứng mô hình mới hoạt động). Sao lưu dữ liệu 4 cột ra `be_maxv/sao-luu-4-cot-truoc-khi-xoa.json` rồi mới bỏ. Kết quả: **4 cột đã xóa trên 10/10 tenant, 6 dòng file nguyên vẹn**. Script `hrm:chuyen-file` chuyển sang SQL thuần để **production vẫn dùng được** khi tới lượt.
+2. **Chưa chạy thử runtime toàn bộ.** Bốn ca cần kiểm tay: thêm căn cước hai mặt phải ra **một** dòng hai file · đóng cửa sổ đăng nhập Google giữa chừng rồi bấm lại phải làm tiếp từ chỗ hỏng, không sinh dòng thứ hai · gỡ từng file · xóa dòng có file thì xác nhận nêu đúng số file.
+3. **Bộ ca kiểm thử chưa cập nhật** cho mô hình mới — `test-cases.md` vẫn theo một-file-một-dòng.
+4. Trần 20 file là pre-check ở tầng ứng dụng, **không có ràng buộc ở cơ sở dữ liệu** — hai lượt tải đồng thời vẫn vượt được. Cùng lớp bài toán với `so_hd` và chồng lấn hợp đồng.
+
+### 11.6. Đo được: `db push` KHÔNG xóa ràng buộc loại trừ
+
+Câu hỏi treo từ BUG-HRM-30 — *"chưa ai đo xem `prisma db push` có xóa ràng buộc tạo tay không"* — nay đã có câu trả lời từ chính đợt bỏ cột này. Sau `sync:tenants`, **cả hai ràng buộc loại trừ còn nguyên trên 10/10 tenant**. Lý do: Prisma không mô tả được `EXCLUDE` nên không quản lý, và không drop thứ nó không biết.
+
+⚠️ **Chỉ đúng cho `EXCLUDE`.** Index và unique constraint thì Prisma **có** quản lý theo schema — vẫn phải chạy lại `npm run hrm:constraints` sau mỗi `sync:tenants` như runbook đã ghi.

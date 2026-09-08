@@ -158,7 +158,7 @@ Không endpoint nào nhận `Idempotency-Key`. Tính chất thực tế:
 | `POST /phong-ban`, `POST /nhan-vien` **có** nhập mã | Idempotent (lần 2 → 409 trùng mã) | An toàn |
 | `POST /phong-ban`, `POST /nhan-vien` **bỏ trống** mã | ❌ **KHÔNG** idempotent — tạo thêm bản ghi mã mới | Double-click ⇒ 2 nhân viên |
 | `POST /hop-dong`, `POST /hop-dong/doi`, `POST /nguoi-phu-thuoc`, `POST /tai-lieu` | ❌ **KHÔNG** idempotent (khóa chính là UUID sinh mới mỗi lần) | Double-click ⇒ 2 hợp đồng trùng khoảng ngày; xem `ADR-002` |
-| `POST /tai-lieu/:id/file` | Ghi đè: tải file mới xong mới xóa file cũ trên Drive | `taiLieuDrive.service.ts:345-349` |
+| `POST /tai-lieu/:id/file` | **Không idempotent** `[SỬA THEO QĐ #21]`: mỗi lần gọi THÊM một file mới. Gọi hai lần cùng một file là hai dòng trong `hrm_tai_lieu_file` và hai bản trên Drive — giao diện phải chặn bấm lặp | BR-hrm-037 |
 
 ### 1.7b. Cập nhật theo đợt chốt nghiệp vụ 16/16 (2026-09-07)
 
@@ -871,15 +871,17 @@ Service: `services/client/hrm/taiLieu.service.ts` · Validator: `validators/hrm/
   "ngay_cap": "2021-05-20T00:00:00.000Z",
   "noi_cap": "Cục CSQLHC về TTXH",
   "ghi_chu": null,
-  "drive_file_id": "1AbCdEf...",
-  "ten_file": "cccd-mat-truoc.jpg",
-  "mime_type": "image/jpeg",
-  "kich_thuoc": 284512,
+  "files": [
+    { "id": "9f1c...", "ten_file": "cccd-mat-truoc.jpg", "mime_type": "image/jpeg", "kich_thuoc": 284512 },
+    { "id": "b73e...", "ten_file": "cccd-mat-sau.jpg",   "mime_type": "image/jpeg", "kich_thuoc": 271004 }
+  ],
   "ten_nv": "Nguyễn Văn A"
 }
 ```
 
-`drive_file_id = null` ⇒ chỉ có thông tin giấy tờ, **chưa đính file scan**.
+`[SỬA THEO QĐ #21]` **Bốn trường `drive_file_id` / `ten_file` / `mime_type` / `kich_thuoc` ở cấp dòng đã BỎ**, thay bằng mảng `files`. Mảng rỗng ⇒ chỉ có thông tin giấy tờ, **chưa đính file scan**.
+
+`drive_file_id` **không** được trả ra ngoài: nó là con trỏ nội bộ tới Drive của khách, giao diện chỉ cần `id` để gọi hai endpoint xem và gỡ. Thứ tự phần tử theo `thu_tu` rồi `datetime0` — mặt trước tải trước thì luôn hiện trước, không đảo chỗ giữa các lần đọc.
 
 ### 6.2. `POST /tai-lieu` — tạo bản ghi giấy tờ (KHÔNG kèm file)
 
@@ -1043,7 +1045,11 @@ ghi `driveEmail` + `driveRefreshTokenCipher/Iv/Tag` (AES-256-GCM) vào `don_vi`,
   **KHÔNG** đụng `hrm_tai_lieu.drive_file_id` (cố ý: giữ dấu vết khách từng đính giấy tờ gì;
   file vẫn nằm ở tài khoản Google cũ).
 
-### 7.6. `POST /tai-lieu/:id/file` — tải file scan lên Drive
+### 7.6. `POST /tai-lieu/:id/file` — tải THÊM một file scan lên Drive
+
+> `[SỬA THEO QĐ #21]` Endpoint này nay **THÊM VÀO** danh sách file của dòng giấy tờ, **không còn thay thế** file cũ. Muốn bỏ một file thì gỡ đích danh (Mục 7.8). Đường dẫn và cách gửi giữ nguyên — mỗi lần gọi vẫn đúng một file; giao diện chọn nhiều file thì gọi **tuần tự** nhiều lần.
+>
+> Thêm một phép kiểm: dòng đã đủ **20 file** thì trả **409 E-hrm-065** (BR-hrm-037). Phản hồi trả về `id` của **dòng file vừa tạo**, không phải id của dòng giấy tờ — giao diện cần id này để xem và gỡ đích danh.
 
 | | |
 |:---|:---|
@@ -1057,14 +1063,18 @@ ghi `driveEmail` + `driveRefreshTokenCipher/Iv/Tag` (AES-256-GCM) vào `don_vi`,
 ```json
 {
   "success": true,
-  "data": { "id": "3d2a...", "ten_file": "cccd-mat-truoc.jpg", "mime_type": "image/jpeg", "kich_thuoc": 284512 }
+  "data": { "id": "9f1c...", "tai_lieu_id": "3d2a...", "ten_file": "cccd-mat-truoc.jpg", "mime_type": "image/jpeg", "kich_thuoc": 284512, "so_file": 2 }
 }
 ```
 
-**Luồng:** tìm tài liệu → soát cỡ + MIME → lấy token công ty (giải mã AES-GCM) → đổi access token →
-tạo/lấy thư mục công ty → tạo/lấy thư mục nhân viên → upload `multipart/related` → **nếu đã có file
-cũ thì xóa file cũ SAU khi upload mới thành công** (`:345-349`, thà thừa 1 file còn hơn mất cả hai)
-→ ghi 4 cột con trỏ vào `hrm_tai_lieu`.
+**Luồng** `[SỬA THEO QĐ #21]`**:** tìm tài liệu → **đếm file hiện có, đủ 20 thì dừng ở E-hrm-065** →
+soát cỡ + MIME → lấy token công ty (giải mã AES-GCM) → đổi access token → tạo/lấy thư mục công ty →
+tạo/lấy thư mục nhân viên → upload `multipart/related` → **chèn một dòng vào `hrm_tai_lieu_file`**
+với `thu_tu` = lớn nhất hiện có + 1.
+
+> Bản trước mô tả *"nếu đã có file cũ thì xóa file cũ sau khi upload mới thành công → ghi 4 cột con
+> trỏ vào `hrm_tai_lieu`"* — **không còn đúng**. Endpoint nay **THÊM VÀO**, không thay thế, và bốn
+> cột con trỏ cũ đã ngừng được dùng (chờ bỏ hẳn ở đợt sau, xem `data-model.md` M-14).
 
 | Mã tài liệu | HTTP | Message | Bằng chứng |
 |:---|:---:|:---|:---|
@@ -1072,6 +1082,7 @@ cũ thì xóa file cũ SAU khi upload mới thành công** (`:345-349`, thà th�
 | `E-hrm-032` | 409 | `File vượt quá 10MB.` | `:307-311` (multipart) và `taiLieuDrive.service.ts:322-326` (service) |
 | `E-hrm-034` | 409 | `Yêu cầu phải gửi dạng multipart/form-data.` | `:312-314` |
 | `E-hrm-035` | 409 | `Mỗi lần chỉ tải lên được một file.` | `:315-317` |
+| `E-hrm-065` | 409 | `Mỗi giấy tờ giữ tối đa 20 file. Gỡ bớt file cũ rồi thử lại.` | `[MỚI — QĐ #21]` BR-hrm-037 |
 | `E-hrm-033` | 409 | `Chỉ nhận ảnh (JPG, PNG, WEBP, HEIC) hoặc PDF — file gửi lên là "<mime>".` | `taiLieuDrive.service.ts:327-331` |
 | `E-hrm-039` | 409 | `Công ty chưa kết nối Google Drive — bấm "Thêm file" để đăng nhập Google và kết nối.` | `:193-199` |
 | `E-hrm-040` | 409 | `Kết nối Google Drive đã hết hiệu lực (bị thu hồi quyền), vui lòng kết nối lại.` | `:206-209` (giải mã hỏng) và `:238-241` (`invalid_grant`) |
@@ -1087,7 +1098,7 @@ mới tự `ngatKetNoiDrive` (xóa token đã lưu) — `taiLieuDrive.service.ts
 chung OAuth client) cũng là 4xx; bắt theo dải thì **một lần gõ nhầm env sẽ xóa refresh token của
 TOÀN BỘ tenant**, không cứu lại được.
 
-### 7.7. `GET /tai-lieu/:id/file` — xem/tải file scan
+### 7.7. `GET /tai-lieu/:id/file/:fileId` — xem/tải MỘT file scan `[SỬA THEO QĐ #21]`
 
 | | |
 |:---|:---|
@@ -1110,12 +1121,19 @@ TOÀN BỘ tenant**, không cứu lại được.
 FE phải lấy bằng `fetch` + Blob (`taiLieuApi.ts:taiFileVe`), **không** trỏ `<img src>` thẳng —
 thẻ `<img>` đi ngoài lớp `apiFetch` nên không kích hoạt được cơ chế tự làm mới token khi 401.
 
-### 7.8. `DELETE /tai-lieu/:id/file` — gỡ file, giữ bản ghi
+> `[SỬA THEO QĐ #21]` **Đường dẫn đổi thành `GET /tai-lieu/:id/file/:fileId`** — một giấy tờ nay có nhiều file nên phải nói rõ xem file nào. Cũng là **thay đổi phá vỡ** với giao diện hiện tại. `E-hrm-037` (*"Tài liệu này chưa đính file scan"*) chỉ còn dùng khi dòng giấy tờ **không có file nào**; chỉ sai `:fileId` thì trả **E-hrm-066**.
 
-- Xóa file trên Drive **rồi** xóa 4 cột con trỏ (`drive_file_id`, `ten_file`, `mime_type`, `kich_thuoc`).
+### 7.8. `DELETE /tai-lieu/:id/file/:fileId` — gỡ MỘT file, giữ bản ghi
+
+> `[SỬA THEO QĐ #21]` Đường dẫn thêm `:fileId` vì một giấy tờ nay có nhiều file. **Đây là thay đổi phá vỡ** với giao diện đang gọi `DELETE /tai-lieu/:id/file`.
+
+- Xóa file trên Drive **rồi** xóa dòng trong `hrm_tai_lieu_file`. Các file còn lại và dòng giấy tờ **giữ nguyên**.
+- Gỡ file **cuối cùng** thì dòng giấy tờ trở về trạng thái chưa đính file, **không** bị xóa theo.
 - Drive trả 404 được coi là **đã xong** (khách tự xóa tay trước đó) — `driveClient.ts:438-443`.
-- **Response 200:** `{ "success": true, "data": { "id": "<uuid>" } }`
-- **404:** `Không tìm thấy tài liệu` / `Tài liệu này chưa đính file scan.`
+- **Response 200:** `{ "success": true, "data": { "id": "<fileId>", "so_file_con_lai": 1 } }`
+- **404:** `Không tìm thấy tài liệu` · **E-hrm-066** `Không tìm thấy file scan này trong giấy tờ đã chọn.`
+
+`:fileId` **phải** được kiểm là thuộc đúng `:id` — không thì người dùng có quyền vào công ty gỡ được file của giấy tờ bất kỳ chỉ bằng cách đoán id.
 
 ---
 

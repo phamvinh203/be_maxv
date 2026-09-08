@@ -1002,9 +1002,10 @@ model hrm_hop_dong {
 /// Hồ sơ / tài liệu của nhân viên (CCCD, bằng cấp, chứng chỉ…) — bản ghi con thật sự, xóa
 /// nhân viên thì xóa theo (cascade), giống hrm_nguoi_phu_thuoc.
 ///
-/// Giai đoạn này CHỈ lưu thông tin giấy tờ nhập tay. File scan sẽ để trên Google Drive của
-/// chính công ty (xem bàn luận về hướng A) — lúc đó thêm cột con trỏ `drive_file_id` +
-/// `mime_type` + `ten_file`, không phải sửa gì ở đây.
+/// MỘT DÒNG = MỘT GIẤY TỜ, giữ NHIỀU file scan ở bảng con `hrm_tai_lieu_file` (QĐ #21,
+/// BR-hrm-037). Căn cước có hai mặt, bằng cấp nhiều trang — tách mỗi ảnh thành một dòng ở đây
+/// là sai bản chất: danh sách hiện ba dòng cùng tên "CCCD" và người đọc không biết đó là một
+/// giấy tờ hay ba.
 model hrm_tai_lieu {
   id    String @id @db.VarChar(64) // sinh tự động (uuid) ở service khi tạo
   ma_nv String @db.VarChar(24)
@@ -1020,17 +1021,42 @@ model hrm_tai_lieu {
   noi_cap  String?   @db.VarChar(254)
   ghi_chu  String?   @db.VarChar(512)
 
-  /// File scan trên Google Drive của công ty. null = chỉ có thông tin giấy tờ, chưa đính file.
-  /// Giữ luôn tên/kiểu/kích thước để màn danh sách hiện được mà không phải gọi Drive từng dòng.
-  drive_file_id String? @db.VarChar(64)
-  ten_file      String? @db.VarChar(254)
-  mime_type     String? @db.VarChar(128)
-  kich_thuoc    Int? // byte
+  /// Con trỏ file scan KHÔNG còn ở đây — chuyển sang bảng con `hrm_tai_lieu_file` (QĐ #21,
+  /// BR-hrm-037). Bốn cột cũ `drive_file_id` / `ten_file` / `mime_type` / `kich_thuoc` đã được
+  /// chuyển dữ liệu bằng `npm run hrm:chuyen-file`, đối soát khớp rồi bỏ ngày 2026-09-08 theo
+  /// trình tự bốn bước ở `docs/hrm/architecture/data-model.md` M-14.
 
   datetime0 DateTime @default(now())
   datetime2 DateTime @default(now())
 
-  nhan_vien hrm_nhan_vien @relation(fields: [ma_nv], references: [ma_nv], onDelete: Cascade, onUpdate: Cascade)
+  nhan_vien hrm_nhan_vien       @relation(fields: [ma_nv], references: [ma_nv], onDelete: Cascade, onUpdate: Cascade)
+  files     hrm_tai_lieu_file[]
 
   @@index([ma_nv])
+}
+
+/// File scan của một dòng giấy tờ (QĐ #21, BR-hrm-037, spec Mục 4.7, data-model M-14).
+///
+/// Bảng con của `hrm_tai_lieu`: một giấy tờ có NHIỀU file, mỗi file một dòng ở đây.
+/// Xóa dòng giấy tờ thì xóa theo (cascade) — nhưng **file trên Drive thì Postgres không biết**,
+/// service phải tự gọi Drive xóa từng file TRƯỚC khi xóa dòng (BR-hrm-039).
+model hrm_tai_lieu_file {
+  id          String @id @db.VarChar(64) // sinh tự động (uuid) ở service khi tạo
+  tai_lieu_id String @db.VarChar(64)
+
+  drive_file_id String @db.VarChar(64) // con trỏ NỘI BỘ, không trả ra ngoài API
+  ten_file      String @db.VarChar(254)
+  mime_type     String @db.VarChar(128)
+  kich_thuoc    Int // byte
+
+  /// Giữ thứ tự hiển thị ổn định. KHÔNG sắp theo `datetime0`: hai file tải lên trong cùng một
+  /// mili-giây sẽ đảo chỗ giữa các lần đọc, và "mặt trước / mặt sau" nhảy qua nhảy lại.
+  thu_tu    Int      @default(0)
+  datetime0 DateTime @default(now())
+
+  tai_lieu hrm_tai_lieu @relation(fields: [tai_lieu_id], references: [id], onDelete: Cascade, onUpdate: Cascade)
+
+  /// CỐ Ý KHÔNG có ràng buộc duy nhất trên `drive_file_id`: Google có thể cấp lại id cho file
+  /// khác sau khi xóa, ràng buộc như vậy chặn oan mà không bảo vệ được gì (M-14).
+  @@index([tai_lieu_id])
 }

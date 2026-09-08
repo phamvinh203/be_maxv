@@ -238,6 +238,24 @@ Cặp (`loai_hd`, `loai_giay_to`) là **duy nhất trong một công ty** (E-hrm
 
 ---
 
+### 4.7 File scan của giấy tờ — `hrm_tai_lieu_file` `[MỚI — QĐ #21]`
+
+Bảng con của `hrm_tai_lieu`. Một dòng giấy tờ có **nhiều** file; mỗi file là một dòng ở đây.
+
+| Trường | B/T | Kiểu | Ràng buộc | Ý nghĩa nghiệp vụ |
+|---|---|---|---|---|
+| `id` | Hệ thống | Chuỗi | Sinh tự động | Khóa của file, dùng khi xem và gỡ đích danh |
+| `tai_lieu_id` | **B** | Chuỗi | Khóa ngoại tới `hrm_tai_lieu`, xóa dòng giấy tờ thì xóa theo | Thuộc giấy tờ nào |
+| `drive_file_id` | **B** | Chuỗi | Do Google cấp | Con trỏ file trên Drive của công ty |
+| `ten_file` | **B** | Chuỗi ≤ 254 | Tên gốc người dùng tải lên | Để phân biệt "mặt trước" với "mặt sau" mà không cần mở file |
+| `mime_type` | **B** | Chuỗi | Ảnh hoặc PDF (BR-hrm-036) | Quyết định xem được ngay trong ứng dụng hay phải tải về |
+| `kich_thuoc` | **B** | Số | ≤ 10MB mỗi file | Hiện cho người dùng biết trước khi mở |
+| `thu_tu` | Hệ thống | Số | Tăng dần theo lúc tải lên | Giữ thứ tự hiển thị ổn định: mặt trước tải trước thì luôn hiện trước |
+
+**Bốn cột con trỏ file cũ trên `hrm_tai_lieu`** (`drive_file_id`, `ten_file`, `mime_type`, `kich_thuoc`) **bị bỏ** — dữ liệu chuyển sang bảng này. Xem `data-model.md` M-14.
+
+---
+
 ## 5. Quy tắc nghiệp vụ
 
 ### 5.1 Định danh và sinh mã
@@ -393,11 +411,17 @@ Kiểm trùng **bỏ qua** người phụ thuộc thuộc nhân viên `da_xoa = 
 
 **BR-hrm-036** — Trần dung lượng **10 MB mỗi file**, mỗi lần tải lên đúng **một** file. Trần được áp ở ba nơi: giao diện kiểm trước khi gửi, tầng nhận file của máy chủ chặn cứng, và tầng nghiệp vụ kiểm lại. Đường **tải file về** cũng áp cùng trần, vì file nằm trên Drive của khách nên họ thay bằng file khổng lồ lúc nào cũng được.
 
-**BR-hrm-037** — Mỗi dòng tài liệu giữ tối đa **một** file scan. Tải file mới lên một dòng đã có file thì file cũ bị xóa **sau khi** file mới lên thành công — hỏng giữa chừng thì thà thừa một file trên Drive còn hơn mất cả hai. Việc xóa file cũ là cố-hết-sức, thất bại không làm hỏng thao tác.
+**BR-hrm-037** `[SỬA THEO QĐ #21]` — Mỗi dòng tài liệu giữ được **nhiều file scan**. Một giấy tờ trong thực tế thường gồm nhiều ảnh: căn cước có hai mặt, bằng cấp và hợp đồng giấy có nhiều trang. Bắt mỗi ảnh một dòng thì danh sách hiện ra ba dòng cùng tên "CCCD" và người đọc không biết đó là một giấy tờ hay ba giấy tờ khác nhau — sai bản chất nghiệp vụ.
 
-**BR-hrm-038** — Gỡ file khỏi tài liệu thì xóa file trên Drive **và** xóa bốn trường con trỏ, giữ nguyên dòng giấy tờ.
+Tải thêm file lên một dòng đã có file là **THÊM VÀO**, không phải thay thế. Muốn bỏ một file thì gỡ đích danh file đó (BR-hrm-038).
 
-**BR-hrm-039** `[SỬA THEO QĐ #12]` — Xóa cả dòng tài liệu là **xóa cứng** dòng trong cơ sở dữ liệu, **và xóa luôn file scan trên Google Drive** nếu dòng đó đang có con trỏ file. Không để lại file mồ côi.
+Mỗi file vẫn giữ giới hạn riêng: ảnh hoặc PDF, tối đa 10MB (BR-hrm-036). Số file trên một dòng **tối đa 20** — đủ cho mọi giấy tờ nhân sự có thật, và đủ chặt để một lần thao tác nhầm không đẩy hàng trăm file lên Drive của khách. Vượt quá trả E-hrm-065.
+
+> **Đây là thay đổi mô hình dữ liệu**, không phải đổi giao diện: bốn cột con trỏ file trên `hrm_tai_lieu` chuyển thành bảng con `hrm_tai_lieu_file` (Mục 4.7). Dữ liệu đang có phải được chuyển sang bảng mới **trước** khi bỏ bốn cột cũ — xem `data-model.md` M-14.
+
+**BR-hrm-038** `[SỬA THEO QĐ #21]` — Gỡ file khỏi tài liệu là gỡ **đúng một file được chỉ định**: xóa file trên Drive **và** xóa dòng trong bảng file, giữ nguyên dòng giấy tờ và các file còn lại. Gỡ file cuối cùng thì dòng giấy tờ trở về trạng thái chưa đính file, **không** bị xóa theo.
+
+**BR-hrm-039** `[SỬA THEO QĐ #12 và #21]` — Xóa cả dòng tài liệu là **xóa cứng** dòng trong cơ sở dữ liệu, **và xóa luôn MỌI file scan** của dòng đó trên Google Drive. Không để lại file mồ côi. Xóa từng file là cố-hết-sức: Drive báo lỗi ở một file thì ghi log và vẫn xóa dòng, không để sự cố bên ngoài chặn thao tác nghiệp vụ. Hộp xác nhận phải nêu **số file** sắp mất.
 
 Ba ràng buộc kèm theo:
 - Xóa trên Drive theo kiểu **cố hết sức**: Drive báo lỗi thì vẫn xóa dòng và ghi lỗi vào nhật ký máy chủ, **không** để lỗi Drive chặn việc xóa dòng. Lý do: dòng dữ liệu là thứ người dùng nhìn thấy và muốn bỏ đi; giữ lại dòng chỉ vì Drive đang hỏng là làm người dùng bấm lại nhiều lần mà không hiểu vì sao.
@@ -569,7 +593,7 @@ Nhật ký là **ghi kèm, không chặn**: ghi nhật ký hỏng thì thao tác
 
 **FR-hrm-025** — Hệ thống cho phép tạo bản ghi giấy tờ với mã nhân viên và loại giấy tờ bắt buộc; số hiệu, ngày cấp, nơi cấp, ghi chú tùy chọn. Việc kiểm nhân viên và việc ghi nằm trong cùng một giao dịch.
 
-**FR-hrm-026** `[SỬA THEO QĐ #14]` — Hệ thống cho phép xem danh sách giấy tờ, lọc theo nhân viên và theo loại (khớp đúng), sắp theo mã nhân viên rồi loại, mỗi dòng kèm tên nhân viên, bộ bốn trường con trỏ file, `ngay_het_han` và trạng thái hạn tính lúc đọc.
+**FR-hrm-026** `[SỬA THEO QĐ #14]` — Hệ thống cho phép xem danh sách giấy tờ, lọc theo nhân viên và theo loại (khớp đúng), sắp theo mã nhân viên rồi loại, mỗi dòng kèm tên nhân viên, **danh sách file scan đã đính** (`files`, có thể rỗng — `[SỬA THEO QĐ #21]`), `ngay_het_han` và trạng thái hạn tính lúc đọc.
 
 **FR-hrm-038** `[MỚI — QĐ #14]` — Hệ thống cho phép xem, thêm, sửa và xóa các dòng của danh mục bộ giấy tờ bắt buộc theo loại hợp đồng, riêng cho từng công ty (BR-hrm-063). Trùng cặp loại hợp đồng và loại giấy tờ bị từ chối (E-hrm-061).
 
@@ -587,11 +611,11 @@ Nhật ký là **ghi kèm, không chặn**: ghi nhật ký hỏng thì thao tác
 
 **FR-hrm-030** — Hệ thống cho phép tải một file scan lên một dòng giấy tờ: kiểm dung lượng và kiểu file, lấy token công ty, tạo lười cây thư mục, tải file lên thư mục của nhân viên, rồi ghi con trỏ vào dòng giấy tờ.
 
-**FR-hrm-031** — Khi dòng giấy tờ đã có file, hệ thống xóa file cũ **sau khi** file mới lên thành công (BR-hrm-037).
+**FR-hrm-031** `[SỬA THEO QĐ #21]` — Khi dòng giấy tờ đã có file, file mới được **thêm vào** danh sách, file cũ **giữ nguyên** (BR-hrm-037). Đủ 20 file thì từ chối (E-hrm-065). Bản trước quy định xóa file cũ — không còn đúng từ khi một giấy tờ giữ được nhiều file.
 
 **FR-hrm-032** — Hệ thống cho phép xem file scan bằng cách truyền nội dung qua máy chủ, hiển thị tại chỗ, cấm lưu vào bộ nhớ đệm của trình duyệt và proxy, và buộc trình duyệt bám đúng kiểu file đã khai.
 
-**FR-hrm-033** — Hệ thống cho phép gỡ file khỏi dòng giấy tờ: xóa trên Drive rồi xóa bốn trường con trỏ, giữ nguyên dòng (BR-hrm-038).
+**FR-hrm-033** `[SỬA THEO QĐ #21]` — Hệ thống cho phép gỡ **một file được chỉ định** khỏi dòng giấy tờ: xóa trên Drive rồi xóa dòng trong `hrm_tai_lieu_file`, giữ nguyên dòng giấy tờ và các file còn lại (BR-hrm-038). File không thuộc dòng giấy tờ đang thao tác thì từ chối (E-hrm-066).
 
 **FR-hrm-034** `[SỬA THEO QĐ #12, #15]` — Hệ thống cho phép xóa cứng một dòng giấy tờ của nhân viên chưa xóa mềm, **và xóa luôn file scan trên Drive** theo kiểu cố hết sức (BR-hrm-039). Phản hồi cho biết đã xóa được file trên Drive hay chưa, để giao diện nói đúng sự thật. Thao tác này ghi nhật ký người thao tác (BR-hrm-066).
 
@@ -747,6 +771,9 @@ Trang callback luôn trả mã 200 kèm một trang tự đóng; thất bại th
 | E-hrm-049 | Vé không khớp cookie, hoặc vé đã dùng | "Phiên kết nối không hợp lệ hoặc đã dùng rồi. Hãy bấm thêm file lại từ đầu, trên chính trình duyệt này." |
 | E-hrm-050 | Vé sai chữ ký hoặc quá 10 phút | "Phiên kết nối không hợp lệ hoặc đã hết hạn." |
 | E-hrm-051 | Lỗi khác khi lưu kết nối | "Không kết nối được Google Drive. Vui lòng thử lại." — chỉ lỗi nghiệp vụ do chính mình đặt mới hiện nguyên văn; lỗi từ Google (tiếng Anh) không đưa lên trang |
+
+| E-hrm-065 | 409 | Dòng tài liệu đã đủ 20 file, tải thêm nữa | "Mỗi giấy tờ giữ tối đa 20 file. Gỡ bớt file cũ rồi thử lại." | Từ chối (BR-hrm-037) |
+| E-hrm-066 | 404 | Xem hoặc gỡ một file không thuộc dòng giấy tờ đang thao tác | "Không tìm thấy file scan này trong giấy tờ đã chọn." | Từ chối |
 
 ### 8.9 Lỗi kỹ thuật dùng chung cho mọi endpoint HRM
 
@@ -948,7 +975,7 @@ Chỉ liệt kê các quy tắc có rẽ nhánh nghiệp vụ đáng chú ý. C�
 **AC-hrm-32** (FR-hrm-033, BR-hrm-038 — gỡ file khác xóa dòng)
 - **Given** dòng giấy tờ đã có file scan
 - **When** người dùng bấm gỡ file
-- **Then** file bị xóa trên Drive, bốn trường con trỏ về rỗng, **dòng giấy tờ vẫn còn** trong danh sách
+- **Then** đúng file đó bị xóa trên Drive và khỏi danh sách file của giấy tờ; **các file còn lại và dòng giấy tờ vẫn còn** `[SỬA THEO QĐ #21]`. Gỡ file cuối cùng thì dòng giấy tờ trở về trạng thái chưa đính file, không bị xóa theo
 
 **AC-hrm-33** (FR-hrm-034, BR-hrm-039 — xóa dòng giấy tờ đang có file) `[CHƯA ĐẠT VỚI MÃ HIỆN TẠI]` `[SỬA THEO QĐ #12]`
 - **Given** dòng giấy tờ đã có file scan trên Drive, và hộp xác nhận đã nêu đích danh tên file

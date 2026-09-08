@@ -2,7 +2,7 @@
 type: dev-notes
 feature: hrm
 status: in-review
-updated: 2026-09-07
+updated: 2026-09-08
 links:
   - docs/hrm/architecture/api-contract.md
   - docs/hrm/architecture/data-model.md
@@ -31,7 +31,10 @@ links:
 4. **Cô lập tenant bằng DATABASE RIÊNG**, không bằng cột lọc. Mỗi request lấy đúng một
    `PrismaClient` trỏ vào `maxv_<MST>_app` của công ty đang chọn.
 5. **File scan nằm trên Google Drive CỦA KHÁCH**, DB chỉ giữ con trỏ. MAXV không giữ bản sao và
-   không khôi phục được.
+   không khôi phục được. **Một dòng giấy tờ giữ NHIỀU file** (QĐ #21, BR-hrm-037): căn cước hai
+   mặt, bằng cấp nhiều trang — con trỏ nằm ở bảng con `hrm_tai_lieu_file`, mỗi file một dòng.
+   Đừng tách mỗi ảnh thành một dòng `hrm_tai_lieu`: đó là cách chữa tạm đã thử và sai bản chất
+   (danh sách hiện ba dòng cùng tên "CCCD", không ai biết là một giấy tờ hay ba).
 6. **Trong một công ty còn một lớp quyền nữa: QUYỀN XEM DỮ LIỆU LƯƠNG** (đợt P0, QĐ #8). Vào được
    công ty **không** đồng nghĩa xem được lương. Cờ nằm ở cặp (người dùng, công ty) và **tra lại từ
    cơ sở dữ liệu mỗi lượt gọi**, không nằm trong vé đăng nhập.
@@ -79,17 +82,17 @@ khi hai yêu cầu vào cùng lúc — lúc đó chỉ còn thông điệp chung
 | Thêm NPT (chặn trùng MST **có xét kỳ**) | `POST /nguoi-phu-thuoc` | `:30` | `createNguoiPhuThuoc:184` → `assertKhongTrungMst:147` | Phạm vi **toàn công ty**; `mst = null` **không** bị chặn (đúng ý); bỏ qua dòng của NV đã xóa mềm |
 | Sửa NPT | `PUT /nguoi-phu-thuoc/:id` | `:37` | `updateNguoiPhuThuoc:199` | Bỏ qua chính dòng đang sửa khi chống trùng |
 | Xóa NPT | `DELETE /nguoi-phu-thuoc/:id` | `:45` | `deleteNguoiPhuThuoc:154` | Xóa **cứng** |
-| Xem hồ sơ giấy tờ | `GET /tai-lieu` | `taiLieu.controller.ts:43` | `taiLieu.service.ts` → `listTaiLieu:219` | ⚠️ `?loai=` so khớp chính xác, phân biệt hoa thường |
-| Thêm giấy tờ (chưa có file) | `POST /tai-lieu` | `:50` | `createTaiLieu:256` | `$transaction` |
-| Sửa metadata giấy tờ | `PUT /tai-lieu/:id` | `:57` | `updateTaiLieu:266` | Không đụng 4 cột file |
-| Xóa giấy tờ | `DELETE /tai-lieu/:id` | `:65` | `deleteTaiLieu:291` | 🚨 **KHÔNG** xóa file Drive ⇒ file mồ côi (`ADR-004`) |
-| Kiểm tra kết nối Drive | `GET /tai-lieu/drive/trang-thai` | `:121` | `taiLieuDrive.service.ts` → `trangThaiDrive:70` | Không cần DB tenant |
-| Lấy URL đăng nhập Google | `GET /tai-lieu/drive/lien-ket` | `:141` | `driveClient.ts` → `taoState:469`, `urlDangNhap:136` | Đặt cookie `driveOauthState`; đã nối rồi thì **chỉ OWNER** |
-| Google gọi về | `GET /tai-lieu/drive/callback` | `:189` | `docState:475` → `luuKetNoiDrive:83` | **Miễn auth**; trả HTML + CSP nonce; xóa cookie trước mọi nhánh |
-| Ngắt kết nối Drive | `DELETE /tai-lieu/drive/ket-noi` | `:276` | `ngatKetNoiDrive:163` | **Chỉ OWNER**; xóa 5 cột + mọi `drive_folder_id` |
-| Tải file scan lên | `POST /tai-lieu/:id/file` | `:289` | `dinhKemFile:314` | Trần 10MB + danh sách trắng MIME; xóa file cũ **sau** khi upload mới xong |
-| Xem/tải file scan | `GET /tai-lieu/:id/file` | `:335` | `taiFileVe:371` → `layNoiDungFile:382` | ⚠️ nạp trọn vào RAM, chưa phải stream (`ADR-005`) |
-| Gỡ file scan | `DELETE /tai-lieu/:id/file` | `:361` | `goFile:407` | Xóa Drive rồi mới xóa 4 cột con trỏ |
+| Xem hồ sơ giấy tờ | `GET /tai-lieu` | `taiLieu.controller.ts:44` | `taiLieu.service.ts` → `listTaiLieu:68` | Trả mảng `files` (sắp `thu_tu`,`datetime0`), **không** trả `drive_file_id`; ⚠️ `?loai=` so khớp chính xác, phân biệt hoa thường |
+| Thêm giấy tờ (chưa có file) | `POST /tai-lieu` | `:51` | `createTaiLieu:105` | `$transaction` |
+| Sửa metadata giấy tờ | `PUT /tai-lieu/:id` | `:58` | `updateTaiLieu:115` | Không đụng file |
+| Xóa giấy tờ | `DELETE /tai-lieu/:id` | `:72` | `deleteTaiLieu:151` → `xoaMoiFileTrenDrive:551` | Xóa **mọi** file Drive **trước** rồi xóa dòng; lỗi Drive chỉ vào log, trả `da_xoa_file_drive` |
+| Kiểm tra kết nối Drive | `GET /tai-lieu/drive/trang-thai` | `:136` | `taiLieuDrive.service.ts` → `trangThaiDrive:79` | Không cần DB tenant |
+| Lấy URL đăng nhập Google | `GET /tai-lieu/drive/lien-ket` | `:156` | `driveClient.ts` → `taoState:469`, `urlDangNhap:136` | Đặt cookie `driveOauthState`; đã nối rồi thì **chỉ OWNER** |
+| Google gọi về | `GET /tai-lieu/drive/callback` | `:204` | `docState:475` → `luuKetNoiDrive:92` | **Miễn auth**; trả HTML + CSP nonce; xóa cookie trước mọi nhánh |
+| Ngắt kết nối Drive | `DELETE /tai-lieu/drive/ket-noi` | `:291` | `ngatKetNoiDrive:172` | **Chỉ OWNER**; xóa 5 cột + mọi `drive_folder_id` |
+| **THÊM** một file scan | `POST /tai-lieu/:id/file` | `:304` | `dinhKemFile:406` | THÊM VÀO chứ không thay thế; cỡ → MIME → trần 20 file, **cả ba trước khi gọi Google** |
+| Xem/tải một file scan | `GET /tai-lieu/:id/file/:fileId` | `:353` | `taiFileVe:468` → `layNoiDungFile` | Kiểm file thuộc đúng giấy tờ; ⚠️ nạp trọn vào RAM, chưa phải stream (`ADR-005`) |
+| Gỡ MỘT file scan | `DELETE /tai-lieu/:id/file/:fileId` | `:383` | `goFile:511` | Xóa Drive **rồi** xóa dòng con; dòng giấy tờ và file còn lại giữ nguyên |
 
 **Hạ tầng dùng chung** (không nằm trong `hrm/`, đừng viết lại):
 
@@ -135,7 +138,11 @@ khi hai yêu cầu vào cùng lúc — lúc đó chỉ còn thông điệp chung
 | **Bỏ 3 trường ngân hàng khi ghi** | `boTruongLuongKhiGhi` — `nhanVien.service.ts:75` |
 | **Suy quyền xem lương của phiên** | `resolveTenantInfo` — `helpers/resolveTenantDb.ts:47` (nhánh `role === 'OWNER'`) |
 | Ký/đọc `state` OAuth | `kyState`/`taoState`/`docState` — `driveClient.ts:463-489` |
-| Cây thư mục Drive | `thuMucCongTy:247` / `thuMucNhanVien:268` — `taiLieuDrive.service.ts` |
+| Cây thư mục Drive | `thuMucCongTy:256` / `thuMucNhanVien:277` — `taiLieuDrive.service.ts` |
+| **`thu_tu` của file scan kế tiếp** | `thuTuKeTiep` — `taiLieuDrive.service.ts:324` |
+| **Trần 20 file mỗi giấy tờ (E-hrm-065)** | `assertConChoChoFile` — `taiLieuDrive.service.ts:332` |
+| **File phải thuộc đúng giấy tờ (E-hrm-066)** | `timFileCuaTaiLieu` — `taiLieuDrive.service.ts:349` |
+| **Dọn mọi file Drive khi xóa dòng giấy tờ** | `xoaMoiFileTrenDrive` — `taiLieuDrive.service.ts:551` |
 
 **Bản SQL của ba luật trên nằm ở `services/shared/hrmTenantConstraints.ts`** — `sqlNhomHd`,
 `sqlKhoangHopDong`, `sqlKyNptTuDinhDanh`. Chúng phải khớp **từng chữ** với bản TypeScript; hai
@@ -213,7 +220,7 @@ trên tenant còn số hợp đồng trùng, kéo theo mọi thay đổi schema 
 "don_vi_access" SET "xemLuong" = true;` trong migration đó KHÔNG được bỏ** (BR-hrm-069): thiếu nó
 thì đúng ngày triển khai mọi kế toán đang làm việc mất màn hợp đồng cùng lúc.
 
-### 1.4. TUYỆT ĐỐI KHÔNG NHÂN ĐÔI — 16 điều
+### 1.4. TUYỆT ĐỐI KHÔNG NHÂN ĐÔI — 19 điều
 
 1. **Không** thêm lại cột hợp đồng vào `hrm_nhan_vien` dưới bất kỳ tên nào. Đã bỏ có lý do, và lý
    do đó không mất đi (`ADR-002` mục A). Cần nhanh hơn thì thêm **index**, đừng thêm bản sao.
@@ -270,6 +277,21 @@ thì đúng ngày triển khai mọi kế toán đang làm việc mất màn h�
     (`boTruongLuongKhiGhi`), tuyệt đối không nhận `null` rồi ghi đè — người không có quyền đọc thì
     màn hình của họ không có sẵn giá trị cũ để gửi lại.
 
+**Ba điều bổ sung từ đợt QĐ #21 (một giấy tờ giữ nhiều file):**
+
+17. **KHÔNG đọc, KHÔNG ghi bốn cột `hrm_tai_lieu.drive_file_id` / `ten_file` / `mime_type` /
+    `kich_thuoc` nữa.** Chúng vẫn còn trong `schema.prisma` **chỉ để chờ đối chiếu số liệu** rồi
+    bỏ ở đợt riêng (xem 1.6 mục 🚨 D). Con trỏ thật sống ở `hrm_tai_lieu_file`. Viết code mới đụng
+    vào bốn cột đó là dựng lại đúng mô hình một-file vừa bỏ.
+18. **KHÔNG tra `hrm_tai_lieu_file` theo mỗi `id` đến từ client.** Luôn đi qua dòng giấy tờ cha đã
+    kiểm quyền rồi chọn trong `files` bằng `timFileCuaTaiLieu`. Tra thẳng là người có quyền vào
+    công ty xem và gỡ được file của giấy tờ **bất kỳ** chỉ bằng cách đoán id (E-hrm-066 sinh ra
+    cho đúng chuyện này).
+19. **KHÔNG để lỗi Drive chặn việc xóa dòng giấy tờ**, và đừng bọc lời gọi Drive vào
+    `$transaction` rồi rollback. Xóa file là **cố hết sức**; sự thật được nói ra bằng cờ
+    `da_xoa_file_drive` trong phản hồi, không bằng cách ném lỗi (BR-hrm-039). Ngược lại, gỡ **một**
+    file (`goFile`) thì lỗi Drive **phải** ném ra — người dùng đang yêu cầu đúng việc đó.
+
 ### 1.5. Bẫy đã gặp — đừng "sửa cho gọn"
 
 | Thứ trông thừa | Vì sao phải giữ |
@@ -287,8 +309,12 @@ thì đúng ngày triển khai mọi kế toán đang làm việc mất màn h�
 | Chỉ xóa token Drive khi mã **đúng** `invalid_grant` | Bắt theo dải 4xx thì một lần gõ nhầm `GOOGLE_CLIENT_SECRET` sẽ xóa refresh token của **toàn bộ** tenant, sửa env cũng không cứu được |
 | `thoatHtml` + CSP nonce ở callback | Đây là chỗ **duy nhất** trong dự án trả HTML tự dựng bằng nối chuỗi, lại ở route miễn đăng nhập ⇒ mọi dữ liệu ngoài lọt vào là XSS phản chiếu ngay trên origin đang giữ cookie phiên |
 | `hangDoiThuMuc` (hàng đợi tạo thư mục) | "Tìm trước rồi tạo" chỉ chặn được trùng khi các lượt đi tuần tự; hai người cùng đính file cho một NV thì cả hai cùng tìm hụt, cùng tạo ⇒ hai thư mục trùng tên, file rải hai nơi |
-| Xóa file cũ **sau** khi upload file mới thành công | Hỏng giữa chừng thì thà thừa một file trên Drive còn hơn mất cả hai |
 | Chặn 10MB **cả đường về** | File nằm trên Drive **của khách**; sau khi app tải lên 2MB họ thay bằng file 2GB lúc nào cũng được |
+| `thu_tu` riêng, KHÔNG sắp theo mỗi `datetime0` | Hai file lên trong cùng một mili-giây sẽ đảo chỗ giữa các lần đọc, "mặt trước / mặt sau" nhảy qua nhảy lại |
+| `thuTuKeTiep` lấy **max + 1**, không lấy `files.length` | Gỡ file ở giữa rồi thêm file mới sẽ sinh `thu_tu` trùng với file còn lại — đúng thứ `thu_tu` sinh ra để tránh |
+| Kiểm trần 20 file **trước** khi gọi Google | Từ chối sau khi đã upload là để lại file mồ côi trên Drive của khách mà mình không còn con trỏ |
+| `xoaMoiFileTrenDrive` chạy **trước** `hrm_tai_lieu.delete` | `onDelete: Cascade` dọn bảng con ngay; xóa dòng trước là mất sạch con trỏ, file mồ côi vĩnh viễn |
+| `timTaiLieuKemFile` lấy cả danh sách file trong MỘT lượt | Trần 20 dòng con nên không đáng kể, đổi lại mọi phép kiểm sau đó (đếm trần, tính `thu_tu`, kiểm file thuộc đúng giấy tờ) dùng chung một ảnh chụp — không có khe cho hai đường đọc lệch nhau |
 
 ### 1.6. Việc đang chờ làm (theo ADR đã chốt)
 
@@ -312,14 +338,31 @@ thì đúng ngày triển khai mọi kế toán đang làm việc mất màn h�
 | SQL ràng buộc tenant + 2 script vận hành | ✅ xong | `hrmTenantConstraints.ts`, `scripts/{ra-soat-hrm,apply-hrm-constraints}.ts` |
 | Chèn áp ràng buộc vào luồng cấp DB mới | ✅ xong | `provisioning.service.ts` |
 
+**Đợt QĐ #21 — một giấy tờ giữ NHIỀU file scan (đã xong phần mã, CHƯA chạy gì lên DB):**
+
+| Việc | Trạng thái | Nơi ở |
+|:---|:---|:---|
+| Model `hrm_tai_lieu_file` (thu_tu, FK cascade, index) | ✅ xong | `prisma/tenant/schema.prisma` (cuối file) |
+| Giữ nguyên 4 cột con trỏ cũ trên `hrm_tai_lieu` | ✅ cố ý | cùng file — **chưa được bỏ**, xem 🚨 D dưới |
+| Script chuyển dữ liệu một lần, idempotent, in số liệu đối chiếu | ✅ xong | `scripts/chuyen-file-tai-lieu.ts` · `npm run hrm:chuyen-file` |
+| `listTaiLieu` trả mảng `files`, giấu `drive_file_id` | ✅ xong | `taiLieu.service.ts:22-45` |
+| `dinhKemFile` THÊM file + trần 20 (E-hrm-065) | ✅ xong | `taiLieuDrive.service.ts:406` |
+| `taiFileVe` / `goFile` nhận `fileId` + kiểm thuộc đúng giấy tờ (E-hrm-066) | ✅ xong | `taiLieuDrive.service.ts:468, 511` |
+| `deleteTaiLieu` dọn mọi file Drive (cố hết sức) — trả hết nợ mục ⚠️ 4 cũ | ✅ xong | `taiLieu.service.ts:151` → `xoaMoiFileTrenDrive:551` |
+| Route đổi sang `/:id/file/:fileId` (GET, DELETE) | ✅ xong | `routes/hrm/taiLieu.route.ts:39-41` |
+| Wording E-hrm-037 / E-hrm-065 / E-hrm-066 | ✅ xong | `constants/messages.ts:122, 128, 130` |
+| Param `:fileId` | ✅ xong | `validators/hrm/taiLieu.validator.ts:71` |
+| Test thuần 16 ca | ✅ xong | `__tests__/hrmTaiLieuFile.test.ts` |
+
 **Còn nợ (P1 / P2 / vận hành):**
 
 | Ưu tiên | Việc | ADR | File phải sửa |
 |:---:|:---|:---|:---|
 | 🚨 A | **Chạy** `npm run hrm:ra-soat` → dọn dữ liệu → `npm run hrm:constraints`; và `npm run migrate:sys:deploy` cho cột `xemLuong`. **Chưa chạy lần nào** | `data-model.md` 8.0 | vận hành |
 | 🚨 B | Đo thật: `prisma db push` có xóa index/ràng buộc tạo tay không | `data-model.md` 8.0 điểm 3 | DB tenant nháp |
-| 🚨 C | Frontend theo 4 thay đổi phá vỡ (xem 1.8) | `ADR-007` §3 | `hdđt_maxv`, `maxv` |
-| ⚠️ 4 | `DELETE /tai-lieu/:id` xóa file Drive best-effort | `ADR-004` §2 | `taiLieuDrive.service.ts` + `taiLieu.controller.ts` |
+| 🚨 C | Frontend theo các thay đổi phá vỡ (xem 1.8) | `ADR-007` §3 | `hdđt_maxv`, `maxv` |
+| 🚨 D | **Bỏ bốn cột con trỏ cũ khỏi `hrm_tai_lieu`** — ĐỢT RIÊNG, chỉ chạy SAU khi đã `sync:tenants` → `hrm:chuyen-file` → **đối chiếu số liệu từng tenant**. Bỏ cột sớm là `db push --accept-data-loss` DROP COLUMN ngay, 6 con trỏ file biến mất không dựng lại được | `data-model.md` M-14 | `prisma/tenant/schema.prisma` |
+| ⚠️ 16 | Trần 20 file là **pre-check**, không có ràng buộc DB — hai lượt tải lên đồng thời vẫn vượt được trần. Cùng lớp bài toán "đọc rồi ghi" với `so_hd`/chồng lấn (Mục 9 `data-model.md`) | — | `taiLieuDrive.service.ts` |
 | ⚠️ 5 | Retry-on-P2002 khi tự sinh mã | `ADR-001` | `nhanVien.service.ts`, `phongBan.service.ts`, `helpers/crudGuards.ts` |
 | ⚠️ 6 | Thêm `code` vào envelope lỗi | `ADR-005` §1 | `helpers/errors.ts`, `errorHandler.plugin.ts` |
 | ⚠️ 7 | Cột audit `user_id0`/`user_id2` + `writeLog` 5 nhóm thao tác | `ADR-004` §4 | schema + 5 service |
@@ -341,18 +384,25 @@ npm run lint          # eslint src  (0 error; warning no-console trong scripts l
 npm test              # tsx --test src/__tests__/*.test.ts
 ```
 
-Hai file test HRM: `src/__tests__/hrmHopDong.test.ts` (28 ca — gom nhóm, khoảng ngày, mốc giờ VN,
-validator) và `src/__tests__/hrmQuyenVaNpt.test.ts` (26 ca — kỳ giảm trừ, che trường lương, bắt lỗi
-ràng buộc, thân yêu cầu phân quyền). Cả hai **chạy được không cần Postgres**; tên mỗi ca ghi kèm mã
-`TC-hrm-*` để truy ngược `qa/test-cases.md` Mục 6B.
+Ba file test HRM, tổng **70 ca**, **chạy được không cần Postgres**:
+
+| File | Số ca | Nội dung |
+|:---|:--:|:---|
+| `src/__tests__/hrmHopDong.test.ts` | 28 | gom nhóm, khoảng ngày, mốc giờ VN, validator |
+| `src/__tests__/hrmQuyenVaNpt.test.ts` | 26 | kỳ giảm trừ, che trường lương, bắt lỗi ràng buộc, thân yêu cầu phân quyền |
+| `src/__tests__/hrmTaiLieuFile.test.ts` | 16 | `thu_tu` kế tiếp, trần 20 file (E-hrm-065), file thuộc đúng giấy tờ (E-hrm-066), param `:fileId` |
+
+Phần cần DB thật (để Phase B): thứ tự đọc `orderBy [thu_tu, datetime0]`, cascade khi xóa dòng cha,
+bước dọn Drive cố-hết-sức của `deleteTaiLieu`, và hai lượt tải lên đua nhau ở trần 20 file.
 
 ⚠️ `src/__tests__/adminOwner.test.ts` đang **fail 5 ca từ trước đợt P0** (đã đối chứng trên bản
-chưa sửa). Không phải hồi quy của đợt này, nhưng cũng chưa được sửa.
+chưa sửa). Không phải hồi quy của đợt này, nhưng cũng chưa được sửa. Số liệu `npm test` hiện tại:
+**472 ca — 467 pass, 5 fail** (đúng 5 ca nói trên).
 
 ### 1.8. Các thay đổi PHÁ VỠ giao diện — bàn giao cho đợt Frontend
 
-Bốn nhóm việc (5 dòng dưới đây) **cố ý** làm hỏng giao diện hiện tại; đó là yêu cầu của QĐ #8 và
-BR-hrm-053/067, không phải sơ suất. Frontend phải sửa trước khi bật lên môi trường thật.
+Chín dòng dưới đây **cố ý** làm hỏng giao diện hiện tại; đó là yêu cầu của QĐ #8, QĐ #12, QĐ #21
+và BR-hrm-053/067, không phải sơ suất. Frontend phải sửa trước khi bật lên môi trường thật.
 
 | # | Endpoint | Trước | Sau | Hỏng gì nếu FE không sửa |
 |:--:|:---|:---|:---|:---|
@@ -361,6 +411,15 @@ BR-hrm-053/067, không phải sơ suất. Frontend phải sửa trước khi b�
 | 3 | `GET /hrm/nhan-vien`, `GET /hrm/nhan-vien/:ma_nv` | luôn có `so_tai_khoan`/`ten_tai_khoan`/`ngan_hang` | **vắng hẳn ba khóa** khi không có quyền | Kiểu FE khai bắt buộc sẽ vỡ; phải khai `optional` |
 | 4 | `PUT /hrm/nhan-vien/:ma_nv` | thiếu `status` → mặc định `'1'` | thiếu `status` → **400** | Form sửa nhân viên không gửi `status` sẽ lưu hỏng |
 | 5 | `POST /hrm/hop-dong/doi` | không có `loai_hd_can_chot` | **bắt buộc** | Nút Đổi hợp đồng → 400 cho tới khi FE thêm ô chọn loại cần chốt |
+| 6 | `GET /hrm/tai-lieu` | mỗi dòng có `drive_file_id`/`ten_file`/`mime_type`/`kich_thuoc` | **vắng hẳn bốn khóa**, thay bằng mảng `files: [{ id, ten_file, mime_type, kich_thuoc }]` (rỗng = chưa đính file) | Cột "File scan" đọc `row.ten_file` sẽ ra `undefined`; điều kiện `row.drive_file_id ? ...` luôn sai ⇒ nút xem/gỡ biến mất |
+| 7 | `GET /hrm/tai-lieu/:id/file` | không có `:fileId` | `GET /hrm/tai-lieu/:id/file/**:fileId**` | Đường cũ → **404 route**, ảnh không mở được. Lấy `fileId` từ phần tử trong `files` |
+| 8 | `DELETE /hrm/tai-lieu/:id/file` | gỡ file duy nhất | `DELETE /hrm/tai-lieu/:id/file/**:fileId**`, trả `{ id, so_file_con_lai }` | Đường cũ → **404 route**. Nút gỡ phải nằm trên **từng file**, không phải trên dòng giấy tờ |
+| 9 | `POST /hrm/tai-lieu/:id/file` | thay thế file cũ; trả `{ id: <id giấy tờ>, ten_file, ... }` | **THÊM VÀO**; trả `{ id: <id FILE vừa tạo>, tai_lieu_id, ten_file, mime_type, kich_thuoc, so_file }`; đủ 20 file → **409 E-hrm-065** | Đường dẫn không đổi nên không vỡ ngay, nhưng `data.id` **đổi nghĩa** — FE dùng nó như id giấy tờ sẽ sai. Chọn nhiều file thì gọi **tuần tự** nhiều lần |
+
+**Kèm theo (không phá vỡ, nhưng phải dùng):** `DELETE /hrm/tai-lieu/:id` nay trả thêm
+`da_xoa_file_drive` và **xóa luôn mọi file scan trên Drive** (BR-hrm-039). Hộp xác nhận phải nêu
+**số file sắp mất** vì thao tác không hoàn tác được; `false` thì nói rõ "đã xóa bản ghi, nhưng chưa
+dọn được file trên Drive" thay vì báo thành công trơn.
 
 **Không phá vỡ** (cố ý làm tương thích ngược): `PUT /companies/employees/:userId/access` vẫn nhận
 thân cũ `{ donViIds }` bên cạnh thân mới `{ access: [{ donViId, xemLuong }] }`, và phản hồi giữ
@@ -377,6 +436,9 @@ phần tử `donViAccess` — thêm trường, không đổi trường cũ.
 > Cập nhật 2026-09-07 — đợt đồng bộ giao diện với hợp đồng P0 (đóng **BUG-HRM-41** và **ĐS-04**).
 > Phạm vi đợt này **không đụng** `features/hrm/mock/` (24 file): các màn Chấm công, Bảng lương,
 > KPI, Tăng ca… vẫn chạy dữ liệu giả và nằm ngoài phạm vi.
+>
+> Cập nhật 2026-09-08 — đợt **QĐ #21: một giấy tờ giữ NHIỀU file scan** (mục 1.8 dòng 6–9).
+> Chạm 4 file trong `features/hrm/`, vẫn **không đụng** `mock/`. Chi tiết ở 2.8.
 
 ### 2.1. Tầng gọi API và query key
 
@@ -559,17 +621,97 @@ một lỗi mà form tự biết trước.
 > hoặc để `lib/http.ts` mang theo `errors.fieldErrors` trong `ApiError`. Chỗ thứ hai nằm **ngoài**
 > `features/hrm/` nên đợt này không đụng.
 
-### 2.8. Tab Hồ sơ & Tài liệu (`HoSoTab`)
+### 2.8. Tab Hồ sơ & Tài liệu — MỘT giấy tờ, NHIỀU file `[QĐ #21]`
+
+**Mô hình phải hiểu trước khi đọc code:** căn cước là **MỘT** giấy tờ có **HAI** mặt, không phải
+hai giấy tờ. Một dòng `hrm_tai_lieu` giữ nhiều file scan (BR-hrm-037); danh sách file đi kèm ngay
+trong `GET /tai-lieu` dưới khóa `files`.
+
+> 🚫 **Hướng đi đã bị bác bỏ, đừng khôi phục:** bản trước cho chọn nhiều file rồi tạo **mỗi file
+> một dòng tài liệu riêng**. Kết quả là hồ sơ hiện ra hai dòng cùng tên "CCCD" và người đọc không
+> biết đó là một giấy tờ hay hai. Toàn bộ vòng lặp tạo N dòng, state `filesChon` + `tienTrinh` kiểu
+> cũ và dòng chữ *"Mỗi file thành một dòng tài liệu riêng…"* **đã gỡ**.
+
+**Bản đồ file:**
+
+| Việc | Nơi ở |
+|:---|:---|
+| Kiểu + đường dẫn + hằng chép từ BE | `api/taiLieuApi.ts` |
+| Hook TanStack Query + luồng tải nhiều file | `api/taiLieuQueries.ts` |
+| Form thêm/sửa giấy tờ + đính file | `components/nhan_vien/TaiLieuFormDialog.tsx` |
+| Danh sách file **lồng trong một dòng giấy tờ** | `components/nhan_vien/DanhSachFileScan.tsx` (mới) |
+| Bảng hồ sơ, hộp xác nhận xóa/gỡ | `components/nhan_vien/tabs/HoSoTab.tsx` |
+
+**Ba đường API cần cặp id, không phải một:**
+
+```
+GET    /hrm/tai-lieu                      -> mỗi dòng có files: [{ id, ten_file, mime_type, kich_thuoc }]
+POST   /hrm/tai-lieu/:id/file             -> THÊM VÀO; data.id là id FILE vừa tạo, KHÔNG phải id giấy tờ
+GET    /hrm/tai-lieu/:id/file/:fileId     -> xem đúng một file
+DELETE /hrm/tai-lieu/:id/file/:fileId     -> gỡ đúng một file, trả { id, so_file_con_lai }
+DELETE /hrm/tai-lieu/:id                  -> xóa dòng + MỌI file Drive, trả { id, da_xoa_file_drive }
+```
+
+`drive_file_id` **không** có trong `files` — BE cố ý không trả con trỏ Drive ra ngoài. FE chỉ cần
+`files[].id`. Bốn khóa cũ ở cấp dòng (`drive_file_id`/`ten_file`/`mime_type`/`kich_thuoc`) đã **bỏ
+hẳn**; `veKieuFe()` vẫn có `r.files ?? []` để dòng cũ còn kẹt trong cache không làm vỡ lúc render.
+
+**Luồng "thêm giấy tờ kèm nhiều file" (`TaiLieuFormDialog.handleSubmit`) — 5 bước, đúng thứ tự:**
+
+1. Soát dung lượng **MỌI** file chưa tải, **trước khi ghi gì**. Soát dần thì file thứ ba quá cỡ để
+   lại một dòng đã tạo dở và hai file đã lên Drive của khách.
+2. Chặn trần **20 file** tại chỗ (E-hrm-065). Số file hiện có = `taiLieu.files.length` (ảnh chụp
+   lúc mở form, KHÔNG tự tăng) **cộng** số file lượt bấm trước đã lên.
+3. Ghi dòng giấy tờ **ĐÚNG MỘT LẦN** → nhớ vào `idDaTao`.
+4. Không có file mới thì dừng ở đây (giấy tờ khai trước, scan sau là hợp lệ).
+5. `useTaiNhieuFileLen(idDong, filesChon, daXong, setDaXong)` — tải **tuần tự** vào **chính dòng đó**.
+
+**Làm tiếp từ chỗ hỏng — đây là phần dễ làm sai nhất.** Lần đầu đính file của một công ty sẽ mở
+cửa sổ đăng nhập Google; người dùng đóng nó đi là hỏng ngay, nên đây KHÔNG phải ca hiếm.
+
+- `idDaTao` giữ id dòng đã tạo → lần bấm lại truyền vào `luuTaiLieu` như id cần **sửa**. Đây là
+  chỗ duy nhất chặn "tạo dòng giấy tờ thứ hai". Bỏ nó là mỗi lần bấm lại đẻ thêm một dòng.
+- `daXong: boolean[]` cùng chỉ số với `filesChon` → file đã lên **không tải lại**.
+- Chọn file lần nữa khi đã có file lên thật thì **THÊM VÀO cuối danh sách**, không thay cả danh
+  sách: xóa chúng đi là mất dấu, bấm lại sẽ tải bản thứ hai của cùng file lên Drive.
+- Toast lỗi phải nêu **tên file hỏng** và **`soXong`/tổng**. `loi.file` vắng nghĩa là hỏng ở bước
+  kết nối Drive (chưa file nào gửi đi) — lúc đó **đừng** ghép tên file vào câu.
+- `useTaiNhieuFileLen` gọi `damBaoDrive()` **một lần cho cả lượt**, không phải mỗi file một lần:
+  hỏi lại trước từng file vừa tốn một lượt API vừa có nguy cơ mở lại popup ở giữa dãy.
+- `lamMoi()` nằm trong `finally` — hỏng giữa chừng thì các file trước **đã lên thật**, không làm
+  mới là bảng hồ sơ nói dối.
+
+**Hiển thị "một giấy tờ, mấy file" (`DanhSachFileScan`):** danh sách file nằm **trong ô "File scan"
+của chính hàng giấy tờ đó** — khung của hàng bảng chính là dấu hiệu gộp nhóm. Mỗi file có vạch dọc
+thụt vào, nút xem và nút gỡ **riêng**. Vì hàng cao lên theo số file, mọi ô của hàng phải
+`verticalAlign: "top"`, không thì loại giấy tờ trôi xuống giữa dãy file và mất liên hệ thị giác.
+Dòng chưa có file hiện chữ *"Chưa đính file scan"* + nút *Đính file*, **không** để danh sách rỗng trơ.
+
+**Hai hộp xác nhận phải nói số liệu thật, không nói chung chung:**
+
+- Xóa cả dòng: nêu **số file sắp mất** (BR-hrm-039). Sau khi xóa, `da_xoa_file_drive = false` thì
+  báo `toast.warning` *"đã xóa tài liệu nhưng chưa dọn được N file trên Drive"* — BE xóa Drive theo
+  kiểu **cố hết sức**, báo thành công trơn là nói sai.
+- Gỡ một file: nêu **tên file đó** + số file còn lại. Gỡ file cuối cùng **không** xóa dòng theo
+  (BR-hrm-038) — câu xác nhận nói rõ để người dùng khỏi đi tìm xem dòng có biến mất không.
+
+**Bản sao wording E-hrm-065 ở FE là ngoại lệ có chủ ý** (cùng loại với 2.7): `LOI_QUA_NHIEU_FILE`
+trong `taiLieuApi.ts` chép **nguyên văn** từ `be_maxv/src/constants/messages.ts`
+(`MESSAGES.HRM.TAI_LIEU_QUA_NHIEU_FILE`). BE vẫn là nơi quyết định thật — bản FE chỉ để **chặn
+sớm**, vì để BE bắt thì người dùng đã ngồi đợi hết các file đầu và chúng đã nằm trên Drive rồi.
+Cùng lý do với `GIOI_HAN_FILE_BYTE`, `MIME_CHO_PHEP`, `SO_FILE_TOI_DA`. Sửa bên BE thì sửa cả ở đây.
+
+**Bốn điều giữ nguyên từ trước (đừng "sửa cho gọn"):**
 
 - Hỏi trạng thái Drive trước. `da_ket_noi = false` thì hiện banner mời kết nối Drive.
   `may_chu_san_sang = false` là máy chủ chưa cấu hình, **không** phải lỗi người dùng.
 - Kết nối Drive: gọi `GET /drive/lien-ket` lấy `url` rồi mở **popup**. **Không** redirect cả trang
-  — trang unload là mất luôn `File` người dùng vừa chọn.
-- Popup **không** gửi `postMessage` (khác origin, FE không nhận được). Cách đúng: đợi popup đóng
-  rồi **hỏi lại** `GET /drive/trang-thai`.
-- Xem file: dùng `taiFileVe(id)` sang Blob sang `URL.createObjectURL`. **Không** trỏ `<img src>`
-  thẳng vào API — thẻ `<img>` đi ngoài lớp `apiFetch` nên gặp token hết hạn chỉ hiện hình vỡ,
-  không kích hoạt được cơ chế tự làm mới token.
+  — trang unload là mất luôn `File` người dùng vừa chọn. Popup **không** gửi `postMessage` (khác
+  origin, FE không nhận được); cách đúng là đợi popup đóng rồi **hỏi lại** `GET /drive/trang-thai`.
+- Xem file: `taiFileVe(id, fileId)` sang Blob sang `URL.createObjectURL`, và **thu hồi** URL đó
+  (`urlRef` + cleanup lúc unmount, không chỉ ở nút Đóng). **Không** trỏ `<img src>` thẳng vào API —
+  thẻ `<img>` đi ngoài lớp `apiFetch` nên gặp token hết hạn chỉ hiện hình vỡ, không kích hoạt được
+  cơ chế tự làm mới token.
 - Tải lên: `FormData` qua `apiFetch` thẳng, **không** qua `api.post` (shim đó `JSON.stringify` mọi
   body, làm hỏng multipart boundary).
 
@@ -606,6 +748,17 @@ và đang **dùng thật**:
 | `so_npt_da_xoa` thành **`so_npt_an_theo`**, và nói con số đó ra trên toast (đóng **ĐS-04**) | `api/nhanVienApi.ts`, `api/nhanVienQueries.ts`, `NhanVienTable.tsx` |
 | `status` bắt buộc ở `PUT /nhan-vien` — **đã đúng sẵn**, chỉ ghi chú lại lý do | `api/nhanVienApi.ts`, `api/nhanVienQueries.ts` |
 
+**Đã làm (2026-09-08 — QĐ #21, đóng 4 dòng phá vỡ số 6–9 ở mục 1.8):**
+
+| Việc | Nơi |
+|:---|:---|
+| Kiểu dòng tài liệu đổi sang `files: FileScanApi[]`; bỏ 4 khóa cũ ở cấp dòng | `api/taiLieuApi.ts`, `api/taiLieuQueries.ts` |
+| Xem / gỡ file đi theo cặp `(idTaiLieu, fileId)`; `deleteTaiLieu` trả `da_xoa_file_drive` | `api/taiLieuApi.ts`, `api/taiLieuQueries.ts` |
+| Gỡ **hướng đi sai** "mỗi file một dòng tài liệu"; mọi file vào **cùng một** dòng, tải tuần tự, làm tiếp từ chỗ hỏng | `TaiLieuFormDialog.tsx` |
+| Chặn trước trần 20 file, wording E-hrm-065 nguyên văn từ BE | `api/taiLieuApi.ts` (`LOI_QUA_NHIEU_FILE`), `TaiLieuFormDialog.tsx` |
+| Danh sách file lồng trong hàng giấy tờ, mỗi file một nút xem + một nút gỡ | `DanhSachFileScan.tsx` (mới), `tabs/HoSoTab.tsx` |
+| Hộp xác nhận nêu **số file** (xóa dòng) và **tên file** (gỡ file); cảnh báo khi `da_xoa_file_drive = false` | `tabs/HoSoTab.tsx` |
+
 **Còn nợ:**
 
 | Ưu tiên | Việc | Nơi / cần ai |
@@ -618,6 +771,8 @@ và đang **dùng thật**:
 | ⚠️ | `nguoi-phu-thuoc` / `tai-lieu` vẫn tải hết rồi lọc client | `api/nguoiPhuThuocQueries.ts`, `api/taiLieuQueries.ts` |
 | ℹ️ | Badge "Chưa có HĐ" khi `so_hop_dong == null` (ISSUE-HRM-04) | Bảng danh sách nhân viên |
 | ℹ️ | Nói rõ trên UI: xóa nhân viên **không** xóa file scan trên Drive | Hộp thoại xác nhận xóa |
+| ℹ️ | Chưa có ô **ngày hết hạn** giấy tờ + cảnh báo hạn (QĐ #14, contract 6.2 / 7B). Cố ý chưa làm: `taiLieuBodySchema` bên BE **không có** `ngay_het_han`, gửi lên sẽ bị Zod loại — đây là đợt P2 | **Backend** trước, rồi `TaiLieuFormDialog` + `HoSoTab` |
+| ℹ️ | Đổi thứ tự file trong một giấy tờ (cột `thu_tu`) — BE chưa có endpoint, hiện chỉ sắp theo lúc tải lên | **Backend** + `DanhSachFileScan` |
 
 ### 2.11. Lệnh kiểm tra trước khi mở PR
 

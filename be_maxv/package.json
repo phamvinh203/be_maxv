@@ -16,6 +16,7 @@
     "sync:tenants": "tsx src/scripts/sync-tenants.ts",
     "hrm:ra-soat": "tsx src/scripts/ra-soat-hrm.ts",
     "hrm:constraints": "tsx src/scripts/apply-hrm-constraints.ts",
+    "hrm:chuyen-file": "tsx src/scripts/chuyen-file-tai-lieu.ts",
     "typecheck": "tsc --noEmit",
     "lint": "eslint src",
     "lint:fix": "eslint src --fix",

@@ -354,6 +354,7 @@ nhầm nằm lại trong báo cáo nhân sự mãi mãi.
 | **M-11** | Cột `ngay_het_han` | `hrm_tai_lieu` | ⚠️ TB — ✅ **đã chốt QĐ #14** | BR-hrm-062 |
 | **M-12** | Bảng mới `hrm_giay_to_bat_buoc` | tenant (bảng thứ 6) | ⚠️ TB — ✅ **đã chốt QĐ #14** | BR-hrm-063 |
 | **M-13** | Cột `xemLuong` trên `DonViAccess` | **`maxv2_sys`** (control plane) | 🚨 Cao — ✅ **đã chốt QĐ #8** | `ADR-007` |
+| **M-14** | Bảng con `hrm_tai_lieu_file`, bỏ 4 cột con trỏ file khỏi `hrm_tai_lieu` | tenant | 🚨 Cao — ✅ **đã chốt QĐ #21** | BR-hrm-037 |
 
 > **Thứ tự bắt buộc:** M-07 và M-09 **đi chung một đợt**. Cả hai đều là ràng buộc duy nhất áp lên dữ liệu đang chạy, cả hai đều làm migration **fail** nếu tenant đã có dữ liệu trùng, và cả hai đều cần rà + dọn tay + báo khách trước. Tách ra làm hai lần là bắt khách dừng dịch vụ hai lần cho cùng một loại việc.
 >
@@ -626,6 +627,58 @@ UPDATE "don_vi_access" SET "xemLuong" = true;
 ```
 
 Từ thời điểm đó trở đi, mọi bản ghi phân quyền **mới** nhận `false` theo mặc định của cột và phải được cấp riêng. Chủ tài khoản thu hồi dần cho người không cần.
+
+### M-14 — Một giấy tờ giữ NHIỀU file scan (✅ đã chốt QĐ #21)
+
+Hiện `hrm_tai_lieu` giữ con trỏ file bằng **bốn cột đơn** (`drive_file_id`, `ten_file`, `mime_type`, `kich_thuoc`) nên một dòng giấy tờ chỉ ôm được một file. Thực tế căn cước có hai mặt, bằng cấp và hợp đồng giấy có nhiều trang. Cách chữa tạm bằng "mỗi ảnh một dòng" đã thử và **sai bản chất**: danh sách hiện ba dòng cùng tên "CCCD", người đọc không biết đó là một giấy tờ hay ba.
+
+```prisma
+model hrm_tai_lieu_file {
+  id         String @id @db.VarChar(64) // uuid sinh ở service
+  tai_lieu_id String @db.VarChar(64)
+
+  drive_file_id String @db.VarChar(64)
+  ten_file      String @db.VarChar(254)
+  mime_type     String @db.VarChar(128)
+  kich_thuoc    Int    // byte
+
+  /// Giữ thứ tự hiển thị ổn định. KHÔNG sắp theo `datetime0`: hai file tải lên trong cùng một
+  /// mili-giây sẽ đảo chỗ giữa các lần đọc, và "mặt trước / mặt sau" nhảy qua nhảy lại.
+  thu_tu    Int      @default(0)
+  datetime0 DateTime @default(now())
+
+  tai_lieu hrm_tai_lieu @relation(fields: [tai_lieu_id], references: [id], onDelete: Cascade, onUpdate: Cascade)
+
+  @@index([tai_lieu_id])
+}
+```
+
+Trên `hrm_tai_lieu`: **bỏ** bốn cột `drive_file_id` / `ten_file` / `mime_type` / `kich_thuoc`, **thêm** quan hệ `files hrm_tai_lieu_file[]`.
+
+#### 🚨 THỨ TỰ BẮT BUỘC — làm sai là mất dữ liệu thật
+
+Đã đo trên môi trường phát triển: **7 dòng giấy tờ, 6 dòng đang đính file** ở 3 tenant. Schema tenant áp bằng `prisma db push --accept-data-loss` (Mục 8.0), nghĩa là **bỏ cột trong `schema.prisma` rồi push là Postgres DROP COLUMN ngay, sáu con trỏ file biến mất và không dựng lại được** — file vẫn nằm trên Drive của khách nhưng không còn gì trỏ tới.
+
+Bốn bước, **không được đảo**:
+
+1. **Thêm model mới vào `schema.prisma`, GIỮ NGUYÊN bốn cột cũ.** Chạy `npm run sync:tenants` → bảng con được tạo, không cột nào bị bỏ.
+2. **Chạy script chuyển dữ liệu một lần** (`npm run hrm:chuyen-file`): với mỗi dòng có `drive_file_id` khác rỗng, chèn một dòng vào `hrm_tai_lieu_file` (`thu_tu = 0`). Script **idempotent** — chạy lại không nhân đôi, kiểm bằng cặp (`tai_lieu_id`, `drive_file_id`).
+3. **Đối chiếu**: số dòng `hrm_tai_lieu_file` phải **bằng** số dòng `hrm_tai_lieu` có `drive_file_id` khác rỗng, trên **từng** tenant. Lệch một dòng thì dừng, không đi tiếp.
+4. **Chỉ khi bước 3 khớp** mới bỏ bốn cột khỏi `schema.prisma` và chạy `sync:tenants` lần hai.
+
+> ✅ **ĐÃ THỰC HIỆN XONG trên môi trường phát triển ngày 2026-09-08.** Bốn bước chạy đúng trình tự; đối soát bước 3 khớp (nguồn 3 = đích 3); dữ liệu 4 cột được sao lưu ra tệp JSON trước khi bỏ. Sau bước 4: **4 cột đã xóa trên 10/10 tenant, 6 dòng file trong bảng con nguyên vẹn**.
+>
+> 🔬 **Đo được một điều còn treo từ BUG-HRM-30**: *"chưa ai đo xem `db push` có xóa ràng buộc tạo tay không"*. Nay đã đo — sau lần `sync:tenants` này, **cả hai ràng buộc loại trừ `hrm_hop_dong_khong_chong_lan` và `hrm_npt_mst_khong_trung_ky` còn nguyên trên 10/10 tenant**. Prisma không mô tả được `EXCLUDE` nên nó không quản lý và không drop. Điều này **chỉ đúng cho `EXCLUDE`**; index và unique constraint thì Prisma có quản lý, vẫn phải chạy lại `hrm:constraints` sau mỗi `sync:tenants` như runbook đã ghi.
+>
+> **Production chưa migrate.** Script `hrm:chuyen-file` đã chuyển sang đọc bằng SQL thuần nên chạy được ở cả hai trạng thái schema — tenant còn cột thì chuyển, tenant đã bỏ cột thì báo "đã chuyển đủ" và dừng.
+
+> Bước 3 không phải thủ tục cho đẹp. `db push` không hỏi lại và không có đường lùi; đây là **lần duy nhất** phát hiện được sai sót trước khi dữ liệu mất hẳn.
+
+#### Hệ quả kéo theo
+
+* **Chỉ báo hồ sơ đủ/thiếu (BR-hrm-064) không đổi** — nó xét *có dòng giấy tờ hay không*, không xét file. Vẫn đúng sau thay đổi này.
+* **Xóa dòng giấy tờ** phải xóa **mọi** file trên Drive chứ không phải một (BR-hrm-039). Khóa ngoại `onDelete: Cascade` dọn dòng trong cơ sở dữ liệu, nhưng **file trên Drive thì Postgres không biết** — service vẫn phải tự gọi Drive cho từng file trước khi xóa dòng.
+* **Không thêm ràng buộc duy nhất trên `drive_file_id`.** Google có thể cấp lại id cho file khác sau khi xóa, và một ràng buộc như vậy sẽ chặn oan mà không bảo vệ được gì.
 
 ### M-06 — Index lọc danh sách nhân viên
 
