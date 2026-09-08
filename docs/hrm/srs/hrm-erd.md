@@ -1,14 +1,14 @@
 ---
 type: srs-erd
 feature: hrm
-updated: 2026-09-07
+updated: 2026-09-08
 ---
 
 # HRM — SƠ ĐỒ QUAN HỆ THỰC THỂ (ERD)
 
-Nguồn sự thật: `be_maxv/prisma/tenant/schema.prisma` dòng 834-1030 (5 model `hrm_*`) và `be_maxv/prisma/sys/schema.prisma` (model `DonVi`, phần cột Drive). Mọi thuộc tính không đánh dấu đều đối chiếu 1-1 với schema thật tại thời điểm cập nhật.
+Nguồn sự thật: `be_maxv/prisma/tenant/schema.prisma` dòng 834-1030 (các model `hrm_*`) và `be_maxv/prisma/sys/schema.prisma` (model `DonVi`, phần cột Drive). Mọi thuộc tính không đánh dấu đều đối chiếu 1-1 với schema thật tại thời điểm cập nhật.
 
-**Cập nhật 2026-09-07 (đợt chốt nghiệp vụ 16/16).** Các phần tử đánh `[MỚI]` hoặc `[SỬA]` là **yêu cầu nghiệp vụ chưa có trong schema**, sinh ra từ các quyết định ghi ở Mục 6.1 của `docs/hrm/CONTEXT_SUMMARY.md`. Chúng là đầu việc cho Architect (`architecture/data-model.md`) chứ không phải mô tả hiện trạng. Cụ thể: một thực thể mới (`hrm_giay_to_bat_buoc`), hai cột mới (`hrm_nhan_vien.ngay_nghi_viec`, `hrm_tai_lieu.ngay_het_han`) và ba ràng buộc duy nhất / loại trừ mới.
+**Cập nhật 2026-09-08 (bổ sung Cấu hình mặc định, Ca làm việc và Ngày lễ).** Các phần tử đánh `[MỚI]` hoặc `[SỬA]` là **yêu cầu nghiệp vụ đặc tả trong SRS**, sinh ra từ các quyết định nghiệp vụ và thiết kế nền tảng lịch trình/chấm công/lương (tham chiếu `docs/nestjs/hr/` và `implementation_plan.md`). Cụ thể bổ sung 3 thực thể nền tảng: `hrm_general_settings` (Singleton `DEFAULT`), `hrm_work_shifts` (Mã `CA01`-`CA99`), `hrm_holidays` (Lịch ngày lễ), cùng với cấu trúc `hrm_tai_lieu_file` (QĐ #21 - nhiều file scan cho một giấy tờ).
 
 ---
 
@@ -17,7 +17,7 @@ Nguồn sự thật: `be_maxv/prisma/tenant/schema.prisma` dòng 834-1030 (5 mod
 | Không gian | Cơ sở dữ liệu | Chứa gì trong phạm vi HRM |
 |---|---|---|
 | Control plane | `maxv2_sys` | Bảng `DonVi` (`don_vi`): mã số thuế, tên công ty, `dbName`, và bộ 3 cột token Google Drive đã mã hóa (`driveRefreshTokenCipher` / `driveRefreshTokenIv` / `driveRefreshTokenTag`), `driveEmail`, `driveRootFolderId`. |
-| Tenant | `maxv_<MST>_app` (giá trị `DonVi.dbName`) | 5 bảng đang có: `hrm_phong_ban`, `hrm_nhan_vien`, `hrm_hop_dong`, `hrm_nguoi_phu_thuoc`, `hrm_tai_lieu`. **`[MỚI]`** thêm bảng thứ 6 `hrm_giay_to_bat_buoc` — danh mục bộ giấy tờ bắt buộc theo loại hợp đồng, khai riêng cho từng công ty. |
+| Tenant | `maxv_<MST>_app` (giá trị `DonVi.dbName`) | 7 bảng nhân sự cốt lõi: `hrm_phong_ban`, `hrm_nhan_vien`, `hrm_hop_dong`, `hrm_nguoi_phu_thuoc`, `hrm_tai_lieu`, `hrm_tai_lieu_file` (QĐ #21: nhiều file scan đính kèm), `hrm_giay_to_bat_buoc` (danh mục giấy tờ theo loại HĐ).<br>**`[MỚI]`** thêm 3 bảng nền tảng hệ thống: `hrm_general_settings` (cấu hình mặc định toàn tenant, Singleton `id = 'DEFAULT'`), `hrm_work_shifts` (danh mục ca làm việc, tự cấp mã `CA01`..`CA99`), `hrm_holidays` (lịch ngày lễ & nghỉ bù quốc gia/nội bộ). |
 
 Hai không gian nằm ở hai kết nối Prisma khác nhau nên **không có khóa ngoại vật lý** nối chúng. Liên kết duy nhất là logic: `DonVi.dbName` chọn ra DB tenant, còn `DonVi.driveRootFolderId` là gốc cây thư mục chứa file scan của mọi `hrm_tai_lieu` trong tenant đó.
 
@@ -36,9 +36,14 @@ erDiagram
     HRM_NHAN_VIEN ||--o{ HRM_HOP_DONG : "một nhân viên nhiều hợp đồng theo thời gian"
     HRM_NHAN_VIEN ||--o{ HRM_NGUOI_PHU_THUOC : "một nhân viên nhiều người phụ thuộc"
     HRM_NHAN_VIEN ||--o{ HRM_TAI_LIEU : "một nhân viên nhiều giấy tờ"
+    HRM_TAI_LIEU ||--o{ HRM_TAI_LIEU_FILE : "một giấy tờ nhiều file scan đính kèm (QĐ 21)"
 
     HRM_HOP_DONG }o..o{ HRM_GIAY_TO_BAT_BUOC : "khớp mềm theo loai_hd, quyết định nhân viên phải có giấy tờ gì"
     HRM_TAI_LIEU }o..o{ HRM_GIAY_TO_BAT_BUOC : "khớp mềm theo loại giấy tờ, dùng đối chiếu hồ sơ đủ hay thiếu"
+
+    HRM_GENERAL_SETTINGS ||..o{ HRM_HOP_DONG : "tham chiếu tỷ lệ BHXH, trần lương, giảm trừ thuế khi tính toán"
+    HRM_WORK_SHIFTS ||..o{ HRM_NHAN_VIEN : "nền tảng phân ca làm việc sau này"
+    HRM_HOLIDAYS ||..o{ HRM_WORK_SHIFTS : "nền tảng tính công và hệ số làm việc ngày lễ sau này"
 
     DON_VI {
         string id PK "khóa chính công ty trong DB sys"
@@ -145,16 +150,83 @@ erDiagram
         date ngay_het_han "MOI - ngày hết hạn giấy tờ, tùy chọn, phải bằng hoặc sau ngay_cap, rỗng nghĩa là không có hạn"
         string noi_cap "nơi cấp, tùy chọn, tối đa 254 ký tự"
         string ghi_chu "ghi chú, tối đa 512 ký tự"
-        string drive_file_id "ID file scan trên Drive, rỗng nghĩa là chưa đính file"
-        string ten_file "tên file gốc, chỉ có khi đã đính file"
-        string mime_type "kiểu file, chỉ nhận ảnh JPEG PNG WEBP HEIC hoặc PDF"
-        int kich_thuoc "dung lượng theo byte, trần 10485760"
         datetime datetime0 "thời điểm tạo"
         datetime datetime2 "thời điểm sửa gần nhất"
     }
+
+    HRM_TAI_LIEU_FILE {
+        string id PK "MOI (QĐ 21) - định danh sinh tự động CUID"
+        string tai_lieu_id FK "khóa ngoại cứng tới hrm_tai_lieu"
+        string drive_file_id "ID file scan trên Google Drive"
+        string ten_file "tên file gốc"
+        string mime_type "kiểu file (image/pdf)"
+        int kich_thuoc "dung lượng file theo byte (trần 10MB)"
+        int thu_tu "thứ tự hiển thị file trong giấy tờ"
+        datetime datetime0 "thời điểm tải lên"
+        datetime datetime2 "thời điểm sửa gần nhất"
+    }
+
+    HRM_GENERAL_SETTINGS {
+        string id PK "DEFAULT - Singleton, khóa chính cố định duy nhất"
+        enum standardWorkingDaysMethod "FIXED_26, FIXED_24, ACTUAL_MONTH (mặc định FIXED_26)"
+        enum saturdayPolicy "FULL_DAY, HALF_DAY, OFF (mặc định HALF_DAY)"
+        enum sundayPolicy "FULL_DAY, HALF_DAY, OFF (mặc định OFF)"
+        decimal standardHoursPerDay "giờ công chuẩn/ngày (1.0-24.0h, mặc định 8.0)"
+        int baseAnnualLeaveDays "phép năm cơ bản (Điều 113 BLLĐ: mặc định 12)"
+        int seniorityYearsForExtraDay "năm thâm niên thêm 1 ngày phép (Điều 114 BLLĐ: 5)"
+        decimal otRateWeekdayDay "hệ số OT ngày thường ban ngày % (Điều 98 BLLĐ: 150)"
+        decimal otRateWeekdayNight "hệ số OT ngày thường ban đêm % (200)"
+        decimal otRateWeekendDay "hệ số OT cuối tuần ban ngày % (200)"
+        decimal otRateWeekendNight "hệ số OT cuối tuần ban đêm % (270)"
+        decimal otRateHolidayDay "hệ số OT ngày lễ ban ngày % (300)"
+        decimal otRateHolidayNight "hệ số OT ngày lễ ban đêm % (390)"
+        int maxOtHoursPerMonth "trần OT tháng giờ (Điều 107 BLLĐ: 40)"
+        int warningOtHoursPerYear "mốc cảnh báo OT năm giờ (Điều 107 BLLĐ: 200)"
+        int maxOtHoursPerYear "trần OT năm đặc thù giờ (Điều 107 BLLĐ: 300)"
+        decimal baseSalary "lương cơ sở VND (NĐ 73/2024: 2.340.000)"
+        decimal regionMinSalary "lương tối thiểu Vùng I VND (NĐ 74/2024: 4.960.000)"
+        decimal insuranceEmployeeSocial "BHXH nhân viên đóng % (8.0)"
+        decimal insuranceEmployeeHealth "BHYT nhân viên đóng % (1.5)"
+        decimal insuranceEmployeeUnemployment "BHTN nhân viên đóng % (1.0)"
+        decimal insuranceCompanySocial "BHXH doanh nghiệp đóng % (17.5)"
+        decimal insuranceCompanyHealth "BHYT doanh nghiệp đóng % (3.0)"
+        decimal insuranceCompanyUnemployment "BHTN doanh nghiệp đóng % (1.0)"
+        decimal unionFeeEmployeeRate "đoàn phí đoàn viên % (1.0)"
+        decimal unionFeeMaxAmount "trần đoàn phí tối đa VND (10% cơ sở: 234.000)"
+        decimal unionFeeCompanyRate "kinh phí công đoàn DN đóng % (2.0)"
+        decimal personalDeduction "giảm trừ bản thân VND (NQ 954/2020: 11.000.000)"
+        decimal dependentDeduction "giảm trừ người phụ thuộc VND (NQ 954/2020: 4.400.000)"
+        jsonb taxBrackets "biểu thuế TNCN 7 bậc, khoang = ngưỡng trên lũy kế"
+        datetime createdAt "thời điểm tạo"
+        datetime updatedAt "thời điểm sửa gần nhất"
+    }
+
+    HRM_WORK_SHIFTS {
+        string id PK "định danh sinh tự động UUID/CUID"
+        string code UK "mã ca duy nhất toàn tenant (CA01..CA99)"
+        string name "tên ca làm việc (1-100 ký tự)"
+        string startTime "giờ bắt đầu định dạng 24h HH:mm"
+        string endTime "giờ kết thúc định dạng 24h HH:mm"
+        int breakMinutes "số phút nghỉ giữa ca (>= 0, mặc định 0)"
+        enum status "ACTIVE (đang dùng), INACTIVE (ngừng dùng)"
+        datetime createdAt "thời điểm tạo"
+        datetime updatedAt "thời điểm sửa gần nhất"
+    }
+
+    HRM_HOLIDAYS {
+        string id PK "định danh sinh tự động UUID/CUID"
+        date date "ngày nghỉ lễ YYYY-MM-DD"
+        string name "tên ngày lễ (1-150 ký tự, unique cùng date)"
+        enum type "NATIONAL, LUNAR, COMPANY, COMPENSATORY"
+        boolean isAnnual "lặp lại hàng năm (LUNAR/COMPENSATORY bắt buộc false)"
+        boolean isPaid "nghỉ hưởng nguyên lương (Điều 112 BLLĐ, mặc định true)"
+        string note "ghi chú thêm (tùy chọn, tối đa 500 ký tự)"
+        datetime createdAt "thời điểm tạo"
+        datetime updatedAt "thời điểm sửa gần nhất"
+    }
 ```
 
-Ký hiệu: `||--o{` là khóa ngoại **cứng** ở tầng cơ sở dữ liệu; `||..o{` và `}o..o{` là tham chiếu **mềm** (chỉ ứng dụng kiểm, cơ sở dữ liệu không ràng buộc). Chú thích bắt đầu bằng `MOI` hoặc `SUA` là yêu cầu nghiệp vụ mới chốt ngày 2026-09-07, **chưa có trong schema**.
+Ký hiệu: `||--o{` là khóa ngoại **cứng** ở tầng cơ sở dữ liệu; `||..o{` và `}o..o{` là tham chiếu **mềm** (chỉ ứng dụng kiểm, cơ sở dữ liệu không ràng buộc). Chú thích bắt đầu bằng `MOI` hoặc `SUA` là yêu cầu nghiệp vụ mới chốt trong SRS, **chưa có trong schema**.
 
 Quan hệ giữa `HRM_GIAY_TO_BAT_BUOC` với hai bảng kia là **khớp theo chuỗi tự do**, không phải khóa ngoại: danh mục ghi `loai_hd` và `loai_giay_to` dạng chữ, rồi đối chiếu với `hrm_hop_dong.loai_hd` và `hrm_tai_lieu.loai` khi tính chỉ báo đủ/thiếu (BR-hrm-064). Hệ quả trực tiếp: nhập lệch một ký tự là hệ thống hiểu thành hai loại khác nhau, nên ô nhập loại giấy tờ phải gợi ý sẵn giá trị đã có trong danh mục (BR-hrm-034).
 
@@ -171,24 +243,37 @@ Quan hệ giữa `HRM_GIAY_TO_BAT_BUOC` với hai bảng kia là **khớp theo c
 | `[MỚI]` duy nhất theo `so_hd` **trên toàn tenant** | `hrm_hop_dong` | Số hợp đồng là số trên chứng từ giấy, hai hợp đồng cùng số là dữ liệu mâu thuẫn (BR-hrm-056). Cùng loại rủi ro dữ liệu với dòng trên — gộp chung một đợt rà. |
 | `[MỚI]` loại trừ khoảng ngày theo `(ma_nv, loai_hd)` | `hrm_hop_dong` | Hai hợp đồng **cùng loại** của cùng một nhân viên không được chồng lấn thời gian; khoảng ngày phải **đóng ở cả hai đầu mút** để hợp đồng một ngày không lọt lưới (BR-hrm-022, BR-hrm-026). Hai hợp đồng **khác loại** được chạy song song. |
 | `[MỚI]` duy nhất theo `(loai_hd, loai_giay_to)` | `hrm_giay_to_bat_buoc` | Mỗi cặp loại hợp đồng và loại giấy tờ chỉ khai một lần trong một công ty (BR-hrm-063). |
+| `[MỚI]` Singleton `id = 'DEFAULT'` | `hrm_general_settings` | Bảng Singleton lưu thiết lập chung toàn tenant, luôn luôn chỉ có đúng một bản ghi `DEFAULT` (BR-hrm-070). |
+| `[MỚI]` duy nhất theo `code` **trên toàn tenant** | `hrm_work_shifts` | Mã ca làm việc `CA01`-`CA99` duy nhất toàn tenant, sinh tự động bằng gap scanning (BR-hrm-074). |
+| `[MỚI]` duy nhất theo `(date, name)` | `hrm_holidays` | Lịch ngày lễ không bị trùng lặp tên ngày lễ trong cùng một ngày sau khi trim (BR-hrm-078). |
 | `onDelete: Cascade` | `hrm_hop_dong`, `hrm_nguoi_phu_thuoc`, `hrm_tai_lieu` | Chỉ kích hoạt khi **xóa cứng** nhân viên. Nghiệp vụ hiện tại chỉ xóa mềm nên cascade không bao giờ chạy trong luồng thường. |
-| `onUpdate: Cascade` | 3 bảng con | Đổi `ma_nv` sẽ kéo theo bản ghi con, nhưng API cố tình không cho đổi mã. |
+| `onDelete: Cascade` | `hrm_tai_lieu_file` | Xóa giấy tờ `hrm_tai_lieu` tự động xóa các dòng file scan con trong DB (BR-hrm-039). |
+| `onUpdate: Cascade` | 3 bảng con và `hrm_tai_lieu_file` | Đổi mã khóa ngoại sẽ kéo theo bản ghi con. |
 | `@@index([ma_pb_me])` | `hrm_phong_ban` | Duyệt cây phòng ban theo cha. |
 | `@@index([ma_pb])`, `@@index([so_cccd])` | `hrm_nhan_vien` | Lọc theo phòng ban và tra theo số CCCD. |
 | `@@index([ma_nv])` | 3 bảng con | Lấy lịch sử hợp đồng / danh sách người phụ thuộc / danh sách giấy tờ theo nhân viên. |
+| `@@index([tai_lieu_id])` | `hrm_tai_lieu_file` | Lấy danh sách file đính kèm theo từng giấy tờ hồ sơ. |
+| `@@index([date])` | `hrm_holidays` | Tra cứu ngày lễ theo khoảng thời gian nhanh chóng phục vụ chấm công. |
 
 **Không có ràng buộc duy nhất** trên: `hrm_nhan_vien.so_cccd`, `hrm_nhan_vien.mst_ca_nhan`, `hrm_nhan_vien.email`, `hrm_tai_lieu.so_hieu`. Đây là quyết định có chủ đích (hồ sơ nhập dần, nhiều người chưa có giấy tờ) — xem BR-hrm-014 và BR-hrm-032 trong `hrm-spec.md`. Riêng `hrm_hop_dong.so_hd` **đã ra khỏi danh sách này** từ QĐ #4 — xem BR-hrm-056.
 
 ---
 
-## 4. Ba điểm cần đọc kỹ trước khi thiết kế tiếp
+## 4. Các điểm cần đọc kỹ trước khi thiết kế tiếp
 
 1. **`hrm_nhan_vien` KHÔNG còn cột bản sao hợp đồng.** Bảy cột `so_hop_dong`, `loai_hop_dong`, `kieu_luong`, `ngay_hieu_luc_toi`, `bhxh`, `tncn` đã bị bỏ ngày 2026-09-05. Sáu trường cùng tên trong phản hồi API là **giá trị tính lúc đọc** từ `hrm_hop_dong`, không phải cột trong bảng. Docblock của model `hrm_hop_dong` trong schema vẫn còn câu "QUAN HỆ VỚI 7 CỘT HỢP ĐỒNG TRÊN `hrm_nhan_vien`… BẮT BUỘC gọi `dongBoHopDongHienHanh()`" — câu đó đã lỗi thời, hàm `dongBoHopDongHienHanh()` không còn tồn tại trong mã nguồn.
 
 2. **`ma_pb` là tham chiếu mềm, không phải khóa ngoại.** Cơ sở dữ liệu không chặn nhân viên trỏ vào phòng ban không tồn tại; toàn bộ việc chặn nằm ở tầng ứng dụng (`assertPhongBanTonTai`, `deletePhongBan`). Kéo theo: bất kỳ đường ghi mới nào vào `hrm_nhan_vien.ma_pb` cũng phải tự kiểm, không được trông chờ cơ sở dữ liệu.
 
-3. **File scan không nằm trong cơ sở dữ liệu.** `hrm_tai_lieu` chỉ giữ con trỏ (`drive_file_id`). Nội dung file nằm trên Google Drive của chính công ty khách. Hiện trạng mã: xóa dòng `hrm_tai_lieu` **không** tự xóa file trên Drive nên file thành mồ côi. **Đã chốt phải sửa (QĐ #12):** xóa dòng thì gọi Drive xóa file theo kiểu cố hết sức, lỗi Drive không chặn việc xóa dòng (BR-hrm-039). Ngược lại, **xóa mềm nhân viên vẫn cố ý không đụng tới file** — hồ sơ người đã nghỉ còn phải tra khi quyết toán thuế (A-hrm-10).
+3. **File scan không nằm trong cơ sở dữ liệu.** `hrm_tai_lieu` quản lý thông tin giấy tờ, còn file scan được lưu ở bảng con `hrm_tai_lieu_file` với con trỏ `drive_file_id` (QĐ #21). Nội dung file nằm trên Google Drive của chính công ty khách. Khi xóa giấy tờ, hệ thống gọi Drive xóa file theo kiểu cố hết sức, lỗi Drive không chặn việc xóa dòng (BR-hrm-039). Ngược lại, **xóa mềm nhân viên vẫn cố ý không đụng tới file** — hồ sơ người đã nghỉ còn phải tra khi quyết toán thuế (A-hrm-10).
 
 4. **`ngay_nghi_viec` là cột mới, không phải trường tính lúc đọc.** Trạng thái `status = 0` cho biết người đó đã nghỉ, nhưng không cho biết nghỉ **ngày nào** — mà phân hệ Lương cần đúng con số đó để cắt kỳ, và luồng nghỉ việc cần nó để chốt hợp đồng trong cùng giao dịch (BR-hrm-054, BR-hrm-055). Không suy ra được từ `ngay_ket_thuc` của hợp đồng, vì hợp đồng có thể đã kết thúc trước đó vì lý do khác.
 
 5. **`hrm_giay_to_bat_buoc` là danh mục, không phải dữ liệu nghiệp vụ phát sinh.** Bảng rỗng là trạng thái hợp lệ và là trạng thái khởi đầu của mọi công ty — hệ thống **không** gieo sẵn dòng nào. Chỉ báo hồ sơ đủ/thiếu (`ho_so_du`, `giay_to_thieu` trong phản hồi nhân viên) và trạng thái hạn giấy tờ (`trang_thai_han` trong phản hồi tài liệu) đều là **giá trị tính lúc đọc**, không phải cột — cùng nguyên tắc đã áp cho sáu trường hợp đồng hiện hành.
+
+6. **`hrm_general_settings` là Singleton cấu hình toàn tenant.** Bảng chỉ tồn tại đúng 1 dòng với khóa chính `id = 'DEFAULT'`, không bao giờ phát sinh dòng thứ hai. Trường JSONB `taxBrackets` lưu **biểu thuế TNCN 7 bậc** chuẩn Điều 22 Luật Thuế TNCN (BR-hrm-081), cho phép đổi số bậc khi pháp luật thay đổi mà không cần migration DDL. Hệ thống tự khởi tạo (Self-healing) nếu phát hiện bảng rỗng.
+   - **Ngữ nghĩa `khoang` (chốt 2026-09-08, BR-hrm-080): là ngưỡng trên lũy kế của thu nhập tính thuế trong tháng, KHÔNG phải độ rộng bậc.** Ngữ nghĩa này giống nhau ở cả ba nơi — cột JSONB, nội dung API và ô nhập trên giao diện — **cấm quy đổi ngầm**. Bậc cuối là **bậc mở**, không có ngưỡng trên; cách mã hóa "không có ngưỡng trên" do Architect chốt và ghi trong `architecture/api-contract.md`.
+
+7. **`hrm_work_shifts` tự động tính `isOvernight` và `workingHours`.** Khi tạo hoặc cập nhật ca làm việc, hệ thống tự động xác định `isOvernight = true` nếu `endTime <= startTime` (ca qua đêm). Giờ công chuẩn `workingHours` bằng tổng thời gian ca trừ đi `breakMinutes` quy đổi ra giờ (làm tròn 2 chữ số thập phân). Mã ca `CA01`-`CA99` được sinh tự động theo thuật toán quét lỗ trống (gap scanning) và không cho sửa sau khi tạo. Bật cảnh báo nếu `workingHours > 12.0h` (BR-hrm-076).
+
+8. **`hrm_holidays` phân biệt ngày cố định dương lịch, âm lịch và ngày nghỉ bù.** Cờ `isAnnual = true` áp dụng cho các ngày lễ cố định theo dương lịch (Tết Dương lịch 01/01, Giải phóng miền Nam 30/04, Quốc tế Lao động 01/05, Quốc khánh 02/09). Các ngày âm lịch (Tết Nguyên Đán, Giỗ Tổ Hùng Vương) và ngày nghỉ bù (`COMPENSATORY` theo Điều 111 khoản 3 BLLĐ) bắt buộc `isAnnual = false` và được sinh tự động theo từng năm cụ thể qua endpoint `POST /holidays/quick-generate` tra cứu sẵn từ 2024 đến 2030 (BR-hrm-077, BR-hrm-079).

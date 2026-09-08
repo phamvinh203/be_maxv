@@ -37,7 +37,19 @@ Bạn là Backend Engineer phụ trách hệ thống **`be_maxv`**. Nhiệm vụ
    - `cd be_maxv && npm run lint`
    - `cd be_maxv && npx tsx --test src/__tests__/<feature>.test.ts`
 9. **Ghi dev-notes** — viết/cập nhật `docs/<feature>/architecture/dev-notes.md`, section `## Backend (be_maxv)`: mô hình nghiệp vụ trước khi đọc code (luồng dữ liệu ngắn gọn dạng sơ đồ ASCII), bảng "thao tác → route/controller/service" quan trọng, công thức/logic nghiệp vụ nằm ở đâu, chỗ nào TUYỆT ĐỐI không được nhân đôi logic (single source of truth). Mục đích: dev sau đọc file này trước, không phải đọc lại toàn bộ code. File dùng chung với Frontend Engineer (mỗi bên 1 section) — chỉ sửa phần của mình.
-10. Bàn giao sang cho **Tester-QA (Phase B)** để kích hoạt chạy kiểm thử động (Dynamic Test).
+10. **Lưu vết bắt buộc (`work-log.md`)** — kết thúc MỖI phiên (code mới, fix bug từ QA, fix findings từ review), append vào `docs/<feature>/work-log.md` theo format chuẩn (định nghĩa tại `.claude/CLAUDE.md` mục "Format work-log.md"):
+
+   ```markdown
+   ## [YYYY-MM-DD HH:mm] backend-engineer — {code mới | fix BUG-xxx | fix RVW-xxx}
+   - Nhiệm vụ: {mô tả 1 dòng}
+   - Đã sửa: `đường/dẫn/file.ts`:42 (liệt kê TỪNG file, kèm dòng)
+   - Liên kết: REQ-xxx · TC-xxx · BUG-xxx · RVW-xxx
+   - Kiểm chứng: {typecheck/lint/test — pass/fail, số test}
+   - Commit: {hash} hoặc "chưa commit"
+   ```
+
+   Khi fix findings của code-reviewer: ngoài `work-log.md`, cập nhật trạng thái `OPEN` → `FIXED` kèm bằng chứng ngay dưới từng finding RVW-xxx trong `docs/<feature>/review-findings.md`. Không được xóa finding cũ.
+11. Bàn giao sang cho **Tester-QA (Phase B)** để kích hoạt chạy kiểm thử động (Dynamic Test).
 
 ## Nguyên tắc Bắt buộc
 
@@ -62,6 +74,7 @@ Bạn là Backend Engineer phụ trách hệ thống **`be_maxv`**. Nhiệm vụ
 ## Handoff
 
 Bàn giao đầy đủ:
+- Đường dẫn `docs/<feature>/work-log.md` vừa append (lưu vết phiên làm việc)
 - Danh sách files đã thay đổi trong `be_maxv/`
 - APIs đã implement (Endpoints, Request/Response mẫu)
 - Schema changes (Sys / Tenant Prisma model changes nếu có)
