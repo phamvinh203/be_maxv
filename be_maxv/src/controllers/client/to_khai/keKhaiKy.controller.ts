@@ -2,6 +2,7 @@ import type { FastifyReply, FastifyRequest } from "fastify";
 import { resolveTenantDb } from "../../../helpers/resolveTenantDb";
 import * as KeKhai from "../../../services/client/to_khai/application/keKhaiKy.service";
 import { kiemTraPhuKy } from "../../../services/client/to_khai/infrastructure/phuKy";
+import { BanDaChotError } from "../../../services/client/to_khai/application/toKhaiGtgt01.service";
 import { nhanKy } from "../../../services/client/to_khai/domain/kySoThue";
 import { docChieu, docKy, type KyInput } from "./docThamSo";
 
@@ -25,6 +26,11 @@ export async function keKhaiKy(
     });
   } catch (err) {
     request.log.error(err);
+    // Kỳ đã chốt là lỗi TRẠNG THÁI, không phải tham số hỏng: trả 409 kèm `code` để màn hình chỉ
+    // đúng đường "Mở khóa" thay vì chỉ hiện một câu 400 chung chung.
+    if (err instanceof BanDaChotError) {
+      return reply.status(409).send({ message: err.message, code: "da_chot" });
+    }
     return reply.status(400).send({
       message: err instanceof Error ? err.message : "Không kê khai được kỳ này.",
     });

@@ -13,6 +13,7 @@ import CircularProgress from "@mui/material/CircularProgress";
 import Alert from "@mui/material/Alert";
 import { toast } from "react-toastify";
 import { useKeKhaiMutation, usePhuSongKyQuery } from "../api/toKhaiQueries";
+import { baoKetQuaKeKhai } from "../thongBaoKeKhai";
 import { kyMacDinh, kyToQuery, nhanKy, soKyToiDa, type Ky, type KyLoai } from "../ky";
 import { getErrorMessage } from "../../../lib/errors";
 
@@ -37,27 +38,7 @@ export default function DialogKeKhai({ open, onClose }: { open: boolean; onClose
   const chay = () => {
     keKhai.mutate(ky, {
       onSuccess: (kq) => {
-        if (kq.khongRoKyGoc > 0) {
-          // Không có ngày hóa đơn gốc thì không thể gán kỳ đúng. Chặn tờ đó thay vì tự lấy ngày
-          // lập của hóa đơn điều chỉnh/thay thế, vì cách cũ có thể làm sai tờ khai.
-          toast.warning(
-            `${kq.khongRoKyGoc} hóa đơn thay thế/điều chỉnh chưa tra được hóa đơn gốc nên chưa được ` +
-              `đưa vào bảng kê. Đồng bộ hoặc bổ sung hóa đơn gốc rồi kê khai lại.`,
-          );
-        }
-        if (kq.daGo > 0) {
-          // Gỡ khỏi kỳ là mất luôn cột "Kê khai"/"Ghi chú" của tờ đó ở kỳ này — không nói ra thì
-          // kế toán tưởng mình chưa từng chỉnh.
-          toast.info(
-            `${kq.daGo} hóa đơn không còn thuộc kỳ ${kq.nhanKy} nên đã được gỡ khỏi bảng kê.`,
-          );
-        }
-        if (kq.daGoKhongRoKyGoc > 0) {
-          toast.info(
-            `Đã gỡ ${kq.daGoKhongRoKyGoc} hóa đơn thay thế/điều chỉnh khỏi bảng kê cũ vì chưa ` +
-              `xác định được hóa đơn gốc.`,
-          );
-        }
+        baoKetQuaKeKhai(kq);
         toast.success(
           `Đã kê khai kỳ ${kq.nhanKy}: ${kq.purchase} hóa đơn mua vào, ${kq.sold} hóa đơn bán ra.`,
         );

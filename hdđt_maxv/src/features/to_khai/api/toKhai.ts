@@ -24,6 +24,13 @@ export interface KetQuaKeKhai {
   daGo: number;
   /** Số dòng bảng kê cũ bị gỡ vì hóa đơn thay thế/điều chỉnh chưa xác định được hóa đơn gốc. */
   daGoKhongRoKyGoc: number;
+  /**
+   * Số hóa đơn thuộc kỳ này nhưng ĐANG nằm ở một kỳ đã chốt, nên lượt kê khai để nguyên chúng ở đó.
+   * Bảng kê kỳ này vì vậy thiếu đúng ngần ấy tờ — kế toán phải biết để quyết có mở khóa kỳ cũ không.
+   */
+  giuKyChot: number;
+  /** Tên các kỳ đã chốt đang giữ số hóa đơn trên, vd `["T12/2025"]`. */
+  kyChotDangGiu: string[];
 }
 
 /**

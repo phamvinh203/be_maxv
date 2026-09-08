@@ -36,6 +36,11 @@ export function soKyToiDa(kyLoai: KyLoai): number {
   return kyLoai === "thang" ? 12 : 4;
 }
 
+/** Hai kỳ có là một không. Phải so cả `kyLoai`: T3/2026 và Q3/2026 cùng `kySo` mà khác kỳ hẳn. */
+export function cungKy(a: Ky, b: Ky): boolean {
+  return a.nam === b.nam && a.kyLoai === b.kyLoai && a.kySo === b.kySo;
+}
+
 export function kyHopLe(ky: Ky): boolean {
   if (!Number.isInteger(ky.nam) || ky.nam < 2000 || ky.nam > 2999) return false;
   if (ky.kyLoai !== "thang" && ky.kyLoai !== "quy") return false;

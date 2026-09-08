@@ -9,7 +9,7 @@ import Chip from "@mui/material/Chip";
 import Typography from "@mui/material/Typography";
 import Alert from "@mui/material/Alert";
 import { useDanhSachKyQuery } from "../api/gtgt01Queries";
-import { nhanKy, type Ky } from "../ky";
+import { cungKy, nhanKy, type Ky } from "../ky";
 import { fmtSoTien } from "../../_shared/to_khai/soTien";
 import { getErrorMessage } from "../../../lib/errors";
 
@@ -60,10 +60,7 @@ export default function DanhSachKyDaLap({
           <TableBody>
             {ds.data.map((r) => {
               const ky: Ky = { nam: r.nam, kyLoai: r.kyLoai, kySo: r.kySo };
-              const dangXem =
-                r.nam === kyDangXem.nam &&
-                r.kyLoai === kyDangXem.kyLoai &&
-                r.kySo === kyDangXem.kySo;
+              const dangXem = cungKy(ky, kyDangXem);
               return (
                 <TableRow
                   key={`${r.nam}-${r.kyLoai}-${r.kySo}`}
