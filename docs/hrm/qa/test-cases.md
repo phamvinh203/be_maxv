@@ -233,25 +233,25 @@
 
 | ID | Loại | Tiền điều kiện | Các bước & dữ liệu vào | Kết quả mong đợi | Ưu tiên |
 |:---|:---|:---|:---|:---|:--:|
-| TC-hrm-119 | Happy | `NV0001` tồn tại | `POST /tai-lieu` `{ "ma_nv":"NV0001", "loai":"cccd", "so_hieu":"001090012345", "ngay_cap":"2021-08-10", "noi_cap":"Cục CSQLHC" }` | **201** `{ id }`; `drive_file_id`, `ten_file`, `mime_type`, `kich_thuoc` đều `null` | P0 |
-| TC-hrm-120 | Happy | — | `GET /tai-lieu?ma_nv=NV0001` | **200**, mỗi dòng có `ten_nv` + 4 trường con trỏ Drive | P0 |
+| TC-hrm-119 | Happy | `NV0001` tồn tại | `POST /tai-lieu` `{ "ma_nv":"NV0001", "loai":"cccd", "so_hieu":"001090012345", "ngay_cap":"2021-08-10", "noi_cap":"Cục CSQLHC" }` | **201** `{ id }`; `files` là **mảng rỗng** — chỉ có thông tin giấy tờ, chưa đính file `[SỬA THEO QĐ #21]` | P0 |
+| TC-hrm-120 | Happy | — | `GET /tai-lieu?ma_nv=NV0001` | **200**, mỗi dòng có `ten_nv` + mảng `files: [{ id, ten_file, mime_type, kich_thuoc }]`. **Không** còn bốn trường con trỏ ở cấp dòng, và `drive_file_id` **không** được trả ra ngoài `[SỬA THEO QĐ #21]` | P0 |
 | TC-hrm-121 | Validation | — | `POST /tai-lieu` `{ "ma_nv":"NV0001", "loai":"" }` | **400** "Chưa chọn loại tài liệu" | P1 |
 | TC-hrm-122 | Edge | — | `POST /tai-lieu` với `loai":"giay_kham_suc_khoe"` (không thuộc 5 loại gợi ý của FE) | **201** — `loai` là chữ tự do có chủ đích (`schema.prisma:1002-1006`) | P2 |
 | TC-hrm-123 | Boundary | — | `POST /tai-lieu` với `loai` 51 ký tự / `so_hieu` 65 ký tự / `noi_cap` 255 ký tự | **400** cả ba | P2 |
 | TC-hrm-124 | Edge | `NV0009` đã xóa mềm | `POST /tai-lieu` cho `NV0009` | **404** "Không tìm thấy nhân viên" (kiểm + ghi trong cùng transaction — `taiLieu.service.ts:89-96`) | P1 |
-| TC-hrm-125 | Happy | Tài liệu chưa đính file | `PUT /tai-lieu/<id>` đổi `so_hieu` | **200**; các trường Drive không bị đụng | P1 |
-| TC-hrm-126 | Security | Tài liệu đã có `drive_file_id` | `PUT /tai-lieu/<id>` với body cố ý thừa `{ "drive_file_id":"ID-GIA", "ten_file":"x.pdf", "ma_nv":"NV0002" }` | **200**; đọc lại thấy `drive_file_id`, `ten_file`, `ma_nv` **không đổi** (Zod strip + `.omit({ma_nv})`) | P0 |
-| TC-hrm-127 | **Edge (BUG)** | Tài liệu có `drive_file_id = "FILE-X"` trên Drive stub | `DELETE /tai-lieu/<id>` | **Kỳ vọng theo `api-contract.md` mục 6.1 + `CONTEXT_SUMMARY.md`: 200 và file `FILE-X` bị xóa trên Drive (best-effort).** **Code thật KHÔNG gọi Drive** (`taiLieu.service.ts:124-135`) → file mồ côi. Xem `BUG-HRM-10` | P0 |
+| TC-hrm-125 | Happy | Tài liệu chưa đính file | `PUT /tai-lieu/<id>` đổi `so_hieu` | **200**; danh sách `files` không bị đụng `[SỬA THEO QĐ #21]` | P1 |
+| TC-hrm-126 | Security | Tài liệu đã có 2 file | `PUT /tai-lieu/<id>` với body cố ý thừa `{ "files":[], "drive_file_id":"ID-GIA", "ma_nv":"NV0002" }` | **200**; đọc lại thấy **2 file còn nguyên** và `ma_nv` **không đổi** (Zod strip + `.omit({ma_nv})`). `[SỬA THEO QĐ #21]` Nay còn quan trọng hơn trước: `files` là quan hệ chứ không phải cột, gửi mảng rỗng mà lọt qua là **xóa sạch file của giấy tờ** | P0 |
+| TC-hrm-127 | Happy | Tài liệu có **3 file** trên Drive stub | `DELETE /tai-lieu/<id>` | **200** kèm cờ `da_xoa_file_drive`; **cả ba file** bị xóa trên Drive, không sót file mồ côi nào. `[SỬA THEO QĐ #12 và #21]` Ca này đóng BUG-HRM-10; điểm mới là phải xóa **mọi** file chứ không phải một | P0 |
 | TC-hrm-128 | Edge | `NV0001` có 2 tài liệu, 1 trong đó có file | `DELETE /nhan-vien/NV0001` (xóa mềm) rồi `GET /tai-lieu?ma_nv=NV0001` | **200** mảng rỗng; dòng tài liệu và file Drive **vẫn tồn tại**. Cần BA xác nhận đây là hành vi mong muốn về lưu trữ PII | P1 |
 
 ### 5.2 Tải lên / xem / gỡ file scan
 
 | ID | Loại | Tiền điều kiện | Các bước & dữ liệu vào | Kết quả mong đợi | Ưu tiên |
 |:---|:---|:---|:---|:---|:--:|
-| TC-hrm-129 | Happy | Công ty đã nối Drive; tài liệu `T1` của `NV0001` chưa có file | `POST /tai-lieu/T1/file` multipart 1 file `cccd.jpg` (`image/jpeg`, 1.5MB) | **201** `{ id, ten_file, mime_type:"image/jpeg", kich_thuoc }`; stub Drive ghi nhận đã tạo `maxv` → `<MST> - <Tên Cty>` → `NV0001 - Nguyễn Văn A`; DB lưu đủ 4 trường con trỏ; `hrm_nhan_vien.drive_folder_id` được ghi nhớ | P0 |
+| TC-hrm-129 | Happy | Công ty đã nối Drive; tài liệu `T1` của `NV0001` chưa có file | `POST /tai-lieu/T1/file` multipart 1 file `cccd.jpg` (`image/jpeg`, 1.5MB) | **201** `{ id, ten_file, mime_type:"image/jpeg", kich_thuoc }`; stub Drive ghi nhận đã tạo `maxv` → `<MST> - <Tên Cty>` → `NV0001 - Nguyễn Văn A`; DB tạo **một dòng trong `hrm_tai_lieu_file`** với `thu_tu = 0`; `hrm_nhan_vien.drive_folder_id` được ghi nhớ `[SỬA THEO QĐ #21]` | P0 |
 | TC-hrm-130 | Happy | Sau TC-hrm-129 | `POST /tai-lieu/T2/file` cho tài liệu khác của **cùng** `NV0001` | Stub **không** tạo lại thư mục (dùng `drive_folder_id` đã nhớ — `taiLieuDrive.service.ts:282`) | P1 |
-| TC-hrm-131 | Edge | Tài liệu `T1` đã có `drive_file_id = "OLD"` | `POST /tai-lieu/T1/file` với file mới | **201**; upload file mới **trước**, xóa `OLD` **sau**, DB trỏ sang file mới (`taiLieuDrive.service.ts:338-360`) | P1 |
-| TC-hrm-132 | Edge | Như trên, stub `xoaFile` ném lỗi | `POST /tai-lieu/T1/file` | **201** — lỗi xóa file cũ bị nuốt có chủ đích (`.catch(() => undefined)`); file cũ thành mồ côi. Ghi nhận số lượng file mồ côi | P2 |
+| TC-hrm-131 | Edge | Tài liệu `T1` đã có 1 file `OLD` | `POST /tai-lieu/T1/file` với file mới | **201**; `T1` nay có **2 file**, `OLD` **vẫn còn** trên Drive và trong danh sách. `[SỬA THEO QĐ #21]` Đây là đảo ngược hoàn toàn kỳ vọng cũ (trước là thay thế, nay là thêm vào) — ca này chốt điều đó | P0 |
+| TC-hrm-132 | Edge | `T1` đã có **20 file** | `POST /tai-lieu/T1/file` file thứ 21 | **409 E-hrm-065** `Mỗi giấy tờ giữ tối đa 20 file. Gỡ bớt file cũ rồi thử lại.` `[MỚI — QĐ #21]` thay cho ca cũ về xóa-file-cũ, nay không còn hành vi đó | P1 |
 | TC-hrm-133 | Boundary | BR-05.2 | `POST /tai-lieu/T1/file` với file **đúng 10MB** (10 485 760 byte) | **201** (`limits.fileSize` là ngưỡng vượt-thì-chặn) | P1 |
 | TC-hrm-134 | Boundary | BR-05.2 | `POST /tai-lieu/T1/file` với file **10MB + 1 byte** | **409** `File vượt quá 10MB.` — do `@fastify/multipart` ném `FST_REQ_FILE_TOO_LARGE`, controller bắt và đổi thành `ConflictError` (`taiLieu.controller.ts:305-311`). **Không được** rơi xuống 500 | P0 |
 | TC-hrm-135 | Validation | BR-05.2 | `POST /tai-lieu/T1/file` lần lượt với `virus.exe` (`application/octet-stream`), `bang_luong.xlsx`, `video.mp4` | **409** `Chỉ nhận ảnh (JPG, PNG, WEBP, HEIC) hoặc PDF — file gửi lên là "<mime>".` | P0 |
@@ -261,14 +261,14 @@
 | TC-hrm-139 | Edge | Công ty **chưa** nối Drive | `POST /tai-lieu/T1/file` | **409** "Công ty chưa kết nối Google Drive — bấm \"Thêm file\" để đăng nhập Google và kết nối." | P0 |
 | TC-hrm-140 | Edge | Thiếu env `GOOGLE_CLIENT_ID/SECRET/REDIRECT_URI` | `POST /tai-lieu/T1/file` và `GET /tai-lieu/drive/lien-ket` | **409** "Máy chủ chưa cấu hình Google Drive (thiếu …)" | P1 |
 | TC-hrm-141 | Edge | Thiếu env `GDT_CRED_ENC_KEY` | `GET /tai-lieu/drive/callback` với `code` + `state` hợp lệ | Trang HTML báo "Máy chủ chưa cấu hình khóa mã hóa (GDT_CRED_ENC_KEY) nên không lưu được kết nối Drive." (thông điệp của `ConflictError` được hiện, khác lỗi Google) | P1 |
-| TC-hrm-142 | Happy | Tài liệu có file `image/jpeg` | `GET /tai-lieu/T1/file` | **200**; header `content-type: image/jpeg`, `content-disposition: inline; filename*=UTF-8''…`, `cache-control: no-store, private`, `x-content-type-options: nosniff` | P0 |
-| TC-hrm-143 | Edge | Tài liệu chưa đính file | `GET /tai-lieu/T1/file` và `DELETE /tai-lieu/T1/file` | Cả hai **404** "Tài liệu này chưa đính file scan." | P1 |
-| TC-hrm-144 | Edge | Stub Drive trả **404** cho `alt=media` | `GET /tai-lieu/T1/file` | **404** với thông điệp `DRIVE_FILE_KHONG_MO_DUOC` (nêu cả 2 khả năng: bị xóa / thuộc tài khoản Google cũ) — **không** phải 502 | P0 |
-| TC-hrm-145 | Security | Stub Drive trả file **20MB** cho `alt=media` (khách tự thay file lớn trên Drive) | `GET /tai-lieu/T1/file` | **502**; máy chủ **không** nạp trọn 20MB vào RAM (dừng ngay khi vượt trần — `driveClient.ts:400-423`). Đo RSS trước/sau | P0 |
-| TC-hrm-146 | Security | Stub Drive trả `content-length` nhỏ nhưng thân dữ liệu lớn hơn trần | `GET /tai-lieu/T1/file` | **502** — phải chặn ở vòng đọc theo khối, không chỉ tin header | P1 |
-| TC-hrm-147 | Happy | Tài liệu có file | `DELETE /tai-lieu/T1/file` | **200** `{ id }`; stub ghi nhận `DELETE` file; DB đặt 4 trường con trỏ về `null`; **dòng tài liệu vẫn còn** | P0 |
-| TC-hrm-148 | Edge | Stub Drive trả **500** khi xóa | `DELETE /tai-lieu/T1/file` | **502**; DB **không** bị xóa con trỏ (khác `dinhKemFile`, ở đây lỗi được ném ra — `taiLieuDrive.service.ts:419`) | P1 |
-| TC-hrm-149 | Concurrency | Tài liệu `T1` chưa có file | `Promise.all` 2 request `POST /tai-lieu/T1/file` với 2 file khác nhau | **Bất biến**: DB chỉ giữ 1 `drive_file_id`, và **số file còn lại trên Drive stub phải bằng 1**. Rủi ro từ code: cả hai đọc `tl.drive_file_id` cũ, cùng upload → 1 file mồ côi (`BUG-HRM-16`) | P1 |
+| TC-hrm-142 | Happy | Tài liệu có file `image/jpeg` id `F1` | `GET /tai-lieu/T1/file/F1` `[SỬA THEO QĐ #21]` | **200**; header `content-type: image/jpeg`, `content-disposition: inline; filename*=UTF-8''…`, `cache-control: no-store, private`, `x-content-type-options: nosniff` | P0 |
+| TC-hrm-143 | Edge | Tài liệu chưa đính file nào | `GET /tai-lieu/T1/file/<id-bat-ky>` và `DELETE /tai-lieu/T1/file/<id-bat-ky>` | Cả hai **404**. `[SỬA THEO QĐ #21]` `E-hrm-037` ("chưa đính file scan") chỉ dùng khi dòng **không có file nào**; sai `fileId` trên dòng **có** file thì trả **E-hrm-066** | P1 |
+| TC-hrm-144 | Edge | Stub Drive trả **404** cho `alt=media` | `GET /tai-lieu/T1/file/F1` | **404** với thông điệp `DRIVE_FILE_KHONG_MO_DUOC` (nêu cả 2 khả năng: bị xóa / thuộc tài khoản Google cũ) — **không** phải 502 | P0 |
+| TC-hrm-145 | Security | Stub Drive trả file **20MB** cho `alt=media` (khách tự thay file lớn trên Drive) | `GET /tai-lieu/T1/file/F1` | **502**; máy chủ **không** nạp trọn 20MB vào RAM (dừng ngay khi vượt trần — `driveClient.ts:400-423`). Đo RSS trước/sau | P0 |
+| TC-hrm-146 | Security | Stub Drive trả `content-length` nhỏ nhưng thân dữ liệu lớn hơn trần | `GET /tai-lieu/T1/file/F1` | **502** — phải chặn ở vòng đọc theo khối, không chỉ tin header | P1 |
+| TC-hrm-147 | Happy | Tài liệu `T1` có **2 file**, gỡ file `F1` | `DELETE /tai-lieu/T1/file/F1` | **200** `{ id: "F1", so_file_con_lai: 1 }`; stub ghi nhận `DELETE` đúng file `F1`; **file còn lại và dòng tài liệu vẫn nguyên** `[SỬA THEO QĐ #21]` | P0 |
+| TC-hrm-148 | Edge | Stub Drive trả **500** khi xóa | `DELETE /tai-lieu/T1/file/F1` | **502**; dòng file trong DB **không** bị xóa. `[SỬA THEO QĐ #21]` Cố-hết-sức **chỉ** áp cho xóa cả dòng giấy tờ (TC-hrm-225); gỡ đích danh một file thì báo thành công trong khi file còn trên Drive là nói dối | P1 |
+| TC-hrm-149 | Concurrency | Tài liệu `T1` chưa có file | `Promise.all` 2 request `POST /tai-lieu/T1/file` với 2 file khác nhau | **200 cả hai; `T1` có đúng 2 file, Drive stub giữ 2 file, không file mồ côi.** `[SỬA THEO QĐ #21]` Kỳ vọng **đảo ngược**: trước đây hai lượt đồng thời là lỗi (BUG-HRM-16, một file mồ côi), nay thêm file song song là hành vi hợp lệ. Điểm cần canh chuyển sang `thu_tu` — hai lượt cùng đọc giá trị lớn nhất rồi cùng ghi thì hai file **trùng `thu_tu`**; thứ tự hiển thị phải vẫn ổn định (tiêu chí phụ `datetime0`) | P1 |
 
 ### 5.3 Luồng OAuth Google Drive
 
@@ -320,7 +320,7 @@
 
 ---
 
-## 6B. Test Suite: Quyết định nghiệp vụ — TC-hrm-186 … 260
+## 6B. Test Suite: Quyết định nghiệp vụ — TC-hrm-186 … 272
 
 > **Bổ sung 2026-09-07 sau vòng phản biện độc lập:** thêm nhóm **6B.11** (QĐ #7 — bị bỏ sót hoàn toàn ở bản đầu), **6B.12** (ba mã lỗi kỹ thuật dùng chung) và **6B.13** (hai quy tắc mới BR-hrm-067, BR-hrm-068). Ba nhóm mới có cột **AC / BR** để truy vết được tới yêu cầu gốc; **các nhóm 6B.1–6B.10 chưa có cột này** — xem đầu việc còn nợ ở `issues-and-bugs.md`.
 
@@ -407,9 +407,9 @@
 
 | ID | Loại | Tiền điều kiện | Hành động | Kết quả mong đợi | Ưu tiên |
 |:---|:---|:---|:---|:---|:--:|
-| TC-hrm-224 | Happy | Tài liệu `T1` đã đính file trên Drive | Xóa dòng giấy tờ `T1` | **200** kèm cờ báo đã xóa được file Drive. Dòng biến mất **và** file trên Drive bị xóa. Ca đóng BUG-HRM-10 | P0 |
-| TC-hrm-225 | Edge | `T1` có file; giả lập Drive trả lỗi 500 | Xóa dòng giấy tờ `T1` | **200** — dòng **vẫn bị xóa**, cờ báo không xóa được file, lỗi Drive ghi vào nhật ký. **Lỗi Drive không được chặn thao tác nghiệp vụ** | P0 |
-| TC-hrm-226 | UI | `T1` có file tên `cccd-mat-truoc.jpg` | Bấm xóa dòng | Hộp xác nhận nêu **đích danh tên file** sắp mất, vì thao tác không hoàn tác được | P1 |
+| TC-hrm-224 | Happy | Tài liệu `T1` đã đính **3 file** trên Drive | Xóa dòng giấy tờ `T1` | **200** kèm cờ `da_xoa_file_drive`. Dòng biến mất, **cả ba file** trên Drive bị xóa, và ba dòng trong `hrm_tai_lieu_file` bị dọn theo khóa ngoại. Ca đóng BUG-HRM-10 `[SỬA THEO QĐ #21]` | P0 |
+| TC-hrm-225 | Edge | `T1` có 3 file; giả lập Drive trả lỗi 500 ở **file thứ hai** | Xóa dòng giấy tờ `T1` | **200** — dòng **vẫn bị xóa**, cờ `da_xoa_file_drive = false`, lỗi ghi nhật ký. `[SỬA THEO QĐ #21]` Điểm mới phải canh: **file thứ ba vẫn phải được thử xóa**, không được dừng cả vòng lặp ở file hỏng | P0 |
+| TC-hrm-226 | UI | `T1` có **2 file** | Bấm xóa dòng | Hộp xác nhận nêu **số file** sắp mất (BR-hrm-039), vì thao tác không hoàn tác được. `[SỬA THEO QĐ #21]` Nêu tên từng file khi có nhiều file thì hộp thoại dài quá; nêu số lượng là đủ để người dùng dừng lại cân nhắc | P1 |
 
 ### 6B.9 Bộ giấy tờ bắt buộc và hạn giấy tờ — QĐ #14 (BR-hrm-062…065)
 
@@ -427,6 +427,25 @@
 | TC-hrm-236 | Edge | Có giấy tờ hết hạn của **nhân viên đã nghỉ việc** | Lấy danh sách cảnh báo hạn | Giấy tờ đó **có** trong danh sách — giấy tờ người đã nghỉ vẫn dùng khi quyết toán (BR-hrm-065). Chỉ nhân viên đã xóa mềm mới bị loại | P1 |
 | TC-hrm-237 | Edge | Ngưỡng cảnh báo **chưa khai** (OQ-hrm-14 chưa chốt) | Lấy danh sách cảnh báo hạn | **Chỉ** trả giấy tờ đã hết hạn. **Không** được có dòng "sắp hết hạn" nào — cấm tự đặt ngưỡng mặc định | P0 |
 | TC-hrm-238 | Performance | 500 nhân viên, mỗi người 5 dòng giấy tờ, danh mục 8 dòng | Lấy danh sách nhân viên | Đếm số câu truy vấn: chỉ báo đủ/thiếu lấy trong **một lượt**, **không** sinh N+1 (FR-hrm-040). Đây là chỗ dễ hỏng nhất của tính năng | P0 |
+
+### 6B.14 Một giấy tờ giữ nhiều file scan — QĐ #21 (BR-hrm-037, 038, 039; E-hrm-065, E-hrm-066)
+
+> Nhóm này thay thế giả định cũ *"mỗi dòng tài liệu tối đa một file"*. Bốn cột con trỏ file trên `hrm_tai_lieu` đã chuyển thành bảng con `hrm_tai_lieu_file` và **đã bị bỏ** khỏi cơ sở dữ liệu (M-14).
+
+| ID | Loại | AC / BR | Tiền điều kiện | Hành động | Kết quả mong đợi | Ưu tiên |
+|:---|:---|:---|:---|:---|:---|:--:|
+| TC-hrm-261 | Happy | BR-hrm-037 | Giấy tờ `T1` loại `cccd`, chưa có file | Tải lần lượt `cccd-mat-truoc.jpg` rồi `cccd-mat-sau.jpg` | Danh sách giấy tờ có **đúng MỘT dòng** `cccd`, bên trong **hai file**. **Ca then chốt của cả quyết định** — đây chính là điều cách làm cũ (mỗi file một dòng) làm sai | P0 |
+| TC-hrm-262 | Happy | BR-hrm-037 | `T1` có 2 file | `GET /tai-lieu?ma_nv=NV0001` | Mỗi dòng có `files` là mảng; phần tử có `id`, `ten_file`, `mime_type`, `kich_thuoc`; **không** có `drive_file_id` — con trỏ Drive là dữ liệu nội bộ | P0 |
+| TC-hrm-263 | Edge | BR-hrm-037 | `T1` có file `A` (tải trước), `B` (tải sau) | Đọc lại danh sách **nhiều lần**, xen kẽ vài lần sửa ghi chú của `T1` | Thứ tự **luôn** là `A` rồi `B`, không đảo giữa các lần đọc. Đây là lý do có cột `thu_tu` thay vì sắp theo `datetime0` — hai file tải trong cùng mili-giây sẽ đảo chỗ | P1 |
+| TC-hrm-264 | Boundary | BR-hrm-037 | `T1` có **19 file** | Tải file thứ 20 | **201** — đúng trần, chưa vượt | P1 |
+| TC-hrm-265 | Boundary | E-hrm-065 | `T1` có **20 file** | Tải file thứ 21 | **409** `Mỗi giấy tờ giữ tối đa 20 file. Gỡ bớt file cũ rồi thử lại.` | P1 |
+| TC-hrm-266 | Security | E-hrm-066 | `T1` và `T2` là hai giấy tờ khác nhau; file `F2` thuộc `T2` | `GET /tai-lieu/T1/file/F2` và `DELETE /tai-lieu/T1/file/F2` | Cả hai **404 E-hrm-066** `Không tìm thấy file scan này trong giấy tờ đã chọn.` **Ca bảo mật**: thiếu phép kiểm này thì người có quyền vào công ty gỡ được file của giấy tờ bất kỳ bằng cách đoán id | P0 |
+| TC-hrm-267 | Happy | BR-hrm-038 | `T1` có đúng **1 file** | Gỡ file đó | **200** `so_file_con_lai: 0`; **dòng giấy tờ vẫn còn**, trở về trạng thái chưa đính file. Không được xóa dòng theo | P0 |
+| TC-hrm-268 | UI | BR-hrm-038 | `T1` có 2 file | Bấm gỡ một file | Hộp xác nhận nêu **đích danh tên file** đó (khác với xóa cả dòng — nêu **số lượng**) | P1 |
+| TC-hrm-269 | UI | BR-hrm-037 | Màn thêm giấy tờ | Chọn 2 file rồi lưu | Tạo **một** dòng giấy tờ, hai file gắn vào chính dòng đó. Giao diện **không** được tạo hai dòng | P0 |
+| TC-hrm-270 | Edge (UI) | BR-hrm-037 | Chọn 3 file; giả lập hỏng ở file thứ hai (đóng cửa sổ đăng nhập Google) | Bấm lưu, rồi bấm lưu **lần nữa** | Lần hai **không** tạo dòng giấy tờ thứ hai và **không** tải lại file thứ nhất; chỉ làm tiếp file 2 và 3. Thông báo lỗi lần đầu nêu rõ file nào hỏng và đã xong bao nhiêu. **Tình huống rất dễ gặp** vì lần đầu đính file luôn mở cửa sổ đăng nhập Google | P0 |
+| TC-hrm-271 | Migration | M-14 | Tenant còn dữ liệu ở bốn cột cũ | Chạy `npm run hrm:chuyen-file -- --thu` rồi chạy thật | Mỗi dòng có con trỏ file sinh đúng **một** dòng trong bảng con; chạy lại **không nhân đôi**; số nguồn = số đích trên **từng** tenant | P0 |
+| TC-hrm-272 | Migration | M-14 | Tenant **đã bỏ** bốn cột cũ | Chạy `npm run hrm:chuyen-file -- --thu` | **Không lỗi** — script đọc bằng SQL thuần và kiểm `information_schema`, thấy cột đã bỏ thì coi như đã chuyển xong. Ca này bảo vệ khả năng dùng lại script cho production khi môi trường phát triển đã migrate | P1 |
 
 ### 6B.11 Người phụ thuộc duy nhất mã số thuế toàn công ty — QĐ #7 (BR-hrm-030, E-hrm-026, AC-hrm-51)
 

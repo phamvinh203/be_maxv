@@ -461,7 +461,12 @@ Frontend đối chiếu hợp đồng với mã nguồn và bắt được **6 �
 
 1. ✅ **Bỏ bốn cột cũ — ĐÃ XONG ngày 2026-09-08.** Chủ dự án chạy thử tay xong; đối soát lại vẫn khớp (đích 6 > nguồn 3, vì đã đính thêm file mới qua giao diện mới — bằng chứng mô hình mới hoạt động). Sao lưu dữ liệu 4 cột ra `be_maxv/sao-luu-4-cot-truoc-khi-xoa.json` rồi mới bỏ. Kết quả: **4 cột đã xóa trên 10/10 tenant, 6 dòng file nguyên vẹn**. Script `hrm:chuyen-file` chuyển sang SQL thuần để **production vẫn dùng được** khi tới lượt.
 2. **Chưa chạy thử runtime toàn bộ.** Bốn ca cần kiểm tay: thêm căn cước hai mặt phải ra **một** dòng hai file · đóng cửa sổ đăng nhập Google giữa chừng rồi bấm lại phải làm tiếp từ chỗ hỏng, không sinh dòng thứ hai · gỡ từng file · xóa dòng có file thì xác nhận nêu đúng số file.
-3. **Bộ ca kiểm thử chưa cập nhật** cho mô hình mới — `test-cases.md` vẫn theo một-file-một-dòng.
+3. ✅ **Bộ ca kiểm thử — ĐÃ CẬP NHẬT ngày 2026-09-08.** Sửa **19 ca** viết theo mô hình một-file-một-dòng và thêm nhóm **6B.14** gồm 12 ca mới (TC-hrm-261…272). Tổng **278 ca**. `test-matrix.md` cập nhật ba dòng endpoint file theo đường dẫn mới.
+
+Ba ca đảo ngược kỳ vọng cũ, đáng chú ý vì chạy nguyên bản cũ sẽ báo sai:
+* **TC-hrm-131** — tải file lên dòng đã có file: trước kỳ vọng *thay thế*, nay là *thêm vào*.
+* **TC-hrm-149** — hai lượt tải đồng thời: trước là **lỗi** (BUG-HRM-16, sinh file mồ côi), nay là **hành vi hợp lệ** cho hai file. Điểm cần canh chuyển sang `thu_tu` trùng nhau.
+* **TC-hrm-127 / 224** — xóa dòng giấy tờ: nay phải xóa **mọi** file chứ không phải một, và TC-hrm-225 thêm yêu cầu lỗi ở file giữa **không được dừng cả vòng lặp**.
 4. Trần 20 file là pre-check ở tầng ứng dụng, **không có ràng buộc ở cơ sở dữ liệu** — hai lượt tải đồng thời vẫn vượt được. Cùng lớp bài toán với `so_hd` và chồng lấn hợp đồng.
 
 ### 11.6. Đo được: `db push` KHÔNG xóa ràng buộc loại trừ
