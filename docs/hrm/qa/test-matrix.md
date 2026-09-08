@@ -203,9 +203,10 @@ Ký hiệu: **N** = số ca thiết kế · ⬜ = đã thiết kế, chưa chạ
 | 24 | `GET /tai-lieu/drive/lien-ket` | ✔ | – | ✔ | ✔ | – | ✔ | 140, 151, 152, 153 |
 | 25 | `GET /tai-lieu/drive/callback` | ✔ | ✔ | ✔ | ✔ | – | ✔ | 141, 154–160, 170 |
 | 26 | `DELETE /tai-lieu/drive/ket-noi` | ✔ | – | ✔ | ✔ | – | – | 161, 162 |
-| 27 | `POST /tai-lieu/:id/file` | ✔ | ✔ | ✔ | – | ✔ | ✔ | 129–141, 149, 166–169, 184 |
-| 28 | `GET /tai-lieu/:id/file` | ✔ | – | ✔ | – | – | ✔ | 142–146, 163, 180 |
-| 29 | `DELETE /tai-lieu/:id/file` | ✔ | – | ✔ | – | – | – | 143, 147, 148 |
+<!-- QĐ #21: một giấy tờ giữ nhiều file; hai endpoint dưới thêm :fileId -->
+| 27 | `POST /tai-lieu/:id/file` *(nay THÊM file, không thay thế)* | ✔ | ✔ | ✔ | – | ✔ | ✔ | 129–141, 149, 166–169, 184, **261–265, 269–270** |
+| 28 | `GET /tai-lieu/:id/file/:fileId` | ✔ | – | ✔ | – | – | ✔ | 142–146, 163, 180, **262, 266** |
+| 29 | `DELETE /tai-lieu/:id/file/:fileId` | ✔ | – | ✔ | – | – | ✔ | 143, 147, 148, **266–268** |
 | — | Xuyên suốt (auth / module / tenant / API contract) | – | – | – | ✔ | – | ✔ | 171–185 |
 
 ---

@@ -359,15 +359,21 @@ export function useThemNhanVien() {
           );
         }
       }
+
+      // Trả mã nhân viên vừa tạo để màn hình gọi chuyển thẳng sang chế độ sửa mà không phải
+      // đóng dialog rồi tìm lại người vừa nhập. Ba tab phụ (hợp đồng / hồ sơ / người phụ thuộc)
+      // đều thao tác theo `ma_nv` nên chỉ mở được sau khi nhân viên đã nằm trong CSDL — backend
+      // chặn bằng `assertNhanVienTonTai` và khóa ngoại, không phải quy ước phía giao diện.
+      return ketQua.ma_nv;
     },
     onSettled: lamMoi,
   });
 
   return useCallback(
-    async (payload: ThemNhanVienPayload) => {
+    async (payload: ThemNhanVienPayload): Promise<string> => {
       if (!payload.nhan_vien.ho_ten.trim())
         throw new Error("Họ và tên không được để trống.");
-      await them.mutateAsync(payload);
+      return them.mutateAsync(payload);
     },
     [them],
   );

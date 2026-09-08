@@ -24,11 +24,8 @@ import Dialog from "@mui/material/Dialog";
 import DialogTitle from "@mui/material/DialogTitle";
 import DialogContent from "@mui/material/DialogContent";
 import DialogActions from "@mui/material/DialogActions";
-import VisibilityRounded from "@mui/icons-material/VisibilityRounded";
-import LinkOffRounded from "@mui/icons-material/LinkOffRounded";
 import CloudDoneRounded from "@mui/icons-material/CloudDoneRounded";
 import CloudOffRounded from "@mui/icons-material/CloudOffRounded";
-import type { FileScan } from "../../../api/taiLieuQueries";
 import {
   useNgatKetNoiDrive,
   useTaiLieuList,
@@ -36,11 +33,20 @@ import {
   useXemFile,
   useXoaFileDinhKem,
   useXoaTaiLieu,
+  type DongTaiLieu,
+  type FileScanApi,
 } from "../../../api/taiLieuQueries";
-import type { TaiLieu } from "../../../types";
 import XacNhanXoaDialog from "../../XacNhanXoaDialog";
+import DanhSachFileScan from "../DanhSachFileScan";
 import TaiLieuFormDialog from "../TaiLieuFormDialog";
 
+/**
+ * Tab "Hồ sơ & Tài liệu" của một nhân viên.
+ *
+ * `[QĐ #21]` MỘT hàng bảng = MỘT giấy tờ; các file scan của nó nằm LỒNG trong ô "File scan" của
+ * chính hàng đó (BR-hrm-037). Đừng đổi sang danh sách phẳng mỗi file một hàng — căn cước hai
+ * mặt sẽ hiện thành hai hàng cùng tên "CCCD" và người đọc tưởng là hai giấy tờ khác nhau.
+ */
 export default function HoSoTab({ maNv }: { maNv: string }) {
   const { items: danhSach, isLoading, isError, error } = useTaiLieuList(maNv);
   const xemFile = useXemFile();
@@ -79,10 +85,11 @@ export default function HoSoTab({ maNv }: { maNv: string }) {
     };
   }, []);
 
-  const moXemFile = async (id: string, ten: string, mime: string) => {
+  /** Xem MỘT file cụ thể: cần cả id dòng giấy tờ lẫn id file (BE kiểm file thuộc đúng dòng). */
+  const moXemFile = async (idTaiLieu: string, file: FileScanApi) => {
     setDangTaiXem(true);
     try {
-      const url = await xemFile(id);
+      const url = await xemFile(idTaiLieu, file.id);
       // Tải xong mà tab đã đóng thì bỏ luôn blob — `setDangXem` lúc này là vô nghĩa, còn blob
       // thì không ai thu hồi nữa.
       if (!conSong.current) {
@@ -92,7 +99,11 @@ export default function HoSoTab({ maNv }: { maNv: string }) {
       thuHoiUrl(); // trả lại file xem trước đó
       urlRef.current = url;
       setAnhLoi(false);
-      setDangXem({ url, ten, laPdf: mime === "application/pdf" });
+      setDangXem({
+        url,
+        ten: file.ten_file,
+        laPdf: file.mime_type === "application/pdf",
+      });
     } catch (err) {
       toast.error(getErrorMessage(err, "Không mở được file."));
     } finally {
@@ -107,10 +118,16 @@ export default function HoSoTab({ maNv }: { maNv: string }) {
    */
   const dongXemFile = () => setDangXem(null);
 
-  const goFile = async (id: string) => {
+  const goFile = async (idTaiLieu: string, fileId: string) => {
     try {
-      await xoaFileDinhKem(id);
-      toast.success("Đã gỡ file scan.");
+      const { so_file_con_lai } = await xoaFileDinhKem(idTaiLieu, fileId);
+      // Nói ra số file còn lại: gỡ file cuối cùng KHÔNG xóa dòng giấy tờ theo (BR-hrm-038),
+      // câu này để người dùng khỏi đi tìm xem dòng có biến mất không.
+      toast.success(
+        so_file_con_lai > 0
+          ? `Đã gỡ file. Giấy tờ còn ${so_file_con_lai} file.`
+          : "Đã gỡ file. Giấy tờ này giờ chưa có file scan nào.",
+      );
     } catch (err) {
       toast.error(getErrorMessage(err, "Không gỡ được file."));
     }
@@ -118,22 +135,42 @@ export default function HoSoTab({ maNv }: { maNv: string }) {
   const xoaTaiLieu = useXoaTaiLieu();
 
   const [formOpen, setFormOpen] = useState(false);
-  const [dangSua, setDangSua] = useState<TaiLieu | undefined>(undefined);
-  const [dangXoa, setDangXoa] = useState<TaiLieu | undefined>(undefined);
+  const [dangSua, setDangSua] = useState<DongTaiLieu | undefined>(undefined);
+  const [dangXoa, setDangXoa] = useState<DongTaiLieu | undefined>(undefined);
   /**
    * Gỡ file cũng phải hỏi lại như mọi thao tác xóa khác trong HRM: bản scan CCCD có khi là bản
    * duy nhất còn lại, gỡ nhầm là mất hẳn (file bị xóa luôn trên Drive, không có hoàn tác).
+   * Giữ cả dòng giấy tờ lẫn file để hộp xác nhận nêu đích danh TÊN FILE, không nói chung chung.
    */
   const [dangGoFile, setDangGoFile] = useState<
-    (TaiLieu & FileScan) | undefined
+    { tl: DongTaiLieu; file: FileScanApi } | undefined
   >(undefined);
   const [dangNgatDrive, setDangNgatDrive] = useState(false);
 
+  const moFormSua = (tl: DongTaiLieu) => {
+    setDangSua(tl);
+    setFormOpen(true);
+  };
+
   const xacNhanXoa = async () => {
     if (!dangXoa) return;
+    const soFile = dangXoa.files.length;
     try {
-      await xoaTaiLieu(dangXoa.id);
-      toast.success("Đã xóa tài liệu.");
+      const { da_xoa_file_drive } = await xoaTaiLieu(dangXoa.id);
+      // BE xóa file trên Drive theo kiểu CỐ HẾT SỨC: lỗi Drive không chặn việc xóa dòng
+      // (BR-hrm-039). Báo "thành công" trơn trong ca đó là nói sai — file vẫn nằm trên Drive.
+      if (soFile > 0 && !da_xoa_file_drive) {
+        toast.warning(
+          `Đã xóa tài liệu, nhưng chưa dọn được ${soFile} file scan trên Google Drive. ` +
+            `Kiểm tra tài khoản Drive đang kết nối, hoặc xóa tay trong thư mục của nhân viên.`,
+        );
+      } else {
+        toast.success(
+          soFile > 0
+            ? `Đã xóa tài liệu và ${soFile} file scan kèm theo.`
+            : "Đã xóa tài liệu.",
+        );
+      }
     } catch (err) {
       toast.error(getErrorMessage(err, "Không xóa được tài liệu."));
     } finally {
@@ -211,7 +248,9 @@ export default function HoSoTab({ maNv }: { maNv: string }) {
           </TableHead>
           <TableBody>
             {danhSach.map((tl) => (
-              <TableRow key={tl.id} hover>
+              /* `verticalAlign: top` cho MỌI ô: hàng cao lên theo số file, để căn giữa thì
+                 loại giấy tờ trôi xuống giữa dãy file và mất liên hệ với dòng của nó. */
+              <TableRow key={tl.id} hover sx={{ "& td": { verticalAlign: "top" } }}>
                 <TableCell sx={{ whiteSpace: "nowrap", fontWeight: 600 }}>
                   {nhan(LOAI_TAI_LIEU, tl.loai)}
                 </TableCell>
@@ -221,57 +260,22 @@ export default function HoSoTab({ maNv }: { maNv: string }) {
                 </TableCell>
                 <TableCell>{tl.noi_cap || "—"}</TableCell>
                 <TableCell>{tl.ghi_chu || "—"}</TableCell>
-                <TableCell sx={{ whiteSpace: "nowrap" }}>
-                  {tl.co_file ? (
-                    <Stack
-                      direction="row"
-                      spacing={0.5}
-                      sx={{ alignItems: "center" }}
-                    >
-                      <Tooltip
-                        title={`${tl.ten_file} — ${(tl.kich_thuoc / 1024).toFixed(0)}KB`}
-                      >
-                        <IconButton
-                          size="small"
-                          disabled={dangTaiXem}
-                          onClick={() =>
-                            moXemFile(tl.id, tl.ten_file, tl.mime_type)
-                          }
-                        >
-                          <VisibilityRounded fontSize="small" />
-                        </IconButton>
-                      </Tooltip>
-                      {/* Icon PHẢI khác cái ghim giấy của nút "Thêm file scan" bên form: cùng
-                          hình mà một bên đính vào, một bên xóa đi thì người dùng bấm nhầm. */}
-                      <Tooltip title="Gỡ file khỏi tài liệu">
-                        <IconButton
-                          size="small"
-                          color="error"
-                          onClick={() => setDangGoFile(tl)}
-                        >
-                          <LinkOffRounded fontSize="small" />
-                        </IconButton>
-                      </Tooltip>
-                    </Stack>
-                  ) : (
-                    <Box component="span" sx={{ color: "text.disabled" }}>
-                      Chưa có
-                    </Box>
-                  )}
+                <TableCell>
+                  <DanhSachFileScan
+                    files={tl.files}
+                    dangTaiXem={dangTaiXem}
+                    onXem={(file) => moXemFile(tl.id, file)}
+                    onGo={(file) => setDangGoFile({ tl, file })}
+                    onThemFile={() => moFormSua(tl)}
+                  />
                 </TableCell>
                 <TableCell align="right" sx={{ whiteSpace: "nowrap" }}>
                   <Tooltip title="Sửa">
-                    <IconButton
-                      size="small"
-                      onClick={() => {
-                        setDangSua(tl);
-                        setFormOpen(true);
-                      }}
-                    >
+                    <IconButton size="small" onClick={() => moFormSua(tl)}>
                       <EditRounded fontSize="small" />
                     </IconButton>
                   </Tooltip>
-                  <Tooltip title="Xóa">
+                  <Tooltip title="Xóa cả giấy tờ">
                     <IconButton
                       size="small"
                       color="error"
@@ -371,39 +375,64 @@ export default function HoSoTab({ maNv }: { maNv: string }) {
         taiLieu={dangSua}
         onClose={() => setFormOpen(false)}
       />
+
+      {/* Xóa cả dòng kéo theo MỌI file scan trên Drive và không hoàn tác được, nên hộp xác
+          nhận phải nêu SỐ FILE sắp mất (BR-hrm-039), không dùng câu chung chung. */}
       <XacNhanXoaDialog
         open={Boolean(dangXoa)}
         tieuDe="Xóa tài liệu"
         noiDung={
           <>
-            Xóa tài liệu{" "}
-            <strong>{dangXoa ? nhan(LOAI_TAI_LIEU, dangXoa.loai) : ""}</strong>?
+            Xóa giấy tờ{" "}
+            <strong>{dangXoa ? nhan(LOAI_TAI_LIEU, dangXoa.loai) : ""}</strong>
+            {dangXoa && dangXoa.files.length > 0 ? (
+              <>
+                {" "}
+                cùng <strong>
+                  {dangXoa.files.length} file scan
+                </strong> kèm theo? Các file sẽ bị xóa khỏi Google Drive và
+                không lấy lại được.
+              </>
+            ) : (
+              <>? Giấy tờ này chưa đính file scan nào.</>
+            )}
           </>
         }
         onClose={() => setDangXoa(undefined)}
         onXacNhan={xacNhanXoa}
       />
+
       <XacNhanXoaDialog
         open={Boolean(dangGoFile)}
         tieuDe="Gỡ file scan"
         noiDung={
           <>
-            Gỡ file <strong>{dangGoFile?.ten_file}</strong> khỏi tài liệu{" "}
+            Gỡ file <strong>{dangGoFile?.file.ten_file}</strong> khỏi giấy tờ{" "}
             <strong>
-              {dangGoFile ? nhan(LOAI_TAI_LIEU, dangGoFile.loai) : ""}
+              {dangGoFile ? nhan(LOAI_TAI_LIEU, dangGoFile.tl.loai) : ""}
             </strong>
             ? File sẽ bị xóa khỏi Google Drive và không lấy lại được.
+            {dangGoFile && dangGoFile.tl.files.length > 1 ? (
+              <>
+                {" "}
+                {dangGoFile.tl.files.length - 1} file còn lại của giấy tờ này
+                vẫn giữ nguyên.
+              </>
+            ) : (
+              <> Giấy tờ vẫn còn trong hồ sơ, chỉ là chưa có file scan.</>
+            )}
           </>
         }
         nhanXacNhan="Gỡ file"
         onClose={() => setDangGoFile(undefined)}
         onXacNhan={async () => {
           if (!dangGoFile) return;
-          const id = dangGoFile.id;
+          const { tl, file } = dangGoFile;
           setDangGoFile(undefined);
-          await goFile(id);
+          await goFile(tl.id, file.id);
         }}
       />
+
       <XacNhanXoaDialog
         open={dangNgatDrive}
         tieuDe="Ngắt kết nối Google Drive"

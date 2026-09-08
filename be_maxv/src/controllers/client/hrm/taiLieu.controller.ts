@@ -34,6 +34,7 @@ import {
 } from '../../../services/client/hrm/taiLieu.service';
 import {
   taiLieuBodySchema,
+  taiLieuFileParamSchema,
   taiLieuListQuerySchema,
   taiLieuParamSchema,
   taiLieuUpdateSchema,
@@ -61,11 +62,25 @@ export async function update(req: FastifyRequest, reply: FastifyReply) {
   return sendOk(reply, await updateTaiLieu(db, id, body));
 }
 
-// DELETE /api/v1/hrm/tai-lieu/:id
+/**
+ * DELETE /api/v1/hrm/tai-lieu/:id — xóa dòng giấy tờ VÀ mọi file scan của nó trên Drive.
+ *
+ * Cần `donViId` vì bước dọn Drive nằm trong service (BR-hrm-039). Lỗi Drive chỉ vào nhật ký
+ * máy chủ và không chặn việc xóa dòng; phản hồi mang cờ `da_xoa_file_drive` để giao diện nói
+ * đúng sự thật thay vì khẳng định bừa là đã dọn sạch.
+ */
 export async function remove(req: FastifyRequest, reply: FastifyReply) {
   const db = await resolveTenantDb(req);
   const { id } = validateParams(taiLieuParamSchema, req.params);
-  return sendOk(reply, await deleteTaiLieu(db, id));
+  return sendOk(
+    reply,
+    await deleteTaiLieu(db, await donViDangChon(req), id, (err) =>
+      req.log.error(
+        { err, taiLieuId: id },
+        'Không xóa được file scan trên Drive khi xóa dòng giấy tờ',
+      ),
+    ),
+  );
 }
 
 // ── Google Drive: file scan đính kèm ────────────────────────────────────────
@@ -329,16 +344,20 @@ export async function taiFileLenTaiLieu(
 }
 
 /**
- * GET /api/v1/hrm/tai-lieu/:id/file — stream file về trình duyệt.
+ * GET /api/v1/hrm/tai-lieu/:id/file/:fileId — trả một file scan về trình duyệt.
  * `inline` để ảnh/PDF xem ngay trong app, không phải tải xuống rồi mở bằng phần mềm khác.
+ *
+ * `[QĐ #21]` Đường dẫn có thêm `:fileId` vì một giấy tờ nay giữ nhiều file. Việc kiểm file
+ * thuộc đúng dòng giấy tờ nằm ở service (`timFileCuaTaiLieu`), đừng tra thẳng theo `fileId`.
  */
 export async function xemFileTaiLieu(req: FastifyRequest, reply: FastifyReply) {
   const db = await resolveTenantDb(req);
-  const { id } = validateParams(taiLieuParamSchema, req.params);
+  const { id, fileId } = validateParams(taiLieuFileParamSchema, req.params);
   const { noiDung, tenFile, mimeType } = await taiFileVe(
     db,
     await donViDangChon(req),
     id,
+    fileId,
   );
 
   return (
@@ -357,9 +376,12 @@ export async function xemFileTaiLieu(req: FastifyRequest, reply: FastifyReply) {
   );
 }
 
-// DELETE /api/v1/hrm/tai-lieu/:id/file
+/**
+ * DELETE /api/v1/hrm/tai-lieu/:id/file/:fileId — gỡ ĐÚNG MỘT file, giữ dòng giấy tờ.
+ * Gỡ file cuối cùng cũng không xóa dòng theo (BR-hrm-038).
+ */
 export async function goFileTaiLieu(req: FastifyRequest, reply: FastifyReply) {
   const db = await resolveTenantDb(req);
-  const { id } = validateParams(taiLieuParamSchema, req.params);
-  return sendOk(reply, await goFile(db, await donViDangChon(req), id));
+  const { id, fileId } = validateParams(taiLieuFileParamSchema, req.params);
+  return sendOk(reply, await goFile(db, await donViDangChon(req), id, fileId));
 }

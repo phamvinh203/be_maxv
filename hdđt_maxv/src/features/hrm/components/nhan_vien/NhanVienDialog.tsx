@@ -44,8 +44,24 @@ interface Props {
 const KHOA_KHI_THEM = "Lưu nhân viên trước rồi mới nhập được mục này.";
 
 export default function NhanVienDialog({ open, onClose, maNv }: Props) {
-  const laSua = Boolean(maNv);
-  const chiTiet = useNhanVienDetail(maNv ?? null);
+  /*
+   * Mã nhân viên vừa TẠO XONG trong chính lần mở dialog này.
+   *
+   * Ba tab phụ đều thao tác theo `ma_nv`, mà lúc đang thêm mới thì nhân viên chưa nằm trong
+   * CSDL — backend chặn thật bằng `assertNhanVienTonTai` và khóa ngoại, nên mở tab ra cũng chỉ
+   * nhận 404. Trước đây lưu xong là đóng luôn dialog, người dùng phải tìm lại người vừa nhập
+   * trong danh sách rồi mở ra mới đính được hồ sơ và người phụ thuộc.
+   *
+   * Giữ mã ở đây để lưu xong thì dialog CHUYỂN SANG chế độ sửa ngay tại chỗ: ba tab mở ra,
+   * người dùng đi một mạch. Không đụng backend, không có nguy cơ dữ liệu nửa vời — nhân viên
+   * đã thật sự tồn tại trước khi tab nào mở.
+   */
+  const [maNvVuaTao, setMaNvVuaTao] = useState<string | null>(null);
+  /** Mã đang thao tác: của prop khi sửa, của lần tạo vừa xong khi thêm mới. */
+  const maNvHienTai = maNv ?? maNvVuaTao;
+  const laSua = Boolean(maNvHienTai);
+
+  const chiTiet = useNhanVienDetail(maNvHienTai);
   const maMoi = useMaNhanVienMoi();
   const themNhanVien = useThemNhanVien();
   const suaNhanVien = useSuaNhanVien();
@@ -53,7 +69,7 @@ export default function NhanVienDialog({ open, onClose, maNv }: Props) {
     items: lichSuHopDong,
     isError: loiTaiHopDong,
     error: chiTietLoiHopDong,
-  } = useHopDongList(maNv ?? null);
+  } = useHopDongList(maNvHienTai);
   const { biTuChoi: khongXemDuocLuong } = useQuyenXemLuong();
 
   const [tab, setTab] = useState(0);
@@ -66,6 +82,9 @@ export default function NhanVienDialog({ open, onClose, maNv }: Props) {
     // Nạp lại toàn bộ form mỗi lần mở — cố ý reset theo state ngoài.
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setTab(0);
+    // Xóa mã của lần tạo TRƯỚC, nếu không thì mở dialog "Thêm nhân viên" lần hai sẽ tưởng
+    // đang sửa người vừa tạo lần một.
+    setMaNvVuaTao(null);
     setNhanVien(chiTiet ? { ...chiTiet } : nhanVienRong(maMoi));
     setHopDongDau(hopDongRong());
     // `chiTiet` và `maMoi` đổi theo kho dữ liệu; chỉ nạp lại khi mở dialog.
@@ -87,11 +106,25 @@ export default function NhanVienDialog({ open, onClose, maNv }: Props) {
         // Nhóm hợp đồng ở tab 1 là tùy chọn: bỏ trống cả số HĐ lẫn ngày bắt đầu
         // thì tạo nhân viên không kèm hợp đồng, ký sau ở tab Lịch sử hợp đồng.
         const coNhapHopDong = Boolean(hopDongDau.so_hd.trim() || hopDongDau.ngay_bat_dau);
-        await themNhanVien({
+        const maVuaTao = await themNhanVien({
           nhan_vien: nhanVien,
           hop_dong: coNhapHopDong ? hopDongDau : null,
         });
-        toast.success("Đã thêm nhân viên.");
+
+        /*
+         * KHÔNG đóng dialog. Ghi mã vừa tạo vào state để dialog chuyển sang chế độ sửa: ba tab
+         * phụ mở ra ngay, người dùng nhập tiếp hồ sơ và người phụ thuộc mà không phải tìm lại
+         * người vừa nhập trong danh sách.
+         *
+         * Phải đồng bộ luôn `ma_nv` trong form: các tab con nhận `nhanVien.ma_nv`, mà lúc thêm
+         * mới trường này có thể đang rỗng (để backend tự sinh) hoặc khác mã backend cấp thật.
+         */
+        setMaNvVuaTao(maVuaTao);
+        setNhanVien((truoc) => ({ ...truoc, ma_nv: maVuaTao }));
+        toast.success(
+          `Đã thêm nhân viên ${maVuaTao}. Nhập tiếp hồ sơ và người phụ thuộc ở các tab bên trên.`,
+        );
+        return;
       }
       onClose();
     } catch (err) {

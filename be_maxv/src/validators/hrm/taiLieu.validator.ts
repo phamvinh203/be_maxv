@@ -61,6 +61,18 @@ export const taiLieuParamSchema = z.object({
   id: z.string().min(1),
 });
 
+/**
+ * Param `:id/file/:fileId` — QĐ #21: một giấy tờ giữ nhiều file nên phải nói rõ file nào.
+ *
+ * Chỉ soát "có mặt và không rỗng"; việc `fileId` có thuộc đúng `id` hay không là chuyện của
+ * TẦNG NGHIỆP VỤ (`timFileCuaTaiLieu`) vì nó cần truy vấn — Zod không làm thay được, và đừng
+ * để ai tưởng đã có validator thì service khỏi kiểm (E-hrm-066).
+ */
+export const taiLieuFileParamSchema = z.object({
+  id: z.string().min(1),
+  fileId: z.string().min(1),
+});
+
 export type TaiLieuBodyInput = z.infer<typeof taiLieuBodySchema>;
 export type TaiLieuUpdateInput = z.infer<typeof taiLieuUpdateSchema>;
 export type TaiLieuListQuery = z.infer<typeof taiLieuListQuerySchema>;

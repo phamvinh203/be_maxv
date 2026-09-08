@@ -8,6 +8,7 @@ import type {
   TaiLieuListQuery,
   TaiLieuUpdateInput,
 } from '../../../validators/hrm/taiLieu.validator';
+import { xoaMoiFileTrenDrive } from './taiLieuDrive.service';
 
 const taiLieuSelect = {
   id: true,
@@ -17,12 +18,27 @@ const taiLieuSelect = {
   ngay_cap: true,
   noi_cap: true,
   ghi_chu: true,
-  // Con trỏ file scan trên Drive — trả kèm để bảng hiện được nút xem/gỡ file mà không phải
-  // gọi thêm một lượt API cho từng dòng.
-  drive_file_id: true,
-  ten_file: true,
-  mime_type: true,
-  kich_thuoc: true,
+
+  /**
+   * Danh sách file scan — trả kèm để bảng hiện được nút xem/gỡ từng file mà không phải gọi
+   * thêm một lượt API cho từng dòng (QĐ #21, api-contract Mục 6.1).
+   *
+   * `drive_file_id` CỐ Ý không nằm trong select: nó là con trỏ NỘI BỘ tới Drive của khách,
+   * giao diện chỉ cần `id` để gọi hai endpoint xem và gỡ. Lộ ra ngoài là mời người ta thử gọi
+   * thẳng Google bằng id đó.
+   *
+   * Sắp theo `thu_tu` rồi `datetime0` — mặt trước tải trước thì LUÔN hiện trước. Sắp theo mỗi
+   * `datetime0` thì hai file lên trong cùng một mili-giây đảo chỗ giữa các lần đọc.
+   */
+  files: {
+    select: {
+      id: true,
+      ten_file: true,
+      mime_type: true,
+      kich_thuoc: true,
+    },
+    orderBy: [{ thu_tu: 'asc' }, { datetime0: 'asc' }],
+  },
 } satisfies Prisma.hrm_tai_lieuSelect;
 
 /**
@@ -120,8 +136,24 @@ export async function updateTaiLieu(
 /**
  * DELETE — xóa CỨNG: khóa chính là uuid nên không có chuyện cấp lại mã như `ma_nv`/`ma_pb`,
  * không cần giữ dòng lại (cùng lý do với người phụ thuộc).
+ *
+ * `[QĐ #12 + #21]` Xóa dòng thì xóa luôn **MỌI** file scan của nó trên Drive (BR-hrm-039).
+ * Khóa ngoại `onDelete: Cascade` dọn bảng `hrm_tai_lieu_file`, nhưng **Postgres không biết gì
+ * về Drive** — không tự gọi Google trước thì file thành mồ côi vĩnh viễn trên Drive của khách
+ * và không còn con trỏ nào để tìm lại.
+ *
+ * Hai điều dễ làm ngược, đừng "sửa cho gọn":
+ *  1. Gọi Drive **TRƯỚC** khi xóa dòng — sau đó thì con trỏ đã bị cascade cuốn đi.
+ *  2. Lỗi Drive **KHÔNG** chặn việc xóa dòng, và tuyệt đối không bọc lời gọi Drive vào
+ *     transaction rồi rollback: làm vậy là biến sự cố bên ngoài thành lỗi nghiệp vụ. Kết quả
+ *     thật được trả về trong `da_xoa_file_drive` để giao diện nói đúng sự thật.
  */
-export async function deleteTaiLieu(db: PrismaClient, id: string) {
+export async function deleteTaiLieu(
+  db: PrismaClient,
+  donViId: string,
+  id: string,
+  ghiLoi?: (err: unknown) => void,
+) {
   await findOrThrow(
     () =>
       db.hrm_tai_lieu.findFirst({
@@ -131,6 +163,7 @@ export async function deleteTaiLieu(db: PrismaClient, id: string) {
     new NotFoundError(MESSAGES.HRM.TAI_LIEU_NOT_FOUND),
   );
 
+  const daXoaFileDrive = await xoaMoiFileTrenDrive(db, donViId, id, ghiLoi);
   await db.hrm_tai_lieu.delete({ where: { id } });
-  return { id };
+  return { id, da_xoa_file_drive: daXoaFileDrive };
 }

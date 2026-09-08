@@ -33,7 +33,10 @@ export async function hrmTaiLieuRoutes(app: FastifyInstance) {
   );
   app.delete('/tai-lieu/drive/ket-noi', ctrl.driveNgatKetNoi);
 
+  // `[QĐ #21]` Một dòng giấy tờ giữ NHIỀU file (BR-hrm-037), nên hai đường xem và gỡ phải nói
+  // rõ file nào — `:fileId` là THAY ĐỔI PHÁ VỠ với giao diện đang gọi `/tai-lieu/:id/file`.
+  // Đường POST giữ nguyên: mỗi lần vẫn đúng một file, chỉ khác là THÊM VÀO chứ không thay thế.
   app.post('/tai-lieu/:id/file', ctrl.taiFileLenTaiLieu);
-  app.get('/tai-lieu/:id/file', ctrl.xemFileTaiLieu);
-  app.delete('/tai-lieu/:id/file', ctrl.goFileTaiLieu);
+  app.get('/tai-lieu/:id/file/:fileId', ctrl.xemFileTaiLieu);
+  app.delete('/tai-lieu/:id/file/:fileId', ctrl.goFileTaiLieu);
 }
