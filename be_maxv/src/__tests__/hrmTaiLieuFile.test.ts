@@ -5,10 +5,10 @@ import {
   assertConChoChoFile,
   thuTuKeTiep,
   timFileCuaTaiLieu,
-} from '../services/client/hrm/taiLieuDrive.service';
+} from '../services/client/hrm/du_lieu_ca_nhan/taiLieuDrive.service';
 import { ConflictError, NotFoundError } from '../helpers/errors';
 import { MESSAGES } from '../constants/messages';
-import { taiLieuFileParamSchema } from '../validators/hrm/taiLieu.validator';
+import { taiLieuFileParamSchema } from '../validators/hrm/du_lieu_ca_nhan/taiLieu.validator';
 
 /**
  * npx tsx --test src/__tests__/hrmTaiLieuFile.test.ts

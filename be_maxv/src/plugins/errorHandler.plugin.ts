@@ -1,6 +1,7 @@
 import fp from 'fastify-plugin';
 import {
   ConflictError,
+  BadRequestError,
   NotFoundError,
   UnauthorizedError,
   ForbiddenError,
@@ -25,6 +26,11 @@ export default fp(
         return reply
           .status(HttpStatus.BAD_REQUEST)
           .send({ success: false, errors: err.details });
+      }
+      if (err instanceof BadRequestError) {
+        return reply
+          .status(HttpStatus.BAD_REQUEST)
+          .send({ success: false, message: err.message });
       }
       if (err instanceof ConflictError) {
         return reply

@@ -1060,3 +1060,103 @@ model hrm_tai_lieu_file {
   /// khác sau khi xóa, ràng buộc như vậy chặn oan mà không bảo vệ được gì (M-14).
   @@index([tai_lieu_id])
 }
+
+// ============================================================
+//  HRM › NỀN TẢNG: CẤU HÌNH MẶC ĐỊNH, CA LÀM VIỆC & LỊCH NGÀY LỄ
+// ============================================================
+
+enum WorkDayMethod {
+  FIXED_26
+  FIXED_24
+  ACTUAL_MONTH
+}
+
+enum DayPolicy {
+  FULL_DAY
+  HALF_DAY
+  OFF
+}
+
+enum ShiftStatus {
+  ACTIVE
+  INACTIVE
+}
+
+enum HolidayType {
+  NATIONAL
+  LUNAR
+  COMPANY
+  COMPENSATORY
+}
+
+/// Cấu hình mặc định toàn công ty (Singleton DEFAULT)
+model GeneralSetting {
+  id                            String        @id @default("DEFAULT") @db.VarChar(32)
+  standardWorkingDaysMethod     WorkDayMethod @default(FIXED_26)
+  saturdayPolicy                DayPolicy     @default(HALF_DAY)
+  sundayPolicy                  DayPolicy     @default(OFF)
+  standardHoursPerDay           Decimal       @default(8.0) @db.Decimal(4, 2)
+  baseAnnualLeaveDays           Int           @default(12)
+  seniorityYearsForExtraDay     Int           @default(5)
+  otRateWeekdayDay              Decimal       @default(150.0) @db.Decimal(5, 2)
+  otRateWeekdayNight            Decimal       @default(200.0) @db.Decimal(5, 2)
+  otRateWeekendDay              Decimal       @default(200.0) @db.Decimal(5, 2)
+  otRateWeekendNight            Decimal       @default(270.0) @db.Decimal(5, 2)
+  otRateHolidayDay              Decimal       @default(300.0) @db.Decimal(5, 2)
+  otRateHolidayNight            Decimal       @default(390.0) @db.Decimal(5, 2)
+  maxOtHoursPerMonth            Int           @default(40)
+  warningOtHoursPerYear         Int           @default(200)
+  maxOtHoursPerYear             Int           @default(300)
+  baseSalary                    Decimal       @default(2340000) @db.Decimal(15, 2)
+  regionMinSalary               Decimal       @default(4960000) @db.Decimal(15, 2)
+  insuranceEmployeeSocial       Decimal       @default(8.0) @db.Decimal(5, 2)
+  insuranceEmployeeHealth       Decimal       @default(1.5) @db.Decimal(5, 2)
+  insuranceEmployeeUnemployment Decimal       @default(1.0) @db.Decimal(5, 2)
+  insuranceCompanySocial        Decimal       @default(17.5) @db.Decimal(5, 2)
+  insuranceCompanyHealth        Decimal       @default(3.0) @db.Decimal(5, 2)
+  insuranceCompanyUnemployment  Decimal       @default(1.0) @db.Decimal(5, 2)
+  unionFeeEmployeeRate          Decimal       @default(1.0) @db.Decimal(5, 2)
+  unionFeeMaxAmount             Decimal       @default(234000) @db.Decimal(15, 2)
+  unionFeeCompanyRate           Decimal       @default(2.0) @db.Decimal(5, 2)
+  personalDeduction             Decimal       @default(11000000) @db.Decimal(15, 2)
+  dependentDeduction            Decimal       @default(4400000) @db.Decimal(15, 2)
+  taxBrackets                   Json          @db.JsonB
+  createdAt                     DateTime      @default(now())
+  updatedAt                     DateTime      @default(now()) @updatedAt
+
+  @@map("hrm_general_settings")
+}
+
+/// Ca làm việc trong doanh nghiệp
+model WorkShift {
+  id           String      @id @default(uuid()) @db.VarChar(64)
+  code         String      @unique @db.VarChar(20)
+  name         String      @db.VarChar(100)
+  startTime    String      @db.VarChar(5)
+  endTime      String      @db.VarChar(5)
+  breakMinutes Int         @default(0)
+  status       ShiftStatus @default(ACTIVE)
+  createdAt    DateTime    @default(now())
+  updatedAt    DateTime    @default(now()) @updatedAt
+
+  @@index([status])
+  @@map("hrm_work_shifts")
+}
+
+/// Lịch ngày lễ, tết trong năm
+model Holiday {
+  id        String      @id @default(uuid()) @db.VarChar(64)
+  date      DateTime    @db.Date
+  name      String      @db.VarChar(150)
+  type      HolidayType @default(NATIONAL)
+  isAnnual  Boolean     @default(true)
+  isPaid    Boolean     @default(true)
+  note      String?     @db.VarChar(500)
+  createdAt DateTime    @default(now())
+  updatedAt DateTime    @default(now()) @updatedAt
+
+  @@unique([date, name])
+  @@index([date])
+  @@index([type])
+  @@map("hrm_holidays")
+}

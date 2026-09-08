@@ -1,10 +1,13 @@
 import type { FastifyInstance } from 'fastify';
 import { requireModule } from '../../services/shared/modules.service';
-import { hrmHopDongRoutes } from './hopDong.route';
-import { hrmNguoiPhuThuocRoutes } from './nguoiPhuThuoc.route';
-import { hrmNhanVienRoutes } from './nhanVien.route';
-import { hrmPhongBanRoutes } from './phongBan.route';
-import { hrmTaiLieuRoutes } from './taiLieu.route';
+import { hrmGeneralSettingsRoutes } from './cau_hinh_mac_dinh/generalSettings.route';
+import { hrmHolidaysRoutes } from './cau_hinh_mac_dinh/holidays.route';
+import { hrmHopDongRoutes } from './du_lieu_ca_nhan/hopDong.route';
+import { hrmNguoiPhuThuocRoutes } from './du_lieu_ca_nhan/nguoiPhuThuoc.route';
+import { hrmNhanVienRoutes } from './du_lieu_ca_nhan/nhanVien.route';
+import { hrmPhongBanRoutes } from './du_lieu_ca_nhan/phongBan.route';
+import { hrmTaiLieuRoutes } from './du_lieu_ca_nhan/taiLieu.route';
+import { hrmWorkShiftsRoutes } from './cau_hinh_mac_dinh/workShifts.route';
 
 /**
  * Nhóm route HRM (nhân sự) — chạy trên DB tenant, các bảng `hrm_*`.
@@ -33,4 +36,7 @@ export async function hrmRoutes(app: FastifyInstance) {
   await app.register(hrmNguoiPhuThuocRoutes);
   await app.register(hrmTaiLieuRoutes);
   await app.register(hrmHopDongRoutes);
+  await app.register(hrmGeneralSettingsRoutes);
+  await app.register(hrmWorkShiftsRoutes);
+  await app.register(hrmHolidaysRoutes);
 }

@@ -27,8 +27,16 @@ async function cleanup() {
   await sysPrisma.subscriptionPlan.deleteMany({ where: { ma: PLAN_MA } });
 }
 
-function authH(token: string) {
-  return { authorization: `Bearer ${token}` };
+/**
+ * Vé đăng nhập đi bằng COOKIE httpOnly, không phải header `Authorization`.
+ *
+ * `POST /auth/login` KHÔNG còn trả `accessToken` trong thân phản hồi — `issueTokens()`
+ * (helpers/authTokens.ts) đặt cả access lẫn refresh vào cookie httpOnly, thân chỉ còn
+ * `{ user, companies, activeDonViId, modules }`. Bản test cũ đọc `data.accessToken` nên gửi đi
+ * chuỗi `Bearer undefined` và bị 401 ở MỌI ca — hỏng ở TEST, không phải hỏng ở sản phẩm.
+ */
+function authH(ve: string) {
+  return { cookie: `accessToken=${ve}` };
 }
 
 async function login(email: string): Promise<string> {
@@ -38,7 +46,9 @@ async function login(email: string): Promise<string> {
     payload: { email, password: PW },
   });
   assert.equal(res.statusCode, 200, `login ${email}: ${res.body}`);
-  return res.json().data.accessToken as string;
+  const ve = res.cookies.find((c) => c.name === 'accessToken');
+  assert.ok(ve, `login ${email}: không thấy cookie accessToken`);
+  return ve.value;
 }
 
 before(async () => {

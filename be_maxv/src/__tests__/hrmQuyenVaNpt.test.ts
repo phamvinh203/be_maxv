@@ -3,15 +3,15 @@ import assert from 'node:assert/strict';
 import {
   kyGiamTruGiaoNhau,
   kyGiamTruTheoThang,
-} from '../services/client/hrm/nguoiPhuThuoc.service';
+} from '../services/client/hrm/du_lieu_ca_nhan/nguoiPhuThuoc.service';
 import {
   boTruongLuongKhiGhi,
   cheTruongLuong,
-} from '../services/client/hrm/nhanVien.service';
+} from '../services/client/hrm/du_lieu_ca_nhan/nhanVien.service';
 import {
   doiLoiRangBuocHrm,
   RANG_BUOC,
-} from '../services/client/hrm/rangBuocDb';
+} from '../utils/du_lieu_ca_nhan/rangBuocDb';
 import { ConflictError } from '../helpers/errors';
 import { setEmployeeAccessSchema } from '../validators/company.validator';
 import {
@@ -19,7 +19,7 @@ import {
   sqlKyNptTuDinhDanh,
   sqlNhomHd,
 } from '../services/shared/hrmTenantConstraints';
-import { loaiHdVeNhanVien } from '../services/client/hrm/hopDong.service';
+import { loaiHdVeNhanVien } from '../services/client/hrm/du_lieu_ca_nhan/hopDong.service';
 
 /**
  * npx tsx --test src/__tests__/hrmQuyenVaNpt.test.ts
@@ -137,13 +137,23 @@ test('cheTruongLuong: không sửa đối tượng gốc', () => {
 test('boTruongLuongKhiGhi: không có quyền -> BỎ QUA ba trường, giữ nguyên giá trị cũ', () => {
   // KHÔNG được nhận `null` rồi ghi đè: người không có quyền đọc thì màn hình của họ không có
   // sẵn ba giá trị cũ để gửi lại, nhận nguyên payload là xóa trắng số tài khoản của nhân viên.
-  const body = { ho_ten: 'B', so_tai_khoan: null, ten_tai_khoan: null, ngan_hang: null };
+  const body = {
+    ho_ten: 'B',
+    so_tai_khoan: null,
+    ten_tai_khoan: null,
+    ngan_hang: null,
+  };
   const ra = boTruongLuongKhiGhi(body, false) as Record<string, unknown>;
   assert.deepEqual(Object.keys(ra), ['ho_ten']);
 });
 
 test('boTruongLuongKhiGhi: có quyền -> ghi đủ, kể cả khi xóa trắng có chủ đích', () => {
-  const body = { ho_ten: 'B', so_tai_khoan: null, ten_tai_khoan: null, ngan_hang: null };
+  const body = {
+    ho_ten: 'B',
+    so_tai_khoan: null,
+    ten_tai_khoan: null,
+    ngan_hang: null,
+  };
   assert.deepEqual(boTruongLuongKhiGhi(body, true), body);
 });
 

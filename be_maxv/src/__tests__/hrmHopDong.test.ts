@@ -5,14 +5,14 @@ import {
   hopDongChongLan,
   khoangGiaoNhau,
   loaiHdVeNhanVien,
-} from '../services/client/hrm/hopDong.service';
+} from '../services/client/hrm/du_lieu_ca_nhan/hopDong.service';
 import {
   doiHopDongBodySchema,
   hopDongBodySchema,
   hopDongListQuerySchema,
   hopDongUpdateSchema,
-} from '../validators/hrm/hopDong.validator';
-import { nhanVienUpdateSchema } from '../validators/hrm/nhanVien.validator';
+} from '../validators/hrm/du_lieu_ca_nhan/hopDong.validator';
+import { nhanVienUpdateSchema } from '../validators/hrm/du_lieu_ca_nhan/nhanVien.validator';
 
 /**
  * npx tsx --test src/__tests__/hrmHopDong.test.ts
@@ -47,7 +47,12 @@ const HD_HOP_LE = {
 test('loaiHdVeNhanVien: ba nhóm nghiệp vụ, mọi nhãn lạ về hợp đồng lao động', () => {
   assert.equal(loaiHdVeNhanVien('thu_viec'), 'thu_viec');
   assert.equal(loaiHdVeNhanVien('khoan'), 'hdvc');
-  for (const nhan of ['khong_xac_dinh', 'xac_dinh', 'thoi_vu', 'nhan-la-hoac']) {
+  for (const nhan of [
+    'khong_xac_dinh',
+    'xac_dinh',
+    'thoi_vu',
+    'nhan-la-hoac',
+  ]) {
     assert.equal(loaiHdVeNhanVien(nhan), 'hdld', `nhãn "${nhan}"`);
   }
 });
@@ -65,14 +70,24 @@ test('loaiHdVeNhanVien: hạ chữ thường + cắt khoảng trắng trước k
 test('khoangGiaoNhau: hai hợp đồng chạm nhau đúng một ngày VẪN là chồng lấn (TC-hrm-203)', () => {
   // Ngày 31/03 không được thuộc về hai hợp đồng cùng nhóm.
   assert.equal(
-    khoangGiaoNhau(d('2026-01-01'), d('2026-03-31'), d('2026-03-31'), d('2026-12-31')),
+    khoangGiaoNhau(
+      d('2026-01-01'),
+      d('2026-03-31'),
+      d('2026-03-31'),
+      d('2026-12-31'),
+    ),
     true,
   );
 });
 
 test('khoangGiaoNhau: liền kề KHÔNG chạm (31/03 và 01/04) thì không chồng lấn', () => {
   assert.equal(
-    khoangGiaoNhau(d('2026-01-01'), d('2026-03-31'), d('2026-04-01'), d('2026-12-31')),
+    khoangGiaoNhau(
+      d('2026-01-01'),
+      d('2026-03-31'),
+      d('2026-04-01'),
+      d('2026-12-31'),
+    ),
     false,
   );
 });
@@ -80,7 +95,12 @@ test('khoangGiaoNhau: liền kề KHÔNG chạm (31/03 và 01/04) thì không ch
 test('khoangGiaoNhau: hai hợp đồng MỘT NGÀY cùng ngày là chồng lấn (TC-hrm-202)', () => {
   // Ca then chốt: dùng khoảng nửa mở thì hai khoảng này có độ dài bằng không và lọt lưới.
   assert.equal(
-    khoangGiaoNhau(d('2026-05-01'), d('2026-05-01'), d('2026-05-01'), d('2026-05-01')),
+    khoangGiaoNhau(
+      d('2026-05-01'),
+      d('2026-05-01'),
+      d('2026-05-01'),
+      d('2026-05-01'),
+    ),
     true,
   );
 });
@@ -96,7 +116,10 @@ test('khoangGiaoNhau: ngày kết thúc rỗng = vô thời hạn, chặn mọi 
     false,
   );
   // Hai hợp đồng cùng vô thời hạn thì luôn giao nhau.
-  assert.equal(khoangGiaoNhau(d('2026-01-01'), null, d('2030-01-01'), null), true);
+  assert.equal(
+    khoangGiaoNhau(d('2026-01-01'), null, d('2030-01-01'), null),
+    true,
+  );
 });
 
 /* ============ Luật chồng lấn hoàn chỉnh (nhóm + ngày) ============ */
@@ -192,7 +215,11 @@ test('hopDongBodySchema: hợp đồng đúng MỘT NGÀY là hợp lệ (TC-hrm
     ngay_bat_dau: '2026-05-01',
     ngay_ket_thuc: '2026-05-01',
   });
-  assert.equal(r.success, true, JSON.stringify(r.success ? {} : r.error.flatten()));
+  assert.equal(
+    r.success,
+    true,
+    JSON.stringify(r.success ? {} : r.error.flatten()),
+  );
 });
 
 test('hopDongBodySchema: ngày kết thúc TRƯỚC ngày bắt đầu -> 400, wording mới', () => {
@@ -202,9 +229,10 @@ test('hopDongBodySchema: ngày kết thúc TRƯỚC ngày bắt đầu -> 400, w
     ngay_ket_thuc: '2026-05-01',
   });
   assert.equal(r.success, false);
-  assert.deepEqual(r.success ? [] : r.error.flatten().fieldErrors.ngay_ket_thuc, [
-    'Ngày kết thúc không được trước ngày bắt đầu',
-  ]);
+  assert.deepEqual(
+    r.success ? [] : r.error.flatten().fieldErrors.ngay_ket_thuc,
+    ['Ngày kết thúc không được trước ngày bắt đầu'],
+  );
 });
 
 /* ============ Validator: ràng buộc lương — QĐ #5, E-hrm-056/057 ============ */
@@ -236,7 +264,10 @@ test('hopDongBodySchema: bật trích BHXH mà lương BHXH = 0 -> 400 (TC-hrm-1
   assert.equal(r.success, false);
   const loi = r.success ? [] : r.error.flatten().fieldErrors.luong_bhxh;
   assert.equal(loi?.length, 1);
-  assert.match(String(loi?.[0]), /^Đã bật trích BHXH nên lương đóng BHXH phải lớn hơn 0\./);
+  assert.match(
+    String(loi?.[0]),
+    /^Đã bật trích BHXH nên lương đóng BHXH phải lớn hơn 0\./,
+  );
 });
 
 test('hopDongBodySchema: TẮT trích BHXH thì lương BHXH để trống là hợp lệ (TC-hrm-199)', () => {
@@ -245,7 +276,11 @@ test('hopDongBodySchema: TẮT trích BHXH thì lương BHXH để trống là h
     trich_bhxh: false,
     luong_bhxh: 0,
   });
-  assert.equal(r.success, true, JSON.stringify(r.success ? {} : r.error.flatten()));
+  assert.equal(
+    r.success,
+    true,
+    JSON.stringify(r.success ? {} : r.error.flatten()),
+  );
 });
 
 test('hopDongUpdateSchema: ràng buộc lương áp cả ở đường SỬA', () => {
@@ -285,7 +320,11 @@ test('doiHopDongBodySchema: có loai_hd_can_chot thì qua, và được cắt kh
     ngay_chot: '2026-06-30',
     loai_hd_can_chot: '  khoan ',
   });
-  assert.equal(r.success, true, JSON.stringify(r.success ? {} : r.error.flatten()));
+  assert.equal(
+    r.success,
+    true,
+    JSON.stringify(r.success ? {} : r.error.flatten()),
+  );
   assert.equal(r.success && r.data.loai_hd_can_chot, 'khoan');
 });
 
@@ -294,7 +333,10 @@ test('doiHopDongBodySchema: có loai_hd_can_chot thì qua, và được cắt kh
 test('hopDongListQuerySchema: thiếu ma_nv -> 400 (TC-hrm-214, đóng BUG-HRM-25)', () => {
   assert.equal(hopDongListQuerySchema.safeParse({}).success, false);
   assert.equal(hopDongListQuerySchema.safeParse({ ma_nv: '' }).success, false);
-  assert.equal(hopDongListQuerySchema.safeParse({ ma_nv: '   ' }).success, false);
+  assert.equal(
+    hopDongListQuerySchema.safeParse({ ma_nv: '   ' }).success,
+    false,
+  );
 });
 
 test('hopDongListQuerySchema: có ma_nv thì in hoa cho khớp cách ghi', () => {
@@ -316,12 +358,19 @@ test('nhanVienUpdateSchema: THIẾU status -> 400 (TC-hrm-255, bịt BUG-HRM-26)
   // đã nghỉ trở lại đang làm, trong khi hợp đồng đã chốt vẫn nằm nguyên.
   const r = nhanVienUpdateSchema.safeParse(NV_SUA);
   assert.equal(r.success, false);
-  assert.equal((r.success ? {} : r.error.flatten().fieldErrors).status?.length, 1);
+  assert.equal(
+    (r.success ? {} : r.error.flatten().fieldErrors).status?.length,
+    1,
+  );
 });
 
 test('nhanVienUpdateSchema: có status thì qua, giữ đúng giá trị gửi lên', () => {
   const r = nhanVienUpdateSchema.safeParse({ ...NV_SUA, status: '0' });
-  assert.equal(r.success, true, JSON.stringify(r.success ? {} : r.error.flatten()));
+  assert.equal(
+    r.success,
+    true,
+    JSON.stringify(r.success ? {} : r.error.flatten()),
+  );
   assert.equal(r.success && r.data.status, '0');
 });
 

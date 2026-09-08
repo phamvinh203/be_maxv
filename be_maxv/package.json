@@ -17,6 +17,7 @@
     "hrm:ra-soat": "tsx src/scripts/ra-soat-hrm.ts",
     "hrm:constraints": "tsx src/scripts/apply-hrm-constraints.ts",
     "hrm:chuyen-file": "tsx src/scripts/chuyen-file-tai-lieu.ts",
+    "hrm:chuan-hoa-thue": "tsx src/scripts/chuan-hoa-bieu-thue.ts",
     "typecheck": "tsc --noEmit",
     "lint": "eslint src",
     "lint:fix": "eslint src --fix",
