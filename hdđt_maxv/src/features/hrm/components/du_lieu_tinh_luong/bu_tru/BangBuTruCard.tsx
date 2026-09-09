@@ -20,7 +20,7 @@ import DeleteRounded from "@mui/icons-material/DeleteRounded";
 import { moTaChieuBuTru } from "../../../constants";
 import { dongBuTruRong, tongBiTru, tongTheoChieu } from "../../../buTru";
 import { tienVn } from "../../../format";
-import { useKhoanBuTruList } from "../../../mock/hooks/buTru";
+import { useKhoanBuTruList } from "../../../api/payrollCatalogsQueries";
 import type { DongBuTru } from "../../../types";
 import TienField from "../../TienField";
 

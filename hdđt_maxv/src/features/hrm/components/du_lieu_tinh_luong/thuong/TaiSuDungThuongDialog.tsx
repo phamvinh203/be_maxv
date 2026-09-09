@@ -12,8 +12,8 @@ import Chip from "@mui/material/Chip";
 import Typography from "@mui/material/Typography";
 import { tienVn } from "../../../format";
 import { nhanBanDongThuong, tongTienThuong } from "../../../thuong";
-import { useBanThuongList, useKhoanThuongList } from "../../../mock/hooks/thuong";
-import { useNhanVienList } from "../../../mock/hooks/nhanVien";
+import { useBonusDataList } from "../../../api/payrollInputsQueries";
+import { useCurrentPayrollPeriod } from "../useCurrentPayrollPeriod";
 import type { DongThuong } from "../../../types";
 
 interface Props {
@@ -24,39 +24,44 @@ interface Props {
 }
 
 /**
- * Chép lại bảng thưởng của một nhân viên đã áp trước đó.
+ * Chép lại bảng thưởng của một nhân viên đã áp trước đó **trong cùng kỳ lương đang chọn**.
  *
  * Thưởng lễ, thưởng tết thường giống nhau cho cả nhóm, chỉ khác vài người — mở
  * bảng của một người rồi sửa vài con số nhanh hơn nhiều so với thêm lại từng
  * khoản.
  */
 export default function TaiSuDungThuongDialog({ open, onClose, onChon }: Props) {
-  const banThuong = useBanThuongList();
-  const nhanVien = useNhanVienList();
-  const danhMuc = useKhoanThuongList();
+  const { selectedPeriodId } = useCurrentPayrollPeriod();
+  const { data: bonusData } = useBonusDataList({ periodId: selectedPeriodId ?? "" });
 
   const danhSach = useMemo(() => {
-    const tenNvTheoMa = new Map(nhanVien.map((nv) => [nv.ma_nv, nv.ho_ten]));
-    const tenKhoanTheoMa = new Map(danhMuc.map((kl) => [kl.ma_khoan, kl.ten_khoan]));
-    return banThuong
-      .map((ban) => ({
-        ma_nv: ban.ma_nv,
-        ho_ten: tenNvTheoMa.get(ban.ma_nv) ?? ban.ma_nv,
-        dong: ban.dong,
-        tong: tongTienThuong(ban.dong),
-        // Liệt kê tên khoản ngay ở dòng chọn — không phải bấm vào mới biết bảng
-        // đó gồm những gì.
-        tomTat: ban.dong.map((d) => tenKhoanTheoMa.get(d.ma_khoan) ?? d.ma_khoan).join(" · "),
-      }))
+    return (bonusData ?? [])
+      .filter((ban) => ban.records.length > 0)
+      .map((ban) => {
+        const dong: DongThuong[] = ban.records.map((r) => ({
+          id: r.id,
+          ma_khoan: r.salaryItem?.code ?? r.salaryItemId,
+          so_tien: r.amount,
+        }));
+        return {
+          ma_nv: ban.ma_nv,
+          ho_ten: ban.ho_ten,
+          dong,
+          tong: tongTienThuong(dong),
+          // Liệt kê tên khoản ngay ở dòng chọn — không phải bấm vào mới biết bảng
+          // đó gồm những gì.
+          tomTat: ban.records.map((r) => r.salaryItem?.name ?? r.salaryItemId).join(" · "),
+        };
+      })
       .sort((a, b) => a.ma_nv.localeCompare(b.ma_nv));
-  }, [banThuong, nhanVien, danhMuc]);
+  }, [bonusData]);
 
   return (
     <Dialog open={open} onClose={onClose} maxWidth="sm" fullWidth>
       <DialogTitle sx={{ pb: 0.5 }}>Tái sử dụng bảng thưởng</DialogTitle>
       <Typography variant="body2" color="text.secondary" sx={{ px: 3, pb: 1 }}>
-        Chọn một nhân viên để chép bảng thưởng của họ vào bảng đang soạn. Bảng đang soạn sẽ bị
-        thay thế.
+        Chọn một nhân viên đã có thưởng trong kỳ lương này để chép bảng của họ vào bảng đang
+        soạn. Bảng đang soạn sẽ bị thay thế.
       </Typography>
 
       <DialogContent dividers sx={{ p: 0 }}>
@@ -99,7 +104,8 @@ export default function TaiSuDungThuongDialog({ open, onClose, onChon }: Props) 
               color="text.disabled"
               sx={{ textAlign: "center", py: 5, px: 3 }}
             >
-              Chưa có nhân viên nào được áp thưởng, nên chưa có bảng nào để tái sử dụng.
+              Chưa có nhân viên nào được áp thưởng trong kỳ này, nên chưa có bảng nào để tái sử
+              dụng.
             </Typography>
           )}
         </List>

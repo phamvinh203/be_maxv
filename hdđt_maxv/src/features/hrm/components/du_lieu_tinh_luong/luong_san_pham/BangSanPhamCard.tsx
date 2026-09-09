@@ -20,7 +20,7 @@ import AddRounded from "@mui/icons-material/AddRounded";
 import DeleteRounded from "@mui/icons-material/DeleteRounded";
 import { tienVn } from "../../../format";
 import { dongSanPhamRong, thanhTienSanPham, tongTienSanPham } from "../../../luongSanPham";
-import { useSanPhamList } from "../../../mock/hooks/luongSanPham";
+import { useSanPhamList } from "../../../api/payrollCatalogsQueries";
 import type { DongLuongSanPham } from "../../../types";
 import TienField from "../../TienField";
 

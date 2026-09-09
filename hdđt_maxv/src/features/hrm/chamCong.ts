@@ -106,7 +106,7 @@ export function khoaCham(maNv: string, ngay: string): string {
 }
 
 /** Nội dung mặc định của một ô khi người dùng chưa đụng tới, suy từ lịch. */
-function oMacDinh(ngayCham: NgayCham): OChamCong | null {
+export function oMacDinh(ngayCham: NgayCham): OChamCong | null {
   if (ngayCham.tenNgayLe) return { loai: "nghi_le", soGio: 0 };
   if (!ngayCham.laNgayLamViec) return null;
   return { loai: ngayCham.trongSo === 0.5 ? "nua_ngay" : "lam_viec", soGio: 0 };

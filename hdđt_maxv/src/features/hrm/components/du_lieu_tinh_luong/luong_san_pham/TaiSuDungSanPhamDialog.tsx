@@ -12,11 +12,8 @@ import Chip from "@mui/material/Chip";
 import Typography from "@mui/material/Typography";
 import { tienVn } from "../../../format";
 import { nhanBanDongSanPham, tongTienSanPham } from "../../../luongSanPham";
-import {
-  useBanLuongSanPhamList,
-  useSanPhamList,
-} from "../../../mock/hooks/luongSanPham";
-import { useNhanVienList } from "../../../mock/hooks/nhanVien";
+import { usePieceworkDataList } from "../../../api/payrollInputsQueries";
+import { useCurrentPayrollPeriod } from "../useCurrentPayrollPeriod";
 import type { DongLuongSanPham } from "../../../types";
 
 interface Props {
@@ -27,38 +24,45 @@ interface Props {
 }
 
 /**
- * Chép lại bảng lương sản phẩm của một nhân viên đã áp trước đó.
+ * Chép lại bảng lương sản phẩm của một nhân viên đã áp trước đó **trong cùng kỳ lương đang
+ * chọn**.
  *
  * Cả tổ thường nghiệm thu cùng loại sản phẩm, chỉ khác số lượng — chép rồi sửa
  * cột số lượng nhanh hơn nhiều so với chọn lại từng sản phẩm và gõ lại đơn giá.
  */
 export default function TaiSuDungSanPhamDialog({ open, onClose, onChon }: Props) {
-  const banList = useBanLuongSanPhamList();
-  const nhanVien = useNhanVienList();
-  const danhMuc = useSanPhamList();
+  const { selectedPeriodId } = useCurrentPayrollPeriod();
+  const { data: pieceworkData } = usePieceworkDataList({ periodId: selectedPeriodId ?? "" });
 
   const danhSach = useMemo(() => {
-    const tenNvTheoMa = new Map(nhanVien.map((nv) => [nv.ma_nv, nv.ho_ten]));
-    const tenSpTheoMa = new Map(danhMuc.map((sp) => [sp.ma_sp, sp.ten_sp]));
-    return banList
-      .map((ban) => ({
-        ma_nv: ban.ma_nv,
-        ho_ten: tenNvTheoMa.get(ban.ma_nv) ?? ban.ma_nv,
-        dong: ban.dong,
-        tong: tongTienSanPham(ban.dong),
-        // Liệt kê tên sản phẩm ngay ở dòng chọn — không phải bấm vào mới biết
-        // bảng đó gồm những gì.
-        tomTat: ban.dong.map((d) => tenSpTheoMa.get(d.ma_sp) ?? d.ma_sp).join(" · "),
-      }))
+    return (pieceworkData ?? [])
+      .filter((ban) => ban.records.length > 0)
+      .map((ban) => {
+        const dong: DongLuongSanPham[] = ban.records.map((r) => ({
+          id: r.id,
+          ma_sp: r.product?.code ?? r.productId,
+          don_gia: r.unitPrice,
+          so_luong: r.quantity,
+        }));
+        return {
+          ma_nv: ban.ma_nv,
+          ho_ten: ban.ho_ten,
+          dong,
+          tong: tongTienSanPham(dong),
+          // Liệt kê tên sản phẩm ngay ở dòng chọn — không phải bấm vào mới biết
+          // bảng đó gồm những gì.
+          tomTat: ban.records.map((r) => r.product?.name ?? r.productId).join(" · "),
+        };
+      })
       .sort((a, b) => a.ma_nv.localeCompare(b.ma_nv));
-  }, [banList, nhanVien, danhMuc]);
+  }, [pieceworkData]);
 
   return (
     <Dialog open={open} onClose={onClose} maxWidth="sm" fullWidth>
       <DialogTitle sx={{ pb: 0.5 }}>Tái sử dụng bảng lương sản phẩm</DialogTitle>
       <Typography variant="body2" color="text.secondary" sx={{ px: 3, pb: 1 }}>
-        Chọn một nhân viên để chép bảng của họ vào bảng đang soạn. Bảng đang soạn sẽ bị thay
-        thế.
+        Chọn một nhân viên đã có lương sản phẩm trong kỳ lương này để chép bảng của họ vào bảng
+        đang soạn. Bảng đang soạn sẽ bị thay thế.
       </Typography>
 
       <DialogContent dividers sx={{ p: 0 }}>
@@ -101,7 +105,8 @@ export default function TaiSuDungSanPhamDialog({ open, onClose, onChon }: Props)
               color="text.disabled"
               sx={{ textAlign: "center", py: 5, px: 3 }}
             >
-              Chưa có nhân viên nào được áp lương sản phẩm, nên chưa có bảng nào để tái sử dụng.
+              Chưa có nhân viên nào được áp lương sản phẩm trong kỳ này, nên chưa có bảng nào để
+              tái sử dụng.
             </Typography>
           )}
         </List>

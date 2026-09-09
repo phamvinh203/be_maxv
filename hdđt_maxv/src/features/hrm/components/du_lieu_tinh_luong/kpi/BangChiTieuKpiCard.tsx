@@ -19,7 +19,7 @@ import Chip from "@mui/material/Chip";
 import AddRounded from "@mui/icons-material/AddRounded";
 import DeleteRounded from "@mui/icons-material/DeleteRounded";
 import { dongKpiRong, hieuSuat, mauHieuSuat, tongTrongSo, tyLeHt } from "../../../kpi";
-import { useChiTieuKpiList } from "../../../mock/hooks/kpi";
+import { useChiTieuKpiList } from "../../../api/payrollCatalogsQueries";
 import type { DongKpi } from "../../../types";
 
 interface Props {

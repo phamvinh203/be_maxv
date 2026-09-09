@@ -14,7 +14,7 @@ import Typography from "@mui/material/Typography";
 import DeleteRounded from "@mui/icons-material/DeleteRounded";
 import { getErrorMessage } from "../../../../../lib/errors";
 import { tienVn } from "../../../format";
-import { useXoaBanThuong } from "../../../mock/hooks/thuong";
+import { useApplyBonus } from "../../../api/payrollInputsQueries";
 import type { LocNhanVienKyLuong, PhamViApDung, ThuongNhanVienRow } from "../../../types";
 import XacNhanXoaDialog from "../../XacNhanXoaDialog";
 import ThanhLocKyLuong from "../ThanhLocKyLuong";
@@ -26,9 +26,8 @@ interface Props {
   onFilters: (filters: LocNhanVienKyLuong) => void;
   /** Danh sách đã lọc — cũng chính là danh sách "Áp dụng thưởng" sẽ ghi. */
   rows: ThuongNhanVienRow[];
-  coThayDoi: boolean;
-  dangLuu: boolean;
-  onLuu: () => void;
+  periodId: string;
+  isReadOnly: boolean;
 }
 
 /** Chọn phạm vi áp thưởng và xem tiền thưởng đã áp của từng nhân viên. */
@@ -38,17 +37,21 @@ export default function DanhSachThuongCard({
   filters,
   onFilters,
   rows,
-  coThayDoi,
-  dangLuu,
-  onLuu,
+  periodId,
+  isReadOnly,
 }: Props) {
-  const xoaBanThuong = useXoaBanThuong();
+  const applyMut = useApplyBonus(periodId);
   const [dangXoa, setDangXoa] = useState<ThuongNhanVienRow | undefined>(undefined);
 
   const xacNhanXoa = async () => {
     if (!dangXoa) return;
     try {
-      await xoaBanThuong(dangXoa.ma_nv);
+      await applyMut.mutateAsync({
+        periodId,
+        scope: "nhan_vien",
+        employeeIds: [dangXoa.ma_nv],
+        items: [],
+      });
       toast.success(`Đã xóa thưởng của ${dangXoa.ho_ten}.`);
     } catch (err) {
       toast.error(getErrorMessage(err, "Không xóa được thưởng."));
@@ -65,9 +68,6 @@ export default function DanhSachThuongCard({
         filters={filters}
         onFilters={onFilters}
         soNhanVien={rows.length}
-        coThayDoi={coThayDoi}
-        dangLuu={dangLuu}
-        onLuu={onLuu}
       />
 
       <TableContainer sx={{ mt: 1 }}>
@@ -121,7 +121,7 @@ export default function DanhSachThuongCard({
                       <IconButton
                         size="small"
                         color="error"
-                        disabled={row.so_khoan === 0}
+                        disabled={isReadOnly || row.so_khoan === 0}
                         onClick={() => setDangXoa(row)}
                       >
                         <DeleteRounded fontSize="small" />

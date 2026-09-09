@@ -108,6 +108,36 @@ export function useSoKhoanTheoLoai(): Map<LoaiKhoanLuong, number> {
   }, [rows]);
 }
 
+/** Danh sách khoản thưởng đang dùng (cho phân hệ Thưởng) */
+export function useKhoanThuongList(): KhoanLuong[] {
+  const items = useKhoanLuongList();
+  return useMemo(
+    () => items.filter((kl) => kl.loai === "luong_thuong" && kl.status === "1"),
+    [items],
+  );
+}
+
+/** Danh sách khoản phần trăm đang dùng (cho phân hệ Lương phần trăm) */
+export function useKhoanPhanTramList(): KhoanLuong[] {
+  const items = useKhoanLuongList();
+  return useMemo(
+    () => items.filter((kl) => kl.loai === "luong_phan_tram" && kl.status === "1"),
+    [items],
+  );
+}
+
+/**
+ * Mã khoản (`ma_khoan`) → id thật của máy chủ.
+ *
+ * Khu "Dữ liệu tính lương" (Thưởng, Lương phần trăm) định danh khoản bằng **mã**, còn API
+ * `POST /payroll-data/{bonus,commission}/apply` cần **id** (`salaryItemId`) — map này đổi ngay
+ * trước khi gửi. Cùng `queryKey`/`queryFn` với `useKhoanLuongList` nên không tốn thêm request.
+ */
+export function useKhoanLuongIdByCode(): Map<string, string> {
+  const { data } = useDanhSachKhoanLuong();
+  return useMemo(() => new Map((data ?? []).map((x) => [x.code, x.id])), [data]);
+}
+
 function useLamMoi() {
   const qc = useQueryClient();
   return () => {

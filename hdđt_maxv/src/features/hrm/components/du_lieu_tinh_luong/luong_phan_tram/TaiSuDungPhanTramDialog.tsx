@@ -12,11 +12,8 @@ import Chip from "@mui/material/Chip";
 import Typography from "@mui/material/Typography";
 import { tienVn } from "../../../format";
 import { nhanBanDongPhanTram, tongTienPhanTram } from "../../../luongPhanTram";
-import {
-  useBanLuongPhanTramList,
-  useKhoanPhanTramList,
-} from "../../../mock/hooks/luongPhanTram";
-import { useNhanVienList } from "../../../mock/hooks/nhanVien";
+import { useCommissionDataList } from "../../../api/payrollInputsQueries";
+import { useCurrentPayrollPeriod } from "../useCurrentPayrollPeriod";
 import type { DongLuongPhanTram } from "../../../types";
 
 interface Props {
@@ -27,40 +24,47 @@ interface Props {
 }
 
 /**
- * Chép lại bảng lương phần trăm của một nhân viên đã áp trước đó.
+ * Chép lại bảng lương phần trăm của một nhân viên đã áp trước đó **trong cùng kỳ lương đang
+ * chọn**.
  *
  * Cả khối kinh doanh thường ăn cùng bộ loại % với cùng tỷ lệ, chỉ khác doanh số
  * — chép rồi sửa cột số tiền cơ sở nhanh hơn nhiều so với chọn lại từng khoản.
  */
 export default function TaiSuDungPhanTramDialog({ open, onClose, onChon }: Props) {
-  const banList = useBanLuongPhanTramList();
-  const nhanVien = useNhanVienList();
-  const danhMuc = useKhoanPhanTramList();
+  const { selectedPeriodId } = useCurrentPayrollPeriod();
+  const { data: commissionData } = useCommissionDataList({ periodId: selectedPeriodId ?? "" });
 
   const danhSach = useMemo(() => {
-    const tenNvTheoMa = new Map(nhanVien.map((nv) => [nv.ma_nv, nv.ho_ten]));
-    const tenKhoanTheoMa = new Map(danhMuc.map((kl) => [kl.ma_khoan, kl.ten_khoan]));
-    return banList
-      .map((ban) => ({
-        ma_nv: ban.ma_nv,
-        ho_ten: tenNvTheoMa.get(ban.ma_nv) ?? ban.ma_nv,
-        dong: ban.dong,
-        tong: tongTienPhanTram(ban.dong),
-        // Liệt kê tên khoản kèm tỷ lệ ngay ở dòng chọn — không phải bấm vào mới
-        // biết bảng đó gồm những gì.
-        tomTat: ban.dong
-          .map((d) => `${tenKhoanTheoMa.get(d.ma_khoan) ?? d.ma_khoan} ${d.ty_le}%`)
-          .join(" · "),
-      }))
+    return (commissionData ?? [])
+      .filter((ban) => ban.records.length > 0)
+      .map((ban) => {
+        const dong: DongLuongPhanTram[] = ban.records.map((r) => ({
+          id: r.id,
+          ma_khoan: r.salaryItem?.code ?? r.salaryItemId,
+          ty_le: r.commissionRate,
+          so_tien_co_so: r.baseAmount,
+        }));
+        return {
+          ma_nv: ban.ma_nv,
+          ho_ten: ban.ho_ten,
+          dong,
+          tong: tongTienPhanTram(dong),
+          // Liệt kê tên khoản kèm tỷ lệ ngay ở dòng chọn — không phải bấm vào mới
+          // biết bảng đó gồm những gì.
+          tomTat: ban.records
+            .map((r) => `${r.salaryItem?.name ?? r.salaryItemId} ${r.commissionRate}%`)
+            .join(" · "),
+        };
+      })
       .sort((a, b) => a.ma_nv.localeCompare(b.ma_nv));
-  }, [banList, nhanVien, danhMuc]);
+  }, [commissionData]);
 
   return (
     <Dialog open={open} onClose={onClose} maxWidth="sm" fullWidth>
       <DialogTitle sx={{ pb: 0.5 }}>Tái sử dụng bảng lương phần trăm</DialogTitle>
       <Typography variant="body2" color="text.secondary" sx={{ px: 3, pb: 1 }}>
-        Chọn một nhân viên để chép bảng của họ vào bảng đang soạn. Bảng đang soạn sẽ bị thay
-        thế.
+        Chọn một nhân viên đã có lương phần trăm trong kỳ lương này để chép bảng của họ vào bảng
+        đang soạn. Bảng đang soạn sẽ bị thay thế.
       </Typography>
 
       <DialogContent dividers sx={{ p: 0 }}>
@@ -103,8 +107,8 @@ export default function TaiSuDungPhanTramDialog({ open, onClose, onChon }: Props
               color="text.disabled"
               sx={{ textAlign: "center", py: 5, px: 3 }}
             >
-              Chưa có nhân viên nào được áp lương phần trăm, nên chưa có bảng nào để tái sử
-              dụng.
+              Chưa có nhân viên nào được áp lương phần trăm trong kỳ này, nên chưa có bảng nào để
+              tái sử dụng.
             </Typography>
           )}
         </List>

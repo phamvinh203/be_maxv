@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type ChangeEvent } from "react";
 import { toast } from "react-toastify";
+import Alert from "@mui/material/Alert";
 import Box from "@mui/material/Box";
 import Paper from "@mui/material/Paper";
 import Stack from "@mui/material/Stack";
@@ -21,14 +22,16 @@ import { getErrorMessage } from "../../../../../lib/errors";
 import { PHAM_VI_AP_DUNG } from "../../../constants";
 import { nhan, tienVn } from "../../../format";
 import { tongBiTru } from "../../../buTru";
-import {
-  useApDungBuTru,
-  useBuTruRows,
-  useKhoanBuTruList,
-  useLuuMauBuTru,
-  useMauBuTru,
-} from "../../../mock/hooks/buTru";
-import type { DongBuTru, LocNhanVienKyLuong, PhamViApDung } from "../../../types";
+import { useKhoanBuTruIdByCode, useKhoanBuTruList } from "../../../api/payrollCatalogsQueries";
+import { useAdjustmentDataList, useApplyAdjustments } from "../../../api/payrollInputsQueries";
+import { useCurrentPayrollPeriod } from "../useCurrentPayrollPeriod";
+import { mergeNhanVienKyLuongWithData, useNhanVienKyLuong } from "../useNhanVienKyLuong";
+import type {
+  BuTruNhanVienRow,
+  DongBuTru,
+  LocNhanVienKyLuong,
+  PhamViApDung,
+} from "../../../types";
 import XacNhanXoaDialog from "../../XacNhanXoaDialog";
 import BangBuTruCard from "./BangBuTruCard";
 import DanhSachBuTruCard from "./DanhSachBuTruCard";
@@ -39,28 +42,28 @@ import { docFileBuTru, taiFileMauBuTru, xuatBuTruExcel } from "./buTruExcel";
 /**
  * Màn hình Các khoản ứng - bù trừ lương của khu "Dữ liệu tính lương".
  *
- * Cùng lối làm việc với các màn còn lại: bảng giữ ở **bản nháp** trong state màn
- * hình, chỉ ghi xuống kho khi bấm "Lưu thay đổi" hoặc "Áp dụng bù trừ"; và "Áp
- * dụng bù trừ" ghi cho **toàn bộ nhân viên đang hiện ở danh sách bên dưới".
+ * Cùng lối làm việc với các màn còn lại (xem ghi chú ở `KpiPanel`): bảng là bản nháp cục bộ, ghi
+ * thật duy nhất qua "Áp dụng bù trừ".
  *
  * Đây là màn dễ gây hậu quả nhất trong khu: số ở đây là tiền đã ứng ra thật, áp
  * nhầm cho cả phòng là trừ oan tiền của người không ứng. Vì vậy dialog xác nhận
  * nói rõ số tiền và nhắc riêng khi danh sách có nhiều hơn một người.
  */
 export default function BuTruPanel() {
-  const daLuu = useMauBuTru();
-  const danhMuc = useKhoanBuTruList();
-  const luuMau = useLuuMauBuTru();
-  const apDung = useApDungBuTru();
+  const { selectedPeriodId, isReadOnly } = useCurrentPayrollPeriod();
+  const periodId = selectedPeriodId ?? "";
 
-  const [mau, setMau] = useState<DongBuTru[]>(daLuu);
+  const danhMuc = useKhoanBuTruList();
+  const idTheoMa = useKhoanBuTruIdByCode();
+  const applyMut = useApplyAdjustments(periodId);
+
+  const [mau, setMau] = useState<DongBuTru[]>([]);
   const [phamVi, setPhamVi] = useState<PhamViApDung>("nhan_vien");
   const [filters, setFilters] = useState<LocNhanVienKyLuong>({
     q: "",
     ma_pb: "",
     loai_hd: "",
   });
-  const [dangLuu, setDangLuu] = useState(false);
 
   const [moQuanLy, setMoQuanLy] = useState(false);
   const [moTaiSuDung, setMoTaiSuDung] = useState(false);
@@ -68,41 +71,44 @@ export default function BuTruPanel() {
   const [moApDung, setMoApDung] = useState(false);
 
   const inputFile = useRef<HTMLInputElement>(null);
-  const rows = useBuTruRows(phamVi, filters);
+  const nhanVien = useNhanVienKyLuong(phamVi, filters);
+  const { data: adjustmentData } = useAdjustmentDataList({ periodId });
 
   useEffect(() => {
-    // Bám theo bảng đã lưu — vừa lưu xong, hoặc rời màn hình rồi quay lại.
     // eslint-disable-next-line react-hooks/set-state-in-effect
-    setMau(daLuu);
-  }, [daLuu]);
+    setMau([]);
+  }, [periodId]);
 
-  const coThayDoi = JSON.stringify(mau) !== JSON.stringify(daLuu);
+  const rows: BuTruNhanVienRow[] = useMemo(
+    () =>
+      mergeNhanVienKyLuongWithData(nhanVien, adjustmentData, (row, ban) => ({
+        ...row,
+        tong_bi_tru: ban ? ban.netAdjustment : null,
+        so_dong: ban?.records.length ?? 0,
+      })),
+    [nhanVien, adjustmentData],
+  );
+
+  const coThayDoi = mau.length > 0;
   const khoanTheoMa = useMemo(
     () => new Map(danhMuc.map((bt) => [bt.ma_bt, bt])),
     [danhMuc],
   );
   const rong = tongBiTru(mau, khoanTheoMa);
 
-  const handleLuu = async () => {
-    setDangLuu(true);
-    try {
-      await luuMau(mau);
-      toast.success("Đã lưu bảng ứng - bù trừ.");
-    } catch (err) {
-      toast.error(getErrorMessage(err, "Không lưu được bảng ứng - bù trừ."));
-    } finally {
-      setDangLuu(false);
-    }
-  };
-
   const handleApDung = async () => {
     setMoApDung(false);
     try {
-      const so = await apDung(
-        rows.map((row) => row.ma_nv),
-        mau,
-      );
-      toast.success(`Đã áp bảng ứng - bù trừ cho ${so} nhân viên.`);
+      await applyMut.mutateAsync({
+        periodId,
+        scope: "nhan_vien",
+        employeeIds: rows.map((row) => row.ma_nv),
+        items: mau.map((d) => ({
+          adjustmentItemId: idTheoMa.get(d.ma_bt) ?? d.ma_bt,
+          amount: d.so_tien,
+        })),
+      });
+      toast.success(`Đã áp bảng ứng - bù trừ cho ${rows.length} nhân viên.`);
     } catch (err) {
       toast.error(getErrorMessage(err, "Không áp được khoản bù trừ."));
     }
@@ -127,21 +133,34 @@ export default function BuTruPanel() {
 
   const handleNhap = async (e: ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
-    // Xóa giá trị input ngay: không xóa thì chọn lại đúng file vừa lỗi sẽ không
-    // bắn `change` lần nữa và nút trông như hỏng.
     e.target.value = "";
     if (!file) return;
     try {
       const dong = await docFileBuTru(file, danhMuc);
       setMau(dong);
-      toast.success(`Đã đọc ${dong.length} khoản từ file. Bấm "Lưu thay đổi" để ghi lại.`);
+      toast.success(`Đã đọc ${dong.length} khoản từ file. Bấm "Áp dụng bù trừ" để ghi lại.`);
     } catch (err) {
       toast.error(getErrorMessage(err, "Không đọc được file Excel."));
     }
   };
 
+  if (!periodId) {
+    return (
+      <Alert severity="info">
+        Chưa có kỳ lương nào được chọn — tạo hoặc chọn một kỳ lương ở thanh phía trên trước khi
+        nhập khoản ứng - bù trừ.
+      </Alert>
+    );
+  }
+
   return (
     <Stack spacing={2.5}>
+      {isReadOnly && (
+        <Alert severity="warning">
+          Kỳ lương đang chọn đã khóa sổ/chờ duyệt — không thể sửa hoặc áp dụng khoản bù trừ mới.
+        </Alert>
+      )}
+
       <Paper variant="outlined" sx={{ p: 2 }}>
         <Stack
           direction={{ xs: "column", xl: "row" }}
@@ -159,6 +178,7 @@ export default function BuTruPanel() {
             <Button
               startIcon={<UploadFileRounded />}
               onClick={() => inputFile.current?.click()}
+              disabled={isReadOnly}
               sx={{ textTransform: "none" }}
             >
               Nhập Excel
@@ -174,7 +194,7 @@ export default function BuTruPanel() {
               variant="contained"
               startIcon={<PlaylistAddCheckRounded />}
               onClick={() => setMoApDung(true)}
-              disabled={mau.length === 0 || rows.length === 0}
+              disabled={isReadOnly || mau.length === 0 || rows.length === 0}
               sx={{ textTransform: "none" }}
             >
               Áp dụng bù trừ ({rows.length})
@@ -182,6 +202,7 @@ export default function BuTruPanel() {
             <Button
               startIcon={<ContentCopyRounded />}
               onClick={() => setMoTaiSuDung(true)}
+              disabled={isReadOnly}
               sx={{ textTransform: "none" }}
             >
               Tái sử dụng
@@ -210,7 +231,7 @@ export default function BuTruPanel() {
               <Chip
                 size="small"
                 color="warning"
-                label="Bảng ứng - bù trừ có thay đổi chưa lưu"
+                label="Bảng ứng - bù trừ có nội dung chưa áp dụng"
                 sx={{ height: 22 }}
               />
             </Box>
@@ -228,9 +249,8 @@ export default function BuTruPanel() {
         filters={filters}
         onFilters={setFilters}
         rows={rows}
-        coThayDoi={coThayDoi}
-        dangLuu={dangLuu}
-        onLuu={handleLuu}
+        periodId={periodId}
+        isReadOnly={isReadOnly}
       />
 
       <QuanLyBuTruDialog open={moQuanLy} onClose={() => setMoQuanLy(false)} />
@@ -278,7 +298,12 @@ export default function BuTruPanel() {
           <Button onClick={() => setMoApDung(false)} sx={{ textTransform: "none" }}>
             Hủy
           </Button>
-          <Button variant="contained" onClick={handleApDung} sx={{ textTransform: "none" }}>
+          <Button
+            variant="contained"
+            onClick={handleApDung}
+            disabled={applyMut.isPending}
+            sx={{ textTransform: "none" }}
+          >
             Áp dụng
           </Button>
         </DialogActions>

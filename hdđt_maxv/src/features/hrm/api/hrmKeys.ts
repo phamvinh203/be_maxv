@@ -121,3 +121,56 @@ export const hrmEmployeeSalaryKeys = {
   detail: (companyId: string | null, employeeId: string) =>
     ["hrm-employee-salaries", companyId, "detail", employeeId] as const,
 };
+
+/** Quản lý kỳ lương */
+export const hrmPayrollPeriodKeys = {
+  all: ["hrm-payroll-periods"] as const,
+  list: (companyId: string | null) =>
+    ["hrm-payroll-periods", companyId, "list"] as const,
+  detail: (companyId: string | null, id: string) =>
+    ["hrm-payroll-periods", companyId, "detail", id] as const,
+};
+
+/** 4 Danh mục chuyên biệt phục vụ tính lương (KPI, Sản phẩm, Lỗi chuyên cần, Bù trừ) */
+export const hrmPayrollCatalogKeys = {
+  all: ["hrm-payroll-catalogs"] as const,
+  kpiList: (companyId: string | null) =>
+    ["hrm-payroll-catalogs", companyId, "kpi-items"] as const,
+  productList: (companyId: string | null) =>
+    ["hrm-payroll-catalogs", companyId, "products"] as const,
+  diligenceTypeList: (companyId: string | null) =>
+    ["hrm-payroll-catalogs", companyId, "diligence-types"] as const,
+  adjustmentItemList: (companyId: string | null) =>
+    ["hrm-payroll-catalogs", companyId, "adjustment-items"] as const,
+};
+
+/** 8 Phân hệ nhập liệu tính lương theo kỳ */
+export const hrmPayrollDataKeys = {
+  all: ["hrm-payroll-data"] as const,
+  attendanceMatrix: (companyId: string | null, periodId: string) =>
+    ["hrm-payroll-data", companyId, "attendance", periodId] as const,
+  overtimeList: (companyId: string | null, periodId: string) =>
+    ["hrm-payroll-data", companyId, "overtime", periodId] as const,
+  kpiList: (companyId: string | null, periodId: string) =>
+    ["hrm-payroll-data", companyId, "kpi", periodId] as const,
+  bonusList: (companyId: string | null, periodId: string) =>
+    ["hrm-payroll-data", companyId, "bonus", periodId] as const,
+  pieceworkList: (companyId: string | null, periodId: string) =>
+    ["hrm-payroll-data", companyId, "piecework", periodId] as const,
+  commissionList: (companyId: string | null, periodId: string) =>
+    ["hrm-payroll-data", companyId, "commission", periodId] as const,
+  diligenceList: (companyId: string | null, periodId: string) =>
+    ["hrm-payroll-data", companyId, "diligence", periodId] as const,
+  adjustmentList: (companyId: string | null, periodId: string) =>
+    ["hrm-payroll-data", companyId, "adjustments", periodId] as const,
+};
+
+/** Bảng lương tính toán và snapshot */
+export const hrmPayrollCalculationKeys = {
+  all: ["hrm-payroll-calculation"] as const,
+  calculate: (companyId: string | null, periodId: string) =>
+    ["hrm-payroll-calculation", companyId, "calculate", periodId] as const,
+  sheetLines: (companyId: string | null, periodId: string) =>
+    ["hrm-payroll-calculation", companyId, "sheet-lines", periodId] as const,
+};
+

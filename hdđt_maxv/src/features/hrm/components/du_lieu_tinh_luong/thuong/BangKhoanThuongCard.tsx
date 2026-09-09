@@ -19,7 +19,7 @@ import AddRounded from "@mui/icons-material/AddRounded";
 import DeleteRounded from "@mui/icons-material/DeleteRounded";
 import { tienVn } from "../../../format";
 import { dongThuongRong, thanhTien, tongTienThuong } from "../../../thuong";
-import { useKhoanThuongList } from "../../../mock/hooks/thuong";
+import { useKhoanThuongList } from "../../../api/salaryItemsQueries";
 import type { DongThuong } from "../../../types";
 import TienField from "../../TienField";
 

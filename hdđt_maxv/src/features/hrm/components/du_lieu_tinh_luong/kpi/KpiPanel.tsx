@@ -1,5 +1,6 @@
-import { useEffect, useRef, useState, type ChangeEvent } from "react";
+import { useEffect, useMemo, useRef, useState, type ChangeEvent } from "react";
 import { toast } from "react-toastify";
+import Alert from "@mui/material/Alert";
 import Box from "@mui/material/Box";
 import Paper from "@mui/material/Paper";
 import Stack from "@mui/material/Stack";
@@ -20,14 +21,11 @@ import TuneRounded from "@mui/icons-material/TuneRounded";
 import { getErrorMessage } from "../../../../../lib/errors";
 import { PHAM_VI_AP_DUNG } from "../../../constants";
 import { nhan } from "../../../format";
-import {
-  useApDungKpi,
-  useChiTieuKpiList,
-  useKpiRows,
-  useLuuMauKpi,
-  useMauKpi,
-} from "../../../mock/hooks/kpi";
-import type { DongKpi, LocNhanVienKyLuong, PhamViApDung } from "../../../types";
+import { useChiTieuKpiIdByCode, useChiTieuKpiList } from "../../../api/payrollCatalogsQueries";
+import { useApplyKpi, useKpiDataList } from "../../../api/payrollInputsQueries";
+import { useCurrentPayrollPeriod } from "../useCurrentPayrollPeriod";
+import { mergeNhanVienKyLuongWithData, useNhanVienKyLuong } from "../useNhanVienKyLuong";
+import type { DongKpi, KpiNhanVienRow, LocNhanVienKyLuong, PhamViApDung } from "../../../types";
 import XacNhanXoaDialog from "../../XacNhanXoaDialog";
 import BangChiTieuKpiCard from "./BangChiTieuKpiCard";
 import DanhSachKpiCard from "./DanhSachKpiCard";
@@ -38,28 +36,30 @@ import { docFileKpi, taiFileMauKpi, xuatKpiExcel } from "./kpiExcel";
 /**
  * Màn hình KPI của khu "Dữ liệu tính lương".
  *
- * Bảng KPI giữ ở **bản nháp** trong state màn hình, chỉ ghi xuống kho khi bấm
- * "Lưu thay đổi" hoặc "Áp dụng KPI" — sửa mục tiêu của mười mấy chỉ tiêu mà mỗi
- * lần gõ một ký tự lại ghi một lần thì không có chỗ nào để hủy bỏ.
+ * Bảng KPI là **bản nháp cục bộ** trong state màn hình (`useState`, KHÔNG còn đồng bộ với một
+ * "mẫu đã lưu" ở máy chủ — API `POST /payroll-data/kpi/apply` không có khái niệm lưu-riêng-chưa-
+ * áp, chỉ có ghi thật cho danh sách nhân viên cụ thể). Đóng màn hoặc đổi kỳ lương thì bản nháp
+ * mất, giống hệt việc mở một biểu mẫu giấy mới mỗi lần.
  *
- * "Áp dụng KPI" ghi bảng đang soạn cho **toàn bộ nhân viên đang hiện ở danh sách
- * bên dưới**: phạm vi và ba ô lọc là cách chọn "áp cho ai", nên danh sách nhìn
- * thấy chính là danh sách sẽ bị ghi — không có tập nào ẩn đi.
+ * "Áp dụng KPI" ghi bảng đang soạn cho **toàn bộ nhân viên đang hiện ở danh sách bên dưới**, LUÔN
+ * gửi `scope: 'nhan_vien'` kèm danh sách `ma_nv` tường minh (xem ghi chú ở `useNhanVienKyLuong`) —
+ * phạm vi và ba ô lọc chỉ là cách chọn nhanh "áp cho ai" phía trình duyệt.
  */
 export default function KpiPanel() {
-  const daLuu = useMauKpi();
-  const danhMuc = useChiTieuKpiList();
-  const luuMau = useLuuMauKpi();
-  const apDungKpi = useApDungKpi();
+  const { selectedPeriodId, isReadOnly } = useCurrentPayrollPeriod();
+  const periodId = selectedPeriodId ?? "";
 
-  const [mau, setMau] = useState<DongKpi[]>(daLuu);
+  const danhMuc = useChiTieuKpiList();
+  const idTheoMa = useChiTieuKpiIdByCode();
+  const applyMut = useApplyKpi(periodId);
+
+  const [mau, setMau] = useState<DongKpi[]>([]);
   const [phamVi, setPhamVi] = useState<PhamViApDung>("nhan_vien");
   const [filters, setFilters] = useState<LocNhanVienKyLuong>({
     q: "",
     ma_pb: "",
     loai_hd: "",
   });
-  const [dangLuu, setDangLuu] = useState(false);
 
   const [moQuanLy, setMoQuanLy] = useState(false);
   const [moTaiSuDung, setMoTaiSuDung] = useState(false);
@@ -67,36 +67,45 @@ export default function KpiPanel() {
   const [moApDung, setMoApDung] = useState(false);
 
   const inputFile = useRef<HTMLInputElement>(null);
-  const rows = useKpiRows(phamVi, filters);
+  const nhanVien = useNhanVienKyLuong(phamVi, filters);
+  const { data: kpiData } = useKpiDataList({ periodId });
 
   useEffect(() => {
-    // Bám theo bảng đã lưu — vừa lưu xong, hoặc rời màn hình rồi quay lại.
+    // Đổi kỳ lương thì bản nháp đang soạn của kỳ cũ không còn ý nghĩa gì nữa.
     // eslint-disable-next-line react-hooks/set-state-in-effect
-    setMau(daLuu);
-  }, [daLuu]);
+    setMau([]);
+  }, [periodId]);
 
-  const coThayDoi = JSON.stringify(mau) !== JSON.stringify(daLuu);
+  const rows: KpiNhanVienRow[] = useMemo(
+    () =>
+      mergeNhanVienKyLuongWithData(nhanVien, kpiData, (row, ban) => ({
+        ...row,
+        // BE không giữ bộ đếm "lần lương" tăng dần như bản mock — 0/1 biểu thị đã áp cho kỳ
+        // này hay chưa, đủ để điều khiển nút "Xóa" và hiện cột.
+        lan_luong: ban && ban.totalKpiItems > 0 ? 1 : 0,
+        hieu_suat: ban?.avgScore ?? null,
+        so_chi_tieu: ban?.totalKpiItems ?? 0,
+      })),
+    [nhanVien, kpiData],
+  );
 
-  const handleLuu = async () => {
-    setDangLuu(true);
-    try {
-      await luuMau(mau);
-      toast.success("Đã lưu bảng KPI.");
-    } catch (err) {
-      toast.error(getErrorMessage(err, "Không lưu được bảng KPI."));
-    } finally {
-      setDangLuu(false);
-    }
-  };
+  const coThayDoi = mau.length > 0;
 
   const handleApDung = async () => {
     setMoApDung(false);
     try {
-      const so = await apDungKpi(
-        rows.map((row) => row.ma_nv),
-        mau,
-      );
-      toast.success(`Đã áp bảng KPI cho ${so} nhân viên.`);
+      await applyMut.mutateAsync({
+        periodId,
+        scope: "nhan_vien",
+        employeeIds: rows.map((row) => row.ma_nv),
+        items: mau.map((d) => ({
+          kpiItemId: idTheoMa.get(d.ma_kpi) ?? d.ma_kpi,
+          weight: d.trong_so,
+          targetValue: d.muc_tieu,
+          actualValue: d.thuc_thi,
+        })),
+      });
+      toast.success(`Đã áp bảng KPI cho ${rows.length} nhân viên.`);
     } catch (err) {
       toast.error(getErrorMessage(err, "Không áp được KPI."));
     }
@@ -128,14 +137,29 @@ export default function KpiPanel() {
     try {
       const dong = await docFileKpi(file, danhMuc);
       setMau(dong);
-      toast.success(`Đã đọc ${dong.length} chỉ tiêu từ file. Bấm "Lưu thay đổi" để ghi lại.`);
+      toast.success(`Đã đọc ${dong.length} chỉ tiêu từ file. Bấm "Áp dụng KPI" để ghi lại.`);
     } catch (err) {
       toast.error(getErrorMessage(err, "Không đọc được file Excel."));
     }
   };
 
+  if (!periodId) {
+    return (
+      <Alert severity="info">
+        Chưa có kỳ lương nào được chọn — tạo hoặc chọn một kỳ lương ở thanh phía trên trước khi
+        nhập KPI.
+      </Alert>
+    );
+  }
+
   return (
     <Stack spacing={2.5}>
+      {isReadOnly && (
+        <Alert severity="warning">
+          Kỳ lương đang chọn đã khóa sổ/chờ duyệt — không thể sửa hoặc áp dụng KPI mới.
+        </Alert>
+      )}
+
       <Paper variant="outlined" sx={{ p: 2 }}>
         <Stack
           direction={{ xs: "column", xl: "row" }}
@@ -153,6 +177,7 @@ export default function KpiPanel() {
             <Button
               startIcon={<UploadFileRounded />}
               onClick={() => inputFile.current?.click()}
+              disabled={isReadOnly}
               sx={{ textTransform: "none" }}
             >
               Nhập Excel
@@ -168,7 +193,7 @@ export default function KpiPanel() {
               variant="contained"
               startIcon={<PlaylistAddCheckRounded />}
               onClick={() => setMoApDung(true)}
-              disabled={mau.length === 0 || rows.length === 0}
+              disabled={isReadOnly || mau.length === 0 || rows.length === 0}
               sx={{ textTransform: "none" }}
             >
               Áp dụng KPI ({rows.length})
@@ -176,6 +201,7 @@ export default function KpiPanel() {
             <Button
               startIcon={<ContentCopyRounded />}
               onClick={() => setMoTaiSuDung(true)}
+              disabled={isReadOnly}
               sx={{ textTransform: "none" }}
             >
               Tái sử dụng
@@ -204,7 +230,7 @@ export default function KpiPanel() {
               <Chip
                 size="small"
                 color="warning"
-                label="Bảng KPI có thay đổi chưa lưu"
+                label="Bảng KPI có nội dung chưa áp dụng"
                 sx={{ height: 22 }}
               />
             </Box>
@@ -228,9 +254,8 @@ export default function KpiPanel() {
         filters={filters}
         onFilters={setFilters}
         rows={rows}
-        coThayDoi={coThayDoi}
-        dangLuu={dangLuu}
-        onLuu={handleLuu}
+        periodId={periodId}
+        isReadOnly={isReadOnly}
       />
 
       <QuanLyKpiDialog open={moQuanLy} onClose={() => setMoQuanLy(false)} />
@@ -271,7 +296,12 @@ export default function KpiPanel() {
           <Button onClick={() => setMoApDung(false)} sx={{ textTransform: "none" }}>
             Hủy
           </Button>
-          <Button variant="contained" onClick={handleApDung} sx={{ textTransform: "none" }}>
+          <Button
+            variant="contained"
+            onClick={handleApDung}
+            disabled={applyMut.isPending}
+            sx={{ textTransform: "none" }}
+          >
             Áp dụng
           </Button>
         </DialogActions>

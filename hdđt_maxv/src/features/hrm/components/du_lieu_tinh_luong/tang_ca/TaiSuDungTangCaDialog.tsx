@@ -11,10 +11,10 @@ import Stack from "@mui/material/Stack";
 import Chip from "@mui/material/Chip";
 import Typography from "@mui/material/Typography";
 import { moTaLoaiTangCa } from "../../../constants";
-import { gioVn, mauGioTangCa, nhanBanDongTangCa, tongGioOt } from "../../../tangCa";
+import { gioVn, mauGioTangCa, nhanBanDongTangCa } from "../../../tangCa";
 import { useCauHinh } from "../../../api/cauHinhQueries";
-import { useBanTangCaList } from "../../../mock/hooks/tangCa";
-import { useNhanVienList } from "../../../mock/hooks/nhanVien";
+import { useOvertimeList } from "../../../api/payrollInputsQueries";
+import { useCurrentPayrollPeriod } from "../useCurrentPayrollPeriod";
 import type { DongTangCa } from "../../../types";
 
 interface Props {
@@ -25,39 +25,46 @@ interface Props {
 }
 
 /**
- * Chép lại bảng tăng ca của một nhân viên đã áp trước đó.
+ * Chép lại bảng tăng ca của một nhân viên đã áp trước đó **trong cùng kỳ lương đang chọn**.
  *
  * Cả tổ thường tăng ca cùng buổi nên bảng giờ giống nhau — chép rồi sửa vài số
  * nhanh hơn và không sót loại giờ nào.
  */
 export default function TaiSuDungTangCaDialog({ open, onClose, onChon }: Props) {
-  const banTangCa = useBanTangCaList();
-  const nhanVien = useNhanVienList();
+  const { selectedPeriodId } = useCurrentPayrollPeriod();
+  const { data: otData } = useOvertimeList({ periodId: selectedPeriodId ?? "" });
   const cauHinh = useCauHinh();
 
   const danhSach = useMemo(() => {
-    const tenNvTheoMa = new Map(nhanVien.map((nv) => [nv.ma_nv, nv.ho_ten]));
-    return banTangCa
-      .map((ban) => ({
-        ma_nv: ban.ma_nv,
-        ho_ten: tenNvTheoMa.get(ban.ma_nv) ?? ban.ma_nv,
-        dong: ban.dong,
-        tong: tongGioOt(ban.dong),
-        // Liệt kê loại giờ ngay ở dòng chọn — không phải bấm vào mới biết bảng
-        // đó gồm những gì.
-        tomTat: ban.dong
-          .map((d) => (d.loai ? `${moTaLoaiTangCa(d.loai).label} ${gioVn(d.so_gio)}h` : "—"))
-          .join(" · "),
-      }))
+    return (otData ?? [])
+      .filter((ban) => ban.records.length > 0)
+      .map((ban) => {
+        const dong: DongTangCa[] = ban.records.map((r) => ({
+          id: r.id,
+          loai: r.otType,
+          so_gio: r.hours,
+        }));
+        return {
+          ma_nv: ban.ma_nv,
+          ho_ten: ban.ho_ten,
+          dong,
+          tong: ban.totalHours,
+          // Liệt kê loại giờ ngay ở dòng chọn — không phải bấm vào mới biết bảng
+          // đó gồm những gì.
+          tomTat: dong
+            .map((d) => (d.loai ? `${moTaLoaiTangCa(d.loai).label} ${gioVn(d.so_gio)}h` : "—"))
+            .join(" · "),
+        };
+      })
       .sort((a, b) => a.ma_nv.localeCompare(b.ma_nv));
-  }, [banTangCa, nhanVien]);
+  }, [otData]);
 
   return (
     <Dialog open={open} onClose={onClose} maxWidth="sm" fullWidth>
       <DialogTitle sx={{ pb: 0.5 }}>Tái sử dụng bảng tăng ca</DialogTitle>
       <Typography variant="body2" color="text.secondary" sx={{ px: 3, pb: 1 }}>
-        Chọn một nhân viên để chép bảng tăng ca của họ vào bảng đang soạn. Bảng đang soạn sẽ bị
-        thay thế.
+        Chọn một nhân viên đã có tăng ca trong kỳ lương này để chép bảng của họ vào bảng đang
+        soạn. Bảng đang soạn sẽ bị thay thế.
       </Typography>
 
       <DialogContent dividers sx={{ p: 0 }}>
@@ -100,7 +107,8 @@ export default function TaiSuDungTangCaDialog({ open, onClose, onChon }: Props) 
               color="text.disabled"
               sx={{ textAlign: "center", py: 5, px: 3 }}
             >
-              Chưa có nhân viên nào được áp tăng ca, nên chưa có bảng nào để tái sử dụng.
+              Chưa có nhân viên nào được áp tăng ca trong kỳ này, nên chưa có bảng nào để tái sử
+              dụng.
             </Typography>
           )}
         </List>

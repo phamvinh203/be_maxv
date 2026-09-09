@@ -25,7 +25,7 @@ import {
   tongCoSoPhanTram,
   tongTienPhanTram,
 } from "../../../luongPhanTram";
-import { useKhoanPhanTramList } from "../../../mock/hooks/luongPhanTram";
+import { useKhoanPhanTramList } from "../../../api/salaryItemsQueries";
 import type { DongLuongPhanTram } from "../../../types";
 import TienField from "../../TienField";
 

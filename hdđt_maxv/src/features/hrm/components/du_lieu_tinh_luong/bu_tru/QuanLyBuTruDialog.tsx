@@ -30,7 +30,7 @@ import {
   useKhoanBuTruList,
   useLuuKhoanBuTru,
   useXoaKhoanBuTru,
-} from "../../../mock/hooks/buTru";
+} from "../../../api/payrollCatalogsQueries";
 import type {
   ChieuBuTru,
   KhoanBuTru,

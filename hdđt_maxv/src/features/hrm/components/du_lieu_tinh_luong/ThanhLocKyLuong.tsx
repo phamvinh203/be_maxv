@@ -3,16 +3,14 @@ import Stack from "@mui/material/Stack";
 import TextField from "@mui/material/TextField";
 import MenuItem from "@mui/material/MenuItem";
 import InputAdornment from "@mui/material/InputAdornment";
-import Button from "@mui/material/Button";
 import Divider from "@mui/material/Divider";
 import Typography from "@mui/material/Typography";
 import ToggleButton from "@mui/material/ToggleButton";
 import ToggleButtonGroup from "@mui/material/ToggleButtonGroup";
 import SearchRounded from "@mui/icons-material/SearchRounded";
-import SaveRounded from "@mui/icons-material/SaveRounded";
 import { sapXepCay } from "../../cay";
 import { LOAI_HD, PHAM_VI_AP_DUNG } from "../../constants";
-import { usePhongBanList } from "../../mock/hooks/phongBan";
+import { usePhongBanList } from "../../api/phongBanQueries";
 import type { LoaiHopDong, LocNhanVienKyLuong, PhamViApDung } from "../../types";
 
 interface Props {
@@ -22,18 +20,19 @@ interface Props {
   onFilters: (filters: LocNhanVienKyLuong) => void;
   /** Số nhân viên đang hiện ở bảng bên dưới — ghép vào dòng chú thích. */
   soNhanVien: number;
-  coThayDoi: boolean;
-  dangLuu: boolean;
-  onLuu: () => void;
 }
 
 /**
- * Thanh chọn phạm vi + ba ô lọc + nút lưu, dùng chung cho các màn hình của khu
- * "Dữ liệu tính lương".
+ * Thanh chọn phạm vi + ba ô lọc, dùng chung cho các màn hình của khu "Dữ liệu
+ * tính lương".
  *
  * Ba ô lọc đổi tác dụng theo phạm vi: "Toàn công ty" khóa hết vì đã lấy trọn
  * danh sách, "Phòng ban" chỉ còn ô phòng ban, "Nhân viên" mở cả ba. Khóa ô thay
  * vì giấu đi để bố cục thanh công cụ không nhảy mỗi lần đổi phạm vi.
+ *
+ * KHÔNG còn nút "Lưu thay đổi": API `payroll-data/*` không có khái niệm "mẫu
+ * đã lưu nhưng chưa áp dụng" riêng biệt (bản mock trước đây có) — bảng đang
+ * soạn ở mỗi Panel chỉ là state cục bộ, ghi thật duy nhất qua nút "Áp dụng".
  */
 export default function ThanhLocKyLuong({
   phamVi,
@@ -41,9 +40,6 @@ export default function ThanhLocKyLuong({
   filters,
   onFilters,
   soNhanVien,
-  coThayDoi,
-  dangLuu,
-  onLuu,
 }: Props) {
   const phongBan = usePhongBanList();
   const cayPhongBan = useMemo(() => sapXepCay(phongBan), [phongBan]);
@@ -133,15 +129,6 @@ export default function ThanhLocKyLuong({
               </MenuItem>
             ))}
           </TextField>
-          <Button
-            variant="contained"
-            startIcon={<SaveRounded />}
-            onClick={onLuu}
-            disabled={dangLuu || !coThayDoi}
-            sx={{ textTransform: "none", whiteSpace: "nowrap" }}
-          >
-            Lưu thay đổi
-          </Button>
         </Stack>
       </Stack>
 

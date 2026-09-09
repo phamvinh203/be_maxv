@@ -30,7 +30,7 @@ import {
   useChiTieuKpiList,
   useLuuChiTieuKpi,
   useXoaChiTieuKpi,
-} from "../../../mock/hooks/kpi";
+} from "../../../api/payrollCatalogsQueries";
 import type { ChiTieuKpi, ChiTieuKpiFormValues, TrangThai } from "../../../types";
 import XacNhanXoaDialog from "../../XacNhanXoaDialog";
 

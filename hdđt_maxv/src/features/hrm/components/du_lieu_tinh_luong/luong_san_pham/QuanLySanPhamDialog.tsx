@@ -27,7 +27,11 @@ import { getErrorMessage } from "../../../../../lib/errors";
 import { TRANG_THAI_PB } from "../../../constants";
 import { tienVn } from "../../../format";
 import { sanPhamRong } from "../../../formDefaults";
-import { useSanPhamList, useLuuSanPham, useXoaSanPham } from "../../../mock/hooks/luongSanPham";
+import {
+  useSanPhamList,
+  useLuuSanPham,
+  useXoaSanPham,
+} from "../../../api/payrollCatalogsQueries";
 import type { SanPham, SanPhamFormValues, TrangThai } from "../../../types";
 import TienField from "../../TienField";
 import XacNhanXoaDialog from "../../XacNhanXoaDialog";

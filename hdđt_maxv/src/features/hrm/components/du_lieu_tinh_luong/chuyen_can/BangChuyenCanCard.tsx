@@ -21,7 +21,7 @@ import DeleteRounded from "@mui/icons-material/DeleteRounded";
 import { moTaCachTru } from "../../../constants";
 import { dongChuyenCanRong, tongGioChuyenCan } from "../../../chuyenCan";
 import { tienVn } from "../../../format";
-import { useLoaiChuyenCanList } from "../../../mock/hooks/chuyenCan";
+import { useLoaiChuyenCanList } from "../../../api/payrollCatalogsQueries";
 import type { DongChuyenCan } from "../../../types";
 
 interface Props {

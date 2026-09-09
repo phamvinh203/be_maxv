@@ -31,7 +31,7 @@ import {
   useLoaiChuyenCanList,
   useLuuLoaiChuyenCan,
   useXoaLoaiChuyenCan,
-} from "../../../mock/hooks/chuyenCan";
+} from "../../../api/payrollCatalogsQueries";
 import type {
   CachTruChuyenCan,
   LoaiChuyenCan,

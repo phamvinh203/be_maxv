@@ -14,7 +14,7 @@ import Typography from "@mui/material/Typography";
 import DeleteRounded from "@mui/icons-material/DeleteRounded";
 import { getErrorMessage } from "../../../../../lib/errors";
 import { tienVn } from "../../../format";
-import { useXoaBanLuongPhanTram } from "../../../mock/hooks/luongPhanTram";
+import { useApplyCommission } from "../../../api/payrollInputsQueries";
 import type {
   LocNhanVienKyLuong,
   LuongPhanTramNhanVienRow,
@@ -30,9 +30,8 @@ interface Props {
   onFilters: (filters: LocNhanVienKyLuong) => void;
   /** Danh sách đã lọc — cũng chính là danh sách "Áp dụng lương %" sẽ ghi. */
   rows: LuongPhanTramNhanVienRow[];
-  coThayDoi: boolean;
-  dangLuu: boolean;
-  onLuu: () => void;
+  periodId: string;
+  isReadOnly: boolean;
 }
 
 /** Chọn phạm vi áp lương phần trăm và xem hoa hồng của từng nhân viên. */
@@ -42,17 +41,21 @@ export default function DanhSachLuongPhanTramCard({
   filters,
   onFilters,
   rows,
-  coThayDoi,
-  dangLuu,
-  onLuu,
+  periodId,
+  isReadOnly,
 }: Props) {
-  const xoaBan = useXoaBanLuongPhanTram();
+  const applyMut = useApplyCommission(periodId);
   const [dangXoa, setDangXoa] = useState<LuongPhanTramNhanVienRow | undefined>(undefined);
 
   const xacNhanXoa = async () => {
     if (!dangXoa) return;
     try {
-      await xoaBan(dangXoa.ma_nv);
+      await applyMut.mutateAsync({
+        periodId,
+        scope: "nhan_vien",
+        employeeIds: [dangXoa.ma_nv],
+        items: [],
+      });
       toast.success(`Đã xóa lương phần trăm của ${dangXoa.ho_ten}.`);
     } catch (err) {
       toast.error(getErrorMessage(err, "Không xóa được lương phần trăm."));
@@ -69,9 +72,6 @@ export default function DanhSachLuongPhanTramCard({
         filters={filters}
         onFilters={onFilters}
         soNhanVien={rows.length}
-        coThayDoi={coThayDoi}
-        dangLuu={dangLuu}
-        onLuu={onLuu}
       />
 
       <TableContainer sx={{ mt: 1 }}>
@@ -125,7 +125,7 @@ export default function DanhSachLuongPhanTramCard({
                       <IconButton
                         size="small"
                         color="error"
-                        disabled={row.so_dong === 0}
+                        disabled={isReadOnly || row.so_dong === 0}
                         onClick={() => setDangXoa(row)}
                       >
                         <DeleteRounded fontSize="small" />
