@@ -2,10 +2,14 @@
 type: dev-notes
 feature: hrm
 status: in-review
-updated: 2026-09-08
+updated: 2026-09-09
 links:
   - docs/hrm/architecture/api-contract.md
   - docs/hrm/architecture/data-model.md
+  - docs/hrm/du_lieu_tinh_luong/srs-du-lieu-tinh-luong.md
+  - docs/hrm/du_lieu_tinh_luong/data-model-du-lieu-tinh-luong.md
+  - docs/hrm/du_lieu_tinh_luong/api-contract-du-lieu-tinh-luong.md
+  - docs/hrm/review-findings.md
 ---
 
 # HRM — DEV NOTES (đọc cái này trước khi mở code)
@@ -425,6 +429,103 @@ dọn được file trên Drive" thay vì báo thành công trơn.
 thân cũ `{ donViIds }` bên cạnh thân mới `{ access: [{ donViId, xemLuong }] }`, và phản hồi giữ
 nguyên `donViIds` đồng thời thêm `so_cong_ty`. `GET /companies/employees` thêm `xemLuong` vào từng
 phần tử `donViAccess` — thêm trường, không đổi trường cũ.
+
+### 1.9. Dữ liệu tính lương (`du_lieu_tinh_luong`) — đợt sửa 8/9 lỗi 🔴 (2026-09-09)
+
+> Nguồn thẩm quyền đầy đủ: `docs/hrm/du_lieu_tinh_luong/srs-du-lieu-tinh-luong.md` (BA) +
+> `data-model-du-lieu-tinh-luong.md` (Architect, 5 ADR `dltl-01..05`) +
+> `docs/hrm/review-findings.md` (Code Review, RVW-001/002 + bảng "Blocking kế thừa"). Mục này chỉ
+> tóm tắt đủ để đọc code nhanh, KHÔNG lặp lại toàn bộ 3 tài liệu trên.
+
+**Mô hình nghiệp vụ — 4 điều hiểu trước khi đọc code:**
+
+1. **`AttendanceRecord` là DELTA, không phải lịch cả tháng.** Chỉ ghi qua `PUT
+   /payroll-data/attendance/cell` khi CÓ NGOẠI LỆ khác chuẩn (ADR-dltl-02, giữ nguyên — không sinh
+   sẵn 26×N dòng/kỳ). Công thức tổng hợp: `actualWorkDays = standardWorkDays + Σ(workDayValue - 1)`
+   — mỗi bản ghi delta thay thế đúng 1 ngày công chuẩn của chính nó. Sửa lần trước (trước
+   2026-09-09) coi tập bản ghi là lịch cả tháng — **đã sửa** (RVW-001), xem `payrollCalculation.service.ts:231-243`.
+2. **`workDayValue` do `attendanceType` quyết định, không phải `actualHours` client gửi.** Chỉ
+   `lam_viec`/`nua_ngay` cho client tự khai giờ; 6 loại còn lại (`cong_tac`/`nghi_phep`/`nghi_le`
+   =1.0 công, `om`/`khong_luong`/`khac`=0 công) dùng hệ số CỐ ĐỊNH, bỏ qua `actualHours` gửi lên.
+   Xem bảng `ATTENDANCE_FIXED_VALUE` — `payrollInputs.service.ts`.
+3. **Hợp đồng tính lương phải LỌC THEO KỲ** — KHÔNG dùng "hợp đồng hiện hành" của module Hợp đồng
+   (khái niệm đó nghĩa là "mới nhất theo `ngay_bat_dau`", không phải "đang hiệu lực trong kỳ đang
+   tính"). `calculatePayrollPreview` tự lọc `hop_dong` bằng `where: { ngay_bat_dau: {lte:
+   endDate}, OR: [...ngay_ket_thuc null/gte startDate] }` ngay trong `include`.
+4. **Toàn bộ 4 controller (`payrollPeriods`/`catalogs`/`payrollInputs`/`payrollCalculation`) đi
+   qua `dbCoQuyenLuongPayroll(req)`** (`helpers/payrollAccessGuard.ts`) — KHÔNG BAO GIỜ gọi
+   `resolveTenantDb(req)` trơn trong nhóm này. Cùng khuôn `assertXemLuong` mà nhóm `/hop-dong` đã
+   dùng (BR-hrm-059/ADR-007) — `OWNER_EMPLOYEE` không có cờ `xemLuong` bị chặn 403 trên MỌI
+   endpoint payroll, kể cả danh mục.
+
+**Luồng dữ liệu tính lương (rút gọn):**
+
+```
+GET /payroll/calculate?periodId=..
+  -> payrollCalculation.controller.ts  ->  dbCoQuyenLuongPayroll(req)  --thieu xemLuong--> 403
+  -> calculatePayrollPreview(db, periodId)
+       |-- load: hrm_nhan_vien (+hop_dong LOC THEO KY, +nguoi_phu_thuoc), GeneralSetting,
+       |         EmployeeSalary(APPROVED), hrm_phong_ban, Holiday        [1 Promise.all]
+       |-- load: 8 khoi bien dong cua ky (attendance..adjustments)       [1 Promise.all]
+       |-- standardWorkDays = resolveStandardWorkDays(period, setting, holidays)
+       |         (FIXED_26 / FIXED_24 hang so theo cau hinh; ACTUAL_MONTH dem thang - T7/CN
+       |          theo saturdayPolicy/sundayPolicy - ngay le isPaid)
+       |-- per-nhan-vien: actualWorkDays = standardWorkDays + Sigma(workDayValue-1)  [DELTA]
+       |                  hourlyRate = baseSalary / (standardWorkDays * standardHoursPerDay)
+       |                  BHXH/BHYT/BHTN + doan phi doc tu GeneralSetting (khong hardcode)
+       |                  thue TNCN: tinhThueLuyTien() GIU NGUYEN (bieu 7 bac hardcode dung luat,
+       |                             CHUA noi voi GeneralSetting.taxBrackets - xem no ben duoi)
+       '-> tra ve 29 truong/nhan-vien (number JS; Decimal serialize thanh chuoi o cac /payroll-data/*)
+```
+
+**Bảng thao tác → route/controller/service (chỉ phần đã sửa trong đợt 2026-09-09):**
+
+| Thao tác | Route | Controller | Service | Sửa gì |
+|:---|:---|:---|:---|:---|
+| Xem bảng lương / snapshot | `GET /payroll/calculate`, `/payroll/sheet-lines` | `payrollCalculation.controller.ts` | `calculatePayrollPreview` — `payrollCalculation.service.ts:82` | A-01 guard xemLuong · RVW-001 công thức delta · A-02 lọc hợp đồng theo kỳ · A-03 (gián tiếp, `workDayValue` đã đúng từ tầng nhập liệu) · BUG-dltl-002 đọc `standardWorkDays`/`standardHoursPerDay`/BHXH/đoàn phí từ `GeneralSetting` |
+| Ghi 1 ô chấm công | `PUT /payroll-data/attendance/cell` | `payrollInputs.controller.ts` | `overrideAttendanceCell` — `payrollInputs.service.ts:132` | A-03 `attendanceType` quyết định `workDayValue` qua `ATTENDANCE_FIXED_VALUE` · BUG-dltl-007 chặn `actualHours > standardHoursPerDay` (400 `E-dltl-005`) thay vì tràn |
+| Xem tăng ca | `GET /payroll-data/overtime` | `payrollInputs.controller.ts` | `getOvertimeData` — `payrollInputs.service.ts:153` | BUG-dltl-002 `isWarningMonth` đọc `GeneralSetting.maxOtHoursPerMonth` thay vì hardcode 40 |
+| Khóa sổ / Mở lại / Phê duyệt kỳ | `POST .../lock`, `.../reopen`, `.../approve` | `payrollPeriods.controller.ts` | `lockPayrollPeriod`/`reopenPayrollPeriod`/`approvePayrollPeriod` — `payrollPeriods.service.ts` | RVW-002 `currentUserId(req)` thay `(req.user as any)?.sub` · Bug#8: route gắn `assertAdminOrOwner` (`payrollPeriods.route.ts`, tái dùng từ `cau_hinh_mac_dinh/generalSettings.route.ts`) · Bug#8: audit log qua `writeLog` (control-plane `sys_log`) trong `ghiNhatKyLuong()` ở controller — KHÔNG tạo bảng audit tenant mới |
+| Danh mục KPI/Sản phẩm/Chuyên cần/Bù trừ | `/payroll-catalogs/*` | `catalogs.controller.ts` | `catalogs.service.ts` | A-01 guard xemLuong (không đổi logic CRUD) |
+
+**Nơi ở của công thức/luật (SINGLE SOURCE — đừng viết lại chỗ khác):**
+
+| Luật | Hàm — nơi ở DUY NHẤT |
+|:---|:---|
+| Ngày công chuẩn của kỳ (thay hằng số 26) | `resolveStandardWorkDays` — `payrollCalculation.service.ts:41` |
+| Quy đổi `attendanceType` → hệ số công | `ATTENDANCE_FIXED_VALUE` + `isHourBasedAttendanceType` — `payrollInputs.service.ts` |
+| Guard quyền xem lương cho TOÀN nhóm payroll | `dbCoQuyenLuongPayroll` — `helpers/payrollAccessGuard.ts` (gọi lại `assertXemLuong`/`resolveTenantCtx` của `resolveTenantDb.ts`, KHÔNG viết logic quyền mới) |
+| Guard role ADMIN/OWNER cho khóa sổ/mở lại/duyệt | tái dùng `assertAdminOrOwner` — `routes/hrm/cau_hinh_mac_dinh/generalSettings.route.ts:10` (import thẳng, KHÔNG copy) |
+| Audit log reopen/lock/approve | `ghiNhatKyLuong` — `payrollPeriods.controller.ts` (gọi `writeLog` — `services/shared/syslog.service.ts`, bảng `sys_log` control plane, KHÔNG phải bảng tenant) |
+| Biểu thuế TNCN 7 bậc | `tinhThueLuyTien` — `payrollCalculation.service.ts:7` — **GIỮ NGUYÊN hardcode, KHÔNG đụng trong đợt này** (đúng luật, nhưng chưa nối với `GeneralSetting.taxBrackets` — xem nợ dưới) |
+
+**TUYỆT ĐỐI KHÔNG NHÂN ĐÔI (bổ sung riêng cho `du_lieu_tinh_luong`):**
+
+1. **Không** gọi `resolveTenantDb(req)` trực tiếp trong 4 controller của `du_lieu_tinh_luong`.
+   Luôn qua `dbCoQuyenLuongPayroll(req)` — thêm endpoint mới mà quên là hở lại đúng lỗ A-01.
+2. **Không** viết lại công thức delta chấm công ở nơi khác. Nếu cần "ngày công thực tế" ở màn hình
+   khác, gọi `resolveStandardWorkDays` + cùng công thức `Σ(workDayValue - 1)`, đừng suy diễn lại.
+3. **Không** đọc `activeContract = emp.hop_dong[0]` mà bỏ qua `where` lọc theo kỳ trong `include`
+   — đó chính là bug A-02 vừa sửa. Copy cả khối `include.hop_dong` khi cần logic tương tự.
+4. **Không** thêm bảng audit tenant riêng cho `du_lieu_tinh_luong` mà không kiểm tra `writeLog`
+   trước — `sys_log` (control plane) đã là nơi ghi âm thanh chuẩn cho toàn HRM (BR-hrm-066), dùng
+   lại là bắt buộc, không phải tùy chọn.
+5. **Không** tự thêm tỷ lệ BHXH/đoàn phí hardcode mới ở bất kỳ chỗ nào khác trong module payroll —
+   đọc từ `GeneralSetting` theo đúng khối đã có ở đầu `calculatePayrollPreview`.
+
+**Còn nợ (ngoài phạm vi đợt sửa 2026-09-09 — KHÔNG tự ý làm thêm khi đọc thấy):**
+
+- **Biểu thuế TNCN chưa nối với `GeneralSetting.taxBrackets`** (OQ-dltl-002 chưa chốt đầy đủ) —
+  `tinhThueLuyTien()` vẫn hardcode 7 bậc (đúng luật). ADR-dltl-04 đề xuất chốt hình dạng JSON rồi
+  viết `loadPayrollConfig()`, nhưng đây là quyết định kiến trúc mới cần BA/Architect chốt riêng.
+- **8/8 file `*Panel.tsx` ở `hdđt_maxv` vẫn dùng `mock/hooks/*`** — KHÔNG thuộc phạm vi backend,
+  để dành `frontend-engineer` khi được kích hoạt lại.
+- **RVW-003 → RVW-017 + A-04 → A-13** (non-blocking/suggestion trong `review-findings.md`) —
+  N+1 trong transaction (A-05), TOCTOU chuyển trạng thái (A-04), thiếu `Math.round` 4 chỗ (A-07),
+  trùng lặp mã diện rộng (RVW-007), chưa phân trang (RVW-011)… **cố ý chưa sửa** trong đợt này —
+  chỉ đúng 8 lỗi 🔴 theo yêu cầu phiên 2026-09-09.
+- **`RVW-005`/`RVW-004`** (7/8 endpoint đọc không kiểm kỳ tồn tại; ghi chấm công/chuyên cần không
+  kiểm ngày thuộc kỳ) — chưa sửa, vẫn `OPEN`.
 
 ---
 
