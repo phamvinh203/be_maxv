@@ -938,3 +938,41 @@ Không sai dữ liệu, không chặn gì — chỉ là lời giải thích lỗ
 Ba agent bị dừng giữa chừng nhưng **đã kịp sửa mã**, nên "dừng" không đồng nghĩa với "chưa có gì xảy ra". Việc hoàn nguyên phải làm thủ công theo từng phần, **không dùng được `git checkout`** vì các file đó còn chứa công sức của sáu vòng trước phải giữ.
 
 Cũng vì chạy song song, **báo cáo của agent có thể lỗi thời ngay khi viết xong**: một agent cảnh báo `api-contract.md`, `qa/*` và `ADR-008` cũng mô tả dải trượt và cần lùi — kiểm lại thì `ADR-008` và `qa/*` **không có chỗ nào**, còn `api-contract.md` chỉ khớp ở cụm *"Lỗi khi trượt"* trong một bảng, không liên quan. Tin luôn cảnh báo đó sẽ tốn thêm một vòng sửa ba tài liệu vốn không sai.
+
+---
+
+## 18. Đợt phát triển Phân hệ Cài đặt lương (Salary Settings) — ĐÃ HOÀN THÀNH (2026-09-09)
+
+### 18.1. Phạm vi & Mục tiêu
+Triển khai hoàn chỉnh toàn bộ tính năng backend cho giao diện Cài đặt lương (`hdđt_maxv/src/features/hrm/components/cai_dat_luong`) theo chuẩn BA và pháp lý lao động - BHXH - thuế Việt Nam (Thông tư 10/2020/TT-BLĐTBXH, Thông tư 111/2013/TT-BTC, BLLĐ 2019):
+1. **Danh mục khoản lương & phụ cấp** (`danh-muc-khoan`): 7 nhóm chuẩn, sinh mã `KL01`..`KL99`, chống trùng tên `E-sal-002`, bảo vệ xóa khi đang dùng trong cấu trúc `E-sal-003`, thống kê theo nhóm.
+2. **Cấu trúc lương khung** (`set-luong` - Salary Structure): Quản lý thời kỳ hiệu lực, chọn khoản đưa vào khung chuẩn, xác định phân loại thuế (`TAXABLE`/`NON_TAXABLE`), cờ tính tăng ca (`isOvertimeBase`), tiêu thức tính (`CalculationMethod`), số tiền mặc định.
+3. **Thiết lập lương nhân viên & Phê duyệt** (`set-luong` - Employee Salary Assignment): Danh sách kèm trạng thái `daSet`, lọc theo phòng ban/hợp đồng/đã set lương, form gán mức tiền (hỗ trợ cả định dạng mảng `items` và map `khoan`), ràng buộc hợp đồng còn hiệu lực `E-sal-009`, khoản gán phải thuộc cấu trúc active `E-sal-010`, tổng lương > 0 `E-sal-008`, cơ chế phiên bản (`setupVersion` tăng 1 và reset về `PENDING_APPROVAL` khi sửa), phê duyệt đơn lẻ và duyệt hàng loạt (`approve`).
+
+### 18.2. Các thành phần đã triển khai trong mã nguồn (`be_maxv`)
+- **Database & Schema**:
+  - `prisma/tenant/schema.prisma`: Thêm 5 enum (`SalaryItemCategory`, `SalaryItemStatus`, `TaxTreatment`, `CalculationMethod`, `SalaryApprovalStatus`), 5 models (`SalaryItem`, `SalaryStructure`, `SalaryStructureItem`, `EmployeeSalary`, `EmployeeSalaryItem`), liên kết 1-1 với `hrm_nhan_vien` qua `ma_nv`.
+  - Đã biên dịch Prisma Client thành công: `npx prisma generate --schema=prisma/tenant/schema.prisma`.
+- **Hằng số thông điệp**: `src/constants/messages.ts` bổ sung `MESSAGES.HRM.SALARY_*` (mã lỗi `E-sal-001` đến `E-sal-011`).
+- **Validators (Zod)**:
+  - `src/validators/hrm/cai_dat_luong/salaryItems.validator.ts`
+  - `src/validators/hrm/cai_dat_luong/salaryStructures.validator.ts`
+  - `src/validators/hrm/cai_dat_luong/employeeSalaries.validator.ts` (hỗ trợ linh hoạt cả `items` và `khoan`)
+- **Services**:
+  - `src/services/client/hrm/cai_dat_luong/salaryItems.service.ts`
+  - `src/services/client/hrm/cai_dat_luong/salaryStructures.service.ts`
+  - `src/services/client/hrm/cai_dat_luong/employeeSalaries.service.ts`
+- **Controllers & Routes**:
+  - `src/controllers/client/hrm/cai_dat_luong/` (`salaryItems`, `salaryStructures`, `employeeSalaries`)
+  - `src/routes/hrm/cai_dat_luong/` (`salaryItems.route.ts`, `salaryStructures.route.ts`, `employeeSalaries.route.ts`)
+  - Đăng ký plugin hoàn tất trong `src/routes/hrm/hrm.route.ts`.
+
+### 18.3. Kết quả Kiểm thử & Đảm bảo chất lượng
+- **TypeScript**: `tsc --noEmit` hoàn thành sạch với mã thoát 0 (không có bất kỳ lỗi biên dịch nào).
+- **Unit Tests (`src/__tests__/hrmSalarySettings.test.ts`)**: 13/13 ca đạt 100% (kiểm tra đầy đủ mọi ràng buộc `BR-sal-001`..`BR-sal-010`).
+- **Fastify HTTP API Tests (`src/__tests__/hrmSalarySettingsApi.test.ts`)**: 10/10 ca đạt 100% (bao gồm cả kiểm thử tương thích payload UI mock).
+- **Tài liệu lưu vết tại `docs/hrm/cai_dat_luong/`**:
+  - `srs-cai-dat-luong.md`: Đặc tả yêu cầu nghiệp vụ theo góc nhìn BA.
+  - `api-contract-cai-dat-luong.md`: Hợp đồng toàn diện cho các REST endpoints.
+  - `data-model-cai-dat-luong.md`: Thiết kế mô hình dữ liệu ERD và Prisma Schema.
+  - `qa-report-cai-dat-luong.md`: Báo cáo kết quả kiểm thử QA chi tiết.
