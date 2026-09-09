@@ -8,6 +8,9 @@ import { hrmNhanVienRoutes } from './du_lieu_ca_nhan/nhanVien.route';
 import { hrmPhongBanRoutes } from './du_lieu_ca_nhan/phongBan.route';
 import { hrmTaiLieuRoutes } from './du_lieu_ca_nhan/taiLieu.route';
 import { hrmWorkShiftsRoutes } from './cau_hinh_mac_dinh/workShifts.route';
+import { hrmSalaryItemsRoutes } from './cai_dat_luong/salaryItems.route';
+import { hrmSalaryStructuresRoutes } from './cai_dat_luong/salaryStructures.route';
+import { hrmEmployeeSalariesRoutes } from './cai_dat_luong/employeeSalaries.route';
 
 /**
  * Nhóm route HRM (nhân sự) — chạy trên DB tenant, các bảng `hrm_*`.
@@ -39,4 +42,7 @@ export async function hrmRoutes(app: FastifyInstance) {
   await app.register(hrmGeneralSettingsRoutes);
   await app.register(hrmWorkShiftsRoutes);
   await app.register(hrmHolidaysRoutes);
+  await app.register(hrmSalaryItemsRoutes);
+  await app.register(hrmSalaryStructuresRoutes);
+  await app.register(hrmEmployeeSalariesRoutes);
 }

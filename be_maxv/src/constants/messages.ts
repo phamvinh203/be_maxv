@@ -203,6 +203,25 @@ export const MESSAGES = {
 
     /** Hết lượt thử cấp mã ca tự sinh vì có người khác chiếm mất — ADR-001 (retry-on-P2002). */
     HE_THONG_BAN_CAP_MA_CA: 'Hệ thống đang bận cấp mã ca, vui lòng bấm lưu lại.',
+
+    // Cài đặt lương: Danh mục khoản lương, Cấu trúc lương & Set lương (E-sal-001..E-sal-011)
+    SALARY_ITEM_NOT_FOUND: 'Khoản lương không tồn tại',
+    SALARY_ITEM_NAME_EMPTY: 'Tên khoản lương không được để trống',
+    SALARY_ITEM_NAME_EXISTED: (tenKhoan: string) =>
+      `Đã có khoản tên "${tenKhoan}" trong loại này.`,
+    SALARY_ITEM_IN_USE:
+      'Khoản lương đang được sử dụng trong cấu trúc lương hoặc nhân viên, không thể xóa.',
+    SALARY_STRUCTURE_EMPTY: 'Cấu trúc lương phải có ít nhất một khoản.',
+    SALARY_STRUCTURE_DATES_INVALID:
+      'Ngày kết thúc hiệu lực phải sau ngày bắt đầu.',
+    SALARY_EMPLOYEE_NOT_FOUND: 'Nhân viên không tồn tại',
+    SALARY_EMPLOYEE_NO_ACTIVE_CONTRACT:
+      'Nhân viên không còn Hợp đồng hiệu lực tại thời điểm hiện tại.',
+    SALARY_ITEM_NOT_IN_STRUCTURE: (tenKhoan: string, maKhoan: string) =>
+      `Khoản lương "${tenKhoan}" (${maKhoan}) không thuộc cấu trúc lương khung hiện hành.`,
+    SALARY_TOTAL_AMOUNT_INVALID: 'Tổng lương phải lớn hơn 0.',
+    SALARY_DUPLICATE_ITEMS: 'Danh sách khoản lương gửi lên bị trùng lặp.',
+    GIOI_HAN_99_KHOAN_LUONG: 'Đã đạt giới hạn 99 khoản lương tự sinh.',
   },
 
   VALIDATION: {

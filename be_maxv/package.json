@@ -23,7 +23,7 @@
     "lint:fix": "eslint src --fix",
     "format": "prettier --write \"src/**/*.ts\"",
     "format:check": "prettier --check \"src/**/*.ts\"",
-    "test": "tsx --test src/__tests__/*.test.ts"
+    "test": "tsx --experimental-test-module-mocks --test src/__tests__/*.test.ts"
   },
   "keywords": [],
   "author": "",

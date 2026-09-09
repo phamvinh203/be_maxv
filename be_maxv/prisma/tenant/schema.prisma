@@ -912,6 +912,7 @@ model hrm_nhan_vien {
   nguoi_phu_thuoc hrm_nguoi_phu_thuoc[]
   tai_lieu        hrm_tai_lieu[]
   hop_dong        hrm_hop_dong[]
+  luong_thiet_lap EmployeeSalary?
 
   @@index([ma_pb])
   @@index([so_cccd])
@@ -1159,4 +1160,141 @@ model Holiday {
   @@index([date])
   @@index([type])
   @@map("hrm_holidays")
+}
+
+// ============================================================
+//  HRM › CÀI ĐẶT LƯƠNG: DANH MỤC KHOẢN LƯƠNG, CẤU TRÚC LƯƠNG & SET LƯƠNG
+// ============================================================
+
+enum SalaryItemCategory {
+  FIXED_ALLOWANCE
+  BENEFIT_ALLOWANCE
+  DELIVERY_PIECEWORK
+  COMMISSION_PERCENTAGE
+  KPI_PERFORMANCE
+  PERIODIC_BONUS
+  ATTENDANCE_ALLOWANCE
+}
+
+enum SalaryItemStatus {
+  ACTIVE
+  INACTIVE
+}
+
+enum TaxTreatment {
+  TAXABLE
+  EXEMPT
+}
+
+enum CalculationMethod {
+  MONTHLY_FIXED
+  ACTUAL_WORKDAYS
+  HOURLY
+  OUTPUT_BASED
+  REVENUE_PERCENTAGE
+  KPI_BASED
+  MANUAL_ENTRY
+}
+
+enum SalaryApprovalStatus {
+  DRAFT
+  PENDING_APPROVAL
+  APPROVED
+  REJECTED
+}
+
+/// Danh mục khoản lương & phụ cấp (HRM)
+model SalaryItem {
+  id                String             @id @default(uuid()) @db.VarChar(64)
+  code              String             @unique @db.VarChar(20)
+  name              String             @db.VarChar(200)
+  category          SalaryItemCategory
+  description       String?            @db.VarChar(500)
+  isSocialInsurance Boolean            @default(false)
+  isTaxable         Boolean            @default(true)
+  defaultRate       Decimal?           @db.Decimal(5, 2)
+  status            SalaryItemStatus   @default(ACTIVE)
+  createdAt         DateTime           @default(now())
+  updatedAt         DateTime           @default(now()) @updatedAt
+
+  structureItems    SalaryStructureItem[]
+  employeeItems     EmployeeSalaryItem[]
+
+  @@index([category])
+  @@index([status])
+  @@map("hrm_salary_items")
+}
+
+/// Cấu trúc lương khung của doanh nghiệp
+model SalaryStructure {
+  id            String                @id @default(uuid()) @db.VarChar(64)
+  effectiveFrom DateTime              @db.Date
+  effectiveTo   DateTime?             @db.Date
+  note          String?               @db.VarChar(1000)
+  isActive      Boolean               @default(true)
+  createdAt     DateTime              @default(now())
+  updatedAt     DateTime              @default(now()) @updatedAt
+
+  items         SalaryStructureItem[]
+
+  @@index([isActive])
+  @@map("hrm_salary_structures")
+}
+
+/// Bảng chi tiết từng dòng trong cấu trúc lương khung
+model SalaryStructureItem {
+  id                String            @id @default(uuid()) @db.VarChar(64)
+  salaryStructureId String            @db.VarChar(64)
+  salaryItemId      String            @db.VarChar(64)
+  taxTreatment      TaxTreatment      @default(TAXABLE)
+  isOvertimeBase    Boolean           @default(false)
+  calculationMethod CalculationMethod @default(MONTHLY_FIXED)
+  defaultAmount     Decimal           @default(0) @db.Decimal(18, 2)
+
+  salaryStructure   SalaryStructure   @relation(fields: [salaryStructureId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  salaryItem        SalaryItem        @relation(fields: [salaryItemId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+
+  @@unique([salaryStructureId, salaryItemId])
+  @@index([salaryStructureId])
+  @@index([salaryItemId])
+  @@map("hrm_salary_structure_items")
+}
+
+/// Mức lương thiết lập cho từng nhân viên (Set lương)
+model EmployeeSalary {
+  id               String               @id @default(uuid()) @db.VarChar(64)
+  ma_nv            String               @unique @db.VarChar(24)
+  setupVersion     Int                  @default(1)
+  effectiveFrom    DateTime             @db.Date
+  effectiveTo      DateTime?            @db.Date
+  totalAmount      Decimal              @default(0) @db.Decimal(18, 2)
+  status           SalaryApprovalStatus @default(PENDING_APPROVAL)
+  approvedByUserId String?              @db.VarChar(64)
+  approvedAt       DateTime?
+
+  createdAt        DateTime             @default(now())
+  updatedAt        DateTime             @default(now()) @updatedAt
+
+  nhan_vien        hrm_nhan_vien        @relation(fields: [ma_nv], references: [ma_nv], onDelete: Cascade, onUpdate: Cascade)
+  items            EmployeeSalaryItem[]
+
+  @@index([ma_nv])
+  @@index([status])
+  @@map("hrm_employee_salaries")
+}
+
+/// Chi tiết số tiền từng khoản của nhân viên
+model EmployeeSalaryItem {
+  id               String         @id @default(uuid()) @db.VarChar(64)
+  employeeSalaryId String         @db.VarChar(64)
+  salaryItemId     String         @db.VarChar(64)
+  amount           Decimal        @default(0) @db.Decimal(18, 2)
+
+  employeeSalary   EmployeeSalary @relation(fields: [employeeSalaryId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  salaryItem       SalaryItem     @relation(fields: [salaryItemId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+
+  @@unique([employeeSalaryId, salaryItemId])
+  @@index([employeeSalaryId])
+  @@index([salaryItemId])
+  @@map("hrm_employee_salary_items")
 }
