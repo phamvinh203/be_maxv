@@ -1,7 +1,7 @@
 import { MESSAGES } from '../constants/messages';
 
 /** Lỗi nghiệp vụ có chủ đích (errorHandler.plugin ánh xạ -> HTTP status). */
-class AppError extends Error {
+export class AppError extends Error {
   // `options` để chuyền `{ cause }` xuống Error gốc: giữ được nguyên nhân tầng dưới trong log
   // khi mình bọc lại lỗi của thư viện/dịch vụ ngoài.
   constructor(name: string, message: string, options?: ErrorOptions) {
