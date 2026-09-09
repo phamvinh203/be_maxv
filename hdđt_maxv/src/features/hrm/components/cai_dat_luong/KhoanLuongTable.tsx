@@ -18,7 +18,7 @@ import SearchRounded from "@mui/icons-material/SearchRounded";
 import CheckRounded from "@mui/icons-material/CheckRounded";
 import RemoveRounded from "@mui/icons-material/RemoveRounded";
 import { moTaLoaiKhoan } from "../../constants";
-import { useKhoanLuongRows, type KhoanLuongFilters } from "../../mock/hooks/khoanLuong";
+import { useKhoanLuongRows, type KhoanLuongFilters } from "../../api/salaryItemsQueries";
 import type { KhoanLuong } from "../../types";
 
 interface Props {

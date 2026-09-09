@@ -15,7 +15,7 @@ import Box from "@mui/material/Box";
 import { getErrorMessage } from "../../../../lib/errors";
 import { TRANG_THAI_PB, moTaLoaiKhoan } from "../../constants";
 import { khoanLuongRong } from "../../formDefaults";
-import { useLuuKhoanLuong } from "../../mock/hooks/khoanLuong";
+import { useLuuKhoanLuong } from "../../api/salaryItemsQueries";
 import type {
   KhoanLuong,
   KhoanLuongFormValues,

@@ -1,3 +1,5 @@
+import type { EmployeeSalaryListParams } from "./employeeSalariesApi";
+
 /**
  * Query key của khu HRM, gom một chỗ vì ba thực thể **phụ thuộc số liệu của nhau**:
  *   - danh sách phòng ban mang `so_nv`  -> đổi nhân viên là số này sai
@@ -91,4 +93,31 @@ export const hrmHolidayKeys = {
    */
   quickPreview: (companyId: string | null, year: number) =>
     ["hrm-holidays", companyId, "quick-preview", year] as const,
+};
+
+export const hrmSalaryItemKeys = {
+  all: ["hrm-salary-items"] as const,
+  list: (companyId: string | null) =>
+    ["hrm-salary-items", companyId, "list"] as const,
+};
+
+/** Chỉ MỘT cấu trúc lương khung đang áp dụng (`GET/PUT .../salary-structures/current`) — không phải danh sách. */
+export const hrmSalaryStructureKeys = {
+  all: ["hrm-salary-structures"] as const,
+  current: (companyId: string | null) =>
+    ["hrm-salary-structures", companyId, "current"] as const,
+};
+
+/**
+ * `detail` khóa theo `employeeId` giống `hrmHopDongKeys` — set lương là dữ liệu lương của TỪNG
+ * người, gộp chung một khóa sẽ làm mở hồ sơ người này thấy cache set lương của người khác.
+ */
+export const hrmEmployeeSalaryKeys = {
+  all: ["hrm-employee-salaries"] as const,
+  list: (companyId: string | null, params?: EmployeeSalaryListParams) =>
+    ["hrm-employee-salaries", companyId, "list", params] as const,
+  counts: (companyId: string | null) =>
+    ["hrm-employee-salaries", companyId, "counts"] as const,
+  detail: (companyId: string | null, employeeId: string) =>
+    ["hrm-employee-salaries", companyId, "detail", employeeId] as const,
 };

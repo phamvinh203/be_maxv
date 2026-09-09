@@ -11,11 +11,8 @@ import FileDownloadRounded from "@mui/icons-material/FileDownloadRounded";
 import HowToRegRounded from "@mui/icons-material/HowToRegRounded";
 import SaveRounded from "@mui/icons-material/SaveRounded";
 import { getErrorMessage } from "../../../../../lib/errors";
-import {
-  useCauTrucLuong,
-  useDuyetLuong,
-  useLuuCauTrucLuong,
-} from "../../../mock/hooks/setLuong";
+import { useDuyetLuong } from "../../../api/employeeSalariesQueries";
+import { useCauTrucLuong, useLuuCauTrucLuong } from "../../../api/salaryStructuresQueries";
 import type { CauTrucLuong } from "../../../types";
 import CauTrucLuongCard from "./CauTrucLuongCard";
 import DanhSachSetLuongCard from "./DanhSachSetLuongCard";

@@ -6,7 +6,7 @@ import Chip from "@mui/material/Chip";
 import Typography from "@mui/material/Typography";
 import AddRounded from "@mui/icons-material/AddRounded";
 import { LOAI_KHOAN_LUONG } from "../../constants";
-import { useSoKhoanTheoLoai } from "../../mock/hooks/khoanLuong";
+import { useSoKhoanTheoLoai } from "../../api/salaryItemsQueries";
 import type { LoaiKhoanLuong } from "../../types";
 
 interface Props {

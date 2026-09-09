@@ -21,7 +21,7 @@ import AddRounded from "@mui/icons-material/AddRounded";
 import DeleteRounded from "@mui/icons-material/DeleteRounded";
 import { PHAN_LOAI_THUE, TIEU_THUC_TINH, moTaLoaiKhoan } from "../../../constants";
 import { tienVn } from "../../../format";
-import { useKhoanLuongList } from "../../../mock/hooks/khoanLuong";
+import { useKhoanLuongList } from "../../../api/salaryItemsQueries";
 import type {
   CauTrucLuong,
   DongCauTrucLuong,

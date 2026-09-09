@@ -32,7 +32,7 @@ import {
   useDemSetLuong,
   useSetLuongRows,
   useXoaSetLuong,
-} from "../../../mock/hooks/setLuong";
+} from "../../../api/employeeSalariesQueries";
 import type { LoaiHopDong, SetLuongFilters, SetLuongRow } from "../../../types";
 import XacNhanXoaDialog from "../../XacNhanXoaDialog";
 import SetLuongNhanVienDialog from "./SetLuongNhanVienDialog";
