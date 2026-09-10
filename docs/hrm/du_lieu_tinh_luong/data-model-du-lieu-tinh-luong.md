@@ -2,7 +2,7 @@
 type: architecture-data-model
 feature: hrm-du-lieu-tinh-luong
 status: in-review
-updated: 2026-09-09
+updated: 2026-09-10
 author: system-architect
 links:
   - docs/hrm/du_lieu_tinh_luong/srs-du-lieu-tinh-luong.md
@@ -478,3 +478,244 @@ model PayrollPeriod {
 - **Tester-QA (Phase A)**: ưu tiên viết test cho A-01 (rò rỉ lương), A-02 (chọn sai hợp đồng), A-03 (nghỉ không lương vẫn trả đủ) — 3 lỗi này **sai số tiền hoặc lộ dữ liệu**, nặng hơn phần lớn mục trong Error Matrix. Kèm A-06 (kiểu response đổi sau khóa sổ) vì nó quyết định cách QA assert. Lưu ý 2 cải chính để không viết test sai kỳ vọng: `targetValue` **đã** chặn chia-0 ở validator; 6 `otRate*` **đã** đọc đúng từ `GeneralSetting`.
 - **Business Analyst (Final Sign-off)**: cần chốt OQ-dltl-002 (đã có đề xuất tại ADR-dltl-04), OQ-dltl-003 + OQ-dltl-004 (ADR-dltl-05), OQ-dltl-006 (ADR-dltl-02 không đụng tới, vẫn mở); và sửa 2 chỗ trong SRS: Mục 6.2 ("sửa tên/ngày kỳ" → chỉ tên, A-13) và Mục 11 dòng kết luận tích cực ("dialog Tái sử dụng 6/8 đã nối API thật" → chưa, đang lai).
 - **Hợp đồng API**: `docs/hrm/du_lieu_tinh_luong/api-contract-du-lieu-tinh-luong.md`.
+
+---
+
+## 11. Mở rộng mô hình dữ liệu cho **Bảng lương tổng hợp** (Architect, 2026-09-10)
+
+> **Nguồn yêu cầu:** `srs-du-lieu-tinh-luong.md` Mục 15 (BA, 2026-09-10) — `BR-dltl-024…027` + gap API. **Hai quyết định nghiệp vụ đã được chủ dự án chốt** và là dữ kiện cố định của thiết kế này, Architect KHÔNG được đổi:
+> 1. **Nguồn cột "Lương" (chốt `OQ-dltl-011`)** — mô hình **hai tầng cộng nhau**: `hrm_hop_dong.luong_chinh` / `luong_bhxh` **giữ nguyên vai trò**, **CỘNG THÊM** tổng các khoản phụ cấp cố định trong "Cài đặt lương" (`EmployeeSalary.items` → `SalaryItem`) của chính nhân viên đó. KHÔNG chọn một trong hai như SRS Mục 15.4 đặt vấn đề.
+> 2. **Biểu thuế TNCN giữ nguyên 7 bậc hiện hành** (giảm trừ 11tr bản thân / 4,4tr người phụ thuộc). KHÔNG áp bộ số liệu 2026 mà `docs/nestjs/payroll` nhắc tới.
+>
+> Toàn bộ thay đổi dưới đây nằm ở **`be_maxv/prisma/tenant/schema.prisma`** (schema tenant `db_<MST>`). **KHÔNG** có thay đổi nào ở `prisma/sys/schema.prisma`.
+
+### 11.1. Tổng quan thay đổi
+
+| # | Bảng / Enum | Loại thay đổi | Phục vụ |
+|:--:|---|---|---|
+| M-01 | `GeneralSetting` (`hrm_general_settings`) | **+3 cột** | `BR-dltl-026` (ngưỡng + thuế suất khấu trừ 10%), `BR-dltl-027` (trần ăn ca 730k) |
+| M-02 | `SalaryItem` (`hrm_salary_items`) | **+1 cột** `isMealAllowance` | `BR-dltl-027` — nhận diện khoản ăn ca **bằng dữ liệu**, không dò chuỗi tiếng Việt |
+| M-03 | *(không thêm enum, không thêm cột cho 2 trần bảo hiểm)* | Hệ số `× 20` là **hằng số có căn cứ luật**, gốc `baseSalary`/`regionMinSalary` đã có sẵn | `BR-dltl-024` — đúng nhận định của BA (SRS 15.3): "không cần field DB mới, chỉ cần tách logic" |
+| M-04 | `PayrollSheetLine` (`hrm_payroll_sheet_lines`) | **+15 cột** | Đóng băng đủ căn cứ giải trình thuế + các field UI mới |
+| M-05 | — | **Không đổi**: `hrm_hop_dong`, `OvertimeRecord`, `EmployeeSalary(Item)`, `SalaryStructureItem` | Dữ liệu cần đã có sẵn |
+
+> **Tên trường bám đúng SRS Mục 15.3.1** (BA chốt cùng ngày, QA đã viết 44 ca kiểm theo tên đó): `contractBaseSalary` · `fixedAllowanceTotal` · `otTaxExemptAmount` · `withholdingTaxApplied` · `lunchAllowanceTaxableAmount` · `insuranceCapAppliedBhxhByt` · `insuranceCapAppliedBhtn` · `isMealAllowance`. Architect **không** đặt tên khác cho cùng một khái niệm — đổi tên ở tầng này là buộc QA viết lại bộ ca kiểm mà không được gì. Trường duy nhất **không** có trong SRS 15.3.1 là `otherAllowanceTaxExemptAmount` — sinh ra sau khi chủ dự án chốt `Q-1` (xem 11.3.1), và là **thêm mới** chứ không phải đổi tên trường nào đang có.
+
+> **Cập nhật 2026-09-10 (sau khi chủ dự án chốt `Q-1`):** ô tick "chịu thuế TNCN" ở màn "Khoản lương" nay **có hiệu lực thật** với bảng lương. Thay đổi ở tầng dữ liệu chỉ gồm **1 cột snapshot mới** `otherAllowanceTaxExemptAmount` (Mục 11.4) — **không** thêm cột cấu hình, **không** thêm enum, vì hai cột nguồn (`SalaryItem.isTaxable`, `SalaryStructureItem.taxTreatment`) **đã tồn tại và đã có giao diện nhập**. Quy tắc đọc hai cột đó: Mục 11.3.1.
+
+**Không thêm bảng mới.** Endpoint `GET /payroll/support-allowances` (tab "Lương hỗ trợ") là **truy vấn đọc thuần** trên `EmployeeSalaryItem` + `SalaryItem` + `SalaryStructureItem` đã có — không cần bảng lưu riêng.
+
+### 11.2. M-01 — `GeneralSetting`: 3 cột mới (KHÔNG phải 5)
+
+```prisma
+model GeneralSetting {
+  // … 29 cột hiện có, KHÔNG đổi …
+
+  /// BR-dltl-027 — Trần miễn thuế TNCN của phụ cấp ăn ca/ăn trưa mỗi tháng (TT 26/2016:
+  /// 730.000đ). Phần vượt trần tính vào thu nhập chịu thuế. Trần này được QUY ĐỔI THEO CÔNG
+  /// khi tính (AC-dltl-23) — cột lưu mức tháng đầy đủ.
+  lunchAllowanceTaxFreeCap Decimal @default(730000)  @db.Decimal(15, 2)
+
+  /// BR-dltl-026 — Thuế suất khấu trừ tại nguồn cho HĐ thử việc/thời vụ (Điều 25 TT 111/2013:
+  /// 10%). Đơn vị PHẦN TRĂM (10.00 = 10%) — cùng quy ước với insurance*/unionFee*.
+  withholdingTaxRate       Decimal @default(10.0)    @db.Decimal(5, 2)
+
+  /// BR-dltl-026 — Ngưỡng thu nhập mỗi lần trả bắt đầu phải khấu trừ 10% (2.000.000đ).
+  withholdingTaxThreshold  Decimal @default(2000000) @db.Decimal(15, 2)
+}
+```
+
+**Vì sao 3 số này thành cột DB, còn hệ số trần bảo hiểm `× 20` thì không.** Ranh giới đã có sẵn trong chính bảng này và ADR-dltl-04 ("hardcode tham số tính lương là nợ kỹ thuật"):
+
+| Loại tham số | Cách làm | Ví dụ đang chạy |
+|---|---|---|
+| **Số tiền / thuế suất luật định mà kế toán có thể phải chỉnh** | Cột `GeneralSetting` | `personalDeduction`, `dependentDeduction`, `baseSalary`, `regionMinSalary`, `unionFeeMaxAmount`, 6 tỷ lệ bảo hiểm ⇒ **3 cột mới đi cùng nhóm này** |
+| **Quy tắc cấu tạo công thức** (hệ số nhân, thứ tự bước) | Hằng số trong mã, có trích dẫn căn cứ | Hệ số `× 20` của hai trần bảo hiểm |
+
+Cụ thể với hai trần: gốc tính (`baseSalary` 2,34tr / `regionMinSalary` 4,96tr) **đã là cột cấu hình**, nên nghị định đổi lương cơ sở là trần tự đúng theo. Bản thân con số `20` nằm trong Luật BHXH và Luật Việc làm, không phải thứ từng công ty tự đặt. Thêm cột cho nó chỉ tạo thêm một đường để cấu hình sai mà không mua thêm khả năng nào — đúng nhận định của BA ở SRS Mục 15.3 ("không cần field DB mới, chỉ cần tách logic").
+
+```ts
+// be_maxv/src/constants/hrm/du_lieu_tinh_luong/insuranceCaps.ts (mới)
+/** Trần đóng BHXH + BHYT = 20 lần lương cơ sở — Luật BHXH 2014 Điều 89 Khoản 3. */
+export const SO_LAN_LUONG_CO_SO_TRAN_BHXH_BHYT = 20;
+/** Trần đóng BHTN = 20 lần lương tối thiểu vùng — Luật Việc làm 2013 Điều 58 Khoản 2. */
+export const SO_LAN_LUONG_TOI_THIEU_VUNG_TRAN_BHTN = 20;
+```
+
+**Cấm lưu số tiền trần tuyệt đối** (46.800.000 / 99.200.000) vào cấu hình: sửa `baseSalary` mà quên sửa trần là sai âm thầm — đúng bệnh mà `unionFeeMaxAmount = 234.000` (10% × 2,34tr) đang mắc.
+
+> 🟠 **Nợ kỹ thuật ghi nhận, KHÔNG sửa trong đợt này:** `unionFeeMaxAmount` là số tuyệt đối phái sinh từ `baseSalary`. Không đụng vì đang chạy đúng và nằm ngoài 4 BR của đợt này.
+
+**Ràng buộc thẩm định (validator `PUT /settings/general`)** — xem hợp đồng API Mục 8.4:
+
+| Cột | Ràng buộc | Mã lỗi |
+|---|---|---|
+| `lunchAllowanceTaxFreeCap` | `>= 0` | `E-hrm-083` (mới) |
+| `withholdingTaxRate` | `0 … 100` | `E-hrm-083` (mới) |
+| `withholdingTaxThreshold` | `>= 0` | `E-hrm-083` (mới) |
+
+`POST /settings/general/restore-default` **phải đặt lại đủ 3 cột này** về mặc định pháp luật VN (730.000 / 10.00 / 2.000.000). Bỏ sót là khôi phục nửa vời — đúng bẫy đã gặp ở đợt biểu thuế 7 bậc.
+
+### 11.3. M-02 — nhận diện phụ cấp ăn ca **bằng dữ liệu**, không dò tên tiếng Việt
+
+`SalaryItem` hiện chỉ có `category` (7 nhóm) và `isTaxable` (bool) — **không có** cách nào phân biệt "Phụ cấp tiền cơm" với "Phụ cấp điện thoại": cả hai đều là `BENEFIT_ALLOWANCE`, `isTaxable = false`. Trần 730k chỉ áp cho khoản ăn ca, nên phải có chỗ đánh dấu.
+
+**Chọn phương án (a) của BA** (SRS Mục 15.3.1, `BR-dltl-027`): thêm **một cờ boolean**, đứng cạnh hai cờ cùng loại đã có (`isSocialInsurance`, `isTaxable`). Bác phương án (b) "quy ước theo `code` cố định" — mã khoản do kế toán tự đặt, đổi mã là vỡ thầm lặng.
+
+```prisma
+model SalaryItem {
+  // … 11 cột hiện có, KHÔNG đổi …
+
+  /// BR-dltl-027 — Khoản này là phụ cấp ăn ca/ăn trưa: miễn thuế TNCN tới
+  /// GeneralSetting.lunchAllowanceTaxFreeCap (730.000đ/tháng, quy đổi theo công), phần vượt
+  /// tính vào thu nhập chịu thuế. Kế toán tự đánh dấu — hệ thống KHÔNG đoán theo tên khoản.
+  isMealAllowance Boolean @default(false)
+}
+```
+
+> Cân nhắc và **bác** phương án enum `TaxExemptionRule { NONE, MEAL_ALLOWANCE }`: mở rộng hơn (đồng phục 5tr/năm, điện thoại theo quy chế…) nhưng hiện chỉ có **đúng một** quy tắc trần cần mã hóa, và enum đứng lệch khỏi lối đã có của chính bảng này (hai cờ boolean). Khi nào luật thêm quy tắc trần thứ hai thì đổi sang enum — lúc đó việc di trú là `isMealAllowance = true → MEAL_ALLOWANCE`, cơ học và an toàn.
+
+**Bắt buộc — cấm dò chuỗi tên khoản.** Không được viết `name.includes('ăn')` / `'cơm'` / `'trưa'`. Lý do đã có tiền lệ hỏng trong chính repo (`docs/nestjs/payroll`): tên khoản là chữ tự do, có dấu/không dấu, viết hoa/thường, mỗi công ty một cách gọi ("Tiền cơm ca", "PC ăn trưa", "Hỗ trợ bữa ăn") — dò chuỗi vừa sót vừa dính nhầm, và **sai lặng lẽ** đúng chỗ tiền thuế.
+
+**Ai đánh dấu:** kế toán, ở màn "Cài đặt lương › Khoản lương" (một ô chọn thêm). Nhiều khoản cùng đánh `isMealAllowance = true` là **hợp lệ** — trần áp trên **tổng** các khoản đó của một nhân viên trong một kỳ, không áp từng khoản.
+
+**Dữ liệu cũ:** mọi bản ghi hiện có nhận `false` ⇒ hành vi **không đổi** cho tới khi kế toán chủ động đánh dấu. Đây là chủ đích: không đoán hộ khách khoản nào là tiền cơm.
+
+### 11.3.1. Đọc hai cột miễn thuế **đã có sẵn** — không thêm cột nguồn nào
+
+> **Chủ dự án chốt `Q-1` ngày 2026-09-10**: phụ cấp khai miễn thuế phải **thực sự** được trừ khỏi thu nhập tính thuế. Quyết định kiến trúc đầy đủ ở `ADR-010` **QĐ-9**; mục này chỉ nói phần **dữ liệu**.
+
+**Hai cột nguồn, cả hai đều đã tồn tại và đã có ô nhập trên giao diện — Backend chỉ việc ĐỌC:**
+
+| Cột | Vị trí schema | Đường ra giao diện | Mặc định |
+|---|---|---|---|
+| `SalaryItem.isTaxable` | `schema.prisma:1224` `Boolean @default(true)` | `salaryItems.service.ts:32` → `chiu_thue_tncn` (màn **Khoản lương**) | `true` |
+| `SalaryStructureItem.taxTreatment` | `schema.prisma:1261` `TaxTreatment @default(TAXABLE)` | `salaryStructures.service.ts:37` → `phan_loai: 'tncn' \| 'mien_thue'` (màn **Cấu trúc lương**) | `TAXABLE` |
+
+**Quy tắc hợp nhất (chốt `Q-2` — phép OR, xem ADR-010 QĐ-9.2):**
+
+```ts
+const laKhoanMienThue =
+  structureItem?.taxTreatment === 'EXEMPT' || salaryItem.isTaxable === false;
+```
+
+Bất đối xứng có chủ đích: `EXEMPT` / `isTaxable = false` là **khai báo có chủ đích** của kế toán, còn `TAXABLE` / `true` **có thể chỉ là giá trị `@default` chưa ai đụng tới** (validator `salaryStructures.validator.ts:17` cũng `.default('TAXABLE')`). Cho giá trị mặc định quyền phủ quyết một khai báo có chủ đích là cách chắc chắn để ô tick tiếp tục vô hiệu — tức là chốt `Q-1` trên giấy mà không có tác dụng thật.
+
+**Phạm vi đọc — giới hạn ở phụ cấp cố định:** chỉ áp cho `EmployeeSalaryItem` thuộc `FIXED_ALLOWANCE` / `BENEFIT_ALLOWANCE` (phần đi vào `allowanceInPeriodTotal`). `BonusRecord` và `CommissionRecord` **cũng** trỏ `SalaryItem` có `isTaxable`, nhưng engine **không** đọc cờ đó cho hai bảng này — thưởng và hoa hồng giữ nguyên là chịu thuế (lý do ở ADR-010 QĐ-9.1). Ghi rõ ở đây để người sau đọc schema không tưởng là engine bỏ sót.
+
+> 🔴 **Ràng buộc dữ liệu quan trọng nhất của mục này — hai giỏ miễn thuế LOẠI TRỪ NHAU.** Khoản `isMealAllowance = true` **không bao giờ** được cộng vào `otherAllowanceTaxExemptAmount`, kể cả khi chính nó khai `isTaxable = false` (đây là **ca phổ biến**, không phải ca biên: `KL08` "Phụ cấp tiền cơm" trong dữ liệu mẫu của dự án đang để `chiu_thue_tncn: false`). Vi phạm ⇒ miễn thuế hai lần trên cùng một khoản tiền ⇒ khai thiếu thuế. Hai cột snapshot `mealAllowanceAmount` và `otherAllowanceTaxExemptAmount` phải thỏa bất biến: **tổng của chúng ≤ `allowanceInPeriodTotal`**, và giao của hai tập khoản là rỗng.
+
+### 11.4. M-04 — `PayrollSheetLine`: 15 cột mới (BẮT BUỘC, không phải tùy chọn)
+
+> 🔴 **Ràng buộc kỹ thuật cứng, Backend Engineer đọc kỹ.** `snapshotPayrollSheet()` (`payrollCalculation.service.ts:356-375`) đưa **nguyên object** của `calculatePayrollPreview()` vào `payrollSheetLine.createMany({ data: calculatedLines })`. Thêm bất kỳ field nào vào object trả về mà **không** thêm cột tương ứng ⇒ Prisma ném `Unknown argument` và **khóa sổ kỳ lương gãy hoàn toàn** — trong khi `GET /payroll/calculate` vẫn chạy bình thường, nên lỗi chỉ lộ ra lúc kế toán bấm "Khóa sổ". Hai chỗ này phải sửa **cùng một lượt**.
+
+```prisma
+model PayrollSheetLine {
+  // … 29 cột hiện có, KHÔNG đổi …
+
+  // ── Nguồn lương 2 tầng (QĐ nghiệp vụ 1 — SRS 15.4) ──
+  contractBaseSalary         Decimal @default(0) @db.Decimal(18, 2) // luong_chinh của HĐ
+  fixedAllowanceTotal        Decimal @default(0) @db.Decimal(18, 2) // Σ mức THÁNG phụ cấp cố định
+  allowanceInPeriodTotal     Decimal @default(0) @db.Decimal(18, 2) // phụ cấp SAU quy đổi công
+  // baseSalaryMonthly (đã có) = contractBaseSalary + fixedAllowanceTotal  → cột UI "Lương"
+
+  // ── Tăng ca (BR-dltl-025) ──
+  otRawHours                 Decimal @default(0) @db.Decimal(6, 2)  // giờ GỐC, chưa nhân hệ số
+  otTaxExemptAmount          Decimal @default(0) @db.Decimal(18, 2) // phần vượt đơn giá giờ thường
+
+  // ── Trần ăn ca (BR-dltl-027) ──
+  mealAllowanceAmount        Decimal @default(0) @db.Decimal(18, 2) // Σ khoản isMealAllowance trong kỳ
+  lunchAllowanceExemptAmount Decimal @default(0) @db.Decimal(18, 2) // phần được miễn (≤ trần đã quy đổi công)
+  lunchAllowanceTaxableAmount Decimal @default(0) @db.Decimal(18, 2)// phần VƯỢT trần, phải chịu thuế
+
+  // ── Miễn thuế theo khai báo (QĐ-9 — chủ dự án chốt Q-1 ngày 2026-09-10) ──
+  /// Σ phụ cấp khai miễn thuế (isTaxable = false HOẶC taxTreatment = EXEMPT), số tiền TRONG KỲ.
+  /// KHÔNG gồm khoản isMealAllowance — khoản đó nằm trọn ở mealAllowanceAmount và chịu trần riêng.
+  /// Bất biến: mealAllowanceAmount + otherAllowanceTaxExemptAmount <= allowanceInPeriodTotal
+  otherAllowanceTaxExemptAmount   Decimal @default(0) @db.Decimal(18, 2)
+
+  // ── Hai trần bảo hiểm độc lập (BR-dltl-024) ──
+  insuranceBaseBhxhByt       Decimal @default(0) @db.Decimal(18, 2) // gốc tính BHXH+BHYT (đã kẹp trần)
+  insuranceBaseBhtn          Decimal @default(0) @db.Decimal(18, 2) // gốc tính BHTN (đã kẹp trần)
+  insuranceCapAppliedBhxhByt Boolean @default(false)
+  insuranceCapAppliedBhtn    Boolean @default(false)
+
+  // ── Rẽ nhánh phương pháp thuế (BR-dltl-026) ──
+  withholdingTaxApplied      Boolean @default(false)                // true = khấu trừ 10%, false = lũy tiến
+
+  // ── Truy vết phiên bản công thức ──
+  engineVersion              String  @default("v1") @db.VarChar(16)
+}
+```
+
+> Đếm đúng **15 cột**: 11 `Decimal` + 3 `Boolean` + 1 `String`. Con số ở bảng 11.1 phải khớp khối này khi Backend hiện thực.
+>
+> **Không** thêm cột `taxableGrossIncome`: cột UI `thu_nhap_chiu_thue` suy được ngay tại Frontend bằng `grossIncome − otTaxExemptAmount − lunchAllowanceExemptAmount − otherAllowanceTaxExemptAmount` (mọi thành phần đều đã có trong response). Thêm một cột chỉ để chứa hiệu của bốn cột khác là tạo thêm một chỗ có thể lệch.
+>
+> **Không** đổi tên `lunchAllowanceTaxableAmount` thành `otherAllowanceTaxExemptAmount` — hai trường mang **nghĩa ngược nhau** (một bên là phần **vượt trần phải chịu thuế**, một bên là phần **được miễn**). Dùng lại tên cho nghĩa khác là cách chắc chắn nhất để Backend cộng nhầm dấu, và bắt QA viết lại `AC-dltl-21/23` mà không được gì (ADR-010 QĐ-9.4).
+
+**Vì sao lưu cả cột "giải thích" chứ không chỉ số tiền cuối.** Bảng lương đã khóa là chứng từ giải trình với cơ quan thuế. Khi bị hỏi *"vì sao người này thuế 10% mà người kia lũy tiến"*, *"vì sao lương đóng bảo hiểm 60tr mà chỉ trừ trên 46,8tr"*, phải trả lời được **từ chính snapshot**, không phải tính lại bằng cấu hình hôm nay (cấu hình đã có thể đổi). Đó cũng là lý do thêm `engineVersion`: đề xuất cũ ở Mục 5.1 nay thành bắt buộc, vì công thức thay đổi thật trong đợt này — dòng khóa trước và sau đợt này **ra số khác nhau** và phải phân biệt được.
+
+`insuranceCapAppliedBhxhByt` / `insuranceCapAppliedBhtn` / `withholdingTaxApplied` là **cờ dẫn xuất** (suy được từ các cột khác) — chấp nhận dư thừa có kiểm soát để bảng lương lọc/đánh dấu trên giao diện không phải tính lại.
+
+### 11.5. Dữ liệu ĐÃ CÓ, không cần thêm cột
+
+| Cần cho | Lấy từ | Ghi chú |
+|---|---|---|
+| Giờ OT gốc `otRawHours` | `OvertimeRecord.hours` | Đã lưu, engine chỉ đang bỏ qua (chỉ đọc `convertedHours`) |
+| Loại hợp đồng để rẽ nhánh 10% | `hrm_hop_dong.loai_hd` (VarChar 24, **chữ tự do**) | Chuẩn hóa `trim().toLowerCase()` trước khi so — xem ADR-010 Mục "Rủi ro" |
+| Công tắc tổng tính thuế | `hrm_hop_dong.tinh_tncn` | Kiểm **trước** mọi rẽ nhánh |
+| Gốc đóng bảo hiểm | `hrm_hop_dong.luong_bhxh` + `trich_bhxh` | Giữ nguyên nghĩa |
+| Mức từng khoản phụ cấp của nhân viên | `EmployeeSalaryItem.amount` (qua `EmployeeSalary` `status = APPROVED`) | Engine đang đọc nhưng chỉ lọc 2 nhóm `KPI_PERFORMANCE`/`ATTENDANCE_ALLOWANCE` |
+| Khoản nào quy đổi theo công | `SalaryStructureItem.calculationMethod` | `ACTUAL_WORKDAYS`/`HOURLY` ⇒ quy đổi; còn lại giữ trọn tháng |
+| Khoản nào vào gốc tính tăng ca | `SalaryStructureItem.isOvertimeBase` | Cột này **đang có mà chưa ai dùng** — đúng chỗ cần dùng |
+| Khoản ăn ca (trần 730k) | `SalaryItem.isMealAllowance` (cột mới M-02) | Kế toán đánh dấu |
+| Khoản nào miễn thuế **ngoài** ăn ca | `SalaryItem.isTaxable` **hoặc** `SalaryStructureItem.taxTreatment` | ✅ **ĐÃ CHỐT 2026-09-10** (chủ dự án chốt `Q-1`) — đọc **cả hai** cột theo phép **OR**, phạm vi chỉ phụ cấp cố định. Quy tắc đầy đủ ở Mục 11.3.1; quyết định kiến trúc ở ADR-010 QĐ-9 |
+
+**Chọn `SalaryStructure` nào:** bản `isActive = true` **và** phủ kỳ (`effectiveFrom <= period.endDate` **và** (`effectiveTo` null **hoặc** `>= period.startDate`)), `orderBy effectiveFrom desc, take 1`. Khoản không có dòng trong cấu trúc đó ⇒ mặc định `MONTHLY_FIXED` + `isOvertimeBase = false` + miễn thuế xét **chỉ theo** `SalaryItem.isTaxable`. Cùng nguyên tắc "lọc theo kỳ" đã áp cho hợp đồng (A-02) — **không** dùng bản mới nhất bất kể kỳ.
+
+### 11.6. Chỉ mục (index)
+
+**Không thêm index mới.** Truy vấn của cả 2 endpoint là quét theo `periodId` hoặc quét toàn bảng master nhỏ:
+
+| Truy vấn | Index dùng | Đánh giá |
+|---|---|---|
+| `employeeSalary.findMany({ where:{ status:'APPROVED' }, include:{ items:{ include:{ salaryItem } } } })` | `@@index([status])` | ✅ có sẵn |
+| `salaryStructure.findMany({ where:{ isActive:true } })` + items | `@@index([isActive])`, `@@index([salaryStructureId])` | ✅ có sẵn |
+| `salaryItem.findMany({ where:{ category:'BENEFIT_ALLOWANCE', status:'ACTIVE' } })` (cột động tab Lương hỗ trợ) | `@@index([category])`, `@@index([status])` | ✅ có sẵn |
+| 8 bảng bản ghi kỳ | `@@index([periodId, ma_nv])` | ✅ có sẵn |
+
+> 🟠 Giữ nguyên phát hiện Mục 5.1: `@@index([periodId])` của `hrm_payroll_sheet_lines` vẫn thừa. Không gộp việc bỏ nó vào đợt này (đụng migration của bảng đang thêm 11 cột — tách ra để nếu có sự cố còn biết do đâu).
+
+### 11.7. Chiến lược di trú (migration)
+
+Cơ chế tenant của dự án là **`prisma db push` cho từng DB công ty** qua `npm run sync:tenants` (`be_maxv/src/scripts/sync-tenants.ts:37`), **không** dùng `prisma migrate` như control plane.
+
+| Bước | Việc | Rủi ro |
+|:--:|---|---|
+| 1 | Sửa `prisma/tenant/schema.prisma`: **+3 cột `GeneralSetting`, +1 cột `SalaryItem`, +15 cột `PayrollSheetLine`** (19 cột, **không** enum mới, **không** cột nguồn nào cho QĐ-9 — hai cột `isTaxable`/`taxTreatment` đã có sẵn) | — |
+| 2 | `npm run generate` | — |
+| 3 | `npm run sync:tenants` — áp cho **10/10 tenant** | ⚠️ script dùng `--accept-data-loss`; đợt này **thuần additive, mọi cột đều có `@default`** ⇒ không mất dữ liệu. **Phải kiểm lại diff trước khi chạy trên production**, không tin suông cờ đó |
+| 4 | Rà soát: mọi tenant có đủ 3 cột mới trong `hrm_general_settings` với giá trị mặc định luật định | Theo khuôn `src/scripts/hrm/ra-soat-hrm.ts` đã có |
+| 5 | **Không** cần backfill dữ liệu: `isMealAllowance = false` là hành vi cũ; snapshot cũ giữ nguyên, 15 cột mới = 0/false/"v1" | Snapshot kỳ đã khóa **không** được tính lại — xem dưới |
+| 6 | ⚠️ **Rà soát dữ liệu tick miễn thuế TRƯỚC khi bật QĐ-9 trên production.** Chạy thống kê mỗi tenant: bao nhiêu `SalaryItem` đang `isTaxable = false`, bao nhiêu `SalaryStructureItem` đang `EXEMPT`, tổng tiền phụ cấp thuộc nhóm đó của kỳ gần nhất | Không phải rủi ro mất dữ liệu, mà là **rủi ro bất ngờ về số tiền**: đợt này làm ô tick có hiệu lực lần đầu, nên tenant nào lỡ tick sai từ trước sẽ thấy thuế TNCN giảm ngay. Phải biết trước con số để báo người dùng, đừng để kế toán phát hiện hộ |
+
+**Tương thích ngược & rollback:**
+- **Thêm cột có default ⇒ backward-compatible.** Bản backend cũ vẫn chạy được trên schema mới (không đọc cột mới). Rollback code không cần rollback DB.
+- **Snapshot kỳ đã `LOCKED`+ TUYỆT ĐỐI không tính lại.** Kỳ đã chốt trả lương xong; tính lại theo công thức mới làm lệch số đã chi và số đã kê khai thuế. Dòng cũ mang `engineVersion = "v1"`, dòng khóa sau đợt này mang `"v2"`. Muốn áp công thức mới cho một kỳ cũ thì phải `reopen` → `lock` lại **có chủ đích, có người chịu trách nhiệm** — không tự động.
+- **Ảnh hưởng chéo module `cai_dat_luong`:** `GET/POST/PATCH /salary-items` phải trả và nhận thêm `isMealAllowance`; `GET/PUT /settings/general` + `restore-default` phải trả và nhận thêm 3 cột. Xem hợp đồng API Mục 8.4. Không làm phần này thì cột thêm ra **không ai đặt được giá trị** — đúng bẫy `xemLuong` đã mắc ở ADR-007 ("chặn được nhưng không cấp được"). Riêng `isTaxable`/`taxTreatment` **không cần đụng gì** — CRUD của cả hai đã chạy đủ từ lâu (`salaryItems.service.ts:179`, `:215`; `salaryStructures.service.ts:121`, `:171`); đợt này chỉ là engine bắt đầu **đọc** chúng.
+
+### 11.8. Ranh giới giao dịch & nhất quán
+
+Không đổi so với Mục 8:
+
+- `GET /payroll/calculate` và `GET /payroll/support-allowances` là **đọc thuần, không transaction**, chấp nhận read-committed. Hai endpoint gọi cách nhau vài giây có thể lệch nhau nếu ai đó vừa sửa "Cài đặt lương" — chấp nhận được vì đây là màn xem, và kỳ `DRAFT` vốn đang biến động.
+- **`snapshotPayrollSheet` phải nằm trong transaction của `lockPayrollPeriod`** (đang đúng): `deleteMany` + `createMany` + chuyển trạng thái là một đơn vị. Thêm 11 cột không đổi ranh giới này, nhưng làm payload `createMany` nặng thêm ~25% ⇒ giữ nguyên khuyến nghị đặt `{ timeout }` cho transaction khi công ty > 300 nhân viên (A-05, chưa làm).
+- **Không có yêu cầu nhất quán mạnh giữa preview và snapshot**: preview là ảnh chụp tức thời của dữ liệu đang sửa; snapshot là bản chốt. Chúng chỉ buộc phải bằng nhau **tại đúng thời điểm khóa sổ**, và điều đó được bảo đảm bằng việc `snapshot` gọi lại chính `calculatePayrollPreview` chứ không chép công thức lần hai.
+
+### 11.9. Bàn giao Mục 11
+
+- **Quyết định công thức & thứ tự tính**: `docs/hrm/architecture/adr/ADR-010-pipeline-thue-bao-hiem-bang-luong.md`.
+- **Hợp đồng API** (DTO đầy đủ, mã lỗi, endpoint mới): `api-contract-du-lieu-tinh-luong.md` Mục 8.
+- **Tester-QA (Phase A — đã có 44 ca tại `test-matrix-bang-luong-tong-hop.md`)**: 4 vùng bổ sung so với bộ đã viết — (1) biên trần bảo hiểm (`luong_bhxh` = 46.799.999 / 46.800.000 / 46.800.001 / 99.200.001, kiểm **riêng** từng loại chứ không kiểm tổng — phủ `AC-dltl-12…14`); (2) OT miễn thuế nhiều loại hệ số cùng lúc (`AC-dltl-17`) và `otRawHours = 0`; (3) rẽ nhánh 10% đúng ngưỡng 2.000.000 và với `loai_hd` **viết hoa / có khoảng trắng thừa** (cột là chữ tự do); (4) trần ăn ca với **nhiều** khoản cùng đánh `isMealAllowance` và nhân viên nghỉ nửa tháng (`AC-dltl-21…23`). Thêm 1 ca hồi quy bắt buộc: **khóa sổ một kỳ có đủ dữ liệu 8 phân hệ** — bắt lỗi `createMany` nếu Backend quên cột.
+- **Vùng thứ 5 — miễn thuế theo ô tick (Mục 11.3.1 + ADR-010 QĐ-9), QA ĐÃ VIẾT SẴN.** Tester-QA nhận quyết định `Q-1` song song và đã bổ sung **Nhóm 9** (`TC-blth-045…050`) vào `test-matrix-bang-luong-tong-hop.md`, dùng đúng tên trường `otherAllowanceTaxExemptAmount` và đúng quy tắc chống trừ trùng mà QĐ-9.3 chốt ⇒ **`GAP-QA-09` đóng, không phải sửa số liệu ca nào**, chỉ gỡ nhãn "CHƯA final". Ba ca **nên thêm** cho nhánh chưa phủ: (a) `taxTreatment = EXEMPT` nhưng `isTaxable = true` ⇒ **vẫn miễn** (phép OR, QĐ-9.2) · (b) `isMealAllowance = true` + `isTaxable = true` ⇒ **vẫn miễn tới trần** (QĐ-9.3) · (c) khoản `PERIODIC_BONUS` / `COMMISSION_PERCENTAGE` có `isTaxable = false` ⇒ **vẫn chịu thuế** (ranh giới phạm vi QĐ-9.1). Bộ 44 ca cũ **không phải sửa** — mặc định `isTaxable = true` cho ra đúng số cũ. Bất biến đáng thêm vào ca kiểm: `mealAllowanceAmount + otherAllowanceTaxExemptAmount ≤ allowanceInPeriodTotal`.

@@ -21,6 +21,14 @@ Tài liệu đặc tả toàn bộ REST API endpoints của tính năng Cài đ�
 
 ## 1. Danh mục Khoản lương & Phụ cấp (`/salary-items`)
 
+> **Cập nhật RVW-018 / RVW-023 (`review-findings.md` 2026-09-10):** kể từ `ADR-010`, hai cờ
+> `isTaxable` và `isMealAllowance` KHÔNG còn là nhãn hiển thị — chúng quyết định trực tiếp thu
+> nhập tính thuế TNCN và giỏ miễn thuế ăn ca của mọi nhân viên đang gán khoản đó (xem
+> `du_lieu_tinh_luong/api-contract-du-lieu-tinh-luong.md` Mục 8). Vì vậy 3 route ghi
+> (`POST`/`PATCH`/`DELETE /salary-items`) nay yêu cầu **`preHandler: assertAdminOrOwner`**
+> (`role ∈ {ADMIN, OWNER}`, 403 nếu không đủ quyền) — cùng guard đã dùng cho `/settings/general`
+> và `lock`/`reopen`/`approve` kỳ lương. `GET` giữ nguyên không đổi quyền.
+
 ### 1.1. Danh sách khoản lương
 - **Method**: `GET /api/v1/hrm/salary-items`
 - **Query Parameters**:
@@ -41,6 +49,7 @@ Tài liệu đặc tả toàn bộ REST API endpoints của tính năng Cài đ�
       "defaultRate": 100,
       "hasInsurance": true,
       "isTaxable": true,
+      "isMealAllowance": false,
       "status": "ACTIVE",
       "createdAt": "2026-09-09T08:00:00.000Z",
       "updatedAt": "2026-09-09T08:00:00.000Z"
@@ -48,6 +57,11 @@ Tài liệu đặc tả toàn bộ REST API endpoints của tính năng Cài đ�
   ]
 }
 ```
+
+`isMealAllowance` (`[MỚI — ADR-010 QĐ-4]`): `boolean`, mặc định `false`. Đánh dấu khoản là phụ
+cấp ăn ca/ăn trưa — hưởng trần miễn thuế riêng (`GeneralSetting.lunchAllowanceTaxFreeCap`, Mục
+7D của `architecture/api-contract.md`), LOẠI TRỪ với `isTaxable` theo thứ tự phân giỏ của
+`ADR-010` bước [5a] (khoản đã `isMealAllowance=true` thì ô `isTaxable` không còn tác dụng).
 
 ### 1.2. Đếm số lượng theo nhóm
 - **Method**: `GET /api/v1/hrm/salary-items/count-by-category`
@@ -84,21 +98,25 @@ Tài liệu đặc tả toàn bộ REST API endpoints của tính năng Cài đ�
   "defaultRate": 100,
   "hasInsurance": true,
   "isTaxable": true,
+  "isMealAllowance": false, // optional, mặc định false
   "status": "ACTIVE"
 }
 ```
+- **Quyền gọi**: `role ∈ {ADMIN, OWNER}` (`preHandler: assertAdminOrOwner`, RVW-018). `403` nếu không đủ quyền.
 - **Response 201 Created**: `{ "success": true, "data": { ...SalaryItem } }`
 - **Response 400 Bad Request**:
   - Tên trùng: `{ "success": false, "message": "Tên khoản lương đã tồn tại...", "errorCode": "E-sal-002" }`
 
 ### 1.5. Cập nhật khoản lương
-- **Method**: `PUT /api/v1/hrm/salary-items/:id`
-- **Request Body**: Các trường cần cập nhật (name, category, defaultRate, hasInsurance, isTaxable, status, description).
+- **Method**: `PATCH /api/v1/hrm/salary-items/:id` *(mã nguồn dùng `PATCH`, không phải `PUT` — sửa lại mô tả cho khớp code)*
+- **Request Body**: Các trường cần cập nhật (name, category, defaultRate, hasInsurance, isTaxable, **isMealAllowance**, status, description).
+- **Quyền gọi**: `role ∈ {ADMIN, OWNER}` (`preHandler: assertAdminOrOwner`, RVW-018). `403` nếu không đủ quyền.
 - **Response 200 OK**: `{ "success": true, "data": { ...SalaryItem } }`
 - **Response 400 Bad Request**: Trùng tên với khoản khác.
 
 ### 1.6. Xóa khoản lương
 - **Method**: `DELETE /api/v1/hrm/salary-items/:id`
+- **Quyền gọi**: `role ∈ {ADMIN, OWNER}` (`preHandler: assertAdminOrOwner`, RVW-018). `403` nếu không đủ quyền.
 - **Response 200 OK**: `{ "success": true, "message": "Xóa khoản lương thành công." }`
 - **Response 400 Bad Request**: Khoản lương đang được dùng trong cấu trúc khung (`E-sal-003`).
 

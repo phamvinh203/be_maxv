@@ -1249,6 +1249,30 @@ Màn phân quyền ở ứng dụng `maxv/` phải có ô tick quyền xem lươ
 
 ---
 
+## 7D. Cấu hình mặc định — 3 tham số thuế mới của Bảng lương tổng hợp `[MỚI — ADR-010, RVW-023]`
+
+> Sửa RVW-023 (`review-findings.md` 2026-09-10): `ADR-010` bổ sung 3 cột mới cho `GeneralSetting`
+> để phục vụ pipeline tính thuế/bảo hiểm của Bảng lương tổng hợp (`BR-dltl-026`/`BR-dltl-027`),
+> nhưng chưa được ghi vào hợp đồng `GET`/`PUT /settings/general` của tài liệu này. Mục này chỉ bổ
+> sung ĐÚNG 3 trường mới — hợp đồng đầy đủ của toàn bộ `GeneralSetting` (biểu thuế TNCN, tỷ lệ bảo
+> hiểm, ca công chuẩn...) đã có ở `du_lieu_tinh_luong/data-model-du-lieu-tinh-luong.md` Mục 11.2
+> và không nhân đôi lại ở đây.
+
+Nằm trong cùng payload `GET /settings/general`, `PUT /settings/general`,
+`POST /settings/general/restore-default` (guard `assertAdminOrOwner`, xem Mục 1.4).
+
+| Trường | Kiểu response | Kiểu request (PUT) | Mặc định | Ràng buộc | Dùng ở |
+|:---|:---|:---|:---|:---|:---|
+| `lunchAllowanceTaxFreeCap` | Chuỗi Decimal (đúng quy ước Mục 1.5) | Số JSON | `730000` | `>= 0` | Trần miễn thuế phụ cấp ăn ca/ăn trưa, quy đổi theo công (`BR-dltl-027`) |
+| `withholdingTaxRate` | Chuỗi Decimal | Số JSON | `10.0` | `0 <= x <= 100` | Tỷ lệ khấu trừ 10% tại nguồn cho hợp đồng thử việc/thời vụ (`BR-dltl-026`) |
+| `withholdingTaxThreshold` | Chuỗi Decimal | Số JSON | `2000000` | `>= 0` | Ngưỡng thu nhập tối thiểu để áp khấu trừ tại nguồn (`BR-dltl-026`) |
+
+Cả ba trường đều `optional` ở `PUT` (giữ nguyên giá trị cũ nếu không gửi) — cùng hành vi partial
+update đã có cho các trường `GeneralSetting` khác. Nguồn: `generalSettings.validator.ts:157-161`,
+`prisma/tenant/schema.prisma:1139-1146`.
+
+---
+
 ## 8. Bảng mã lỗi — ánh xạ ID nghiệp vụ ↔ nơi ném lỗi trong code
 
 > **Nguồn canonical của ID lỗi là `docs/hrm/srs/hrm-spec.md` Mục 8 (Ma trận lỗi, `E-hrm-001..051`).**

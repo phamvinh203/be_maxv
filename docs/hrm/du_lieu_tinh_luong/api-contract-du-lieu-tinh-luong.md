@@ -2,7 +2,7 @@
 type: api-contract
 feature: hrm-du-lieu-tinh-luong
 status: in-review
-updated: 2026-09-09
+updated: 2026-09-10
 author: system-architect
 links:
   - docs/hrm/du_lieu_tinh_luong/srs-du-lieu-tinh-luong.md
@@ -617,3 +617,279 @@ Mọi endpoint trên: **200 OK** `{ success:true, data:{ …PayrollPeriod } }` �
 - **Business Analyst (Final Sign-off)**: cần chốt `OQ-dltl-002`, `OQ-dltl-003`, `OQ-dltl-004` (đã có đề xuất trong `data-model-du-lieu-tinh-luong.md` Mục 9) và bổ sung quyết định mới cho A-01 (phạm vi `xemLuong`), A-03 (chính sách ngày công theo `attendanceType`), A-06 (kiểu tiền trong hợp đồng API).
 - **Backend Engineer**: **không** coi các mục `⚠️` là hợp đồng đã chốt. Chỉ triển khai sau khi BA cập nhật `Status: Ready for Implementation`.
 - **Mô hình dữ liệu**: `docs/hrm/du_lieu_tinh_luong/data-model-du-lieu-tinh-luong.md`.
+
+---
+
+## 8. Bảng lương tổng hợp — hợp đồng MỞ RỘNG (Architect, 2026-09-10)
+
+> **Phạm vi:** phần này **thay thế** Mục 4.1 và **bổ sung** 1 endpoint mới. Nguồn yêu cầu: `srs-du-lieu-tinh-luong.md` Mục 15 (`BR-dltl-024…027` + gap API) và **3** quyết định nghiệp vụ đã chốt bởi chủ dự án: (1) nguồn cột "Lương" = **hợp đồng + phụ cấp Cài đặt lương**, cộng nhau; (2) biểu thuế **giữ 7 bậc hiện hành**; (3) *(chốt 2026-09-10)* **ô tick "chịu thuế TNCN" ở màn Khoản lương có hiệu lực thật** — phụ cấp khai miễn được trừ khỏi thu nhập tính thuế (ADR-010 QĐ-9). Công thức và thứ tự tính: `docs/hrm/architecture/adr/ADR-010-pipeline-thue-bao-hiem-bang-luong.md`. Cột DB: `data-model-du-lieu-tinh-luong.md` Mục 11.
+>
+> **Đây là hợp đồng ĐI TRƯỚC mã nguồn** (khác Mục 0–7 vốn mô tả ngược từ mã đã có). Backend Engineer code theo đúng phần này; sai lệch phải báo Architect, không tự đổi.
+
+### 8.0. Quy ước áp cho cả 2 endpoint
+
+| Hạng mục | Quy định |
+|---|---|
+| Base URL | `/api/v1/hrm` — nhóm `hdđt_maxv` (`/api/v1/*`), **KHÔNG** phải `maxv` `/api/v1/admin/*` |
+| Auth | Bearer JWT / cookie `accessToken` + `requireModule('hrm')` (hook `hrm.route.ts`) |
+| Authorization | **Bắt buộc** `dbCoQuyenLuongPayroll(req)` — `OWNER` luôn qua, `OWNER_EMPLOYEE` phải có `DonViAccess.xemLuong = true`, thiếu ⇒ **403** (ADR-007). Endpoint mới **không** được dùng `resolveTenantDb` trơn |
+| Envelope | `{ success: true, data: … }` |
+| Kiểu tiền | **`number` JS** cho mọi trường tiền/giờ ở cả 2 endpoint (số do service tính, không phải `Decimal` Prisma). Không đổi vấn đề A-06 của `/payroll/sheet-lines` — xem 8.5 |
+| Idempotency | Không cần: cả 2 là `GET` thuần, không side-effect |
+| Phân trang / lọc / sắp xếp | **Không có.** Trả toàn bộ nhân viên `status='1', da_xoa=false`, sắp `ma_nv` tăng dần. Lọc/tìm kiếm do Frontend làm trên tập đã tải (đúng cách UI `bang_luong` đang hoạt động). Xem NFR ở 8.6 |
+| Làm tròn | Mọi trường tiền **đã `Math.round`** về đồng nguyên tại service (đóng luôn 🟠 A-07 — 4 chỗ còn thiếu: `diligenceSalary`, `adjustmentNetAmount`, `netTakeHomeSalary`, `totalCompanyCost`). Trường giờ giữ 2 chữ số thập phân |
+
+### 8.1. `GET /api/v1/hrm/payroll/calculate?periodId=…` — bản mở rộng
+
+**Query**
+
+| Tham số | Kiểu | Bắt buộc | Ràng buộc |
+|---|---|:--:|---|
+| `periodId` | string | ✅ | `trim().min(1)` — sai/không tồn tại ⇒ 404 `E-dltl-025` |
+
+**200 OK** — `data` là **mảng**, mỗi phần tử là 1 nhân viên. **44 trường** (29 cũ giữ nguyên tên + 15 mới). Tên trường **bám đúng SRS Mục 15.3.1**, không đặt tên khác.
+
+```jsonc
+{ "success": true, "data": [ {
+  // ── Định danh (7) — KHÔNG đổi, trừ 2 ghi chú bên dưới ──
+  "periodId": "9f1c…", "ma_nv": "NV0001", "employeeCode": "NV0001",
+  "fullName": "Nguyễn Văn A", "departmentName": "Phòng Kỹ thuật", "positionName": "Kỹ sư",
+  "contractType": "thu_viec",        // ⚠️ ĐỔI: null khi không có HĐ hiệu lực trong kỳ (trước: "khong_xac_dinh")
+  "salaryType": "gross",             // ⚠️ ĐỔI: null khi không có HĐ (trước: "GROSS" — chữ hoa, không khớp giá trị lưu)
+  "dependentCount": 1,
+
+  // ── Nguồn lương 2 tầng (3 trường MỚI) — SRS 15.4 ──
+  "contractBaseSalary": 15000000,    // MỚI — hrm_hop_dong.luong_chinh (thuần)
+  "fixedAllowanceTotal": 2300000,    // MỚI — Σ MỨC THÁNG phụ cấp FIXED_ALLOWANCE + BENEFIT_ALLOWANCE
+  "baseSalaryMonthly": 17300000,     // = contractBaseSalary + fixedAllowanceTotal → cột UI "Lương"
+  "allowanceInPeriodTotal": 2230769, // MỚI — phụ cấp SAU quy đổi công (phần thực vào grossIncome)
+
+  // ── Công & tăng ca (1 trường MỚI) ──
+  "standardWorkDays": 26, "actualWorkDays": 24,
+  "otRawHours": 10,                  // MỚI — giờ OT GỐC (Σ OvertimeRecord.hours) → cột UI "Giờ tăng ca"
+  "otConvertedHours": 15,            // đã nhân hệ số — KHÔNG phải cột "Giờ tăng ca"
+
+  // ── Các cấu phần thu nhập (không đổi tên) ──
+  "proratedWorkSalary": 13846154,    // CHỈ phần HỢP ĐỒNG quy đổi công (SRS 15.5 giữ nguyên nghĩa)
+  "otAmount": 1081731, "pieceworkSalary": 0,
+  "bonusSalary": 2000000, "kpiSalary": 950000, "commissionSalary": 0, "diligenceSalary": 400000,
+  "grossIncome": 20508654,           // = proratedWorkSalary + allowanceInPeriodTotal + 6 cấu phần còn lại
+
+  // ── Bóc miễn thuế (5 trường MỚI) — tổng miễn = 3 cấu phần dưới đây ──
+  "otTaxExemptAmount": 360577,        // MỚI — Σ theo TỪNG dòng OT (BR-dltl-025, AC-dltl-15/17)
+  "mealAllowanceAmount": 830769,      // MỚI — tiền ăn ca thực tính trong kỳ
+  "lunchAllowanceExemptAmount": 673846,  // MỚI — phần được miễn = min(mealAllowanceAmount, trần đã quy đổi công)
+  "lunchAllowanceTaxableAmount": 156923,  // MỚI — phần VƯỢT trần, chịu thuế (BR-dltl-027, AC-dltl-21/23)
+  "otherAllowanceTaxExemptAmount": 1000000, // MỚI — Σ phụ cấp khai miễn thuế (isTaxable=false ∨ EXEMPT),
+                                       //        số TRONG KỲ, KHÔNG gồm khoản ăn ca (ADR-010 QĐ-9)
+
+  // ── Bảo hiểm & công đoàn (4 trường MỚI) ──
+  "insuranceSalaryBase": 15000000,        // gốc theo hợp đồng, CHƯA kẹp trần
+  "insuranceBaseBhxhByt": 15000000,       // MỚI — sau khi kẹp trần 46.800.000
+  "insuranceBaseBhtn": 15000000,          // MỚI — sau khi kẹp trần 99.200.000
+  "insuranceCapAppliedBhxhByt": false,    // MỚI (AC-dltl-12/13)
+  "insuranceCapAppliedBhtn": false,       // MỚI
+  "employeeInsuranceDeduction": 1575000, "companyInsuranceExpense": 3225000,
+  "employeeUnionFee": 150000, "companyUnionExpense": 300000,
+
+  // ── Thuế (1 trường MỚI) ──
+  "withholdingTaxApplied": true,     // MỚI — true = khấu trừ 10% (BR-dltl-026); false = lũy tiến 7 bậc
+  "taxableIncome": 18474231,         // ⚠️ NGỮ NGHĨA PHỤ THUỘC NHÁNH — xem 8.1.2
+  "personalIncomeTax": 1847423,
+
+  // ── Kết quả ──
+  "adjustmentNetAmount": 2000000, "netTakeHomeSalary": 14936231, "totalCompanyCost": 24033654,
+  "engineVersion": "v2"              // MỚI — phiên bản công thức đã dùng
+} ] }
+```
+
+> **Ví dụ trên là một bộ số nhất quán, dùng làm dữ liệu mồi cho test.** Giả thiết: HĐ thử việc lương 15.000.000, đóng BHXH trên 15.000.000, 24/26 công, 1 dòng OT ngày thường (10 giờ gốc → 15 giờ quy đổi), 3 khoản phụ cấp (**nhà ở 1.000.000 trọn tháng, `isTaxable = false`** · phụ cấp chức vụ 400.000 trọn tháng, `isTaxable = true` · tiền cơm 900.000 theo công, `isMealAllowance = true`), thưởng 2.000.000, KPI 950.000, chuyên cần 400.000, tạm ứng 2.000.000.
+>
+> Kiểm chứng ba cấu phần miễn thuế: `360.577 + 673.846 + 1.000.000 = 2.034.423`; `taxableIncome = 20.508.654 − 2.034.423 = 18.474.231`; thuế `= round(18.474.231 × 10%) = 1.847.423`. Lưu ý khoản tiền cơm khai `isMealAllowance = true` **không** xuất hiện trong `otherAllowanceTaxExemptAmount` dù thực tế kế toán thường tick miễn thuế cho nó — đó chính là quy tắc chống cộng đôi ở ADR-010 QĐ-9.3.
+
+#### 8.1.1. Ánh xạ 18 cột UI ↔ trường API (Frontend viết adapter theo bảng này)
+
+`hdđt_maxv/src/features/hrm/components/bang_luong/cotBangLuong.ts` + `types/index.ts` (`DongBangLuong`).
+
+| Cột / trường UI | Trường API | Ghi chú |
+|---|---|---|
+| `ho_ten` | `fullName` | |
+| `ten_pb` · `ten_cv` (ghép cột "Bộ phận/Chức vụ") | `departmentName` · `positionName` | FE tự ghép `" / "` |
+| `loai_hd` · `kieu_luong` | `contractType` · `salaryType` | có thể `null` |
+| `so_npt` | `dependentCount` | |
+| **`luong`** | **`baseSalaryMonthly`** | = hợp đồng + phụ cấp cố định (quyết định nghiệp vụ 1) |
+| `ngay_cong` · `ngay_cong_chuan` | `actualWorkDays` · `standardWorkDays` | |
+| **`gio_tang_ca`** | **`otRawHours`** ⭐ | **KHÔNG** dùng `otConvertedHours` — sai số giờ hiển thị |
+| `gio_quy_doi` | `otConvertedHours` | |
+| `tien_tang_ca` | `otAmount` | |
+| **`luong_theo_ngay`** | **`proratedWorkSalary + allowanceInPeriodTotal`** ⭐ | `proratedWorkSalary` **chỉ** là phần hợp đồng (SRS 15.5 chốt giữ nguyên nghĩa). Bản mock FE gộp cả phụ cấp vào cột này ⇒ muốn khớp mock thì **phải cộng thêm** `allowanceInPeriodTotal`. Xem ADR-010 Q-3 |
+| `luong_san_pham` · `thuong` · `kpi` | `pieceworkSalary` · `bonusSalary` · `kpiSalary` | |
+| `luong_phan_tram` · `chuyen_can` | `commissionSalary` · `diligenceSalary` | không có cột riêng, đã nằm trong "Thu nhập" |
+| `thu_nhap` | `grossIncome` | đã gồm `allowanceInPeriodTotal` |
+| **`thu_nhap_chiu_thue`** | **suy ra**: `grossIncome − otTaxExemptAmount − lunchAllowanceExemptAmount − otherAllowanceTaxExemptAmount` ⭐ | **4** số hạng, không phải 3 (thêm `otherAllowanceTaxExemptAmount` sau khi chốt `Q-1`). **KHÔNG** dùng `taxableIncome` (đã trừ giảm trừ gia cảnh ở nhánh lũy tiến) — xem 8.1.2 |
+| `luong_bhxh` | `insuranceSalaryBase` | gốc **theo hợp đồng**, chưa kẹp trần |
+| `bao_hiem` · `bao_hiem_ct` | `employeeInsuranceDeduction` · `companyInsuranceExpense` | |
+| `cong_doan` · `kpcd_ct` | `employeeUnionFee` · `companyUnionExpense` | |
+| `bu_tru` | `adjustmentNetAmount` | dương = bị trừ |
+| `thue_tncn` | `personalIncomeTax` | |
+| `thuc_linh` | `netTakeHomeSalary` | có thể **âm** — giữ nguyên, không kẹp 0 |
+| `quy_luong` | `totalCompanyCost` | |
+
+#### 8.1.2. ⚠️ `taxableIncome` đổi nghĩa theo nhánh — đọc kỹ trước khi hiển thị
+
+**`tongMienThue` dùng trong bảng dưới có ba cấu phần, tất cả đều có mặt tường minh trong response:**
+
+```
+tongMienThue = otTaxExemptAmount + lunchAllowanceExemptAmount + otherAllowanceTaxExemptAmount
+                (OT vượt chuẩn)     (ăn ca trong trần)          (phụ cấp khai miễn thuế)
+```
+
+Ba cấu phần **không giao nhau**: một khoản phụ cấp chỉ vào đúng một trong hai giỏ cuối, ưu tiên ăn ca (ADR-010 QĐ-9.3). Frontend muốn hiện chi tiết "vì sao miễn bằng này" thì liệt kê đủ ba dòng, **không** tự cộng lại từ dữ liệu Cài đặt lương.
+
+| `withholdingTaxApplied` | `taxableIncome` nghĩa là | Công thức thuế |
+|:--:|---|---|
+| `false` (lũy tiến) | Thu nhập **tính thuế** = `grossIncome − tongMienThue − (giảm trừ bản thân + NPT + bảo hiểm bắt buộc)`, kẹp sàn 0 | `tinhThueLuyTien()` — biểu 7 bậc |
+| `true` (khấu trừ 10%) | **Thu nhập khấu trừ** = `grossIncome − tongMienThue` — luật **không cho** trừ giảm trừ gia cảnh ở nhánh này (`AC-dltl-18`) | `round(taxableIncome × withholdingTaxRate%)` |
+| HĐ thử việc/thời vụ **dưới ngưỡng** 2.000.000 ⇒ `withholdingTaxApplied = false` (theo `AC-dltl-19`) | Vẫn ghi thu nhập khấu trừ, để giải trình vì sao thuế bằng 0 | `0` |
+
+> ⚠️ Hệ quả của `AC-dltl-19`: `withholdingTaxApplied = false` gộp chung **hai** tình huống khác hẳn nhau — "HĐ chính thức, tính lũy tiến" và "HĐ thử việc nhưng dưới ngưỡng". Giao diện muốn hiển thị phương pháp tính phải xét thêm `contractType`. Không đổi giá trị cờ (đã có AC và bộ ca kiểm của QA bám vào).
+
+Giao diện muốn hiện "thu nhập tính thuế" phải hiện kèm nhãn nhánh, nếu không kế toán sẽ hiểu nhầm là hệ thống quên trừ giảm trừ. **Không** đổi `taxableIncome` thành 0 ở nhánh 10% (mất căn cứ giải trình).
+
+#### 8.1.3. Thay đổi hành vi so với bản đang chạy (breaking cho FE/QA)
+
+| # | Thay đổi | Ảnh hưởng |
+|:--:|---|---|
+| B-1 | `baseSalaryMonthly` **tăng** đúng bằng tổng phụ cấp cố định của nhân viên | Mọi công ty đã nhập "Cài đặt lương" sẽ thấy cột "Lương" và "Lương theo ngày" **cao hơn trước**. Đây là **thực hiện quyết định nghiệp vụ đã chốt**, không phải lỗi |
+| B-2 | Bảo hiểm áp 2 trần độc lập | Chỉ đổi số với nhân viên `luong_bhxh` > 46,8tr. Người dưới trần: **số y hệt cũ** |
+| B-3 | Thuế TNCN có thể **giảm** (bóc OT miễn thuế + ăn ca trong trần) hoặc **đổi phương pháp** (HĐ thử việc/thời vụ sang 10%) | QA phải test riêng 2 nhóm hợp đồng |
+| B-4 | `contractType`/`salaryType` trả `null` thay vì `"khong_xac_dinh"`/`"GROSS"` | FE `DongBangLuong` **đã khai `| null`** ⇒ không vỡ. Bịa giá trị mặc định che mất tình trạng "nhân viên không có hợp đồng hiệu lực trong kỳ", còn `"GROSS"` chữ hoa thì **không khớp** giá trị `gross`/`net` lưu trong DB nên mọi bộ lọc theo kiểu lương đều trượt |
+| B-5 | Đơn giá giờ OT tính trên `contractBaseSalary` + khoản có `isOvertimeBase = true`, **không** trên `baseSalaryMonthly` | Tiền OT **không** tự phồng theo phụ cấp mới cộng vào (đúng cảnh báo của BA ở SRS 15.4) — xem ADR-010 QĐ-1 |
+| B-6 | Thêm 15 trường vào response | Thuần additive, client cũ bỏ qua được |
+| B-7 | `proratedWorkSalary` **giữ nguyên** nghĩa "chỉ phần hợp đồng"; phần phụ cấp ra trường riêng `allowanceInPeriodTotal` | FE map cột "Lương theo ngày" phải **cộng hai trường** nếu muốn khớp mock — xem 8.1.1 |
+| B-8 | **Ô tick "chịu thuế TNCN" bắt đầu có hiệu lực thật** (chủ dự án chốt `Q-1` — ADR-010 QĐ-9) | **Thuế TNCN giảm** ở mọi công ty đang để `isTaxable = false` / `taxTreatment = EXEMPT` cho phụ cấp. Đây là **thực hiện quyết định đã chốt**, không phải lỗi — nhưng xuất hiện **cùng lúc** với B-1 nên phải báo trước cho người dùng, kèm số liệu rà soát trước khi bật (xem `data-model` Mục 11.7 bước 6). Công ty chưa từng đổi 2 cột đó ⇒ `otherAllowanceTaxExemptAmount = 0` ⇒ **số y hệt cũ** |
+
+#### 8.1.4. Lỗi
+
+| HTTP | Code | Khi nào |
+|:--:|---|---|
+| 400 | *(Zod, không có `code`)* | Thiếu/rỗng `periodId` |
+| 403 | *(không có `code`)* | Không có quyền xem lương (`MESSAGES.HRM.KHONG_CO_QUYEN_XEM_LUONG`) |
+| 403 | — | Chưa mua module `hrm` |
+| 404 | `E-dltl-025` | `periodId` không tồn tại |
+
+**Không thêm mã lỗi mới trong đợt này.** Bốn quy tắc mới là quy tắc **tính toán**, không phát sinh nhánh từ chối yêu cầu: thiếu cấu hình thì rơi về mặc định luật định, thiếu hợp đồng thì các trường liên quan bằng 0/`null`, chưa đánh dấu khoản ăn ca thì trần không áp. Thêm mã lỗi cho những tình huống đó sẽ chặn cả bảng lương vì một nhân viên thiếu dữ liệu — sai hướng cho một màn hình tổng hợp toàn công ty.
+
+### 8.2. `GET /api/v1/hrm/payroll/support-allowances?periodId=…` — **ENDPOINT MỚI**
+
+Phục vụ tab **"Lương hỗ trợ"** (`LuongHoTroPanel.tsx`, `useLuongHoTroRows()`): bóc tách phần hỗ trợ **vốn đã nằm trong** cột "Thu nhập" của tab Bảng lương thành từng khoản — **không phải** khoản chi thêm.
+
+- Route: `payrollCalculation.route.ts` → `app.get('/payroll/support-allowances', ctrl.getSupportAllowances)`
+- Controller: `payrollCalculation.controller.ts` → `dbCoQuyenLuongPayroll(req)` + `validateQuery(periodIdQuerySchema, req.query)`
+- Service: `payrollCalculation.service.ts` → `getSupportAllowanceBreakdown(db, periodId)`
+
+**Query**: `periodId` (bắt buộc) — cùng schema Zod với `/payroll/calculate`.
+
+**200 OK** — `data` là **object** (không phải mảng trần), vì phía client cần biết **danh sách cột động** trước khi vẽ bảng:
+
+```jsonc
+{ "success": true, "data": {
+  "periodId": "9f1c…",
+  "standardWorkDays": 26,
+
+  // Cột động của bảng — mọi SalaryItem category=BENEFIT_ALLOWANCE, status=ACTIVE,
+  // KỂ CẢ khoản mà chưa nhân viên nào được gán (cột hiện với toàn số 0 — đúng hành vi mock).
+  "columns": [
+    { "code": "KL06", "name": "Hỗ trợ nhà ở",     "calculationMethod": "MONTHLY_FIXED",
+      "isTaxable": false, "isMealAllowance": false },
+    { "code": "KL08", "name": "Phụ cấp tiền cơm", "calculationMethod": "ACTUAL_WORKDAYS",
+      "isTaxable": false, "isMealAllowance": true }
+  ],
+
+  "items": [ {
+    "ma_nv": "NV0001", "employeeCode": "NV0001", "fullName": "Nguyễn Văn A",
+    "departmentName": "Phòng Kỹ thuật", "positionName": "Kỹ sư",
+    "contractType": "xac_dinh", "salaryType": "gross",
+    "actualWorkDays": 24, "standardWorkDays": 26,
+
+    // Khóa = SalaryItem.code (đúng `ma_khoan` của FE). Số tiền ĐÃ quy đổi theo công.
+    // Mọi code trong `columns` đều CÓ MẶT ở đây (0 nếu không được gán) — FE không phải tra `?? 0`.
+    "amounts": { "KL06": 1000000, "KL08": 830769 },
+
+    "monthlyTotal": 1900000,  // Σ mức tháng, CHƯA quy đổi công → FE `tong_muc_thang`
+    "total": 1830769          // Σ sau quy đổi công        → FE `tong`
+  } ]
+} }
+```
+
+**Ánh xạ sang `DongLuongHoTro`**: `khoan` ← `amounts` · `tong_muc_thang` ← `monthlyTotal` · `tong` ← `total` · `ngay_cong` ← `actualWorkDays` · `ngay_cong_chuan` ← `standardWorkDays` · còn lại trùng tên với `/payroll/calculate`.
+
+**Quy tắc tính (phải KHỚP TUYỆT ĐỐI với `/payroll/calculate`)**
+
+1. Chỉ lấy `SalaryItem.category = 'BENEFIT_ALLOWANCE'` **và** `status = 'ACTIVE'`.
+2. Mức tháng = `EmployeeSalaryItem.amount` của `EmployeeSalary` có `status = 'APPROVED'`.
+3. Quy đổi theo công: `calculationMethod ∈ {ACTUAL_WORKDAYS, HOURLY}` ⇒ `round(mức × tỷ lệ công)`; còn lại giữ trọn mức tháng. `tỷ lệ công = min(actualWorkDays / standardWorkDays, 1)`.
+4. `actualWorkDays` lấy **cùng một hàm** với engine bảng lương (mô hình delta), **không** tính lại theo cách khác.
+5. Hai cờ `isTaxable` / `isMealAllowance` ở `columns` **đã là dữ liệu quyết định tiền thuế** kể từ đợt này (ADR-010 QĐ-9), không còn thuần hiển thị. Giá trị trả về phải đọc thẳng từ `SalaryItem`, **không** suy lại theo `taxTreatment` — endpoint này mô tả **danh mục khoản**, còn việc hợp nhất `EXEMPT ∨ isTaxable=false` chỉ xảy ra trong engine ở `/payroll/calculate` (nơi có `SalaryStructureItem` của đúng kỳ). Trộn hai tầng ở đây sẽ khiến hai tab hiện hai nhãn khác nhau cho cùng một khoản.
+
+> 🔴 **Bất biến bắt buộc (QA phải có ca kiểm):** với cùng `periodId` và cùng nhân viên, `total` của endpoint này phải **bằng đúng** phần `BENEFIT_ALLOWANCE` mà `/payroll/calculate` đã cộng vào `proratedWorkSalary`. Hai tab lệch nhau một đồng là kế toán mất niềm tin vào cả bảng lương — và người dùng **chắc chắn sẽ cộng thử**. Cách bảo đảm: **tách một hàm dùng chung** (`tinhKhoanPhuCapTheoKy`) cho cả hai endpoint gọi, **không** chép công thức lần hai.
+
+**Lỗi**: giống hệt 8.1.4 — 400 (Zod, thiếu `periodId`) · 403 (không có quyền xem lương / chưa mua module) · 404 `E-dltl-025`. Không có mã lỗi riêng.
+
+### 8.3. Không đổi: `GET /payroll/sheet-lines`
+
+Giữ nguyên hành vi phân nhánh theo trạng thái kỳ (Mục 4.2). Hai lưu ý mới:
+
+- Kỳ `DRAFT`/`PENDING_REVIEW` ⇒ chuyển hướng sang preview ⇒ **tự động có 15 trường mới**.
+- Kỳ `LOCKED`+ ⇒ đọc snapshot ⇒ có 15 trường mới **chỉ với kỳ khóa sau khi triển khai đợt này** (`engineVersion = "v2"`). Kỳ khóa trước đó trả `engineVersion = "v1"` với các trường mới = 0/false. **Frontend phải phân biệt bằng `engineVersion`, không được suy từ giá trị 0.** Đặc biệt với `otherAllowanceTaxExemptAmount`: `0` ở kỳ `v1` nghĩa là "công thức lúc đó chưa có khái niệm này", **không** phải "nhân viên này không có phụ cấp miễn thuế".
+- 🟠 A-06 (Decimal ra chuỗi ở nhánh snapshot) **vẫn chưa đóng** và nay ảnh hưởng thêm 15 trường. Khuyến nghị giữ nguyên: chốt serializer `Decimal → number` ở biên response cho toàn nhóm `/payroll*`. Đây là việc **tách riêng**, không gộp vào đợt này để không trộn hai loại thay đổi.
+
+### 8.4. Ảnh hưởng chéo — hợp đồng module khác **phải sửa cùng lượt**
+
+Không làm phần này thì 6 cột mới ở DB **không ai đặt được giá trị** (đúng bẫy ADR-007: "chặn được nhưng không cấp được").
+
+| Endpoint | Thay đổi | File hợp đồng |
+|---|---|---|
+| `GET /settings/general` | Trả thêm **3** trường: `lunchAllowanceTaxFreeCap`, `withholdingTaxRate`, `withholdingTaxThreshold` (đọc về là **chuỗi** — Decimal, đúng quy ước 20 cột Decimal hiện có) | `docs/hrm/architecture/api-contract.md` Mục 7D.0 |
+| `PUT /settings/general` | Nhận thêm 3 trường (optional, gửi lên là **số**). Thẩm định: `>= 0`, riêng `withholdingTaxRate` `0…100` ⇒ `E-hrm-083` (mới). Quyền: **`OWNER` duy nhất** (ADR-009) | như trên |
+| `POST /settings/general/restore-default` | Đặt lại đủ 3 trường về `730000 / 10.00 / 2000000` | như trên |
+| `GET /salary-items` · `POST` · `PATCH` | Thêm `isMealAllowance: boolean` (mặc định `false`) | `docs/hrm/cai_dat_luong/api-contract-cai-dat-luong.md` |
+| Màn "Cài đặt lương › Khoản lương" (`hdđt_maxv`) | Thêm ô chọn "Khoản ăn ca (miễn thuế tới trần)" cho khoản `BENEFIT_ALLOWANCE`/`FIXED_ALLOWANCE` | — |
+
+### 8.5. Bảng tổng hợp trường MỚI (tra nhanh cho Backend & QA)
+
+| Trường | Kiểu | Cột DB snapshot | BR / AC |
+|---|---|:--:|---|
+| `contractBaseSalary` | number | ✅ | QĐ nghiệp vụ 1 (SRS 15.4) |
+| `fixedAllowanceTotal` | number | ✅ | QĐ nghiệp vụ 1 |
+| `allowanceInPeriodTotal` | number | ✅ | QĐ nghiệp vụ 1 |
+| `otRawHours` | number (2 thập phân) | ✅ | Gap UI + `BR-dltl-025` |
+| `otTaxExemptAmount` | number | ✅ | `BR-dltl-025` · `AC-dltl-15…17` |
+| `mealAllowanceAmount` | number | ✅ | `BR-dltl-027` |
+| `lunchAllowanceExemptAmount` | number | ✅ | `BR-dltl-027` · `AC-dltl-22` |
+| `lunchAllowanceTaxableAmount` | number | ✅ | `BR-dltl-027` · `AC-dltl-21/23` |
+| `otherAllowanceTaxExemptAmount` | number | ✅ | **ADR-010 QĐ-9** (chủ dự án chốt `Q-1` 2026-09-10) · `TC-blth-045…050` (QA Nhóm 9) — chưa có `AC` trong SRS, **BA bổ sung khi Final Sign-off** |
+| `insuranceBaseBhxhByt` | number | ✅ | `BR-dltl-024` |
+| `insuranceBaseBhtn` | number | ✅ | `BR-dltl-024` |
+| `insuranceCapAppliedBhxhByt` | boolean | ✅ | `AC-dltl-12/13` |
+| `insuranceCapAppliedBhtn` | boolean | ✅ | `AC-dltl-12/13` |
+| `withholdingTaxApplied` | boolean | ✅ | `BR-dltl-026` · `AC-dltl-18…20` |
+| `engineVersion` | string | ✅ | Truy vết |
+
+> 🔴 Cột "Cột DB snapshot" **phải** là ✅ cho **mọi** trường — `snapshotPayrollSheet` đẩy nguyên object vào `createMany`. Thiếu 1 cột ⇒ **khóa sổ gãy**, mà `GET /payroll/calculate` vẫn chạy nên lỗi chỉ lộ lúc kế toán bấm "Khóa sổ".
+
+### 8.6. Yêu cầu phi chức năng
+
+| NFR | Mục tiêu | Căn cứ |
+|---|---|---|
+| Hiệu năng | `/payroll/calculate` ≤ **2s** với 500 nhân viên; `/payroll/support-allowances` ≤ **1s** | Hiện là 12 truy vấn cố định qua 2 `Promise.all`, **không N+1**. Đợt này thêm **1 truy vấn** (`salaryStructure` + items lồng) ⇒ 13, vẫn hằng số. Endpoint mới dùng ~5 truy vấn |
+| Tải dữ liệu | Không phân trang. Với 500 nhân viên × 44 trường ⇒ payload ~380KB. Chấp nhận được cho màn bảng lương (người dùng cần tổng cộng toàn công ty). Vượt **2.000 nhân viên** phải xem lại — ghi làm ngưỡng theo dõi | |
+| Bảo mật | Cả 2 endpoint là dữ liệu lương ⇒ bắt buộc `xemLuong`; **không** ghi nội dung response vào log | ADR-007 |
+| Chính xác | Tiền làm tròn về **đồng nguyên** ở mọi bước trung gian có `Math.round`; preview và snapshot phải cho **cùng một con số** | Đóng 🟠 A-07 |
+
+### 8.7. Bàn giao Mục 8
+
+- **Tester-QA (Phase A)**: **5** nhóm ca bắt buộc ở `data-model` Mục 11.9 (nhóm 5 là nhóm mới cho QĐ-9 — miễn thuế theo ô tick, gồm ca 🔴 chống cộng đôi), cộng 4 ca của riêng hợp đồng API — (a) bất biến `total` tab "Lương hỗ trợ" **bằng** phần `BENEFIT_ALLOWANCE` trong `allowanceInPeriodTotal` của `/payroll/calculate`; (b) `otRawHours ≠ otConvertedHours` khi hệ số ≠ 100% (bắt lỗi FE map nhầm cột); (c) `contractType`/`salaryType` = `null` với nhân viên **không** có hợp đồng hiệu lực trong kỳ (B-4); (d) **bất biến ba cấu phần miễn thuế**: `grossIncome − taxableIncome` ở nhánh 10% phải **bằng đúng** `otTaxExemptAmount + lunchAllowanceExemptAmount + otherAllowanceTaxExemptAmount` — một phép cộng, bắt được ngay lỗi cộng đôi hoặc bỏ sót cấu phần.
+- **Backend Engineer**: đọc ADR-010 **trước** khi sửa `payrollCalculation.service.ts` — thứ tự các bước quyết định con số, không phải sở thích. Sửa `schema.prisma` + service **cùng một lượt** (xem cảnh báo 8.5). Tách `tinhKhoanPhuCapTheoKy` dùng chung cho 2 endpoint, và cho nó trả về **từng khoản kèm nhãn phân giỏ** để bước [5a] không phải duyệt lại lần hai (ADR-010 Consequences mục 2).
+- **Frontend Engineer** *(đang tạm ngừng — đọc khi được kích hoạt lại)*: adapter theo bảng 8.1.1; chú ý 2 cạm bẫy đánh ⭐ (`gio_tang_ca` ≠ `otConvertedHours`, `thu_nhap_chiu_thue` ≠ `taxableIncome`, và công thức `thu_nhap_chiu_thue` nay có **4** số hạng).
+- **Business Analyst (Final Sign-off)**: `Q-1` và `Q-2` **đã chốt** (chủ dự án, 2026-09-10) — chỉ còn **`Q-3`** (thuần hiển thị, không chặn Backend). Việc BA cần làm thêm: bổ sung `AC` cho `otherAllowanceTaxExemptAmount` vào SRS Mục 15.3.1 (bước [5a] phân giỏ hiện chưa có trong công thức BA viết) trước khi chuyển `Ready for Implementation`.

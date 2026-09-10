@@ -294,3 +294,392 @@ RVW-002 ở trên, và cột "Trạng thái (2026-09-09)" trong bảng "Blocking
 `payrollPeriods.controller.ts` biến mất nhờ bỏ `as any`) · `npx tsx --experimental-test-module-mocks --test src/__tests__/hrmPayrollInputData.test.ts` → **11/11 pass** (3 test cũ được sửa/giữ + 8 test mới, mỗi lỗi ≥1 test) · `npm test` (toàn bộ suite) → **642/646 pass**, 4 fail còn lại là `TC-hrm-301`/`TC-hrm-316` (×2, tính cả parent block) — 2 ca đỏ cố ý không nới lỏng của cụm "Cấu hình mặc định/Ca làm việc/Lịch ngày lễ", đã có từ TRƯỚC phiên này (xem `CONTEXT_SUMMARY.md` dòng 13-14), không liên quan `du_lieu_tinh_luong`.
 
 Chi tiết đầy đủ: `docs/hrm/work-log.md` (entry `[2026-09-09] backend-engineer`).
+
+---
+
+## Review 2026-09-10 — Verdict: ❌ Request changes
+
+**Phạm vi review**: diff đợt "Bảng lương tổng hợp / ADR-010" (chưa commit, đối chiếu bằng `git diff` + đọc file đầy đủ, KHÔNG tin danh sách trong `work-log.md`):
+`prisma/tenant/schema.prisma` (+19 cột) · `services/client/hrm/du_lieu_tinh_luong/payrollCalculation.service.ts` (viết lại, 804 dòng) · `controllers/.../payrollCalculation.controller.ts` + `routes/.../payrollCalculation.route.ts` (endpoint mới) · `services/client/hrm/cai_dat_luong/salaryItems.service.ts` + validator · `services/client/hrm/cau_hinh_mac_dinh/generalSettings.service.ts` + validator · `constants/hrm/du_lieu_tinh_luong/insuranceCaps.ts` (mới) · `__tests__/hrm/hrmPayrollCalculation.test.ts` (mới, 790 dòng).
+
+**Đối chiếu nguồn**: `ADR-010` (10 bước, QĐ-1…QĐ-9.4) · `srs-du-lieu-tinh-luong.md` Mục 15 (`BR-dltl-024…027`, `AC-dltl-12…28`) · `api-contract-du-lieu-tinh-luong.md` Mục 8 · `data-model-du-lieu-tinh-luong.md` Mục 11.
+
+**Kiểm chứng tự chạy (không tin số QA báo):** `npx tsc --noEmit` → **0 lỗi** · `npx tsx --test src/__tests__/hrm/hrmPayrollCalculation.test.ts` → **46/46 pass**.
+
+**Kết quả đối chiếu công thức tài chính — ĐẠT.** Đã kiểm từng bước [1]…[10] so với ADR-010 và so với số liệu tuyệt đối trong `AC-dltl-12…28`, KHÔNG dựa vào test pass:
+- [5a] phân giỏ loại trừ nhau hiện thực đúng bằng `if / else if` trên **một** vòng lặp (`payrollCalculation.service.ts`:196-202) — không có đường nào cộng đôi `mealAllowanceAmount` + `otherAllowanceTaxExemptAmount` (ràng buộc thứ tự thứ 4, rủi ro nặng nhất của đợt này).
+- [6] hai trần tính riêng rồi cộng (`:537-546`) — `AC-dltl-12` cho ra đúng `4.446.000 + 992.000 = 5.438.000`, `AC-dltl-13` giữ `capBhtn` không kẹp. Không có chỗ nào kẹp một trần chung.
+- [3] `otBase` KHÔNG dùng `baseSalaryMonthly` (`:415-419`) — đúng QĐ-1, tiền tăng ca không phồng theo phụ cấp.
+- [8] `tinh_tncn` kiểm TRƯỚC rẽ nhánh (`:569`); nhánh 10% tính trên `thuNhapTruocGiamTru` (đã bóc miễn thuế), không trên `grossIncome` thô — đúng `GAP-QA-05`.
+- `laHopDongKhauTruTaiNguon` là hàm riêng, phạm vi đúng `{thu_viec, thoi_vu}`, chuẩn hóa `trim().toLowerCase()`, không dò chuỗi tiếng Việt (`:100-103`) — đúng QĐ-3, không tái lập `BUG-HRM-27`.
+- QĐ-8 (`tinhKhoanPhuCapTheoKy` dùng chung 2 endpoint) **được tuân thủ thật**: cả `calculatePayrollPreview` (`:404`) và `getSupportAllowanceBreakdown` (`:772`) gọi đúng một hàm, không có bản chép thứ hai.
+- 46 field trả về của `calculatePayrollPreview` khớp **đúng** 46 cột non-auto của `PayrollSheetLine` (đếm tay, vì `createMany({ data: <biến> })` KHÔNG bị TypeScript chặn thừa field — typecheck xanh không chứng minh được điều này).
+
+**Không đạt**: 1 blocking bảo mật/toàn vẹn số liệu thuế (RVW-018) + 5 non-blocking + 3 suggestion.
+
+---
+
+### RVW-018 🔴 BLOCKING — `POST`/`PATCH`/`DELETE /salary-items` vừa KHÔNG có RBAC vừa KHÔNG có nhật ký, trong khi `isMealAllowance`/`isTaxable` nay quyết định trực tiếp số tiền thuế TNCN của toàn công ty
+
+- Vị trí: `be_maxv/src/routes/hrm/cai_dat_luong/salaryItems.route.ts`:12-14 · `be_maxv/src/controllers/client/hrm/cai_dat_luong/salaryItems.controller.ts`:45, 52, 60
+- Vấn đề:
+  - Ba route ghi chỉ kế thừa `authenticate` + `requireModule('hrm')` từ `routes/hrm/hrm.route.ts`:35-39, rồi gọi thẳng `resolveTenantDb(req)`. **Không** `assertAdminOrOwner`, **không** `assertXemLuong`, **không** `writeLog`.
+  - Hệ quả trực tiếp của chính đợt này: trước ADR-010, `SalaryItem.isTaxable` **bị engine bỏ qua hoàn toàn** (ADR-010 Trade-offs: *"Hai cột đang bị engine bỏ qua (`isTaxable`, `taxTreatment`) nay có hiệu lực thật"*). Bật/tắt ô tick chỉ đổi nhãn hiển thị. Sau đợt này, một lần `PATCH /salary-items/:id` với `{"isTaxable": false}` **trừ thẳng khoản đó khỏi thu nhập tính thuế của MỌI nhân viên được gán khoản đó**, ở mọi kỳ chưa khóa — tức là đợt này biến một endpoint không được canh gác thành một đòn bẩy đổi số thuế TNCN. Điều tương tự với `isMealAllowance` (đưa khoản vào giỏ trần 730k).
+  - Người thực hiện được bao gồm cả `OWNER_EMPLOYEE` **đã bị tắt cờ `DonViAccess.xemLuong`** — tức người mà `ADR-007`/`BR-hrm-059` cố ý chặn không cho *đọc* bảng lương, nay vẫn *sửa được* tham số sinh ra con số thuế trong bảng đó. Chặn đọc nhưng không chặn ghi là hàng rào tự vô hiệu.
+  - **Bất đối xứng ngay trong cùng đợt code này**: mức trần 730.000đ (`GeneralSetting.lunchAllowanceTaxFreeCap`) được bảo vệ bằng `assertAdminOrOwner` (`routes/hrm/cau_hinh_mac_dinh/generalSettings.route.ts`:25, 30), `lock`/`reopen`/`approve` kỳ lương cũng vậy (`routes/hrm/du_lieu_tinh_luong/payrollPeriods.route.ts`:21-23) — nhưng cờ quyết định **khoản nào** được hưởng trần đó thì không ai canh. Canh cái sau mà bỏ cái trước là canh hụt.
+  - Thiếu nhật ký làm hỏng khả năng giải trình: `generalSettings.controller.ts`:26-35 đã có `ghiNhatKyCauHinh()` (`writeLog` → `sys_log`) cho đúng loại thay đổi này; `salaryItems.controller.ts` không có dòng nào. Số thuế đổi mà **không truy được ai đổi, lúc nào** — trong khi bảng lương đã khóa là chứng từ kê khai thuế.
+- Vì sao Blocking (nâng mức so với `ISSUE-blth-003` 🟡 của QA): QA phân loại 🟡 với lý do "pre-existing". Endpoint là pre-existing, nhưng **tác động tài chính là do đợt này tạo ra** — đây đúng nghĩa một thay đổi làm mất hiệu lực hàng rào có sẵn, không phải nợ cũ. Sai theo hướng *có lợi cho doanh nghiệp* (khai thiếu thuế), im lặng, không dấu vết ⇒ đúng loại sai bị truy thu mà `ADR-010` tồn tại để chặn. Không chấp nhận đẩy sang "đợt sau" vì ngay khi ADR-010 lên production thì lỗ hổng có hiệu lực.
+- Đề xuất fix (mức tối thiểu để gỡ blocking — làm cả 2 phần):
+  1. **Bắt buộc, không cần chờ ai chốt**: thêm `writeLog` cho `create`/`update`/`remove` khoản lương, sao đúng khuôn `ghiNhatKyCauHinh()` (`hanhDong: 'HRM_UPDATE_SALARY_ITEM'` / `'HRM_CREATE_SALARY_ITEM'` / `'HRM_DELETE_SALARY_ITEM'`, `chiTiet: { khoaNghiepVu: <code khoản> }`). Không lưu giá trị trước/sau, đúng mức đã chốt ở `BR-hrm-066`.
+  2. **Quyền ghi**: gắn `{ preHandler: assertAdminOrOwner }` (dùng lại nguyên hàm ở `generalSettings.route.ts`:10, đúng tiền lệ `payrollPeriods.route.ts` đã làm — không viết guard mới) cho `POST`/`PATCH`/`DELETE /salary-items`. **Nếu** nghiệp vụ xác định kế toán `OWNER_EMPLOYEE` phải tạo/sửa được khoản lương thì thay bằng ràng buộc hẹp hơn: cho phép sửa mọi trường TRỪ `isTaxable`/`isMealAllowance`, hai trường này yêu cầu ADMIN/OWNER. Chọn phương án nào cũng được, nhưng **phải là quyết định được ghi lại** (bổ sung vào `ADR-010` Consequences hoặc ADR mới) — không được để nguyên trạng "không ai canh" rồi merge.
+- Trạng thái: OPEN
+  → FIXED [2026-09-10] — **Quyết định đã chọn: siết CẢ BA route ghi** (không tách quyền hẹp theo field) — lý do ghi trực tiếp trong code (`salaryItems.route.ts`:9-23) và trong `cai_dat_luong/api-contract-cai-dat-luong.md` Mục 1: danh mục khoản lương không phải phân hệ nhập liệu theo kỳ (khác 8 phân hệ payroll-data), không có SRS nào yêu cầu `OWNER_EMPLOYEE` tự tạo/sửa khoản lương, và tách quyền theo field cần logic diff trước/sau phức tạp hơn lợi ích. Nhất quán với "Cấu hình mặc định" (toàn bộ ghi cũng chỉ ADMIN/OWNER).
+  - `be_maxv/src/routes/hrm/cai_dat_luong/salaryItems.route.ts`:9,23-25 — thêm `import { assertAdminOrOwner } from '../cau_hinh_mac_dinh/generalSettings.route'` + `{ preHandler: assertAdminOrOwner }` cho `POST`/`PATCH`/`DELETE /salary-items`.
+  - `be_maxv/src/controllers/client/hrm/cai_dat_luong/salaryItems.controller.ts`:5,20-38,45-70 — thêm helper `ghiNhatKyKhoanLuong()` (dùng `writeLog`, đúng khuôn `ghiNhatKyCauHinh()`), gọi sau `create`/`update`/`remove` với `hanhDong ∈ {HRM_CREATE_SALARY_ITEM, HRM_UPDATE_SALARY_ITEM, HRM_DELETE_SALARY_ITEM}` + `chiTiet.khoaNghiepVu = ma_khoan`.
+  - `be_maxv/src/services/client/hrm/cai_dat_luong/salaryItems.service.ts`:250-256 — `deleteSalaryItem` nay trả `{ code }` (bản ghi đã bị xóa nên controller không truy vấn lại được) để controller ghi đúng khóa nghiệp vụ vào audit log.
+  - Test mới: `be_maxv/src/__tests__/hrm/hrmSalarySettingsApi.test.ts` — test "RVW-018: POST/PATCH/DELETE /salary-items chặn role không phải ADMIN/OWNER, và ghi audit log khi thành công" (403 cho `OWNER_EMPLOYEE` cả 3 route + KHÔNG ghi log khi bị chặn; 200/201 cho `OWNER` + đúng 3 `writeLog` với `hanhDong`/`chiTiet.khoaNghiepVu` khớp).
+  - Kiểm chứng: `npm run typecheck` 0 lỗi · `npm run lint` 0 error (365 warning, không tăng so với baseline trước đợt) · `hrmSalarySettingsApi.test.ts` 13/13 pass · full suite `npm test` 700/704 pass (4 fail = 2 ca đỏ cố ý `TC-hrm-301`/`TC-hrm-316`, không liên quan). *(backend-engineer)*
+  Commit: chưa commit.
+
+---
+
+### RVW-019 🟡 Non-blocking — `GET /payroll/support-allowances`: `total` cộng cả khoản `BENEFIT_ALLOWANCE` đã `INACTIVE`, trong khi `columns`/`amounts` thì không ⇒ bảng trên màn hình không cộng ra tổng của chính nó
+
+- Vị trí: `be_maxv/src/services/client/hrm/du_lieu_tinh_luong/payrollCalculation.service.ts`:773-785 (so với `:738-741`)
+- Vấn đề: `columns` lọc `SalaryItem { category: 'BENEFIT_ALLOWANCE', status: 'ACTIVE' }`, nhưng vòng cộng dồn ở `:779-785` lấy **mọi** `benefitRows` — `amounts[code]` chỉ được gán khi `columnCodes.has(row.code)`, còn `monthlyTotal`/`total` thì cộng vô điều kiện. Nhân viên còn được gán một khoản hỗ trợ đã bị chuyển `INACTIVE` ở danh mục ⇒ `Σ amounts` **nhỏ hơn** `total`, không có cột nào giải thích phần chênh. Đây đúng tình huống `api-contract` Mục 8.2 gọi là "kế toán mất niềm tin vào cả bảng lương — người dùng chắc chắn sẽ cộng thử", chỉ khác là lệch *trong nội bộ một tab* thay vì giữa hai tab. Quy tắc 1 của Mục 8.2 ("chỉ lấy `category = BENEFIT_ALLOWANCE` **và** `status = ACTIVE`") đang chỉ được áp cho `columns`, không áp cho `total`.
+- Ghi chú kèm (cùng gốc, cần quyết nghiệp vụ): `tinhKhoanPhuCapTheoKy()` **không** lọc `SalaryItem.status` ⇒ khoản đã `INACTIVE` vẫn được trả tiền trong `allowanceInPeriodTotal` của `/payroll/calculate`. Nếu ý định là "ngừng khoản ở danh mục thì ngừng trả", đây là lỗi tiền thật (🔴), không chỉ lỗi hiển thị; nếu ý định là "chỉ `EmployeeSalary` mới quyết định trả hay không" thì phải nói rõ trong `data-model` Mục 11.5. **Hiện tài liệu không trả lời**, nên chưa xếp Blocking — cần BA chốt trước khi Backend sửa.
+- Đề xuất fix: sau khi BA chốt ý nghĩa của `status`, hoặc (a) lọc `status = 'ACTIVE'` ngay trong `tinhKhoanPhuCapTheoKy()` để cả hai endpoint nhất quán, hoặc (b) giữ nguyên cách trả tiền nhưng đưa mọi khoản đã gán vào `columns` (kể cả `INACTIVE`, có cờ đánh dấu) để bảng luôn cộng đúng. Tuyệt đối không sửa riêng một trong hai endpoint.
+- Trạng thái: OPEN
+  → FIXED một phần [2026-09-10] — Sửa ĐÚNG phạm vi headline của finding (bảng `support-allowances` phải tự cộng khớp tổng của chính nó): `getSupportAllowanceBreakdown()` nay áp CÙNG quy tắc lọc `columnCodes.has(row.code)` (đã lọc `status='ACTIVE'`) cho cả `amounts` LẪN `total`/`monthlyTotal` — `be_maxv/src/services/client/hrm/du_lieu_tinh_luong/payrollCalculation.service.ts`:808-818. **CHƯA sửa** phần "Ghi chú kèm" (câu hỏi `tinhKhoanPhuCapTheoKy()`/`allowanceInPeriodTotal` của `/payroll/calculate` có nên ngừng trả tiền khoản `INACTIVE` hay không) — đúng như chính finding đã ghi rõ "cần BA chốt trước khi Backend sửa" cho phần đó; KHÔNG tự ý đổi công thức tiền thật của `/payroll/calculate` khi chưa có quyết định nghiệp vụ. Đã ghi rõ khoảng lệch còn lại trong docstring (`:711-729`) để không ai tưởng đã đóng hoàn toàn.
+  - Test mới: `be_maxv/src/__tests__/hrm/hrmPayrollCalculation.test.ts` — test "RVW-019: support-allowances.total KHÔNG cộng khoản BENEFIT_ALLOWANCE đã INACTIVE — Σamounts luôn khớp total" (2 khoản, 1 ACTIVE 1 INACTIVE trong danh mục; assert `total === Σamounts === 700_000`, không lẫn khoản INACTIVE).
+  - Kiểm chứng: `hrmPayrollCalculation.test.ts` 53/53 pass (gồm `TC-blth-035` cũ vẫn xanh — không đổi hành vi khi mọi khoản đều ACTIVE). *(backend-engineer)*
+
+---
+
+### RVW-020 🟡 Non-blocking — `GET /payroll/support-allowances` tính lại thời gian thực với kỳ đã khóa, trong khi `GET /payroll/sheet-lines` đọc snapshot đóng băng ⇒ hai tab của cùng một kỳ `LOCKED` lệch nhau
+
+- Vị trí: `be_maxv/src/services/client/hrm/du_lieu_tinh_luong/payrollCalculation.service.ts`:711-712 (so với `:687-699`)
+- Vấn đề: `getSupportAllowanceBreakdown()` chỉ gọi `getPayrollPeriodOrThrow()` (kiểm tồn tại), **không** phân nhánh theo `period.status` như `getPayrollSheetLines()` đã làm. Với kỳ `LOCKED`/`APPROVED`/`PAID`/`ARCHIVED`, tab "Bảng lương" trả số đã đóng băng còn tab "Lương hỗ trợ" tính lại từ `EmployeeSalary`/`SalaryStructure`/`AttendanceRecord`/cấu hình **của hôm nay**. Kế toán sửa một mức phụ cấp sau khi khóa sổ ⇒ hai tab lệch, và tab lệch lại chính là tab dùng để giải thích cột "Thu nhập" của tab kia. Bất biến 🔴 ở `api-contract` Mục 8.2 chỉ đúng cho kỳ chưa khóa.
+- Vì sao chưa Blocking: `PayrollSheetLine` chỉ lưu tổng `allowanceInPeriodTotal`, không lưu bóc tách theo từng khoản, nên không thể "đọc snapshot" cho endpoint này mà không thêm cột/bảng — đây là khoảng trống thiết kế của ADR-010, không phải Backend làm sai đặc tả.
+- Đề xuất fix: ngắn hạn — trả kèm cờ `isLiveRecalculated: true` (hoặc `periodStatus`) để FE cảnh báo tại chỗ với kỳ đã khóa; dài hạn — Architect quyết định có snapshot bóc tách phụ cấp hay không (bảng con `PayrollSheetAllowanceLine`, hoặc cột JSON trên `PayrollSheetLine`). Ghi vào ADR trước khi code.
+- Trạng thái: OPEN
+  → FIXED một phần (giải pháp ngắn hạn) [2026-09-10] — `getSupportAllowanceBreakdown()` nay trả kèm `periodStatus` (trạng thái thật của kỳ) + `isLiveRecalculated: true` để FE tự cảnh báo khi kỳ đã khóa — `be_maxv/src/services/client/hrm/du_lieu_tinh_luong/payrollCalculation.service.ts`:820-829. **CHƯA làm** giải pháp dài hạn (snapshot bóc tách phụ cấp) — đúng như finding đã nêu, cần Architect ra ADR trước, ngoài phạm vi 1 phiên fix.
+  - Test mới: `hrmPayrollCalculation.test.ts` — test "RVW-020: getSupportAllowanceBreakdown trả kèm periodStatus + isLiveRecalculated để FE cảnh báo khi kỳ đã khóa" (kỳ `LOCKED` → `periodStatus === 'LOCKED'`, `isLiveRecalculated === true`).
+  - Kiểm chứng: pass (xem RVW-019). *(backend-engineer)*
+
+---
+
+### RVW-021 🟡 Non-blocking — Engine bỏ qua `EmployeeSalary.effectiveFrom`/`effectiveTo` trong khi vẫn cẩn thận lọc hợp đồng theo kỳ ⇒ set lương của tháng sau vẫn được áp cho kỳ đang tính
+
+- Vị trí: `be_maxv/src/services/client/hrm/du_lieu_tinh_luong/payrollCalculation.service.ts`:302-307 (và `:731-734` cho endpoint mới)
+- Vấn đề: truy vấn `db.employeeSalary.findMany({ where: { status: 'APPROVED' } })` chỉ lọc trạng thái. Cùng file, hợp đồng được lọc theo kỳ rất kỹ (`:290-295`, đúng `A-02`: *"hợp đồng ký trước cho tháng sau kèm tăng lương bị dùng nhầm để tính kỳ hiện tại"*) — nhưng set lương thì không, dù bảng có sẵn `effectiveFrom`/`effectiveTo` và mắc **đúng cùng một bệnh**: duyệt trước một set lương hiệu lực từ tháng sau ⇒ toàn bộ phụ cấp mới lập tức chảy vào kỳ đang tính. Trước đợt này hậu quả giới hạn ở `kpiSalary`/`diligenceSalary`; sau ADR-010 nó chi phối cả `fixedAllowanceTotal`, `allowanceInPeriodTotal`, `grossIncome`, thu nhập tính thuế và trần ăn ca — tức là gần như toàn bộ dòng lương.
+- Lưu ý khi sửa: `EmployeeSalary.ma_nv` là `@unique` (schema `:1298`), tức mỗi nhân viên chỉ có **một** bản ghi — không thể "chọn bản phủ kỳ" như hợp đồng. Cách khả thi: bỏ qua set lương có `effectiveFrom > period.endDate` (và tùy chọn `effectiveTo < period.startDate`), hoặc BA xác nhận rõ trong `data-model` Mục 11.5 rằng hai cột này **cố ý** không được engine đọc — hiện Mục 11.5 chỉ mô tả truy vấn đang chạy, không trả lời câu hỏi này.
+- Đề xuất fix: BA/Architect chốt ngữ nghĩa trước; Backend áp bộ lọc theo kỳ cho **cả hai** nơi đọc `employeeSalary` (engine + `support-allowances`), không sửa một nơi.
+- Trạng thái: OPEN
+  → FIXED [2026-09-10] — Quyết định: KHÔNG cần BA chốt riêng — vì `EmployeeSalary.ma_nv` là `@unique` (schema `:1298`), bản chất chỉ có ĐÚNG 1 set lương/nhân viên; `effectiveFrom`/`effectiveTo` chỉ có tác dụng "khoanh vùng thời điểm áp dụng", không có ngữ nghĩa "chọn version nào" như hợp đồng — áp dụng đúng nguyên tắc lọc-theo-kỳ đã có tiền lệ ở A-02 là đủ, không phát sinh câu hỏi nghiệp vụ mới. Áp CÙNG bộ lọc (`effectiveFrom <= period.endDate` VÀ (`effectiveTo` null HOẶC `>= period.startDate`)) cho **cả hai** nơi đọc `employeeSalary`, đúng yêu cầu "không sửa một nơi":
+  - `be_maxv/src/services/client/hrm/du_lieu_tinh_luong/payrollCalculation.service.ts`:317-327 (`calculatePayrollPreview`) và `:763-773` (`getSupportAllowanceBreakdown`).
+  - Test mới: `hrmPayrollCalculation.test.ts` — 4 test "RVW-021: ..." (hiệu lực từ tháng sau → bị loại; đã hết hiệu lực → bị loại; phủ đúng kỳ → vẫn đọc bình thường; cùng bộ lọc áp cho `getSupportAllowanceBreakdown`).
+  - Kiểm chứng: pass (xem RVW-019). *(backend-engineer)*
+
+---
+
+### RVW-022 🟡 Non-blocking — Thứ tự triển khai bắt buộc chưa được ghi ở đâu: 19 cột mới chưa `sync:tenants` sẽ làm gãy cả màn Cấu hình và Khoản lương, không chỉ thao tác Khóa sổ
+
+- Vị trí: `be_maxv/prisma/tenant/schema.prisma` (3 cột `GeneralSetting`, 1 cột `SalaryItem`, 15 cột `PayrollSheetLine`) · `docs/hrm/du_lieu_tinh_luong/issues-and-bugs-bang-luong-tong-hop.md` `ISSUE-blth-004`
+- Vấn đề: QA và `ADR-010` đều mô tả rủi ro là *"khóa sổ gãy, lỗi chỉ lộ lúc kế toán bấm Khóa sổ"*. Đánh giá đó **hẹp hơn thực tế**: Prisma `findFirst`/`findMany` liệt kê **mọi** cột vô hướng trong `SELECT`. Nếu code lên trước khi tenant DB có 4 cột `GeneralSetting`/`SalaryItem`, thì `GET /settings/general`, `GET /salary-items`, `GET /payroll/calculate` và `GET /payroll/support-allowances` **cùng gãy ngay lượt gọi đầu tiên** trên tenant đó — trước cả khi ai bấm Khóa sổ. Đây là ràng buộc thứ tự triển khai cứng (migrate 10 tenant TRƯỚC, deploy code SAU) mà hiện chưa file nào nêu.
+- Đề xuất fix: ghi thứ tự bắt buộc + cách rollback vào `ADR-010` Consequences (hoặc `dev-notes.md`); giữ nguyên yêu cầu của `ISSUE-blth-004` là chạy thật **một** lượt `POST /payroll-periods/:id/lock` trên tenant test đã sync trước khi đụng 10 tenant thật — đối soát tĩnh 46 cột (reviewer đã tự đếm lại, khớp) **không thay thế được** vì `createMany({ data: <biến> })` không bị TypeScript chặn field thừa.
+- Trạng thái: OPEN
+  → FIXED (bước vận hành) [2026-09-10] — Đã chạy `npm run sync:tenants` trên môi trường dev/local (`localhost:5432`, `.env.local`): **10/10 tenant thành công, 0 lỗi** (`maxv_0106861889_app`, `maxv_0901133943_app`, `maxv_0111142786_app`, `maxv_0104409703_app`, `maxv_0108914961_app`, `maxv_033192002730_app`, `maxv_0315473747_app`, `maxv_0106200129_app`, `maxv_0108768608_app`, `maxv_0106861880_app`) — 19 cột schema mới (`GeneralSetting` +3, `SalaryItem` +1, `PayrollSheetLine` +15) đã thực sự lên tenant DB dev/local thật qua `prisma db push`, không chỉ generate client. **CHƯA chạy** trên 10 tenant PRODUCTION của khách hàng — đúng như work-log 2026-09-09 đã ghi, đây vẫn là bước cần Architect/DevOps xác nhận thời điểm triển khai, KHÔNG tự ý chạy trên production trong phiên sửa lỗi này.
+  - Kiểm chứng: output lệnh `npm run sync:tenants` — "Đồng bộ schema cho 10 tenant... Xong: 10 thành công, 0 lỗi." *(backend-engineer)*
+
+---
+
+### RVW-023 🟡 Non-blocking — Hai hợp đồng API mà `ADR-010` bắt cập nhật cùng lượt vẫn chưa được sửa ⇒ Frontend sẽ code theo bản cũ thiếu 4 trường
+
+- Vị trí: `docs/hrm/architecture/api-contract.md` (Mục 7D.0 — thiếu `lunchAllowanceTaxFreeCap`, `withholdingTaxRate`, `withholdingTaxThreshold`) · `docs/hrm/cai_dat_luong/api-contract-cai-dat-luong.md` (thiếu `isMealAllowance`)
+- Vấn đề: `ADR-010` Consequences › "Kéo theo" liệt kê rõ hai file này (`3 + 1 trường`), và `api-contract-du-lieu-tinh-luong.md` Mục 8.4 nhắc lại. Kiểm thật: cả hai file **không nằm trong diff** và grep không thấy tên trường nào. Hai file đó mới là hợp đồng của module "Cấu hình mặc định" và "Cài đặt lương" — nơi Frontend đọc khi làm màn hình. Bốn cột vừa thêm sẽ không ai đặt được giá trị, đúng cái bẫy `ADR-007` mà chính ADR-010 viện dẫn ("chặn được nhưng không cấp được").
+- Đề xuất fix: bổ sung 3 trường vào Mục 7D.0 (`GET`/`PUT`/`restore-default`, kiểu đọc ra là **chuỗi** Decimal đúng quy ước 20 cột Decimal hiện có) và `isMealAllowance` vào hợp đồng `salary-items`. Ghi kèm quyền ghi đã chốt ở RVW-018.
+- Trạng thái: OPEN
+  → FIXED [2026-09-10] — Lưu ý khi sửa: `docs/hrm/architecture/api-contract.md` **thực tế KHÔNG có Mục "7D.0"** nào (đã grep toàn file, không tìm thấy "settings/general"/"GeneralSetting" ở bất kỳ đâu — CONTEXT_SUMMARY.md dẫn nhầm số mục, đây là drift tài liệu có từ trước, không phải do đợt code này). Đã tạo mới `## 7D.` (ngay trước Mục 8) mô tả ĐÚNG 3 trường thiếu, không dựng lại toàn bộ hợp đồng `GeneralSetting` (nguồn đầy đủ vẫn là `du_lieu_tinh_luong/data-model-du-lieu-tinh-luong.md` Mục 11.2, tránh nhân đôi):
+  - `docs/hrm/architecture/api-contract.md` — thêm `## 7D. Cấu hình mặc định — 3 tham số thuế mới` (bảng `lunchAllowanceTaxFreeCap`/`withholdingTaxRate`/`withholdingTaxThreshold`, kiểu response = chuỗi Decimal, ràng buộc, quyền `assertAdminOrOwner`).
+  - `docs/hrm/cai_dat_luong/api-contract-cai-dat-luong.md` Mục 1 — thêm `isMealAllowance` vào response mẫu (1.1), request body `POST` (1.4) và mô tả `PATCH` (1.5); ghi rõ quyền `assertAdminOrOwner` cho cả 3 route ghi (RVW-018); sửa luôn lỗi tài liệu cũ ghi `PUT` trong khi code dùng `PATCH` (1.5).
+  Commit: chưa commit.
+
+---
+
+### RVW-024 🟢 Suggestion — Ca kiểm `AC-dltl-23` khẳng định bằng `<=` và một dòng tautology, không ghim được giá trị
+
+- Vị trí: `be_maxv/src/__tests__/hrm/hrmPayrollCalculation.test.ts`:603-611
+- Vấn đề: ca kiểm quan trọng nhất của `BR-dltl-027` (trần quy đổi theo công) chỉ khẳng định `lunchAllowanceExemptAmount <= 365_000` rồi `assert.equal(Math.round(730_000 * 0.5), 365_000)` — vế sau kiểm `Math.round` của JavaScript, không kiểm mã sản phẩm. Trần bị tính sai thành 100.000đ vẫn PASS. Ca này bắt được lỗi "quên quy đổi" nhưng không bắt được lỗi "quy đổi sai hệ số".
+- Đề xuất fix: đổi thành `assert.equal(row.lunchAllowanceExemptAmount, 365_000)` và `assert.equal(row.lunchAllowanceTaxableAmount, 635_000)` (mealAllowance 1.000.000, nửa công) — ghim đúng số, khớp `AC-dltl-23`.
+- Trạng thái: OPEN
+
+---
+
+### RVW-025 🟢 Suggestion — Engine đọc cấu hình bằng `findFirst()` trong khi cả module còn lại dùng `findUnique({ id: 'DEFAULT' })`
+
+- Vị trí: `be_maxv/src/services/client/hrm/du_lieu_tinh_luong/payrollCalculation.service.ts`:301
+- Vấn đề: `db.generalSetting.findFirst()` không mệnh đề `where`, không `orderBy`. Toàn bộ module "Cấu hình mặc định" (`generalSettings.service.ts`:198, 204, 249, 273) coi `id = 'DEFAULT'` (`SINGLETON_ID`) là bản ghi duy nhất. Nếu có bản ghi thứ hai lọt vào (script di trú, seed thủ công), engine có thể dùng bộ tham số **khác** bộ đang hiển thị trên màn hình cấu hình, và Postgres không bảo đảm thứ tự trả về nên kết quả không tất định giữa hai lần gọi. Đợt này thêm 3 tham số thuế chịu ảnh hưởng, nên độ nghiêm trọng nếu xảy ra tăng lên (dù xác suất thấp).
+- Đề xuất fix: `db.generalSetting.findUnique({ where: { id: SINGLETON_ID } })` — cùng một dòng, hết mơ hồ. Không đổi hành vi khi dữ liệu đúng.
+- Trạng thái: OPEN
+  → FIXED [2026-09-10] — sửa đúng như đề xuất tại CẢ 2 chỗ: `be_maxv/src/services/client/hrm/du_lieu_tinh_luong/payrollCalculation.service.ts`:11 (import `SINGLETON_ID` từ `generalSettings.service.ts`) và 2 lệnh gọi tại `:305`, `:757` đổi từ `findFirst()` sang `findUnique({ where: { id: SINGLETON_ID } })`. Tranh thủ sửa cùng lượt vì rất nhanh (đúng gợi ý "không bắt buộc, chỉ sửa nếu tiện tay" của phiên này).
+  - Test mới: `hrmPayrollCalculation.test.ts` — test "RVW-025: ..." (assert `findUnique` được gọi với `where: { id: 'DEFAULT' }`, `findFirst` không còn được gọi — ném lỗi nếu gọi nhầm).
+  - Cập nhật mock: `db.generalSetting` trong `hrmPayrollCalculation.test.ts` (buildDb) và `hrmPayrollInputData.test.ts` (createMockTenantDb) đều bổ sung `findUnique` (giữ `findFirst` cũ cho tương thích ngược, không xóa).
+  - Kiểm chứng: pass (xem RVW-019). *(backend-engineer)*
+
+---
+
+### RVW-026 🟢 Suggestion — `formatSalaryItem` trộn hai quy ước đặt tên trong cùng một payload
+
+- Vị trí: `be_maxv/src/services/client/hrm/cai_dat_luong/salaryItems.service.ts`:34
+- Vấn đề: payload khoản lương dùng snake_case tiếng Việt (`ma_khoan`, `ten_khoan`, `ghi_chu`, `tinh_bhxh`, `chiu_thue_tncn`, `ty_le`), riêng trường mới trả camelCase `isMealAllowance`. Khớp `api-contract-du-lieu-tinh-luong.md` Mục 8.4 nên **không phải lỗi hợp đồng**, nhưng `chiu_thue_tncn` là khái niệm anh em trực tiếp của nó (ADR-010 QĐ-9.3: cờ ăn ca vô hiệu hóa ô tick chịu thuế) mà hai trường lại khác hệ đặt tên — lớp adapter FE sẽ có đúng một khóa lệch chuẩn.
+- Đề xuất fix: hoặc đổi sang `khoan_an_ca` (đồng bộ họ snake_case, phải sửa hợp đồng ở RVW-023 cùng lượt, làm TRƯỚC khi FE đấu dây thì không tốn gì), hoặc giữ nguyên và ghi một dòng lý do trong `dev-notes.md` để người sau không "sửa cho đồng bộ" rồi làm gãy FE.
+- Trạng thái: OPEN
+
+---
+
+### Bảo mật — kết luận phiên này
+
+| Mục | Kết quả |
+|---|---|
+| Guard xác thực + module | ✅ Mọi route mới kế thừa `authenticate` + `requireModule('hrm')` (`hrm.route.ts`:35-39) |
+| Quyền xem dữ liệu lương (`ADR-007`/`BR-hrm-059`) trên endpoint MỚI | ✅ `GET /payroll/support-allowances` dùng đúng `dbCoQuyenLuongPayroll` (`payrollCalculation.controller.ts`:30), không dùng `resolveTenantDb` trần |
+| Quyền GHI 3 cột cấu hình thuế mới | ✅ `assertAdminOrOwner` đã có sẵn trên `PUT`/`restore-default /settings/general` |
+| Quyền GHI 2 cờ quyết định thuế ở khoản lương | ❌ **RVW-018 🔴** — không RBAC, không nhật ký |
+| Cô lập multi-tenant | ✅ Toàn bộ truy vấn đi qua `resolveTenantCtx` → `getTenantDb(dbName)`; không có truy vấn `sysPrisma` nào trong diff; không có `donViId` lọt vào tầng tenant |
+| IDOR | ✅ Không có endpoint mới nhận id tài nguyên từ client ngoài `periodId`, đã `validateQuery` + `getPayrollPeriodOrThrow` (404 `E-dltl-025`) |
+| SQL injection | ✅ Prisma parameterized toàn bộ, không có `$queryRaw` trong diff |
+| Rò rỉ dữ liệu nhạy cảm ra log | ✅ Không có `console.*`/`req.log` nào trong 804 dòng service và các file sửa |
+| Validation đầu vào | ✅ Zod cho cả 3 cột cấu hình mới (`min(0)`, riêng `withholdingTaxRate` `0…100`) và `isMealAllowance` (boolean, mặc định `false`) |
+
+### Hiệu năng — kết luận phiên này
+
+- `calculatePayrollPreview`: 12 → **13 truy vấn cố định** (thêm `salaryStructure` + items lồng, gọi một lần ngoài vòng lặp nhân viên). **Không N+1.** Mọi thứ còn lại là `Map`/`reduce` trong bộ nhớ.
+- `getSupportAllowanceBreakdown`: **8 truy vấn cố định**, cùng khuôn. Đạt ngưỡng ≤ 1s của `api-contract` Mục 8.6 với quy mô hiện tại.
+- 5 lượt `reduce` riêng trên cùng `phuCapRows` (`:405, 406, 415, 518, 522`) — chấp nhận được (mảng vài phần tử/nhân viên), **không** đề nghị gộp: tách rời làm mỗi con số đọc thẳng ra một dòng công thức của ADR, gộp lại sẽ đánh mất chính điều đó.
+- Carry-forward chưa đóng, KHÔNG đánh số lại: `A-05` (`calculatePayrollPreview` chạy trong `$transaction` khóa sổ mà không truyền `{ timeout }`, mặc định 5s — nay thêm 1 truy vấn nữa) · `A-06` (Decimal ra chuỗi ở nhánh snapshot, nay ảnh hưởng thêm 15 trường) · `A-07` (`diligenceSalary`/`adjustmentNetAmount`/`netTakeHomeSalary`/`totalCompanyCost` không `Math.round`) · `RVW-011` (không phân trang) · `A-04` (TOCTOU chuyển trạng thái).
+
+---
+
+**Verdict: ❌ Request changes.**
+
+Phần tính toán tài chính — thứ đáng lo nhất của đợt này — **làm đúng**: 10 bước đúng thứ tự ADR-010, hai giỏ miễn thuế loại trừ nhau thật sự bằng `if/else if` một vòng lặp, hai trần bảo hiểm độc lập, hàm dùng chung QĐ-8 được tuân thủ, 46 field khớp 46 cột snapshot. Không tìm thấy lỗi số tiền nào.
+
+Chặn merge vì đúng **một** việc: **RVW-018**. Đợt này biến `isTaxable`/`isMealAllowance` từ nhãn hiển thị thành đòn bẩy đổi số thuế TNCN, nhưng để nguyên endpoint sửa hai cờ đó ở trạng thái không RBAC, không nhật ký — trong khi cùng lúc lại canh gác cẩn thận mức trần mà hai cờ ấy quyết định ai được hưởng.
+
+**Việc cho Backend Engineer (một đợt duy nhất, cùng vùng mã):**
+1. RVW-018 (🔴, bắt buộc trước merge) — `writeLog` cho 3 thao tác ghi khoản lương + guard quyền ghi theo phương án BA/Architect chốt.
+2. RVW-023 (🟡) — cập nhật 2 hợp đồng API, làm cùng lúc với RVW-018 để ghi luôn quyền vừa chốt; kéo theo quyết định của RVW-026.
+3. RVW-019 + RVW-021 (🟡) — **chờ BA chốt ngữ nghĩa** (`SalaryItem.status` có chặn trả tiền không; `EmployeeSalary.effectiveFrom/To` engine có đọc không) rồi sửa **cả hai** nơi đọc, không sửa một nơi.
+4. RVW-022 (🟡) — ghi thứ tự triển khai + chạy thật một lượt `lock` trên tenant test đã sync (đóng luôn `ISSUE-blth-004`).
+5. RVW-020 (🟡, cần ADR) · RVW-024, RVW-025, RVW-026 (🟢).
+
+Sửa xong, Backend Engineer cập nhật `OPEN → FIXED` kèm commit + kết quả test ngay dưới từng finding rồi chuyển lại code-reviewer; vòng 2 sẽ soát lại RVW-018 bằng một ca kiểm 403 cho `PATCH /salary-items` với vai không đủ quyền, và một assert `writeLog` được gọi.
+
+---
+
+## Cập nhật 2026-09-10 (backend-engineer) — kết quả phiên sửa Review 2026-09-10
+
+Đã sửa: `RVW-018` (🔴, đủ điều kiện gỡ blocking) + `RVW-019`, `RVW-020`, `RVW-021`, `RVW-022`,
+`RVW-023`, `RVW-025` (🟡/🟢, theo yêu cầu "sửa cùng lượt" của phiên) — 7/9 finding của phiên
+review này. Chi tiết từng finding: xem dòng "→ FIXED [2026-09-10]" ngay dưới mỗi RVW ở trên.
+
+**Chưa sửa (cố ý, ngoài phạm vi được giao lượt này):** `RVW-024` và `RVW-026` (🟢 suggestions,
+task giao rõ "không bắt buộc, chỉ sửa nếu rất nhanh tiện tay" — cả hai cần thay đổi rủi ro hơn
+mức "tiện tay": RVW-024 đổi số liệu ghim trong test tài chính quan trọng nhất của module,
+RVW-026 đổi tên field hợp đồng API cần FE đồng thuận trước).
+
+**Quyết định nghiệp vụ tự chọn (ghi rõ theo yêu cầu của finding):**
+- RVW-018: siết CẢ BA route ghi `/salary-items` về `assertAdminOrOwner` (không tách quyền hẹp
+  theo field `isTaxable`/`isMealAllowance` riêng) — lý do đầy đủ trong code comment
+  `salaryItems.route.ts` và trong `cai_dat_luong/api-contract-cai-dat-luong.md` Mục 1.
+- RVW-021: không cần BA chốt riêng — `EmployeeSalary.ma_nv` là `@unique` nên áp lọc-theo-kỳ
+  (cùng nguyên tắc A-02) là đủ, không phát sinh câu hỏi nghiệp vụ mới như finding lo ngại.
+- RVW-019: chỉ sửa phần headline (bảng tự cộng khớp tổng trong nội bộ `support-allowances`),
+  KHÔNG tự ý đổi công thức tiền thật của `/payroll/calculate` (phần "Ghi chú kèm" của finding) —
+  đúng như finding đã nói rõ phần đó cần BA chốt trước.
+
+**Kiểm chứng thật đã tự chạy:** `npm run typecheck` exit 0 (0 error) · `npm run lint` 0 error /
+365 warning (không tăng so với baseline trước đợt — không có warning mới ở bất kỳ file nào vừa
+sửa) · `hrmPayrollCalculation.test.ts` **53/53 pass** (8 test mới: RVW-019 ×1, RVW-020 ×1,
+RVW-021 ×4, RVW-025 ×1) · `hrmSalarySettingsApi.test.ts` **13/13 pass** (1 test mới RVW-018) ·
+`hrmPayrollInputData.test.ts` + `hrmSalarySettings.test.ts` không có test mới nhưng đã sửa mock
+`db.generalSetting` để không vỡ theo thay đổi RVW-025, **25/25 pass** · full suite `npm test` →
+**700/704 pass**, 4 fail còn lại là `TC-hrm-301`/`TC-hrm-316` (×2, tính cả parent block) — 2 ca đỏ
+cố ý không nới lỏng của cụm "Cấu hình mặc định/Ca làm việc/Lịch ngày lễ", đã có từ TRƯỚC phiên
+này, không liên quan module payroll/salary-items vừa sửa.
+
+**Vận hành đã thực hiện:** `npm run sync:tenants` trên dev/local — 10/10 tenant thành công, 0 lỗi
+(xem chi tiết dưới RVW-022). Môi trường production 10 tenant khách hàng vẫn CHƯA chạy, cố ý để
+dành cho Architect/DevOps xác nhận thời điểm.
+
+Chi tiết đầy đủ: `docs/hrm/work-log.md` (entry `[2026-09-10] backend-engineer`).
+
+---
+
+## Review lại 2026-09-10 (vòng 2, code-reviewer) — Verdict: ⚠️ Approve with comments
+
+**Cách làm**: đọc lại mã nguồn thật (`git diff` + đọc file đầy đủ), KHÔNG tin dòng `→ FIXED` do
+backend tự ghi; tự chạy lại toàn bộ lệnh kiểm chứng.
+
+**Kiểm chứng độc lập (reviewer tự chạy, không lấy số của backend):**
+`npm run typecheck` → exit 0 · `npm run lint` → **0 error / 365 warning** · `npm test` → **704 tests,
+700 pass, 4 fail** — đúng con số backend báo. 4 fail là `TC-hrm-301` (search không bỏ dấu) +
+`TC-hrm-316` (thiếu "thứ trong tuần") trong `hrmSettingsShiftsHolidaysApi.test.ts`, thuộc cụm
+"Ca làm việc/Lịch ngày lễ", **pre-existing, không liên quan** payroll/salary-items.
+
+### Xác nhận từng dòng FIXED
+
+| Finding | Backend tự nhận | Reviewer xác minh | Kết luận |
+|---|---|---|---|
+| RVW-018 🔴 | FIXED | `salaryItems.route.ts`:31-33 có `{ preHandler: assertAdminOrOwner }` trên đủ **cả 3** route ghi (import từ `generalSettings.route.ts`:10, không viết guard mới) · `salaryItems.controller.ts`:31-42 `ghiNhatKyKhoanLuong()` gọi `writeLog` **thật** (không comment suông), đúng khuôn `ghiNhatKyCauHinh()`, best-effort (`syslog.service.ts`:15-24 tự nuốt lỗi) nên nhật ký hỏng không làm vỡ nghiệp vụ · `deleteSalaryItem` trả `{ code }` để audit ghi đúng khóa nghiệp vụ sau khi bản ghi đã xóa · test `hrmSalarySettingsApi.test.ts` đăng ký **route thật + `errorHandler.plugin`** (không mock guard), assert 403 ×3 cho `OWNER_EMPLOYEE`, assert `writeLog` **không** được gọi khi bị chặn, và 3 lần gọi đúng `hanhDong`/`chiTiet.khoaNghiepVu` khi `OWNER` | ✅ **XÁC NHẬN FIXED — blocking được gỡ** |
+| RVW-019 🟡 | FIXED một phần | `payrollCalculation.service.ts`:808-818 — `if (!columnCodes.has(row.code)) continue;` đặt TRƯỚC cả `amounts`, `monthlyTotal`, `total` ⇒ Σamounts luôn khớp total. Phần "Ghi chú kèm" (`tinhKhoanPhuCapTheoKy` không lọc `status`) **thật sự chưa sửa** và đã ghi rõ trong docstring | ✅ Xác nhận, nhãn "một phần" trung thực |
+| RVW-020 🟡 | FIXED một phần | `:844-846` trả `periodStatus: period.status` + `isLiveRecalculated: true`. Snapshot bóc tách (dài hạn) chưa làm, đúng như khai báo | ✅ Xác nhận |
+| RVW-021 🟡 | FIXED | Bộ lọc `effectiveFrom <= period.endDate` + `OR[effectiveTo null, >= startDate]` có ở **cả hai** nơi: `:317-327` (`calculatePayrollPreview`) và `:763-773` (`getSupportAllowanceBreakdown`) — đúng yêu cầu "không sửa một nơi" | ✅ Xác nhận |
+| RVW-023 🟡 | FIXED | `api-contract.md`:1266-1268 có đủ 3 trường (kiểu chuỗi Decimal, ràng buộc, quyền) · `api-contract-cai-dat-luong.md`:25-28, 52, 61-64, 101, 105/113/119 có `isMealAllowance` + ghi quyền `assertAdminOrOwner` cho cả 3 route ghi | ✅ Xác nhận |
+| RVW-025 🟢 | FIXED | `findUnique({ where: { id: SINGLETON_ID } })` tại `:305` và `:757`; không còn `findFirst()` nào trong file | ✅ Xác nhận |
+| RVW-022 🟡 | FIXED (bước vận hành) | **PHẢN BÁC MỘT PHẦN.** Đề xuất fix của finding có **hai** vế: (1) *ghi thứ tự triển khai bắt buộc + cách rollback vào `ADR-010` Consequences hoặc `dev-notes.md`*, (2) chạy thật một lượt `POST /payroll-periods/:id/lock` trên tenant test đã sync (đóng `ISSUE-blth-004`). Grep `RVW-022` toàn `docs/hrm/` → chỉ thấy trong `review-findings.md` + `work-log.md`, **không có dòng nào vào ADR-010/dev-notes**; ADR-010:280 chỉ liệt kê "rồi `npm run sync:tenants`", KHÔNG nêu ràng buộc "migrate 10 tenant TRƯỚC, deploy code SAU" cũng như việc `GET /settings/general`, `GET /salary-items`, `GET /payroll/calculate` **cùng gãy ngay lượt gọi đầu** nếu sai thứ tự. Vế (2) chưa làm. Việc chạy `sync:tenants` trên dev là bước tốt nhưng reviewer **không kiểm chứng độc lập được** (không có DB) | ⚠️ **Chuyển lại `OPEN` (một phần)** — xem RVW-022b |
+| RVW-024, RVW-026 🟢 | cố ý chưa sửa | Đúng, vẫn `OPEN`; lý do bỏ qua hợp lý (RVW-024 đổi số ghim trong test tài chính, RVW-026 đổi tên field hợp đồng cần FE đồng thuận) | ✅ Chấp nhận, giữ `OPEN` |
+
+---
+
+### RVW-022b 🟡 Non-blocking — Vế "ghi thứ tự triển khai" của RVW-022 vẫn chưa có ở đâu; `ISSUE-blth-004` chưa đóng
+
+- Vị trí: `docs/hrm/architecture/adr/ADR-010-pipeline-thue-bao-hiem-bang-luong.md` (Consequences) · `docs/hrm/architecture/dev-notes.md`
+- Vấn đề: xem ô RVW-022 ở bảng trên. Thêm một điểm reviewer phát hiện khi đọc `dev-notes.md`:196-200 — *"`npm run hrm:constraints` phải chạy lại sau MỖI lần `npm run sync:tenants`"* (Prisma `db push` có thể drop index nó không quản lý). Backend báo đã chạy `sync:tenants` trên dev nhưng **không nhắc gì tới `hrm:constraints`** — nếu chưa chạy lại thì các khóa duy nhất tùy biến của HRM đang mất trên 10 tenant dev, và quy trình đó sẽ được chép nguyên sang production.
+- Đề xuất fix: (a) thêm vào `ADR-010` Consequences 4-5 dòng: thứ tự bắt buộc `generate → sync:tenants (10 tenant) → hrm:constraints → deploy code`, kèm hệ quả nếu đảo thứ tự (4 endpoint GET gãy ngay, không chỉ Khóa sổ) và cách lùi; (b) xác nhận đã chạy `hrm:constraints` sau lượt `sync:tenants` dev; (c) chạy một lượt `lock` thật trên tenant dev đã sync rồi mới đóng `ISSUE-blth-004`.
+- Trạng thái: OPEN
+
+---
+
+### RVW-027 🟡 Non-blocking — Lý do biện minh cho việc siết RBAC (RVW-018) mâu thuẫn với thực tế FE: CRUD khoản lương đang nằm NGAY TRONG 2 màn nhập liệu theo kỳ ⇒ kế toán `OWNER_EMPLOYEE` sẽ ăn 403 giữa luồng hằng ngày
+
+- Vị trí: `be_maxv/src/routes/hrm/cai_dat_luong/salaryItems.route.ts`:20-22 (lý do (a) và (b) ghi trong comment) · `hdđt_maxv/src/features/hrm/components/du_lieu_tinh_luong/thuong/QuanLyThuongDialog.tsx`:25, 28, 46 · `.../luong_phan_tram/QuanLyPhanTramDialog.tsx`:25
+- Vấn đề: quyết định siết cả 3 route ghi được biện minh bằng *"danh mục khoản lương thay đổi không thường xuyên (**khác 8 phân hệ NHẬP LIỆU theo kỳ** mà kế toán/`OWNER_EMPLOYEE` cần thao tác hằng ngày)"*. Grep FE cho thấy điều ngược lại: `QuanLyThuongDialog` (nằm trong `components/du_lieu_tinh_luong/thuong/`, tức **đúng 1 trong 8 phân hệ nhập liệu**) và `QuanLyPhanTramDialog` (`.../luong_phan_tram/`) đều gọi `useXoaKhoanLuong` (`DELETE /salary-items/:id`) và mở `KhoanLuongFormDialog` → `useLuuKhoanLuong` (`POST`/`PATCH /salary-items`). Nghĩa là "thêm một khoản thưởng mới" giữa kỳ là thao tác **trong màn nhập liệu**, không phải vào màn Cài đặt lương. Sau fix, `OWNER_EMPLOYEE` bấm "Thêm khoản thưởng" sẽ nhận `403` mà FE không hề ẩn nút (grep `hdđt_maxv/src/features/hrm` chỉ thấy gating theo `xemLuong`, **không có** gating theo `role ∈ {ADMIN, OWNER}` ở cụm `cai_dat_luong`/`du_lieu_tinh_luong`).
+- Vì sao KHÔNG xếp Blocking: (1) hướng siết là hướng an toàn — để nguyên trạng là lỗ hổng thuế đã nêu ở RVW-018; (2) không SRS/BR nào cấp quyền tạo/sửa khoản lương cho `OWNER_EMPLOYEE` (đã grep `docs/hrm/cai_dat_luong/`, không có mục quyền nào) nên đây là **quyết định chưa từng được chốt**, không phải quyền đã đặc tả bị tước; (3) `frontend-engineer` đang tạm ngừng, chưa ai đấu dây thật nên chưa gây sự cố production.
+- Đề xuất fix: (a) BA xác nhận dứt khoát: kế toán `OWNER_EMPLOYEE` **có** được tạo khoản thưởng/phần trăm giữa kỳ không? Nếu **có** → quay lại phương án tách quyền hẹp mà RVW-018 đã nêu (mọi trường trừ `isTaxable`/`isMealAllowance`); nếu **không** → giữ nguyên fix hiện tại nhưng bắt buộc FE ẩn/disable nút "Thêm/Sửa/Xóa khoản" trong 2 dialog trên theo `role`, kèm dòng ghi vào backlog `frontend-engineer`. (b) **Sửa lại lý do (a)/(b) trong comment `salaryItems.route.ts`:20-22** — đang nêu một sự thật sai về FE, người đọc sau sẽ tin theo.
+- Trạng thái: OPEN
+
+---
+
+### RVW-028 🟢 Suggestion — Comment trong code khai "đã ghi vào `ADR-010` Consequences" nhưng ADR-010 không có dòng nào
+
+- Vị trí: `be_maxv/src/routes/hrm/cai_dat_luong/salaryItems.route.ts`:16
+- Vấn đề: `grep -n "RVW-018\|assertAdminOrOwner" ADR-010-*.md` → **0 kết quả**. Nơi ghi thật là `cai_dat_luong/api-contract-cai-dat-luong.md` Mục 1 (đã kiểm, đủ và đúng) — yêu cầu "quyết định phải được ghi lại" của RVW-018 coi như **đạt**, nhưng con trỏ trong code trỏ sai chỗ, đúng loại drift tài liệu mà RVW-023 vừa phải đi dọn.
+- Đề xuất fix: đổi comment thành `(ghi ở cai_dat_luong/api-contract-cai-dat-luong.md Mục 1)`, hoặc bổ sung thật vào ADR-010 Consequences khi làm RVW-022b.
+- Trạng thái: OPEN
+
+---
+
+**Verdict vòng 2: ⚠️ Approve with comments — KHÔNG còn 🔴 Blocking.**
+
+`RVW-018` (blocking duy nhất của phiên 2026-09-10) đã được sửa **thật**, đúng cả hai vế (RBAC + nhật ký),
+có ca kiểm đi qua route thật và guard thật, không phải khai suông. Sáu finding 🟡/🟢 còn lại được xác
+nhận đúng như mô tả; nhãn "FIXED một phần" của RVW-019/RVW-020 là trung thực.
+
+Còn lại, KHÔNG chặn merge nhưng phải xử lý trước khi FE đấu dây / trước khi lên production:
+- `RVW-027` 🟡 — chốt với BA quyền của `OWNER_EMPLOYEE` với khoản thưởng/phần trăm giữa kỳ + FE ẩn nút + sửa lý do sai trong comment.
+- `RVW-022b` 🟡 — ghi thứ tự triển khai vào ADR-010/dev-notes, xác nhận `hrm:constraints` đã chạy lại sau `sync:tenants`, chạy một lượt `lock` thật để đóng `ISSUE-blth-004`.
+- `RVW-024`, `RVW-026`, `RVW-028` 🟢 · carry-forward `A-04`…`A-09`, `RVW-003`…`RVW-017` vẫn `OPEN` như cũ.
+
+---
+
+## Review 2026-09-10 (vòng 3 — Frontend "Bảng lương tổng hợp", code-reviewer) — Verdict: ⚠️ Approve with comments
+
+**Phạm vi review** — 2 phiên `frontend-engineer` (`work-log.md` `17:30` + `18:15`): thay mock bằng API thật cho khu `hdđt_maxv/src/features/hrm/components/bang_luong`. 14 file: 1 file mới (`api/bang_luong/bangLuongQueries.ts`), 1 file xóa (`mock/hooks/bangLuong.ts`), 12 file sửa (`api/du_lieu_tinh_luong/payrollCalculation{Api,Queries}.ts`, `api/hrmKeys.ts`, `api/cau_hinh_mac_dinh/cauHinhQueries.ts`, `calculations/bang_luong/bangLuong.ts`, `components/bang_luong/{BangLuongPanel,BangLuongTable,LuongHoTroPanel,ThanhLocBangLuong,luongHoTroExcel}`, `types/index.ts`, `pages/hrm/bang_luong/BangLuongPage.tsx`).
+
+**Đã tự kiểm chứng độc lập (không tin số báo cáo):**
+
+| Lệnh (chạy trong `hdđt_maxv/`) | Kết quả code-reviewer tự chạy | Khớp báo cáo FE + QA? |
+|---|---|---|
+| `npx tsc -b` | exit 0, 0 lỗi | ✅ |
+| `npm run lint` | 0 lỗi, 0 cảnh báo | ✅ |
+| `npm run build` | thành công, **12346 module**, đúng 2 cảnh báo cũ (`INEFFECTIVE_DYNAMIC_IMPORT` exceljs, chunk >500 kB) | ✅ khớp tuyệt đối |
+
+**Đã đối chiếu và XÁC NHẬN ĐÚNG (không phát sinh finding):**
+
+1. **Field mapping** `veDongBangLuong()` vs `api-contract-du-lieu-tinh-luong.md` Mục 8.1 — đúng cả 2 cạm bẫy: `gio_tang_ca ← otRawHours` (không phải `otConvertedHours`), `thu_nhap_chiu_thue` suy từ 4 số hạng (không dùng thẳng `taxableIncome` — trường đổi nghĩa theo `withholdingTaxApplied`), `luong_theo_ngay ← proratedWorkSalary + allowanceInPeriodTotal`.
+2. **`PAYROLL_LINE_NUMERIC_FIELDS` (A-06)** — tự liệt kê lại cột của `model PayrollSheetLine` (`be_maxv/prisma/tenant/schema.prisma`): 33 `Decimal` + 1 `Int` = **34**, khớp đúng 34 tên trong mảng; 3 `Boolean` + `engineVersion`/các `String` bị loại đúng. Nhánh snapshot không còn rủi ro cộng chuỗi.
+3. **Xóa `mock/hooks/bangLuong.ts`** — `grep -rn "mock/hooks/bangLuong" hdđt_maxv/src` → **0 import thật** (chỉ còn nhắc trong comment tài liệu). Không gãy runtime.
+4. **Xóa logic tính thuế/bảo hiểm ở `calculations/bang_luong/bangLuong.ts`** — `grep` `thueLuyTien|tinhDongBangLuong|lyDoKhongTinhDuocLuong|NguonTinhLuong|LOI_BIEU_THUE` toàn `hdđt_maxv/src` → **0 tham chiếu code còn lại**, không còn dead code nghiệp vụ. File chỉ còn hàm format hiển thị thuần.
+5. **Bảo mật / đa tenant** — `queryKey` của cả 3 hook (`calculate`/`sheetLines`/`supportAllowances`) đều mang `currentCompanyId` ⇒ cache KHÔNG lẫn giữa các lần chuyển công ty. `periodId` lấy từ `PayrollPeriodContext`, và context **lọc lại `overrideId` của `localStorage` theo `periods` của công ty hiện tại** (`PayrollPeriodContext.tsx`:15-20) ⇒ `periodId` tồn dư của tenant cũ bị loại, tự rơi về `periods[0]`. Phía server, cả 3 endpoint đi qua `dbCoQuyenLuongPayroll` + Zod `periodId` (`payrollCalculation.controller.ts`) và giải tenant DB từ phiên, không từ tham số client ⇒ **không có đường rò dữ liệu nhân viên giữa các tenant**. Không có lời gọi bên thứ ba nào bị chạm.
+6. **UI theo trạng thái kỳ** — `isLocked` gộp đúng `LOCKED/APPROVED/PAID/ARCHIVED`, khớp Y HỆT điều kiện rẽ nhánh snapshot của `getPayrollSheetLines()` (be_maxv).
+
+---
+
+### RVW-029 🟡 Non-blocking — Tab "Lương hỗ trợ" bắn thêm một lượt tính lương LIVE toàn công ty chỉ để lấy con số đếm đã có sẵn trong response của chính nó
+
+- Vị trí: `hdđt_maxv/src/features/hrm/api/bang_luong/bangLuongQueries.ts`:275-280 (`useSoNhanVienDangLam`), dùng ở `components/bang_luong/LuongHoTroPanel.tsx`:47
+- Vấn đề: `useSoNhanVienDangLam()` gọi `usePayrollSheetLinesQuery(...)`. Trên route tab "Bảng lương" điều này miễn phí (dùng chung cache với `useBangLuongRows`, đúng như comment ghi). Nhưng tab "Lương hỗ trợ" là **route riêng, `BangLuongPanel` KHÔNG mount** — nên hook này tạo một request `/payroll/sheet-lines` thứ hai, mà với kỳ `DRAFT`/`PENDING_REVIEW` request đó chạy trọn `calculatePayrollPreview()` (tải nhân viên + hợp đồng + set lương + chấm công + ngày lễ + pipeline 10 bước cho TOÀN công ty) chỉ để lấy `data.length`. Trong khi `useLuongHoTroRows` đã có sẵn `data.items.length` từ `/payroll/support-allowances` — cùng tập nhân viên (`where: { status: '1', da_xoa: false }`, đã đối chiếu 2 service). Chi phí tăng tuyến tính theo số nhân viên và trùng với `RVW-011` (chưa endpoint đọc nào có phân trang).
+- Vì sao KHÔNG xếp Blocking: số hiển thị vẫn ĐÚNG, không sai nghiệp vụ; chỉ là lãng phí. Tenant dev hiện 1 nhân viên nên chưa lộ.
+- Đề xuất fix: trong `LuongHoTroPanel` dùng thẳng số dòng của chính response lương hỗ trợ (mở rộng `KetQuaLuongHoTro` thêm `soNhanVien: data?.items.length ?? 0`) và bỏ `useSoNhanVienDangLam()` khỏi panel này; giữ hook đó cho riêng `BangLuongPanel`.
+- Trạng thái: OPEN
+
+---
+
+### RVW-030 🟡 Non-blocking — `engineVersion` không được dùng ở bất kỳ đâu: kỳ khóa sổ `v1` (nếu tồn tại) sẽ hiển thị sai nhiều cột mà không cảnh báo (xác nhận `ISSUE-blth-005`)
+
+- Vị trí: `hdđt_maxv/src/features/hrm/api/du_lieu_tinh_luong/payrollCalculationApi.ts`:86 (khai báo) — không có nơi tiêu thụ
+- Vấn đề: đánh giá **độc lập**, không chỉ chép lại QA. `PayrollSheetLine.engineVersion` mặc định `"v1"` (schema.prisma); 19 cột của ADR-010 mặc định `0`/`false`. Với dòng snapshot `v1`, FE sẽ hiển thị: `thu_nhap_chiu_thue ≈ grossIncome` (3 số hạng trừ đều 0) **và** `luong_theo_ngay = proratedWorkSalary` (mất `allowanceInPeriodTotal`) **và** `gio_tang_ca = 0` (`otRawHours` mới) — tức là **nhiều cột hơn** phạm vi mà `ISSUE-blth-005` mô tả, tất cả đều im lặng. api-contract Mục 8.3 đã yêu cầu tường minh "FE phải phân biệt bằng `engineVersion`, không được suy từ giá trị 0" — yêu cầu này chưa được thực hiện.
+- Vì sao KHÔNG xếp Blocking (đánh giá độc lập, không dựa vào gợi ý): cửa sổ rủi ro **đóng lại theo thời gian, không mở rộng** — mọi kỳ khóa từ nay đều là `v2`; chỉ các dòng `PayrollSheetLine` đã tồn tại TRƯỚC 2026-09-10 mới bị. Đã tự kiểm: toàn bộ module payroll (`PayrollPeriod`, `PayrollSheetLine`, thao tác `lock`) mới được tạo trong dải commit `ce75c6f`…`edaed98` (2026-09-08…10), 19 cột mới **còn chưa `sync:tenants`** cho 10 tenant thật (`RVW-022`/`ISSUE-blth-004` vẫn OPEN) ⇒ chưa tenant nào có thể đã khóa sổ bằng engine v1. QA cũng xác nhận 2 tenant dev có **0 `PayrollPeriod`**. Rủi ro thực tế hiện tại ≈ 0, và đây là lỗi **chỉ-hiển-thị** (không ghi đè dữ liệu, không đổi số thuế đã khấu trừ).
+- Đề xuất fix (theo thứ tự, không cần làm hết trước merge):
+  1. **Cổng go-live (bắt buộc, rẻ)**: khi chạy `sync:tenants` cho 10 tenant thật, chạy kèm `SELECT count(*) FROM hrm_payroll_sheet_lines WHERE "engineVersion" <> 'v2'` trên từng tenant. Kết quả `0` trên tất cả ⇒ đóng `RVW-030` + `ISSUE-blth-005` vĩnh viễn, không cần code gì thêm (ghi bằng chứng vào `work-log.md`).
+  2. Nếu bất kỳ tenant nào ra `> 0` ⇒ **nâng lên 🔴 Blocking** và bắt buộc FE: `Chip`/`Alert` "Số liệu theo công thức cũ (v1) — một số cột chưa có" khi `rows.some(r => r.engineVersion !== "v2")`, đồng thời để trống (`—`) thay vì hiện `0` cho `thu_nhap_chiu_thue`/`gio_tang_ca`/phần phụ cấp của `luong_theo_ngay` ở các dòng đó — BA/Architect chốt wording.
+- Trạng thái: OPEN
+
+---
+
+### RVW-031 🟢 Suggestion — `normalizePayrollLine()` ép `Number()` không phòng thủ: trường thiếu sẽ thành `NaN` lan khắp bảng thay vì báo lỗi
+
+- Vị trí: `hdđt_maxv/src/features/hrm/api/du_lieu_tinh_luong/payrollCalculationApi.ts`:191-197
+- Vấn đề: `line[field] = Number(raw[field])` — `Number(undefined)` là `NaN`, và `NaN` lan qua mọi phép cộng phía sau (`veDongBangLuong` cộng `proratedWorkSalary + allowanceInPeriodTotal`, `tongBangLuong` cộng dồn 3 thẻ tổng đầu màn) khiến cả cột lẫn tổng hiện `NaN` mà không có lỗi nào được ném. Hiện KHÔNG có bug thật (đã đối chiếu: cả 34 cột đều `NOT NULL` trong `PayrollSheetLine`, và nhánh live trả đủ), nhưng hàm này chính là **lớp phòng thủ tại biên** — để nó tự vỡ im lặng khi backend thêm/đổi cột là mâu thuẫn với mục đích của chính nó.
+- Đề xuất fix: `const v = Number(raw[field]); line[field] = Number.isFinite(v) ? v : 0;` kèm `console.warn` (chỉ ở `import.meta.env.DEV`) liệt kê tên trường hỏng — giữ bảng đọc được mà vẫn lộ dấu hiệu cho dev.
+- Trạng thái: OPEN
+
+---
+
+### RVW-032 🟢 Suggestion — Kiểu ở biên "nói dối" so với schema: `departmentName`/`positionName` khai non-null, `salaryType` lạ bị nuốt thành `GROSS`
+
+- Vị trí: `payrollCalculationApi.ts`:24-27 (`departmentName: string`, `positionName: string`); `api/bang_luong/bangLuongQueries.ts`:59-62 (`veKieuLuong`), :66-68 (`veLoaiHopDong`)
+- Vấn đề: (a) trong `PayrollSheetLine` hai cột đó là `String?` ⇒ nhánh snapshot **có thể** trả `null` trong khi kiểu FE khai `string`. Hiện vô hại vì UI đều dùng `row.ten_pb || "Chưa gán phòng ban"`, nhưng kiểu sai sẽ bẫy người viết code sau (vd gọi `.toLowerCase()` khi thêm ô tìm kiếm theo phòng ban ⇒ crash runtime mà `tsc` không cảnh báo). (b) `veKieuLuong` quy MỌI giá trị khác `"net"` về `"GROSS"`, `veLoaiHopDong` ép kiểu thẳng `as LoaiHopDong` — dữ liệu lạ đi qua im lặng và chỉ lộ ra dưới dạng bộ lọc không khớp.
+- Đề xuất fix: khai `departmentName: string | null` / `positionName: string | null` (đúng schema, UI đã xử lý sẵn); `veKieuLuong`/`veLoaiHopDong` kiểm giá trị nằm trong tập hợp lệ, ngoài tập thì trả `null` (đã là giá trị hợp lệ của `DongBangLuong`) thay vì đoán.
+- Trạng thái: OPEN
+
+---
+
+### RVW-033 🟢 Suggestion — Bộ lọc "Phòng ban" phụ thuộc request thứ ba: lúc danh sách nhân viên chưa tải xong, bảng báo "không có nhân viên khớp bộ lọc" thay vì đang tải
+
+- Vị trí: `hdđt_maxv/src/features/hrm/api/bang_luong/bangLuongQueries.ts`:141-146 (`useMaPbTheoNv`), :148-160 (`apDungBoLoc`)
+- Vấn đề: hai endpoint payroll chỉ trả TÊN phòng ban nên FE phải tra chéo `useNhanVienRows()` để có `Map<ma_nv, ma_pb>` — cách xử lý đúng và có ghi chú rõ. Nhưng `isLoading` mà panel dùng CHỈ đến từ query payroll: khi người dùng đang chọn một phòng ban mà query nhân viên chưa xong, `maPbTheoNv` rỗng ⇒ `apDungBoLoc` loại sạch mọi dòng ⇒ màn hiện "Không có nhân viên nào khớp bộ lọc" (kết luận sai) trong khoảnh khắc đó.
+- Đề xuất fix: cho `useMaPbTheoNv()` trả kèm `isLoading` của `useNhanVienRows` và gộp vào `KetQuaBangLuong.isLoading` **chỉ khi `filters.ma_pb` khác rỗng** (không có lọc phòng ban thì bảng không cần chờ). Về lâu dài, đề xuất Architect thêm `departmentCode` vào response 2 endpoint payroll để bỏ hẳn request tra chéo này.
+- Trạng thái: OPEN
+
+---
+
+### RVW-034 🟢 Suggestion — `Math.max(0, ...)` khi suy `thu_nhap_chiu_thue` chưa có căn cứ ghi trong code (xác nhận `ISSUE-blth-006`)
+
+- Vị trí: `hdđt_maxv/src/features/hrm/api/bang_luong/bangLuongQueries.ts`:96-102
+- Vấn đề: api-contract Mục 8.1.1 chỉ mô tả phép trừ 4 số hạng, không nêu kẹp sàn 0. Đánh giá độc lập: bất biến làm phép kẹp này **vô hại về số liệu** thực ra CÓ tồn tại và đã được ghi — comment của `model PayrollSheetLine` trong `schema.prisma` khai `mealAllowanceAmount + otherAllowanceTaxExemptAmount <= allowanceInPeriodTotal`, và cả 3 khoản miễn thuế đều là tập con của `grossIncome`. Nên đây KHÔNG phải lỗi; vấn đề duy nhất là **căn cứ đó không xuất hiện ở chỗ đọc code**, nên người sau không phân biệt được "kẹp vì bất biến đã chứng minh" với "kẹp cho chắc".
+- Đề xuất fix: thêm 1 dòng comment trích đúng bất biến + nguồn (`schema.prisma` model `PayrollSheetLine`) ngay tại chỗ kẹp; giữ nguyên `Math.max`. Nếu muốn chặt hơn: `console.warn` khi hiệu số âm ở môi trường DEV.
+- Trạng thái: OPEN
+
+---
+
+### RVW-035 🟢 Suggestion — `dev-notes.md` Mục 2.12 còn vẽ sơ đồ luồng theo `/payroll/calculate` đã bị Mục 2.13 thay; `usePayrollCalculateQuery` thành mã chết có chủ đích
+
+- Vị trí: `docs/hrm/architecture/dev-notes.md` Mục 2.12 (khối sơ đồ luồng + dòng tiêu đề); `hdđt_maxv/src/features/hrm/api/du_lieu_tinh_luong/payrollCalculationQueries.ts`:27-34
+- Vấn đề: Mục 2.13 đã nói rõ là thay nguồn sang `/payroll/sheet-lines`, nhưng sơ đồ ở 2.12 vẫn ghi `usePayrollCalculateQuery` và `api.get('/hrm/payroll/calculate')`. Người đọc dừng ở 2.12 (mục có tiêu đề tổng quát hơn) sẽ hiểu sai nguồn dữ liệu của màn chính — đúng loại tài liệu trôi mà `RVW-023`/`RVW-028` vừa phải đi dọn. Kèm theo, `usePayrollCalculateQuery`/`getPayrollCalculate` hiện **không còn nơi nào gọi** (đã grep) — việc giữ lại là có chủ đích và đã ghi lý do, chấp nhận được, nhưng cần có người theo dõi để không nằm lại vĩnh viễn.
+- Đề xuất fix: sửa sơ đồ trong 2.12 thành `usePayrollSheetLinesQuery` + thêm 1 dòng "**cập nhật ở Mục 2.13**" ngay dưới tiêu đề 2.12; ghi `usePayrollCalculateQuery` vào backlog FE — nếu sau 1 chu kỳ vẫn không ai dùng thì xóa.
+- Trạng thái: OPEN
+
+---
+
+**Verdict vòng 3: ⚠️ Approve with comments — KHÔNG có 🔴 Blocking.**
+
+Phần FE này đạt chất lượng bàn giao: kiến trúc đúng hướng (mọi công thức lương/thuế/bảo hiểm đã dồn về một nguồn sự thật duy nhất ở `be_maxv`, FE chỉ đổi tên trường), 2 cạm bẫy field mapping được xử lý đúng và ghi chú tại chỗ, việc tự phát hiện + tự vá lỗi kiểu `Decimal` ở biên (`normalizePayrollLine`) là điểm cộng thật — đó là loại lỗi âm thầm không test tĩnh nào bắt được. Xóa `mock/hooks/bangLuong.ts` an toàn (0 import còn lại), xóa logic tính thuế trùng backend triệt để (0 tham chiếu còn lại), không sót dead code nghiệp vụ. Không phát hiện lỗ hổng bảo mật hay đường rò dữ liệu giữa các tenant. Báo cáo của `frontend-engineer` và `tester-qa` trung thực — 3 lệnh kiểm chứng tự chạy lại khớp 100%, kể cả phần tự thừa nhận "chưa test tay qua trình duyệt".
+
+Điều kiện kèm theo (KHÔNG chặn bàn giao):
+- `RVW-030` 🟡 — **phải chạy truy vấn đếm dòng `engineVersion <> 'v2'` trên 10 tenant thật cùng lượt `sync:tenants`**; ra `0` thì đóng luôn, ra `> 0` thì nâng lên Blocking trước khi cho kế toán mở màn hình.
+- `RVW-029` 🟡 — bỏ request thừa ở tab "Lương hỗ trợ" trước khi có tenant đông nhân viên.
+- `RVW-031`…`RVW-035` 🟢 — gom vào một đợt dọn nhỏ của `frontend-engineer`.
+- Nợ chưa thuộc phạm vi phiên này, vẫn `OPEN`: `RVW-027` (FE phải ẩn/disable nút Thêm/Sửa/Xóa khoản lương theo `role` — việc của FE, chưa làm), `RVW-022b`/`ISSUE-blth-004`, và **giới hạn kiểm thử đã được QA nêu trung thực ở Mục 9.5**: chưa ai xác nhận bằng mắt trên dữ liệu thật (không có tenant/tài khoản test có kỳ lương). Đề nghị PO/BA cấp một tenant mẫu có kỳ `DRAFT` + kỳ `LOCKED` trước khi bàn giao cho người dùng cuối.

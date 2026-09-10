@@ -2,7 +2,7 @@
 type: srs
 feature: hrm-du-lieu-tinh-luong
 status: in-review
-updated: 2026-09-09
+updated: 2026-09-10
 author: business-analyst
 links:
   - docs/hrm/CONTEXT_SUMMARY.md
@@ -218,6 +218,7 @@ Ba tầng không thống nhất ở trạng thái `PENDING_REVIEW`: 8 phân hệ
 | NFR-dltl-004 | Điều khiển truy cập theo vai trò cho hành động tài chính nhạy cảm (Reopen, Lock) | ❌ Xem BR-dltl-002, Mục 2 |
 | NFR-dltl-005 | Nhất quán cấu hình: mọi tham số tính lương phải đồng bộ với "Cấu hình mặc định" đã khai báo, không phân kỳ âm thầm | ❌ Xem BR-dltl-023 |
 | NFR-dltl-006 | Điều khiển đồng thời (Concurrency): 2 người cùng khóa sổ 1 kỳ không được gây trạng thái không nhất quán | ❌ Xem E-dltl-026 |
+| NFR-dltl-007 *(mới, 2026-09-10)* | Tuân thủ pháp luật Thuế TNCN/BHXH VN hiện hành cho Bảng lương tổng hợp: 2 trần bảo hiểm độc lập, miễn thuế phần OT vượt chuẩn, khấu trừ 10% đúng đối tượng thử việc/thời vụ, trần miễn thuế phụ cấp ăn trưa | ❌ Chưa triển khai — xem BR-dltl-024…027 (Mục 15.3.1), đã có công thức + AC đầy đủ, chờ Architect/Backend |
 
 ---
 
@@ -291,6 +292,8 @@ Ba tầng không thống nhất ở trạng thái `PENDING_REVIEW`: 8 phân hệ
 | EC-dltl-03 | Nhân viên bị xóa mềm (`da_xoa = true`) sau khi đã có `KpiRecord`/`BonusRecord`/... trong kỳ đang `DRAFT` | `resolveTargetEmployees` lọc `da_xoa:false` nên nhân viên biến mất khỏi danh sách các màn nhập liệu, nhưng bản ghi biến động cũ của họ vẫn còn trong DB và vẫn được `calculatePayrollPreview` tính vào bảng lương (vì hàm này tự query riêng `attendanceRecord`/`kpiRecord`/... theo `periodId`, không lọc lại theo nhân viên còn hoạt động) | Cần quyết định rõ: nhân viên nghỉ giữa kỳ có được tính lương phần đã làm hay bị loại hoàn toàn khỏi bảng lương kỳ đó |
 | EC-dltl-04 | `snapshotPayrollSheet` chạy khi có 0 nhân viên đang hoạt động | `calculatedLines.length > 0` mới `createMany` — an toàn, không lỗi | Giữ nguyên |
 | EC-dltl-05 | Reopen 1 kỳ đã `LOCKED`, sau đó khóa lại (`lock`) mà không sửa gì | `snapshotPayrollSheet` xóa hết `PayrollSheetLine` cũ rồi tạo lại từ đầu — số liệu giống hệt lần trước nếu không có gì đổi | Đúng như kỳ vọng, không cần sửa |
+| EC-dltl-06 *(mới, 2026-09-10)* | Nhân viên có `loai_hd = 'xac_dinh'` (HĐ xác định thời hạn) nhưng thời hạn hợp đồng (`ngay_ket_thuc − ngay_bat_dau`) dưới 3 tháng | Theo phạm vi CHỐT ở BR-dltl-026, vẫn áp nhánh cũ (biểu lũy tiến + giảm trừ gia cảnh) vì chỉ xét `loai_hd ∈ {thu_viec, thoi_vu}` | Luật (Điều 25 TT111/2013) có thể yêu cầu khấu trừ 10% cho trường hợp này — **chưa CHỐT**, cần kế toán trưởng xác nhận nếu phát sinh thực tế; KHÔNG chặn tiến độ đợt này |
+| EC-dltl-07 *(mới, 2026-09-10)* | Nhân viên có `loai_hd = 'khoan'` (hợp đồng khoán việc) | Theo phạm vi CHỐT ở BR-dltl-026, áp nhánh cũ (biểu lũy tiến), không rơi vào khấu trừ 10% | Luật có khái niệm "không ký HĐLĐ" cũng thuộc diện khấu trừ 10% — `khoan` CÓ THỂ thuộc diện này nhưng **chưa CHỐT**, cùng nhóm với EC-dltl-06, cần xác nhận riêng nếu phát sinh |
 
 ---
 
@@ -298,12 +301,285 @@ Ba tầng không thống nhất ở trạng thái `PENDING_REVIEW`: 8 phân hệ
 
 BR-dltl-001…023 ↔ E-dltl-001…026 ↔ AC-dltl-01…11 ↔ OQ-dltl-001…010: xem chỉ mục tương ứng ở Mục 5, 7, 10, 8. Traceability đầy đủ UC↔FR↔Screen sẽ được Architect/QA bổ sung trong `docs/hrm/du_lieu_tinh_luong/` khi có `api-contract.md`/`data-model.md`/`test-cases.md` (chưa tồn tại tại thời điểm đợt kiểm định này — xem Mục 14).
 
+BR-dltl-024…027 ↔ AC-dltl-12…23 ↔ OQ-dltl-011: xem Mục 15.3.1 (công thức + AC chi tiết), Mục 15.4 (field mapping cột "Lương"), Mục 15.8 (biên bản quyết định của chủ dự án, 2026-09-10) — đợt kiểm định "Bảng lương tổng hợp".
+
 ---
 
-## 14. Bước tiếp theo (Handoff)
+## 14. Bước tiếp theo (Handoff) — cập nhật 2026-09-10, xem Mục 15
 
-Tài liệu này **chưa đóng vai trò "Ready for Implementation"** — nó là kết quả kiểm định + hình thức hóa cho code **đã viết trước, chưa qua review**. Trình tự đúng theo `CLAUDE.md` cần chạy tiếp từ đây:
+Ghi chú lịch sử (giữ nguyên, không xóa): tài liệu này ban đầu **chưa đóng vai trò "Ready for Implementation"**. Sau vòng 3 Amigos (Architect ∥ Tester-QA ∥ Code Reviewer, 2026-09-09) và phiên sửa lỗi kế tiếp, **8/9 lỗi 🔴 gốc đã FIXED** (xem `review-findings.md`, Mục 19.9 của `CONTEXT_SUMMARY.md`) và **frontend-engineer đã nối 23/23 file còn mock của 8 phân hệ nhập liệu** (`work-log.md` entry 2026-09-09 17:55). Cụm "Dữ liệu tính lương" (nhập liệu 8 phân hệ + vòng đời kỳ lương) coi như ổn định.
 
-1. **Architect** đọc Mục 4–7 (API thật, BR, Error Matrix), viết `docs/hrm/du_lieu_tinh_luong/api-contract-du-lieu-tinh-luong.md` + `data-model-du-lieu-tinh-luong.md`, ra quyết định kiến trúc (ADR) cho các OQ ảnh hưởng thiết kế (OQ-dltl-001, 002, 003, 004, 006, 007).
-2. **Tester-QA (Phase A)** đọc Mục 10 (AC) + Mục 11 (phát hiện đối soát) + Mục 12 (edge case), viết `test-matrix-du-lieu-tinh-luong.md` + `test-cases-du-lieu-tinh-luong.md` — ưu tiên viết test case cho đúng 4 phát hiện 🔴 trước.
-3. Sau khi Architect + QA phản biện xong (Phase A), **Business Analyst quay lại chốt Final Sign-off** — cập nhật `Status: Ready for Implementation` vào `docs/hrm/CONTEXT_SUMMARY.md` — **chỉ khi đó** mới kích hoạt Backend Engineer sửa các phát hiện 🔴/🟠.
+**Phạm vi Mục 15 (mới, 2026-09-10):** nhiệm vụ khác — dựng chức năng hiển thị **Bảng lương tổng hợp** (`hdđt_maxv/.../components/bang_luong`) nối vào API `GET /payroll/calculate` **CHƯA TỪNG được đấu nối** (100% còn mock, khác cụm 8 phân hệ nhập liệu ở trên). Đợt kiểm định này phát hiện: (a) 10 OQ cũ nay phần lớn đã có hướng giải quyết, (b) 4 lỗ hổng nghiệp vụ thuế/bảo hiểm thật so với luật VN mà bộ máy tính lương hiện tại chưa xử lý, (c) một xung đột nguồn sự thật nghiêm trọng giữa "Hợp đồng" và "Cài đặt lương" cho cột "Lương" — xem chi tiết Mục 15.
+
+1. **Architect** đọc Mục 15 (gap thuế/bảo hiểm + xung đột nguồn lương) + Mục 4–7 (API/BR/Error Matrix cũ), thiết kế mở rộng `payrollCalculation.service.ts` + API contract cho `bang_luong`/`luong_ho_tro`.
+2. **Tester-QA (Phase A)** viết test case cho các Business Rule mới (BR-dltl-024…027) và đối chiếu Error Matrix mở rộng.
+3. Sau khi Architect + QA phản biện xong, **Business Analyst quay lại chốt Final Sign-off** — cập nhật `Status` vào `docs/hrm/CONTEXT_SUMMARY.md` — chỉ khi đó mới kích hoạt Backend Engineer.
+
+---
+
+## 15. Đối chiếu bổ sung Thuế/Bảo hiểm VN & Yêu cầu API cho UI Bảng lương (Business Analyst, 2026-09-10)
+
+### 15.1. Bối cảnh đợt này
+
+Yêu cầu: hoàn thiện chức năng **Bảng lương tổng hợp** trong `be_maxv` rồi gán API thay thế mock tại `hdđt_maxv/src/features/hrm/components/bang_luong` (`BangLuongTable.tsx`, `cotBangLuong.ts` — 18 cột; `LuongHoTroPanel.tsx` — tab "Lương hỗ trợ"). Đã đọc `mock/hooks/bangLuong.ts`, `calculations/bang_luong/bangLuong.ts` (công thức FE mẫu), `payrollCalculation.service.ts` thật, schema `GeneralSetting`/`SalaryItem`/`SalaryStructureItem`/`EmployeeSalaryItem`/`OvertimeRecord`, và `docs/nestjs/payroll/CONTEXT_SUMMARY.md` (chỉ lấy business rule luật định, KHÔNG lấy schema/code — theo đúng cảnh báo của `CLAUDE.md`).
+
+### 15.2. Cập nhật trạng thái 10 câu hỏi mở gốc (Mục 8)
+
+| Mã | Chốt lần này | Căn cứ |
+|---|---|---|
+| OQ-dltl-001 | ✅ **Đã xong** (không còn mở) | `resolveStandardWorkDays()` đọc `GeneralSetting` — đã FIXED phiên 2026-09-09 |
+| OQ-dltl-002 | ⚠️ **Chốt một nửa**: tỷ lệ bảo hiểm/đoàn phí — ĐỌC từ `GeneralSetting` (đã FIXED). Biểu thuế TNCN — **khuyến nghị BA: nên nối `GeneralSetting.taxBrackets`**, vì trường JSONB này được thiết kế đúng cho việc này (đã có `restore-default`, validate `E-hrm-080/081/082`) và giữ 2 nguồn song song (hardcode `tinhThueLuyTien()` + JSONB không dùng) là nợ kỹ thuật, không phải quyết định kiến trúc cố ý. Việc NỐI là của Architect (ADR riêng); BA chỉ chốt **hướng đi**, không tự sửa code |
+| OQ-dltl-003 | ✅ Đã xong | Audit qua `writeLog`/`sys_log` — FIXED |
+| OQ-dltl-004 | ✅ Đã xong | `assertAdminOrOwner` — FIXED |
+| OQ-dltl-005 | ⚠️ **Hướng đã chốt, thiết kế còn mở**: giữ **cảnh báo, không chặn cứng** trần OT năm (nhất quán với cách làm trần tháng hiện tại; luật cho phép vượt trần trong một số ngành có điều kiện, chặn cứng rủi ro sai). Cộng dồn theo **năm dương lịch** (khớp field `PayrollPeriod.year`). Cách truy vấn cộng dồn qua nhiều kỳ là việc của Architect |
+| OQ-dltl-006 | ✅ Coi như đã xong | `frontend-engineer` (2026-09-09 17:55) xác nhận FE luôn gửi đủ danh sách khi "Áp dụng" — rủi ro mất dữ liệu đã được né bằng quy ước code, không cần sửa API |
+| OQ-dltl-007 | ✅ Chốt: **không cần** endpoint Excel import riêng | FE đã triển khai theo hướng "parse Excel ở trình duyệt rồi gọi lại `apply*` sẵn có" (work-log 2026-09-09 17:55) — chấp nhận được, lỗi hiển thị theo response Zod hiện có |
+| OQ-dltl-008 | ✅ Gộp vào OQ-dltl-010 | Xem quyết định OQ-dltl-010 |
+| OQ-dltl-009 | ✅ Chốt: **giữ nguyên** `lock` cho phép khóa thẳng từ `DRAFT` | Đây là tính linh hoạt hợp lý (công ty nhỏ có thể bỏ qua bước trình duyệt), không có rủi ro toàn vẹn dữ liệu vì `snapshotPayrollSheet` luôn tính lại từ nguồn |
+| OQ-dltl-010 | ✅ **Chốt 1 chuẩn cho cả 3 tầng**: `PENDING_REVIEW` phải **đóng băng ghi dữ liệu** (đúng hành vi FE hiện tại, đúng thực hành kế toán — đang chờ duyệt thì không ai được sửa số, muốn sửa phải `reject` về `DRAFT` trước). **Backend `payrollPeriodLockGuard.ts` cần sửa**: thêm `PENDING_REVIEW` vào danh sách trạng thái chỉ-đọc của 8 phân hệ (hiện guard 8-phân-hệ cho ghi ở `PENDING_REVIEW`, lệch với `updatePayrollPeriod` và FE) — đây là **gap kỹ thuật cụ thể cho Architect**, không phải OQ nữa |
+
+### 15.3. Bốn lỗ hổng nghiệp vụ thuế/bảo hiểm mới (so với luật VN, tham khảo `docs/nestjs/payroll`) — CHỐT trong phạm vi triển khai đợt này (2026-09-10)
+
+| Mã BR mới | Quy tắc | Trạng thái hiện tại | Ảnh hưởng tới thực lĩnh |
+|---|---|---|---|
+| BR-dltl-024 | **Hai trần bảo hiểm độc lập**: BHXH+BHYT trần = `baseSalary × 20` (hiện 2.34tr × 20 = 46.8tr, NĐ 73/2024); BHTN trần = `regionMinSalary × 20` (hiện 4.96tr × 20 = 99.2tr, theo vùng) | ❌ **Không có** — `employeeInsuranceRate` gộp cả 3 loại (BHXH+BHYT+BHTN) thành 1 tỷ lệ, nhân thẳng với `insuranceSalaryBase` không trần nào. `GeneralSetting` đã sẵn `baseSalary`/`regionMinSalary` (không cần field DB mới, chỉ cần tách logic) | Nhân viên lương đóng bảo hiểm > 46.8tr/tháng bị trừ **bảo hiểm vượt mức luật định** — sai cả 2 chiều (NLĐ đóng thừa, DN cũng ghi nhận chi phí thừa) |
+| BR-dltl-025 | **Miễn thuế phần tăng ca vượt chuẩn** (Điều 3 TT111/2013): chỉ phần **chênh lệch** giữa tiền OT thực trả và tiền công giờ bình thường tương ứng mới bị tính thuế; phần trả thêm do hệ số (150%/200%/300%...) được miễn | ❌ **Không có** — `otAmount` tính đủ 100% cộng vào `grossIncome` rồi chịu thuế toàn bộ. Thiếu dữ liệu: engine chỉ giữ `convertedHours` (đã nhân hệ số), **không giữ `hours` gốc** trong kết quả trả về nên không tách được phần chênh lệch miễn thuế | Thuế TNCN bị tính **thừa** trên toàn bộ nhân viên có tăng ca |
+| BR-dltl-026 | **Khấu trừ 10% tại nguồn cho HĐ thử việc/thời vụ** khi thu nhập ≥ 2.000.000đ/lần trả, KHÔNG áp dụng biểu lũy tiến, KHÔNG trừ giảm trừ gia cảnh (Điều 25 TT111/2013) | ❌ **Không có** — `personalIncomeTax` luôn gọi `tinhThueLuyTien()` (biểu lũy tiến) khi `activeContract.tinh_tncn = true`, không rẽ nhánh theo `loai_hd`. Field `hrm_hop_dong.loai_hd` **đã có sẵn** giá trị `thu_viec`/`thoi_vu` (đã xác nhận qua schema) | Nhân viên thử việc/thời vụ bị tính thuế **sai phương pháp hoàn toàn** (áp nhầm biểu lũy tiến + giảm trừ gia cảnh cho đối tượng luật quy định phải khấu trừ thẳng 10%) |
+| BR-dltl-027 | **Trần miễn thuế phụ cấp ăn trưa/ăn ca 730.000đ/tháng** (TT26/2016/TT-BLĐTBXH) — phần vượt trần bị tính vào thu nhập chịu thuế | ❌ **Không có** — hệ quả trực tiếp của gap lớn hơn: engine **hoàn toàn chưa đọc** `EmployeeSalaryItem` nhóm `FIXED_ALLOWANCE`/`BENEFIT_ALLOWANCE` (chỉ đọc `KPI_PERFORMANCE` và `ATTENDANCE_ALLOWANCE`) — nay ĐÃ CHỐT phải đọc (xem Mục 15.4, OQ-dltl-011 resolved) nên trần này bắt buộc phải cài cùng lúc | Nếu nối nhóm phụ cấp mà quên trần, phụ cấp ăn trưa > 730k vẫn bị khai miễn thuế toàn bộ — sai luật |
+
+**Quyết định biểu thuế TNCN/giảm trừ gia cảnh — ĐÃ CHỐT (không còn "không tự quyết"):** xem Mục 15.8. Giữ nguyên luật hiện hành 7 bậc, 11.000.000đ/4.400.000đ. Bộ số liệu 2026 mới (5 bậc, 15.500.000đ/6.200.000đ) mà `docs/nestjs/payroll` có nhắc tới **KHÔNG được áp dụng**.
+
+#### 15.3.1. Công thức chi tiết & Acceptance Criteria (đủ để Architect thiết kế và Backend code thẳng)
+
+Toàn bộ công thức dưới đây viết theo đúng tên biến/field đã có trong `payrollCalculation.service.ts` bản 2026-09-09 (không đổi tên biến hiện có trừ khi ghi rõ).
+
+**BR-dltl-024 — Hai trần bảo hiểm độc lập**
+
+Nguồn dữ liệu (đã có sẵn, không cần field DB mới): `hrm_hop_dong.luong_bhxh` (→ `insuranceSalaryBase`, giữ nguyên) · `hrm_hop_dong.trich_bhxh` · `GeneralSetting.baseSalary` (mặc định 2.340.000) · `GeneralSetting.regionMinSalary` (mặc định 4.960.000) · `GeneralSetting.insuranceEmployeeSocial` (8.0%) + `insuranceEmployeeHealth` (1.5%) · `insuranceEmployeeUnemployment` (1.0%) · `insuranceCompanySocial` (17.5%) + `insuranceCompanyHealth` (3.0%) · `insuranceCompanyUnemployment` (1.0%).
+
+Công thức (thay đoạn `employeeInsuranceDeduction`/`companyInsuranceExpense` ở `payrollCalculation.service.ts:289-290`):
+```
+capBhxhByt = min(insuranceSalaryBase, GeneralSetting.baseSalary × 20)        // mặc định trần 46.800.000
+capBhtn    = min(insuranceSalaryBase, GeneralSetting.regionMinSalary × 20)   // mặc định trần 99.200.000
+
+Khi activeContract.trich_bhxh = true:
+  employeeInsuranceDeduction = round(capBhxhByt × (insuranceEmployeeSocial + insuranceEmployeeHealth) / 100)
+                              + round(capBhtn × insuranceEmployeeUnemployment / 100)
+  companyInsuranceExpense    = round(capBhxhByt × (insuranceCompanySocial + insuranceCompanyHealth) / 100)
+                              + round(capBhtn × insuranceCompanyUnemployment / 100)
+Khi trich_bhxh = false: cả hai = 0 (giữ nguyên hành vi hiện tại).
+
+insuranceCapAppliedBhxhByt = (insuranceSalaryBase > GeneralSetting.baseSalary × 20)      // field MỚI, boolean
+insuranceCapAppliedBhtn    = (insuranceSalaryBase > GeneralSetting.regionMinSalary × 20) // field MỚI, boolean
+```
+
+AC-dltl-12: Given `luong_bhxh = 120.000.000`, `trich_bhxh = true`, When tính lương, Then `employeeInsuranceDeduction = round(46.800.000×9.5%) + round(99.200.000×1.0%) = 4.446.000 + 992.000 = 5.438.000` (KHÔNG phải `120.000.000×10.5% = 12.600.000` như công thức gộp cũ), `insuranceCapAppliedBhxhByt = true`, `insuranceCapAppliedBhtn = true`.
+AC-dltl-13: Given `luong_bhxh = 70.000.000` (vượt trần BHXH/BHYT nhưng chưa vượt trần BHTN), When tính lương, Then chỉ `insuranceCapAppliedBhxhByt = true`; `capBhtn = 70.000.000` (không bị kẹp).
+AC-dltl-14: Given `luong_bhxh = 20.000.000` (dưới cả 2 trần), When tính lương, Then `employeeInsuranceDeduction = round(20.000.000×10.5%) = 2.100.000` — khớp kết quả công thức gộp cũ (không regression cho trường hợp phổ biến).
+
+**BR-dltl-025 — Miễn thuế phần tăng ca vượt chuẩn**
+
+Nguồn dữ liệu: `OvertimeRecord.hours` (giờ GỐC — đã có trong DB, engine hiện chỉ đọc `convertedHours`) · `OvertimeRecord.convertedHours` · biến `hourlyRate` đã có sẵn trong engine (`baseSalaryMonthly / (standardWorkDays × standardHoursPerDay)`, xem lưu ý ở Mục 15.4 về `baseSalaryMonthly`).
+
+Công thức (chèn trước bước tính `personalIncomeTax`; KHÔNG đổi `otAmount`/`grossIncome`/`netTakeHomeSalary`):
+```
+Với mỗi OvertimeRecord r của nhân viên trong kỳ:
+  tienOT_r    = round(hourlyRate × r.convertedHours)   // khớp cách cộng dồn otAmount hiện tại
+  tienChuan_r = round(hourlyRate × r.hours)             // tiền công giờ CHUẨN (giờ gốc, hệ số 100%)
+  tienMienThue_r = max(0, tienOT_r − tienChuan_r)
+
+otTaxExemptAmount = Σ tienMienThue_r (mọi bản ghi OT của nhân viên trong kỳ)   // field MỚI
+
+taxableIncome = max(0, grossIncome − otTaxExemptAmount − totalDeductions)
+// totalDeductions giữ nguyên = personalDeduction + dependentCount×dependentDeduction + employeeInsuranceDeduction
+// grossIncome/otAmount/netTakeHomeSalary GIỮ NGUYÊN — chỉ taxableIncome giảm, thực lĩnh không đổi
+```
+
+AC-dltl-15: Given `hourlyRate = 100.000đ/giờ`, 1 dòng OT ngày thường (`hours = 10`, `convertedHours = 15`), When tính lương, Then `tienOT_r = 1.500.000`, `tienChuan_r = 1.000.000`, `otTaxExemptAmount = 500.000`, `taxableIncome` giảm đúng 500.000đ so với cách tính cũ (toàn bộ `otAmount` chịu thuế).
+AC-dltl-16: Given nhân viên không có dòng OT nào trong kỳ, When tính lương, Then `otTaxExemptAmount = 0`, `taxableIncome` không đổi.
+AC-dltl-17: Given nhân viên có 3 dòng OT thuộc 3 loại khác nhau, When tính lương, Then `otTaxExemptAmount` = tổng miễn thuế của cả 3 dòng cộng lại.
+
+**BR-dltl-026 — Khấu trừ 10% tại nguồn cho HĐ thử việc/thời vụ (phạm vi CHỐT: `loai_hd ∈ {thu_viec, thoi_vu}`)**
+
+Nguồn dữ liệu: `hrm_hop_dong.loai_hd` (đã có, giá trị `thu_viec`/`thoi_vu` xác nhận qua schema `hrm_hop_dong:987-990`). Ngưỡng khấu trừ 2.000.000đ/lần trả (Điều 25 Khoản 1 Điểm i TT111/2013/TT-BTC, giữ nguyên luật hiện hành) — `GeneralSetting` **chưa có field lưu ngưỡng này**; Architect cân nhắc thêm field mới (vd `probationWithholdingThreshold`) hoặc hardcode kèm chú thích căn cứ pháp lý — đây là quyết định KỸ THUẬT, ngưỡng NGHIỆP VỤ (2.000.000đ) đã chốt.
+
+Công thức (thay nhánh rẽ hiện tại ở `payrollCalculation.service.ts:299`, hiện luôn gọi `tinhThueLuyTien()` bất kể `loai_hd`):
+```
+thuNhapKheKhauTru = grossIncome − otTaxExemptAmount   // đã trừ phần OT miễn thuế (BR-dltl-025), ÁP DỤNG chung cho cả 2 nhánh dưới — trả lời GAP-QA-05
+
+Nếu activeContract.tinh_tncn ≠ true:          // cờ hợp đồng "không tính TNCN" ĐÈ LÊN cả 2 cơ chế bên dưới
+  personalIncomeTax = 0
+  withholdingTaxApplied = false
+Ngược lại nếu activeContract.loai_hd ∈ {'thu_viec', 'thoi_vu'}:
+  Nếu thuNhapKheKhauTru ≥ 2.000.000:
+    personalIncomeTax = round(thuNhapKheKhauTru × 10%)
+    withholdingTaxApplied = true   // field MỚI, boolean
+    // TUYỆT ĐỐI KHÔNG áp personalDeduction/dependentDeduction, KHÔNG dùng tinhThueLuyTien()
+  Ngược lại (dưới ngưỡng):
+    personalIncomeTax = 0
+    withholdingTaxApplied = false
+Ngược lại (loai_hd ∈ {khong_xac_dinh, xac_dinh, khoan} — nhánh CŨ giữ nguyên):
+  taxableIncome = max(0, thuNhapKheKhauTru − totalDeductions)
+  personalIncomeTax = tinhThueLuyTien(taxableIncome)
+  withholdingTaxApplied = false
+```
+
+**Phạm vi CHƯA áp dụng, ghi nhận rõ (không phải bỏ sót):** `xac_dinh` ngắn hạn (<3 tháng) và `khoan` (khoán việc) có thể cũng thuộc diện khấu trừ 10% theo luật — đánh dấu EC-dltl-06/07 (Mục 12), cần kế toán trưởng xác nhận riêng nếu phát sinh, KHÔNG chặn tiến độ đợt này.
+
+AC-dltl-18: Given `loai_hd = 'thu_viec'`, `grossIncome = 3.000.000`, `otTaxExemptAmount = 0`, When tính lương, Then `personalIncomeTax = 300.000`, `withholdingTaxApplied = true`, KHÔNG bị trừ giảm trừ gia cảnh dù có khai người phụ thuộc.
+AC-dltl-19: Given `loai_hd = 'thoi_vu'`, `grossIncome = 1.500.000` (dưới ngưỡng 2.000.000), When tính lương, Then `personalIncomeTax = 0`, `withholdingTaxApplied = false`.
+AC-dltl-20: Given `loai_hd = 'xac_dinh'` (HĐ chính thức), When tính lương, Then áp nhánh cũ (`tinhThueLuyTien`, có giảm trừ gia cảnh) — hành vi hiện tại không đổi cho loại hợp đồng này.
+
+**BR-dltl-027 — Trần miễn thuế phụ cấp ăn trưa 730.000đ/tháng**
+
+Điều kiện tiên quyết: chỉ có ý nghĩa SAU khi engine đọc nhóm phụ cấp cố định theo OQ-dltl-011 (Mục 15.4).
+
+**Gap kỹ thuật cần Architect quyết định trước khi code (BA KHÔNG tự chọn):** `SalaryItem` của `be_maxv` KHÔNG có cờ nhận diện "khoản ăn trưa/ăn ca" (khác tài liệu tham khảo `docs/nestjs/payroll` có sẵn `isMealAllowance`). KHÔNG được dò theo TÊN khoản (rủi ro y hệt lỗi tài liệu tham khảo đã cảnh báo — khoản đặt tên khác "ăn trưa/ăn ca" sẽ không bao giờ khớp). Hai lựa chọn: (a) thêm cờ boolean mới `SalaryItem.isMealAllowance` (khuyến nghị — nhất quán với 2 cờ `isTaxable`/`isSocialInsurance` đã có); (b) quy ước theo `code` cố định (rủi ro vỡ khi đổi mã).
+
+> ✅ **Đã chốt bởi Architect** (`ADR-010` QĐ-4, 2026-09-10): đúng phương án (a) — cột mới `SalaryItem.isMealAllowance`, xem `data-model-du-lieu-tinh-luong.md` Mục 11.3.
+
+Công thức (giả định đã có cách nhận diện, vd cờ `isMealAllowance` theo phương án (a)):
+```
+mealAllowanceAmount = Σ EmployeeSalaryItem.amount của set lương APPROVED hiện hành, với salaryItem.isMealAllowance = true
+
+hanMucMienThue = round(730.000 × min(1, actualWorkDays / standardWorkDays))   // quy đổi theo công thực tế, nhất quán cách proratedWorkSalary đã làm
+
+lunchAllowanceTaxableAmount = max(0, mealAllowanceAmount − hanMucMienThue)     // field MỚI — phần VƯỢT trần
+lunchAllowanceExemptAmount  = mealAllowanceAmount − lunchAllowanceTaxableAmount
+
+taxableIncome = max(0, grossIncome − otTaxExemptAmount − lunchAllowanceExemptAmount
+                     − otherAllowanceTaxExemptAmount − totalDeductions)
+// MỞ RỘNG bởi Quyết định nghiệp vụ 3 ngay dưới đây — công thức đầy đủ có BA cấu phần miễn thuế,
+// không phải hai (`otherAllowanceTaxExemptAmount` xem định nghĩa dưới)
+```
+
+AC-dltl-21: Given `mealAllowanceAmount = 1.000.000`, đủ công (`actualWorkDays = standardWorkDays`), When tính lương, Then `hanMucMienThue = 730.000`, `lunchAllowanceTaxableAmount = 270.000` cộng vào thu nhập chịu thuế.
+AC-dltl-22: Given `mealAllowanceAmount = 500.000` (dưới trần), When tính lương, Then `lunchAllowanceTaxableAmount = 0`, toàn bộ được miễn thuế.
+AC-dltl-23: Given nhân viên nghỉ nửa tháng (`actualWorkDays = standardWorkDays/2`), When tính lương, Then `hanMucMienThue = round(730.000×0.5) = 365.000` — trần miễn thuế quy đổi theo công, không giữ nguyên 730.000 cho người làm nửa tháng.
+
+**Quyết định nghiệp vụ 3 (`Q-1`, chốt bởi chủ dự án 2026-09-10) — Miễn thuế phụ cấp cố định theo khai báo `isTaxable`/`taxTreatment`, field mới `otherAllowanceTaxExemptAmount`**
+
+> Quyết định + lý do đầy đủ: Mục 15.8 (biên bản quyết định chủ dự án — 2 quyết định gốc; đây là quyết định thứ 3, phát sinh sau khi Architect nêu câu hỏi trong `ADR-010`) · `ADR-010` QĐ-9 (kiến trúc chi tiết bước [5a]). Mục này bổ sung công thức + Acceptance Criteria còn thiếu ở lần viết đầu của Mục 15.3.1, theo đúng yêu cầu đối soát của Architect (`api-contract-du-lieu-tinh-luong.md` Mục 8.7) — khớp 100% với `ADR-010`, không đổi tên trường/công thức Architect đã chốt.
+
+Ô tick "chịu thuế TNCN" ở màn "Khoản lương" (`SalaryItem.isTaxable`) và cột "Phân loại" ở màn "Cấu trúc lương" (`SalaryStructureItem.taxTreatment`) **phải có hiệu lực thật**: khoản phụ cấp cố định nào được khai miễn thuế thì bị trừ thật khỏi thu nhập tính thuế — không chỉ dừng ở hai ngoại lệ cứng (OT vượt chuẩn, ăn trưa trong trần) như công thức gốc ở trên.
+
+Công thức (chèn ngay sau bước quy đổi công ở Mục 15.4, TRƯỚC khi tính `taxableIncome`; duyệt **CÙNG MỘT vòng lặp** với bước tính `mealAllowanceAmount` ở trên — cấm hai vòng lặp độc lập cộng vào hai biến):
+```
+Với mỗi EmployeeSalaryItem đã cộng vào allowanceInPeriodTotal (chỉ salaryItem.category ∈ {FIXED_ALLOWANCE, BENEFIT_ALLOWANCE}),
+xét theo thứ tự, dừng ở điều kiện đầu tiên khớp (if / else if):
+  (i)   salaryItem.isMealAllowance = true                                         → vào giỏ ĂN CA (bỏ qua ô tick của chính khoản này)
+  (ii)  structureItem?.taxTreatment = 'EXEMPT'  HOẶC  salaryItem.isTaxable = false → vào giỏ MIỄN THEO KHAI BÁO
+  (iii) còn lại                                                                   → chịu thuế, không vào giỏ nào
+
+mealAllowanceAmount           = Σ giỏ (i)    // đã có ở công thức BR-dltl-027 trên, không đổi
+otherAllowanceTaxExemptAmount = Σ giỏ (ii)   // field MỚI — số tiền TRONG KỲ, đã quy đổi công
+```
+
+**Phạm vi (KHÔNG hiểu rộng ra):** chỉ áp cho phụ cấp cố định đi vào `allowanceInPeriodTotal` (`category ∈ {FIXED_ALLOWANCE, BENEFIT_ALLOWANCE}`). KHÔNG áp cho thưởng (`BonusRecord`), lương phần trăm (`CommissionRecord`), KPI, lương sản phẩm, chuyên cần — các bảng đó cũng trỏ `SalaryItem` có cột `isTaxable`, nhưng cờ đó **vẫn bị bỏ qua** cho các cấu phần này (giữ đúng hành vi hiện tại, không đổi một đồng nào ở đó).
+
+**Ràng buộc bắt buộc — hai giỏ (i) và (ii) LOẠI TRỪ NHAU:** một khoản `isMealAllowance = true` không bao giờ được cộng thêm vào `otherAllowanceTaxExemptAmount`, kể cả khi chính khoản đó cũng khai `isTaxable = false`/`taxTreatment = EXEMPT` (tình huống phổ biến trong dữ liệu thật, không phải ca biên — vi phạm ⇒ miễn thuế hai lần trên cùng một khoản tiền ⇒ khai thiếu thuế). Bất biến bắt buộc: `mealAllowanceAmount + otherAllowanceTaxExemptAmount ≤ allowanceInPeriodTotal`.
+
+AC-dltl-24: Given "Phụ cấp trách nhiệm" `1.000.000đ` (`FIXED_ALLOWANCE`, `isMealAllowance = false`, `isTaxable = false`, không có dòng cấu trúc lương ghi đè), đủ công, When tính lương, Then khoản này VẪN được cộng đủ `1.000.000đ` vào `allowanceInPeriodTotal`/thực lĩnh (không bị trừ khỏi lương), nhưng `otherAllowanceTaxExemptAmount = 1.000.000` và `taxableIncome` giảm đúng `1.000.000đ` so với trường hợp không tick.
+AC-dltl-25: Given khoản `isTaxable = true` (mặc định) NHƯNG `SalaryStructureItem.taxTreatment = 'EXEMPT'` cho đúng khoản đó trong cấu trúc lương hiệu lực của kỳ, When tính lương, Then khoản này VẪN vào giỏ miễn theo khai báo (phép OR — `EXEMPT` không bị `isTaxable = true` phủ quyết), `otherAllowanceTaxExemptAmount` cộng khoản này.
+AC-dltl-26: Given "Phụ cấp ăn trưa" `900.000đ` có CẢ `isMealAllowance = true` VÀ `isTaxable = false`, đủ công, When tính lương, Then khoản này CHỈ vào giỏ ăn ca — `mealAllowanceAmount = 900.000`, `lunchAllowanceExemptAmount = 730.000`, `lunchAllowanceTaxableAmount = 170.000` (giống hệt `AC-dltl-21`, cờ `isTaxable` của khoản này bị bỏ qua hoàn toàn) — KHÔNG được cộng thêm vào `otherAllowanceTaxExemptAmount`. Nếu code miễn toàn bộ `900.000đ` (cộng dồn 2 lớp) là SAI, phải FAIL ca này.
+AC-dltl-27: Given nhân viên có khoản `BonusRecord`/`CommissionRecord` mà `SalaryItem.isTaxable = false`, When tính lương, Then khoản này VẪN chịu thuế toàn bộ như trước — KHÔNG cộng vào `otherAllowanceTaxExemptAmount` (phạm vi giỏ miễn theo khai báo chỉ áp cho phụ cấp cố định, không áp cho thưởng/hoa hồng/KPI/lương sản phẩm/chuyên cần).
+AC-dltl-28: Given không có khoản phụ cấp cố định nào khai miễn thuế (mọi `isTaxable` mặc định `true`, không có dòng cấu trúc lương nào `EXEMPT`), When tính lương, Then `otherAllowanceTaxExemptAmount = 0` — kết quả khớp đúng công thức gốc (`AC-dltl-21…23`), không phá vỡ hành vi hiện có của các test case cũ.
+
+### 15.4. Cột "Lương" — ĐÃ CHỐT bởi chủ dự án (2026-09-10), không còn là xung đột nguồn sự thật
+
+**Bối cảnh cũ (để lưu vết):** FE mock (`calculations/bang_luong/bangLuong.ts`) coi "Cài đặt lương" (`EmployeeSalaryItem` nhóm `FIXED_ALLOWANCE`+`BENEFIT_ALLOWANCE`) là nguồn cột "Lương"; engine thật (`payrollCalculation.service.ts`) coi "Hợp đồng" (`luong_chinh`) là TOÀN BỘ lương cơ bản, không đọc nhóm phụ cấp cố định chút nào. Đây từng bị đánh dấu OQ-dltl-011 vì tưởng là 2 mô hình loại trừ nhau.
+
+**Quyết định (OQ-dltl-011 — [x] Đã resolved):** Cột "Lương" lấy **CẢ HAI nguồn cộng lại** — 2 tầng dữ liệu bổ sung cho nhau, KHÔNG thay thế nhau:
+1. **Hợp đồng** (`hrm_hop_dong.luong_chinh`) — lương thỏa thuận nền tảng.
+2. **Cài đặt lương** (`EmployeeSalaryItem` của `EmployeeSalary` đang `APPROVED`, nhóm `FIXED_ALLOWANCE`+`BENEFIT_ALLOWANCE`) — CỘNG THÊM, đọc theo đúng cách engine đã đọc riêng `KPI_PERFORMANCE`/`ATTENDANCE_ALLOWANCE` (dùng chung vòng lặp `es.items` đã có sẵn, không cần query mới).
+
+**Công thức field mapping (theo đúng chỉ đạo — `baseSalaryMonthly` là field cột "Lương", ĐƯỢC MỞ RỘNG để gồm cả 2 tầng):**
+```
+fixedAllowanceTotal = Σ EmployeeSalaryItem.amount của set lương APPROVED hiện hành, với
+                       salaryItem.category ∈ {FIXED_ALLOWANCE, BENEFIT_ALLOWANCE}
+
+baseSalaryMonthly = Number(activeContract.luong_chinh) + fixedAllowanceTotal   // MỞ RỘNG so với hiện tại (dòng 187, hiện chỉ = luong_chinh)
+```
+
+**Lưu ý kỹ thuật quan trọng cho Architect (BA không tự quyết thay):** `baseSalaryMonthly` hiện đang được dùng làm đầu vào cho 2 công thức khác mà ý nghĩa gốc là "chỉ tính trên lương hợp đồng":
+- `hourlyRate = baseSalaryMonthly / (standardWorkDays × standardHoursPerDay)` (dùng cho `otAmount`, BR-dltl-025) — nếu `baseSalaryMonthly` giờ gồm cả phụ cấp, đơn giá giờ OT sẽ tăng theo, có thể không đúng ý luật ("giờ chuẩn" thường tính trên lương cơ bản thuần, không gồm phụ cấp).
+- `proratedWorkSalary` (quy đổi theo công) — phụ cấp cố định `MONTHLY_FIXED` (theo `SalaryStructureItem.calculationMethod`) không nên bị quy đổi theo công giống lương hợp đồng.
+
+Vì vậy Architect cần tách rõ 2 biến khi thiết kế chi tiết: `contractBaseSalary` (= `luong_chinh` thuần, dùng cho `hourlyRate`/BHXH) và `fixedAllowanceTotal` (cộng vào `grossIncome`/cột "Lương" hiển thị, quy đổi công theo `calculationMethod` riêng của từng khoản — `MONTHLY_FIXED` = không quy đổi, `ACTUAL_WORKDAYS` = quy đổi theo `actualWorkDays/standardWorkDays`). Cột "Lương" hiển thị ở UI = `contractBaseSalary + fixedAllowanceTotal` (đã quy đổi công nếu áp dụng).
+
+**Vai trò còn lại của Hợp đồng (không đổi):** căn cứ đóng BHXH (`luong_bhxh` → `insuranceSalaryBase`, BR-dltl-024) · cờ tính thuế (`tinh_tncn`) · loại hợp đồng cho khấu trừ 10% (`loai_hd`, BR-dltl-026) · kiểu lương (`kieu_luong`).
+
+### 15.5. Ánh xạ 18 cột UI Bảng lương ↔ dữ liệu API hiện có/thiếu (cập nhật sau khi chốt OQ-dltl-011 + BR-dltl-024…027)
+
+| Cột UI (`cotBangLuong.ts`) | Field API `GET /payroll/calculate` | Trạng thái |
+|---|---|---|
+| `ho_ten`, `bo_phan` (ghép `ten_pb`/`ten_cv`) | `fullName`, `departmentName` | ✅ có, thiếu `positionName` ghép sẵn — FE tự ghép được |
+| `so_npt` | `dependentCount` | ✅ |
+| `luong` | `contractBaseSalary` + `fixedAllowanceTotal` (2 field MỚI) | ⚠️ Đã chốt công thức Mục 15.4, cần Architect thêm 2 field |
+| `ngay_cong` | `actualWorkDays` | ✅ |
+| `gio_tang_ca` (giờ **gốc**, chưa quy đổi) | *(chỉ có `otConvertedHours`)* | ❌ Thiếu field `otRawHours` — vẫn cần bổ sung (tái xác nhận, xem Mục 15.9) |
+| `tien_tang_ca` | `otAmount` | ✅ |
+| `luong_theo_ngay` | `proratedWorkSalary` | ✅ giữ nguyên ý nghĩa (chỉ phần Hợp đồng quy đổi công); phần phụ cấp quy đổi công theo `calculationMethod` riêng (Mục 15.4) |
+| `luong_san_pham` | `pieceworkSalary` | ✅ |
+| `thuong` | `bonusSalary` | ✅ |
+| `kpi` | `kpiSalary` | ✅ |
+| `thu_nhap` | `grossIncome` (mở rộng cộng thêm `fixedAllowanceTotal` quy đổi công) | ⚠️ Cần đối chiếu 1-1 khi viết adapter |
+| `bao_hiem` | `employeeInsuranceDeduction` | ⚠️ Cần công thức mới BR-dltl-024 (2 trần độc lập) + field `insuranceCapAppliedBhxhByt`/`insuranceCapAppliedBhtn` |
+| `cong_doan` | `employeeUnionFee` | ✅ |
+| `kpcd_ct` | `companyUnionExpense` | ✅ |
+| `bu_tru` | `adjustmentNetAmount` | ✅ |
+| `thue_tncn` | `personalIncomeTax` | ⚠️ Cần công thức mới BR-dltl-025/026/027 + Quyết định nghiệp vụ 3 (`Q-1`, `AC-dltl-24…28`) + field `otTaxExemptAmount`/`withholdingTaxApplied`/`lunchAllowanceTaxableAmount`/`otherAllowanceTaxExemptAmount` |
+| `thuc_linh` | `netTakeHomeSalary` | ✅ |
+
+**Kết luận Mục 15.5 (cập nhật 2026-09-10):** việc chính không còn là "chờ chốt OQ-dltl-011" (đã resolved) mà là (1) vá 4 công thức Mục 15.3.1, (2) thêm field mới vào response `GET /payroll/calculate` (đếm đủ ở Mục 15.9), (3) Architect quyết định gap kỹ thuật `isMealAllowance` (BR-dltl-027) + tách `contractBaseSalary`/`fixedAllowanceTotal` (Mục 15.4), (4) FE viết 1 lớp adapter đổi tên field (giống `payrollInputsApi.ts` trước đó).
+
+### 15.6. Yêu cầu API cho tab "Lương hỗ trợ"
+
+`useLuongHoTroRows()` (mock) cần: mỗi nhân viên 1 dòng, `khoan: Record<ma_khoan, so_tien>` (một cột động cho mỗi khoản `luong_ho_tro`/`BENEFIT_ALLOWANCE` đang `ACTIVE`), cộng `tong`/`tong_muc_thang`. **Không có endpoint nào ở `payrollCalculation.controller.ts` hiện tại phục vụ được việc này**. Cần **1 endpoint mới**, đề xuất `GET /payroll/support-allowances?periodId=` — trả breakdown theo từng `SalaryItem` category `BENEFIT_ALLOWANCE` cho từng nhân viên đang hoạt động. Sau khi chốt OQ-dltl-011 (Mục 15.4), endpoint này **càng cần thiết hơn** (không còn là "gap độc lập" mà là hệ quả trực tiếp của việc engine giờ phải đọc nhóm phụ cấp) — Architect thiết kế response shape theo `SalaryStructureItem.calculationMethod` đã có sẵn trong schema.
+
+### 15.7. Kết luận & Trạng thái
+
+**Đặc tả đã chốt đủ cho phần "Bảng lương tổng hợp".** Cả 3 quyết định nghiệp vụ bắt buộc (OQ-dltl-011 — nguồn cột "Lương"; biểu thuế TNCN — giữ nguyên luật hiện hành; Quyết định nghiệp vụ 3/`Q-1` — ô tick miễn thuế có hiệu lực thật) đã được chủ dự án xác nhận trực tiếp qua phiên làm việc 2026-09-10 (Mục 15.8). BR-dltl-024…027 + Quyết định nghiệp vụ 3 đã có công thức + Acceptance Criteria đầy đủ (Mục 15.3.1, `AC-dltl-12…28`) — đủ để Architect thiết kế thẳng và Tester-QA viết test case mà không cần đoán. Hai gap KỸ THUẬT BA từng để mở đã được Architect chốt trong `ADR-010`: (a) cách nhận diện khoản "ăn trưa/ăn ca" trong `SalaryItem` → cờ `isMealAllowance` (QĐ-4); (b) tách `contractBaseSalary`/`fixedAllowanceTotal`/`allowanceInPeriodTotal` khỏi `baseSalaryMonthly` (QĐ-1).
+
+**BA Final Sign-off — HOÀN TẤT (2026-09-10).** Đã đối soát chéo SRS ↔ `ADR-010` ↔ `data-model` Mục 11 ↔ `api-contract` Mục 8 ↔ `test-matrix-bang-luong-tong-hop.md`: không còn mâu thuẫn nghiệp vụ chặn tiến độ. Biên bản sign-off đầy đủ: `docs/hrm/CONTEXT_SUMMARY.md` Mục 19.16. **Status: Ready for Implementation** cho cụm "Bảng lương tổng hợp" — Backend Engineer được kích hoạt.
+
+### 15.8. Biên bản quyết định của chủ dự án — chốt 2 câu hỏi mở (2026-09-10)
+
+| Câu hỏi | Quyết định | Người quyết | Căn cứ |
+|---|---|---|---|
+| OQ-dltl-011 — Nguồn cột "Lương" | **Hợp đồng (`luong_chinh`) + CỘNG THÊM phụ cấp cố định từ Cài đặt lương (`EmployeeSalaryItem` nhóm `FIXED_ALLOWANCE`/`BENEFIT_ALLOWANCE`)** — 2 tầng bổ sung, không thay thế | Chủ dự án, qua phiên làm việc trực tiếp 2026-09-10 | Cả 2 cụm code (FE mock + engine thật) đều đúng một phần — mỗi bên nắm 1 tầng dữ liệu nghiệp vụ khác nhau, không loại trừ nhau. Việc engine trước đây bỏ sót nhóm `FIXED_ALLOWANCE`/`BENEFIT_ALLOWANCE` là THIẾU SÓT (đã ghi nhận ở BR-dltl-023, Mục 5), không phải chủ đích |
+| Biểu thuế TNCN | **Giữ nguyên luật hiện hành: 7 bậc lũy tiến, giảm trừ gia cảnh 11.000.000đ (bản thân) / 4.400.000đ (người phụ thuộc)** — KHÔNG áp bộ số liệu 2026 mới (5 bậc, 15.500.000đ/6.200.000đ) | Chủ dự án, qua phiên làm việc trực tiếp 2026-09-10 | Bộ số liệu 2026 mới CHƯA xác nhận hiệu lực chính thức tại `be_maxv` — chính tài liệu tham khảo `docs/nestjs/payroll` cũng tự ghi "kế toán phải đối chiếu lại". `tinhThueLuyTien()` hiện tại đã đúng luật hiện hành, GIỮ NGUYÊN, không sửa biểu thuế |
+
+**Hệ quả:** `tinhThueLuyTien()` (`payrollCalculation.service.ts:9-30`) và `GeneralSetting.personalDeduction`/`dependentDeduction` **KHÔNG cần sửa** cho đợt này. `OQ-dltl-002` (Mục 15.2) vẫn giữ nguyên phần khuyến nghị "nối `GeneralSetting.taxBrackets` JSONB thay vì hardcode" — đây là quyết định KỸ THUẬT (đọc từ DB field có sẵn vs giữ hardcode), khác với quyết định NGHIỆP VỤ "dùng luật nào" vừa chốt ở đây. Vì luật không đổi, việc nối JSONB không bắt buộc cho đợt này (không có rủi ro sai số nếu giữ hardcode); Architect có thể để lại thành nợ kỹ thuật không chặn tiến độ.
+
+### 15.9. Gap API tổng hợp — tái xác nhận sau khi thêm 4 Business Rule (2026-09-10)
+
+**Vẫn đúng, không đổi:**
+- Endpoint mới `GET /payroll/support-allowances?periodId=` (Mục 15.6) — nay CÀNG cần thiết hơn (hệ quả trực tiếp của OQ-dltl-011).
+- Field `otRawHours` (giờ OT gốc chưa quy đổi) — nay CÀNG cần thiết hơn (dữ liệu nguồn cho công thức BR-dltl-025, dù công thức tính nội bộ backend không bắt buộc phải lộ ra response, FE vẫn cần hiển thị đúng cột UI `gio_tang_ca`).
+
+**Field mới phát sinh từ BR-dltl-024…027 + Quyết định nghiệp vụ 3 (bổ sung vào response `GET /payroll/calculate`), 9 field:**
+
+| Field mới | Kiểu | Sinh ra từ | Mục đích |
+|---|---|---|---|
+| `contractBaseSalary` | number | Mục 15.4 | Lương thuần theo hợp đồng (`luong_chinh`), tách khỏi phụ cấp |
+| `fixedAllowanceTotal` | number | Mục 15.4 | Tổng phụ cấp cố định từ Cài đặt lương, cộng vào cột "Lương" |
+| `insuranceCapAppliedBhxhByt` | boolean | BR-dltl-024 | Cờ minh bạch: lương đóng BHXH/BHYT có bị kẹp trần 46.8tr không |
+| `insuranceCapAppliedBhtn` | boolean | BR-dltl-024 | Cờ minh bạch: lương đóng BHTN có bị kẹp trần 99.2tr không |
+| `otTaxExemptAmount` | number | BR-dltl-025 | Phần tiền OT được miễn thuế TNCN trong kỳ |
+| `withholdingTaxApplied` | boolean | BR-dltl-026 | Cờ minh bạch: có đang áp khấu trừ 10% tại nguồn thay vì biểu lũy tiến không |
+| `lunchAllowanceTaxableAmount` | number | BR-dltl-027 | Phần phụ cấp ăn trưa VƯỢT trần 730k, phải tính vào thu nhập chịu thuế |
+| `otherAllowanceTaxExemptAmount` | number | Quyết định nghiệp vụ 3 (`Q-1`, Mục 15.3.1 `AC-dltl-24…28`) | Tổng phụ cấp cố định khai miễn thuế (`isTaxable=false` HOẶC `taxTreatment=EXEMPT`), KHÔNG gồm khoản ăn ca |
+| `otRawHours` | number | Mục 15.5 (tái xác nhận, không phải mới) | Tổng giờ OT gốc chưa quy đổi hệ số, phục vụ cột UI `gio_tang_ca` |
+
+Đây là danh sách đầy đủ, KHÔNG có gap API nào khác phát sinh ngoài 9 field trên + 1 endpoint mới đã liệt kê. *(Cập nhật khi Final Sign-off: `otherAllowanceTaxExemptAmount` là field thứ 9, bổ sung sau khi chủ dự án chốt Quyết định nghiệp vụ 3 — công thức + AC nay đã đầy đủ ở Mục 15.3.1, khớp `ADR-010` QĐ-9.)*
+
+### 15.10. Giải đáp trực tiếp GAP-QA-01/02/05 (đối chiếu chéo với Tester-QA Phase A, cùng ngày 2026-09-10)
+
+Tester-QA chạy song song đã viết `test-matrix-bang-luong-tong-hop.md` và tự đặt **giả định khác** với công thức ở Mục 15.3.1/15.4 cho 3 gap 🔴 — BA giải đáp dứt điểm bằng chính lời chỉ đạo gốc của chủ dự án, KHÔNG để tồn tại 2 giả định song song:
+
+- **GAP-QA-01 (category nào tính là "phụ cấp cố định"):** QA tạm giả định TC-blth-001…005 chỉ gồm `FIXED_ALLOWANCE`, loại trừ `BENEFIT_ALLOWANCE` (lý do QA nêu: ăn trưa có trần riêng nên "khác bản chất phụ cấp cố định"). **Giả định này SAI so với chỉ đạo gốc** — chủ dự án nêu ví dụ tường minh "*ăn trưa, trách nhiệm*" là phụ cấp cố định cần cộng thêm, tức khoản ăn trưa (`BENEFIT_ALLOWANCE`) **PHẢI nằm trong** `fixedAllowanceTotal`. Điều này KHÔNG mâu thuẫn với việc khoản ăn trưa còn bị áp trần thuế riêng 730k (BR-dltl-027) — 2 việc độc lập: (a) khoản ăn trưa vẫn được **cộng vào lương/thực lĩnh** như phụ cấp cố định khác, (b) chỉ riêng **cách tính thuế TNCN** của phần đó có trần miễn thuế khác các phụ cấp còn lại. **CHỐT**: `fixedAllowanceTotal` gồm CẢ 2 category `FIXED_ALLOWANCE` + `BENEFIT_ALLOWANCE` (đúng công thức đã viết ở Mục 15.4) — QA cần sửa lại giả định trong test matrix (Nhóm 1 + Nhóm 6, `TC-blth-001…005`) theo hướng này.
+- **GAP-QA-02 (quy đổi công gộp hay riêng từng khoản):** **CHỐT phương án (b)** — mỗi `EmployeeSalaryItem` tự quy đổi theo `SalaryStructureItem.calculationMethod` riêng của chính nó (`MONTHLY_FIXED` = không quy đổi, `ACTUAL_WORKDAYS` = quy đổi theo `actualWorkDays/standardWorkDays`), KHÔNG gộp chung 1 tỷ lệ với `luong_chinh`. Xem công thức đầy đủ ở Mục 15.4 (đoạn "Lưu ý kỹ thuật quan trọng cho Architect").
+- **GAP-QA-05 (miễn thuế OT có áp cho HĐ thử việc/thời vụ không):** **CHỐT có áp dụng**, và trừ `otTaxExemptAmount` ra khỏi gross **TRƯỚC KHI** nhân 10% — xem công thức đã sửa ở BR-dltl-026 (Mục 15.3.1): `thuNhapKheKhauTru = grossIncome − otTaxExemptAmount`, dùng chung cho cả nhánh khấu trừ 10% lẫn nhánh lũy tiến. Đây cũng trực tiếp trả lời `TC-blth-029` (câu hỏi về `tinh_tncn = false`): cờ `activeContract.tinh_tncn ≠ true` **đè lên cả 2 cơ chế** (khấu trừ 10% lẫn biểu lũy tiến) — hợp đồng không tính TNCN thì `personalIncomeTax = 0` bất kể `loai_hd`.
+
+**Đề nghị QA:** cập nhật lại `test-matrix-bang-luong-tong-hop.md` Mục 0 (đóng GAP-QA-01/02/05) và số liệu Nhóm 1/Nhóm 5/Nhóm 6 theo 3 quyết định trên ở lượt làm việc kế tiếp; BA không tự sửa file của QA. `BR-dltl-028`/`BR-dltl-029` QA đề xuất (Mục "Traceability" của test matrix) được BA xác nhận **hợp lệ về nội dung** (BR-dltl-028 = công thức hybrid Mục 15.4, đã có; BR-dltl-029 = endpoint `support-allowances` Mục 15.6, đã có) nhưng BA **giữ nguyên đánh số hiện tại của SRS** (không đổi ID BR-dltl-024…027 đã chốt) — công thức 2 mã đó nay đã nằm sẵn trong Mục 15.4/15.6, không cần thêm ID BR mới trùng nội dung.
