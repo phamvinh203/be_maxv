@@ -395,6 +395,10 @@ test('khoiTaoCauHinhMacDinh: các tham số pháp luật Việt Nam 2024 chuẩn
   assert.equal(def.standardHoursPerDay, 8.0);
   assert.equal(def.insuranceEmployeeSocial, 8.0);
   assert.equal(def.insuranceCompanySocial, 17.5);
+  // ADR-010 QĐ-2 (2026-09-10) — 3 tham số mới của Bảng lương tổng hợp.
+  assert.equal(def.lunchAllowanceTaxFreeCap, 730000); // TT 26/2016/TT-BLĐTBXH
+  assert.equal(def.withholdingTaxRate, 10.0); // Điều 25 TT 111/2013
+  assert.equal(def.withholdingTaxThreshold, 2000000); // Điều 25 Khoản 1 Điểm i TT 111/2013
 });
 
 test('AC-hrm-67: biểu thuế mặc định là ĐÚNG 7 bậc Điều 22, trần 35%, bậc cuối là bậc mở', () => {

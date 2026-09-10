@@ -274,6 +274,10 @@ test('7.1 Cấu hình mặc định — TC-hrm-273…287', async (t) => {
     assert.equal(d.personalDeduction, '11000000');
     assert.equal(d.dependentDeduction, '4400000');
     assert.equal(d.standardHoursPerDay, '8');
+    // ADR-010 QĐ-2 (2026-09-10) — 3 tham số mới của Bảng lương tổng hợp (BR-dltl-026/027).
+    assert.equal(d.lunchAllowanceTaxFreeCap, '730000');
+    assert.equal(d.withholdingTaxRate, '10');
+    assert.equal(d.withholdingTaxThreshold, '2000000');
     assert.ok(Object.keys(d).length > 30, `phải có > 30 tham số, đang có ${Object.keys(d).length}`);
     // Biểu thuế chuẩn: 7 bậc, bậc cuối mở (null), trần 35% — BR-hrm-081 / ADR-009.
     assert.equal(d.taxBrackets.length, 7, 'BR-hrm-081: biểu chuẩn phải có 7 bậc');
@@ -305,6 +309,24 @@ test('7.1 Cấu hình mặc định — TC-hrm-273…287', async (t) => {
     assert.equal(r.json.data.baseSalary, '2340000', 'trường không gửi phải giữ nguyên');
     assert.equal(r.json.data.sundayPolicy, 'OFF');
     assert.equal(r.json.data.warning, undefined, 'không gửi taxBrackets thì không có cảnh báo');
+  });
+
+  await t.test('ADR-010 QĐ-2 — PUT cập nhật 3 tham số mới (lunchAllowanceTaxFreeCap/withholdingTaxRate/withholdingTaxThreshold)', async () => {
+    const r = await goi('ADR-010-QD2', 'PUT 3 tham số mới', 'PUT', `${BASE}/settings/general`, {
+      ve: veOwnerA,
+      payload: { lunchAllowanceTaxFreeCap: 800000, withholdingTaxRate: 12, withholdingTaxThreshold: 2500000 },
+    });
+    assert.equal(r.status, 200, r.raw);
+    assert.equal(r.json.data.lunchAllowanceTaxFreeCap, '800000');
+    assert.equal(r.json.data.withholdingTaxRate, '12');
+    assert.equal(r.json.data.withholdingTaxThreshold, '2500000');
+
+    // E-hrm-083 — withholdingTaxRate ngoài khoảng 0..100 bị chặn 400.
+    const invalid = await goi('ADR-010-QD2', 'PUT withholdingTaxRate=150 (ngoài biên)', 'PUT', `${BASE}/settings/general`, {
+      ve: veOwnerA,
+      payload: { withholdingTaxRate: 150 },
+    });
+    assert.equal(invalid.status, 400, invalid.raw);
   });
 
   await t.test('TC-hrm-276 — biên hợp lệ standardHoursPerDay 1.0 và 24.0', async () => {
@@ -461,6 +483,11 @@ test('7.1 Cấu hình mặc định — TC-hrm-273…287', async (t) => {
     assert.equal(d.taxBrackets.length, 7);
     assert.equal(d.taxBrackets[6].khoang, null);
     assert.equal(d.taxBrackets[6].thueSuat, 35);
+    // ADR-010 QĐ-2 (data-model Mục 11.2) — restore-default PHẢI đặt lại đủ 3 cột mới, kể cả khi
+    // TC-hrm-275/ADR-010-QD2 (chạy trước) đã sửa chúng thành 800000/12/2500000.
+    assert.equal(d.lunchAllowanceTaxFreeCap, '730000');
+    assert.equal(d.withholdingTaxRate, '10');
+    assert.equal(d.withholdingTaxThreshold, '2000000');
     assert.equal(d.warning, undefined, 'khôi phục thì không bao giờ kèm cảnh báo');
   });
 

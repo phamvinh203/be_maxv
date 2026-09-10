@@ -16,6 +16,7 @@ export function formatSalaryItem<
     description?: string | null;
     isSocialInsurance?: boolean;
     isTaxable?: boolean;
+    isMealAllowance?: boolean;
     defaultRate?: Prisma.Decimal | number | null;
     status?: string;
     createdAt?: Date;
@@ -30,6 +31,8 @@ export function formatSalaryItem<
     ghi_chu: item.description ?? null,
     tinh_bhxh: Boolean(item.isSocialInsurance),
     chiu_thue_tncn: Boolean(item.isTaxable),
+    // ADR-010 QĐ-4 — khoản ăn ca/ăn trưa (miễn thuế tới trần 730k, `payrollCalculation.service.ts`).
+    isMealAllowance: Boolean(item.isMealAllowance),
     ty_le: item.defaultRate != null ? Number(item.defaultRate) : null,
     defaultRate: item.defaultRate != null ? Number(item.defaultRate) : null,
   };
@@ -177,6 +180,7 @@ export async function createSalaryItem(db: PrismaClient, input: CreateSalaryItem
       description: input.description,
       isSocialInsurance: input.isSocialInsurance,
       isTaxable: input.isTaxable,
+      isMealAllowance: input.isMealAllowance,
       defaultRate: input.defaultRate != null ? new Prisma.Decimal(input.defaultRate) : null,
       status: 'ACTIVE',
     },
@@ -213,6 +217,7 @@ export async function updateSalaryItem(
       ...(input.description !== undefined && { description: input.description }),
       ...(input.isSocialInsurance !== undefined && { isSocialInsurance: input.isSocialInsurance }),
       ...(input.isTaxable !== undefined && { isTaxable: input.isTaxable }),
+      ...(input.isMealAllowance !== undefined && { isMealAllowance: input.isMealAllowance }),
       ...(input.defaultRate !== undefined && {
         defaultRate: input.defaultRate != null ? new Prisma.Decimal(input.defaultRate) : null,
       }),
@@ -245,4 +250,8 @@ export async function deleteSalaryItem(db: PrismaClient, id: string) {
   await db.salaryItem.delete({
     where: { id },
   });
+
+  // RVW-018 (review-findings.md 2026-09-10) — trả lại `code` để controller ghi nhật ký kiểm toán
+  // đúng khóa nghiệp vụ (bản ghi đã xóa, không truy vấn lại được nữa sau lệnh delete).
+  return { code: item.code };
 }

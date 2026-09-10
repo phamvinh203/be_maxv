@@ -47,6 +47,9 @@ export const createSalaryItemSchema = z.object({
   description: descriptionField,
   isSocialInsurance: z.boolean().default(false),
   isTaxable: z.boolean().default(true),
+  // BR-dltl-027, ADR-010 QĐ-4 — đánh dấu khoản ăn ca/ăn trưa (miễn thuế tới trần 730k, quy đổi
+  // theo công). Mặc định `false`: dữ liệu cũ giữ nguyên hành vi cho tới khi kế toán chủ động đánh dấu.
+  isMealAllowance: z.boolean().default(false),
   defaultRate: defaultRateField,
 });
 
@@ -61,6 +64,7 @@ export const updateSalaryItemSchema = z.object({
   description: descriptionField,
   isSocialInsurance: z.boolean().optional(),
   isTaxable: z.boolean().optional(),
+  isMealAllowance: z.boolean().optional(),
   defaultRate: defaultRateField,
   status: z.enum(SALARY_ITEM_STATUSES).optional(),
 });

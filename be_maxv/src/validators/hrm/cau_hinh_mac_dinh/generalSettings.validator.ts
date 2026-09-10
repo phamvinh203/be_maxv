@@ -154,6 +154,11 @@ export const updateGeneralSettingsSchema = z
     unionFeeCompanyRate: z.number().min(0).max(100).optional(),
     personalDeduction: z.number().min(0).optional(),
     dependentDeduction: z.number().min(0).optional(),
+    // ADR-010 QĐ-2 (2026-09-10) — 3 tham số mới cho Bảng lương tổng hợp (BR-dltl-026/027).
+    // Thẩm định `E-hrm-083`: `data-model-du-lieu-tinh-luong.md` Mục 11.2.
+    lunchAllowanceTaxFreeCap: z.number().min(0).optional(),
+    withholdingTaxRate: z.number().min(0).max(100).optional(),
+    withholdingTaxThreshold: z.number().min(0).optional(),
     // Chuẩn hóa mốc-số-cũ -> `null` NGAY Ở TẦNG TRƯỜNG, tức là TRƯỚC `superRefine` bên dưới.
     // Nhờ vậy bốn điều kiện toàn vẹn chỉ phải biết đúng một cách mã hóa bậc mở, và giá trị đi
     // xuống service (rồi xuống DB) cũng đã là dạng chuẩn — không ai phải chuẩn hóa lần hai.

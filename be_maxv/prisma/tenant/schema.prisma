@@ -1132,6 +1132,19 @@ model GeneralSetting {
   personalDeduction             Decimal       @default(11000000) @db.Decimal(15, 2)
   dependentDeduction            Decimal       @default(4400000) @db.Decimal(15, 2)
   taxBrackets                   Json          @db.JsonB
+
+  /// BR-dltl-027 — Trần miễn thuế TNCN của phụ cấp ăn ca/ăn trưa mỗi tháng (TT 26/2016:
+  /// 730.000đ). Phần vượt trần tính vào thu nhập chịu thuế. Trần này được QUY ĐỔI THEO CÔNG
+  /// khi tính (AC-dltl-23) — cột lưu mức tháng đầy đủ. ADR-010 QĐ-2.
+  lunchAllowanceTaxFreeCap       Decimal      @default(730000)  @db.Decimal(15, 2)
+
+  /// BR-dltl-026 — Thuế suất khấu trừ tại nguồn cho HĐ thử việc/thời vụ (Điều 25 TT 111/2013:
+  /// 10%). Đơn vị PHẦN TRĂM (10.00 = 10%) — cùng quy ước với các cột insurance.. / unionFee..
+  withholdingTaxRate             Decimal      @default(10.0)    @db.Decimal(5, 2)
+
+  /// BR-dltl-026 — Ngưỡng thu nhập mỗi lần trả bắt đầu phải khấu trừ 10% (2.000.000đ).
+  withholdingTaxThreshold        Decimal      @default(2000000) @db.Decimal(15, 2)
+
   createdAt                     DateTime      @default(now())
   updatedAt                     DateTime      @default(now()) @updatedAt
 
@@ -1222,6 +1235,13 @@ model SalaryItem {
   description       String?            @db.VarChar(500)
   isSocialInsurance Boolean            @default(false)
   isTaxable         Boolean            @default(true)
+
+  /// BR-dltl-027 — Khoản này là phụ cấp ăn ca/ăn trưa: miễn thuế TNCN tới
+  /// GeneralSetting.lunchAllowanceTaxFreeCap (730.000đ/tháng, quy đổi theo công), phần vượt
+  /// tính vào thu nhập chịu thuế. Kế toán tự đánh dấu — hệ thống KHÔNG đoán theo tên khoản.
+  /// ADR-010 QĐ-4.
+  isMealAllowance   Boolean            @default(false)
+
   defaultRate       Decimal?           @db.Decimal(5, 2)
   status            SalaryItemStatus   @default(ACTIVE)
   createdAt         DateTime           @default(now())
@@ -1701,6 +1721,40 @@ model PayrollSheetLine {
   personalIncomeTax          Decimal       @default(0) @db.Decimal(18, 2)
   netTakeHomeSalary          Decimal       @default(0) @db.Decimal(18, 2)
   totalCompanyCost           Decimal       @default(0) @db.Decimal(18, 2)
+
+  // ── ADR-010 (2026-09-10) — 15 cột mới, pipeline thuế/bảo hiểm 10 bước ──
+
+  // Nguồn lương 2 tầng (QĐ nghiệp vụ 1 — SRS 15.4)
+  contractBaseSalary          Decimal      @default(0) @db.Decimal(18, 2) // luong_chinh của HĐ
+  fixedAllowanceTotal         Decimal      @default(0) @db.Decimal(18, 2) // Σ mức THÁNG phụ cấp cố định
+  allowanceInPeriodTotal      Decimal      @default(0) @db.Decimal(18, 2) // phụ cấp SAU quy đổi công
+
+  // Tăng ca (BR-dltl-025)
+  otRawHours                  Decimal      @default(0) @db.Decimal(6, 2)  // giờ GỐC, chưa nhân hệ số
+  otTaxExemptAmount           Decimal      @default(0) @db.Decimal(18, 2) // phần vượt đơn giá giờ thường
+
+  // Trần ăn ca (BR-dltl-027)
+  mealAllowanceAmount         Decimal      @default(0) @db.Decimal(18, 2) // Σ khoản isMealAllowance trong kỳ
+  lunchAllowanceExemptAmount  Decimal      @default(0) @db.Decimal(18, 2) // phần được miễn (≤ trần đã quy đổi công)
+  lunchAllowanceTaxableAmount Decimal      @default(0) @db.Decimal(18, 2) // phần VƯỢT trần, phải chịu thuế
+
+  /// Miễn thuế theo khai báo (QĐ-9 — chủ dự án chốt Q-1 ngày 2026-09-10). Σ phụ cấp khai miễn
+  /// thuế (isTaxable = false HOẶC taxTreatment = EXEMPT), số tiền TRONG KỲ. KHÔNG gồm khoản
+  /// isMealAllowance — khoản đó nằm trọn ở mealAllowanceAmount và chịu trần riêng.
+  /// Bất biến: mealAllowanceAmount + otherAllowanceTaxExemptAmount <= allowanceInPeriodTotal
+  otherAllowanceTaxExemptAmount Decimal    @default(0) @db.Decimal(18, 2)
+
+  // Hai trần bảo hiểm độc lập (BR-dltl-024)
+  insuranceBaseBhxhByt        Decimal      @default(0) @db.Decimal(18, 2) // gốc tính BHXH+BHYT (đã kẹp trần)
+  insuranceBaseBhtn           Decimal      @default(0) @db.Decimal(18, 2) // gốc tính BHTN (đã kẹp trần)
+  insuranceCapAppliedBhxhByt  Boolean      @default(false)
+  insuranceCapAppliedBhtn     Boolean      @default(false)
+
+  // Rẽ nhánh phương pháp thuế (BR-dltl-026)
+  withholdingTaxApplied       Boolean      @default(false) // true = khấu trừ 10%, false = lũy tiến
+
+  // Truy vết phiên bản công thức — dòng cũ "v1", dòng khóa sau ADR-010 "v2"
+  engineVersion                String      @default("v1") @db.VarChar(16)
 
   createdAt                  DateTime      @default(now())
   updatedAt                  DateTime      @default(now()) @updatedAt

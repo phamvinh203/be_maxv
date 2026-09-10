@@ -23,3 +23,11 @@ export async function getSheetLines(req: FastifyRequest, reply: FastifyReply) {
   const { periodId } = validateQuery(periodIdQuerySchema, req.query);
   return sendOk(reply, await service.getPayrollSheetLines(db, periodId));
 }
+
+// api-contract-du-lieu-tinh-luong.md Mục 8.2 — tab "Lương hỗ trợ", cùng guard `dbCoQuyenLuongPayroll`
+// (dữ liệu lương) và cùng schema Zod `periodId` với /payroll/calculate.
+export async function getSupportAllowances(req: FastifyRequest, reply: FastifyReply) {
+  const db = await dbCoQuyenLuongPayroll(req);
+  const { periodId } = validateQuery(periodIdQuerySchema, req.query);
+  return sendOk(reply, await service.getSupportAllowanceBreakdown(db, periodId));
+}

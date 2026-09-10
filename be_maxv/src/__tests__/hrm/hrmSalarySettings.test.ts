@@ -203,6 +203,7 @@ test('BR-sal-002 (E-sal-002): chống trùng tên khoản lương trong cùng lo
         category: 'FIXED_ALLOWANCE',
         isSocialInsurance: true,
         isTaxable: true,
+        isMealAllowance: false,
       }),
     (err: any) => err.name === 'ConflictError',
   );
@@ -213,6 +214,7 @@ test('BR-sal-002 (E-sal-002): chống trùng tên khoản lương trong cùng lo
     category: 'BENEFIT_ALLOWANCE',
     isSocialInsurance: false,
     isTaxable: false,
+    isMealAllowance: false,
   });
   assert.equal(created.name, 'Lương cơ bản');
   assert.equal(created.category, 'BENEFIT_ALLOWANCE');

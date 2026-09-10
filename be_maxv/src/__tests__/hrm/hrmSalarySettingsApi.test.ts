@@ -2,6 +2,7 @@ import { test, before, mock } from 'node:test';
 import assert from 'node:assert/strict';
 import Fastify from 'fastify';
 import { Prisma } from '../../generated/tenant';
+import errorHandlerPlugin from '../../plugins/errorHandler.plugin';
 
 /**
  * KIỂM THỬ TÍCH HỢP HTTP (Fastify Inject)
@@ -27,11 +28,28 @@ let hrmEmployeeSalariesRoutes: typeof import('../../routes/hrm/cai_dat_luong/emp
 /** Đọc bởi bản mock của `resolveTenantDb` — mỗi `buildTestApp()` trỏ lại biến này về db riêng của nó. */
 let dbChoRequestHienTai: unknown;
 
+// RVW-018 (review-findings.md 2026-09-10) — spy cho `writeLog` (services/shared/syslog.service),
+// cùng khuôn với `hrmPayrollInputData.test.ts` "Bug#8": tránh gọi `sysPrisma` thật (control plane)
+// trong test, vừa cho phép assert đúng hành động đã ghi.
+let ghiNhatKyKhoanLuongCalls: Array<{
+  hanhDong: string;
+  userId?: string;
+  donViId?: string;
+  chiTiet?: Record<string, unknown>;
+}> = [];
+
 before(async () => {
   mock.module('../../helpers/resolveTenantDb', {
     // `exports` (tên mới) chưa có trong @types/node@22 đang cài — dùng `namedExports` (deprecated ở
     // runtime Node 24 nhưng vẫn hoạt động đúng) để qua tsc mà không phải ép kiểu.
     namedExports: { resolveTenantDb: async () => dbChoRequestHienTai },
+  });
+  mock.module('../../services/shared/syslog.service', {
+    namedExports: {
+      writeLog: async (input: { hanhDong: string; userId?: string; donViId?: string; chiTiet?: Record<string, unknown> }) => {
+        ghiNhatKyKhoanLuongCalls.push(input);
+      },
+    },
   });
   ({ hrmSalaryItemsRoutes } = await import('../../routes/hrm/cai_dat_luong/salaryItems.route'));
   ({ hrmSalaryStructuresRoutes } = await import(
@@ -309,7 +327,9 @@ function createMockTenantDb() {
   return mockDb;
 }
 
-async function buildTestApp() {
+// RVW-018 — role tham số hóa để test được cả 403 (OWNER_EMPLOYEE) lẫn 2xx (ADMIN/OWNER) cho 3
+// route ghi của `/salary-items`. Mặc định giữ nguyên `ADMIN` để không phá vỡ các test HTTP có sẵn.
+async function buildTestApp(role: string = 'ADMIN') {
   const app = Fastify();
   dbChoRequestHienTai = createMockTenantDb();
 
@@ -317,11 +337,14 @@ async function buildTestApp() {
     (req as any).user = {
       userId: 'user-admin-1',
       donViId: 'dv-1',
-      role: 'ADMIN',
+      role,
       tokenVersion: 1,
     };
   });
 
+  // RVW-018 — cần đăng ký để `ForbiddenError` (assertAdminOrOwner) ánh xạ đúng 403 thay vì rơi
+  // vào nhánh 500 mặc định của Fastify (AppError không có `statusCode` riêng).
+  await app.register(errorHandlerPlugin);
   await app.register(hrmSalaryItemsRoutes);
   await app.register(hrmSalaryStructuresRoutes);
   await app.register(hrmEmployeeSalariesRoutes);
@@ -410,6 +433,52 @@ test('HTTP PATCH /salary-items/:id: cập nhật thành công trả về 200 OK'
   assert.equal(body.data.description, 'Mô tả đã sửa');
 });
 
+test('ADR-010 QĐ-4: POST /salary-items nhận isMealAllowance, mặc định false khi không gửi', async () => {
+  const app = await buildTestApp();
+
+  const resDefault = await app.inject({
+    method: 'POST',
+    url: '/salary-items',
+    payload: {
+      name: 'Phụ cấp xăng xe',
+      category: 'FIXED_ALLOWANCE',
+      isSocialInsurance: false,
+      isTaxable: true,
+    },
+  });
+  assert.equal(resDefault.statusCode, 201);
+  assert.equal(resDefault.json().data.isMealAllowance, false);
+
+  const resMeal = await app.inject({
+    method: 'POST',
+    url: '/salary-items',
+    payload: {
+      name: 'Phụ cấp tiền cơm',
+      category: 'BENEFIT_ALLOWANCE',
+      isSocialInsurance: false,
+      isTaxable: false,
+      isMealAllowance: true,
+    },
+  });
+  assert.equal(resMeal.statusCode, 201);
+  assert.equal(resMeal.json().data.isMealAllowance, true);
+});
+
+test('ADR-010 QĐ-4: PATCH /salary-items/:id cập nhật isMealAllowance', async () => {
+  const app = await buildTestApp();
+
+  const res = await app.inject({
+    method: 'PATCH',
+    url: '/salary-items/uuid-kl02',
+    payload: { isMealAllowance: true },
+  });
+
+  assert.equal(res.statusCode, 200);
+  const body = res.json();
+  assert.equal(body.success, true);
+  assert.equal(body.data.isMealAllowance, true);
+});
+
 test('HTTP DELETE /salary-items/:id: xóa thành công trả về 200 OK', async () => {
   const app = await buildTestApp();
 
@@ -421,6 +490,69 @@ test('HTTP DELETE /salary-items/:id: xóa thành công trả về 200 OK', async
   assert.equal(res.statusCode, 200);
   const body = res.json();
   assert.equal(body.success, true);
+});
+
+test('RVW-018: POST/PATCH/DELETE /salary-items chặn role không phải ADMIN/OWNER, và ghi audit log khi thành công', async () => {
+  // Từ ADR-010, isTaxable/isMealAllowance quyết định trực tiếp thuế TNCN của toàn công ty — 3
+  // route ghi phải yêu cầu assertAdminOrOwner (403 cho OWNER_EMPLOYEE) và ghi writeLog khi thành
+  // công (trước đây review-findings.md RVW-018 ghi nhận CẢ HAI đều thiếu).
+  // Reset spy TRƯỚC CẢ phần denied — các test HTTP trước đó trong file này (role mặc định ADMIN)
+  // cũng đã kích hoạt writeLog thật, mảng spy dùng chung cấp module nên phải dọn sạch ở đây.
+  ghiNhatKyKhoanLuongCalls = [];
+  const appDenied = await buildTestApp('OWNER_EMPLOYEE');
+
+  const resCreateDenied = await appDenied.inject({
+    method: 'POST',
+    url: '/salary-items',
+    payload: { name: 'Phụ cấp bị chặn', category: 'FIXED_ALLOWANCE', isSocialInsurance: false, isTaxable: true },
+  });
+  assert.equal(resCreateDenied.statusCode, 403);
+
+  const resUpdateDenied = await appDenied.inject({
+    method: 'PATCH',
+    url: '/salary-items/uuid-kl01',
+    payload: { isTaxable: false },
+  });
+  assert.equal(resUpdateDenied.statusCode, 403);
+
+  const resDeleteDenied = await appDenied.inject({
+    method: 'DELETE',
+    url: '/salary-items/uuid-kl02',
+  });
+  assert.equal(resDeleteDenied.statusCode, 403);
+
+  assert.equal(ghiNhatKyKhoanLuongCalls.length, 0, 'không ghi audit log khi bị chặn 403');
+
+  // OWNER làm được cả 3 thao tác + audit log ghi đúng hành động và khóa nghiệp vụ (ma_khoan).
+  ghiNhatKyKhoanLuongCalls = [];
+  const appAllowed = await buildTestApp('OWNER');
+
+  const resCreateOk = await appAllowed.inject({
+    method: 'POST',
+    url: '/salary-items',
+    payload: { name: 'Phụ cấp OWNER tạo', category: 'FIXED_ALLOWANCE', isSocialInsurance: false, isTaxable: true },
+  });
+  assert.equal(resCreateOk.statusCode, 201);
+  const createdCode = resCreateOk.json().data.ma_khoan;
+
+  const resUpdateOk = await appAllowed.inject({
+    method: 'PATCH',
+    url: '/salary-items/uuid-kl01',
+    payload: { isTaxable: false },
+  });
+  assert.equal(resUpdateOk.statusCode, 200);
+
+  const resDeleteOk = await appAllowed.inject({
+    method: 'DELETE',
+    url: '/salary-items/uuid-kl02',
+  });
+  assert.equal(resDeleteOk.statusCode, 200);
+
+  assert.equal(ghiNhatKyKhoanLuongCalls.length, 3);
+  assert.ok(ghiNhatKyKhoanLuongCalls.some((c) => c.hanhDong === 'HRM_CREATE_SALARY_ITEM' && c.chiTiet?.khoaNghiepVu === createdCode));
+  assert.ok(ghiNhatKyKhoanLuongCalls.some((c) => c.hanhDong === 'HRM_UPDATE_SALARY_ITEM' && c.chiTiet?.khoaNghiepVu === 'KL01'));
+  assert.ok(ghiNhatKyKhoanLuongCalls.some((c) => c.hanhDong === 'HRM_DELETE_SALARY_ITEM' && c.chiTiet?.khoaNghiepVu === 'KL02'));
+  assert.ok(ghiNhatKyKhoanLuongCalls.every((c) => c.userId === 'user-admin-1'));
 });
 
 /*

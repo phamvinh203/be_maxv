@@ -108,6 +108,12 @@ const DEFAULT_GENERAL_SETTING = {
   otRateWeekendNight: new Prisma.Decimal(270),
   otRateHolidayDay: new Prisma.Decimal(300),
   otRateHolidayNight: new Prisma.Decimal(390),
+  // ADR-010 (2026-09-10) — gốc 2 trần bảo hiểm (BR-dltl-024) + 3 tham số mới BR-dltl-026/027.
+  baseSalary: new Prisma.Decimal(2340000),
+  regionMinSalary: new Prisma.Decimal(4960000),
+  lunchAllowanceTaxFreeCap: new Prisma.Decimal(730000),
+  withholdingTaxRate: new Prisma.Decimal(10.0),
+  withholdingTaxThreshold: new Prisma.Decimal(2000000),
 };
 
 const DEFAULT_EMPLOYEES: any[] = [
@@ -168,6 +174,8 @@ interface MockTenantDbOptions {
   employees?: any[];
   generalSetting?: Record<string, unknown> | null;
   holidays?: any[];
+  salaryItems?: any[];
+  salaryStructures?: any[];
 }
 
 function createMockTenantDb(options: MockTenantDbOptions = {}) {
@@ -213,8 +221,11 @@ function createMockTenantDb(options: MockTenantDbOptions = {}) {
 
   const db: any = {
     $transaction: async (fn: any) => fn(db),
+    // RVW-025 (review-findings.md 2026-09-10): engine đổi từ `findFirst()` sang
+    // `findUnique({ where: { id: SINGLETON_ID } })` — mock phải có cả hai để không vỡ.
     generalSetting: {
       findFirst: async () => generalSettingRow,
+      findUnique: async () => generalSettingRow,
     },
     holiday: {
       findMany: async () => holidaysData,
@@ -247,11 +258,27 @@ function createMockTenantDb(options: MockTenantDbOptions = {}) {
     employeeSalary: {
       findMany: async () => employeeSalaries,
     },
+    // ADR-010 QĐ-8 — `getSupportAllowanceBreakdown` lista danh mục KHOẢN category=BENEFIT_ALLOWANCE
+    // đang ACTIVE. Fixture mặc định của các test hiện có không có khoản nào loại này (không phá
+    // hành vi cũ) — test dành riêng cho support-allowances truyền `options.salaryItems`.
     salaryItem: {
-      findMany: async () => [
-        { id: 'uuid-bonus-1', code: 'TH01', name: 'Thưởng KPI', defaultRate: null },
-        { id: 'uuid-comm-1', code: 'HH01', name: 'Hoa hồng bán hàng', defaultRate: new Prisma.Decimal(5) },
-      ],
+      findMany: async ({ where }: any = {}) => {
+        const catalog =
+          options.salaryItems ?? [
+            { id: 'uuid-bonus-1', code: 'TH01', name: 'Thưởng KPI', defaultRate: null },
+            { id: 'uuid-comm-1', code: 'HH01', name: 'Hoa hồng bán hàng', defaultRate: new Prisma.Decimal(5) },
+          ];
+        let list = [...catalog];
+        if (where?.category) list = list.filter((i: any) => i.category === where.category);
+        if (where?.status) list = list.filter((i: any) => i.status === where.status);
+        return list;
+      },
+    },
+    // ADR-010 — cấu trúc lương hiệu lực trong kỳ (isOvertimeBase/taxTreatment/calculationMethod).
+    // Fixture mặc định KHÔNG có cấu trúc nào ⇒ mọi khoản rơi về mặc định MONTHLY_FIXED +
+    // isOvertimeBase=false + miễn thuế chỉ theo `SalaryItem.isTaxable` (data-model Mục 11.5).
+    salaryStructure: {
+      findMany: async () => options.salaryStructures ?? [],
     },
     payrollPeriod: {
       findMany: async () => periods,
@@ -846,6 +873,73 @@ test('A-02: chọn hợp đồng CÓ HIỆU LỰC TRONG KỲ, không lấy hợp
   // Trước khi sửa A-02 (`orderBy ngay_bat_dau desc take 1`, không lọc kỳ): sẽ chọn nhầm hd-b
   // (25 triệu). Sau khi sửa: chỉ hd-a còn hiệu lực trong kỳ 2026-09.
   assert.equal(row.baseSalaryMonthly, 15000000);
+});
+
+test('ADR-010 Mục 8.2/8.7: GET /payroll/support-allowances — 200 + đúng shape + bất biến khớp /payroll/calculate + 403 khi thiếu quyền + 404 periodId sai', async () => {
+  currentTestUser = { userId: 'u-owner-1', donViId: 'dv-1', role: 'OWNER', tokenVersion: 1 };
+  xemLuongChoRequestHienTai = true;
+
+  const { db } = createMockTenantDb({
+    salaryItems: [
+      { id: 'si-at', code: 'KL08', name: 'Phụ cấp tiền cơm', category: 'BENEFIT_ALLOWANCE', status: 'ACTIVE', isTaxable: false, isMealAllowance: true },
+    ],
+  });
+  // NV0001 (fixture mặc định) đã có 1 dòng ATTENDANCE_ALLOWANCE — thêm 1 dòng BENEFIT_ALLOWANCE
+  // để có dữ liệu breakdown thật.
+  db.employeeSalary.findMany = async () => [
+    {
+      id: 'es-1',
+      ma_nv: 'NV0001',
+      totalAmount: new Prisma.Decimal(1000000),
+      status: 'APPROVED',
+      items: [
+        { id: 'esi-1', amount: new Prisma.Decimal(1000000), salaryItemId: 'si-cc', salaryItem: { category: 'ATTENDANCE_ALLOWANCE' } },
+        {
+          id: 'esi-2',
+          amount: new Prisma.Decimal(900000),
+          salaryItemId: 'si-at',
+          salaryItem: { code: 'KL08', name: 'Phụ cấp tiền cơm', category: 'BENEFIT_ALLOWANCE', isTaxable: false, isMealAllowance: true },
+        },
+      ],
+    },
+  ];
+  dbChoRequestHienTai = db;
+  const app = await buildTestApp();
+
+  const period = await createPeriodRow(db, { code: '2026-09', month: 9, year: 2026 });
+
+  const resCalc = await app.inject({ method: 'GET', url: `/payroll/calculate?periodId=${period.id}` });
+  assert.equal(resCalc.statusCode, 200);
+  const calcRow = JSON.parse(resCalc.body).data.find((r: any) => r.ma_nv === 'NV0001');
+
+  const res = await app.inject({ method: 'GET', url: `/payroll/support-allowances?periodId=${period.id}` });
+  assert.equal(res.statusCode, 200);
+  const body = JSON.parse(res.body);
+  assert.equal(body.success, true);
+  assert.ok(Array.isArray(body.data.columns));
+  assert.equal(body.data.columns.length, 1);
+  assert.equal(body.data.columns[0].code, 'KL08');
+  const item = body.data.items.find((i: any) => i.ma_nv === 'NV0001');
+  assert.ok(item);
+  assert.equal(item.amounts.KL08, 900000);
+
+  // 🔴 Bất biến bắt buộc (api-contract Mục 8.7a) — total của support-allowances khớp đúng phần
+  // BENEFIT_ALLOWANCE trong allowanceInPeriodTotal của /payroll/calculate.
+  assert.equal(item.total, 900000);
+  assert.equal(calcRow.allowanceInPeriodTotal, 900000);
+
+  // 404 khi periodId không tồn tại
+  const res404 = await app.inject({ method: 'GET', url: `/payroll/support-allowances?periodId=khong-ton-tai` });
+  assert.equal(res404.statusCode, 404);
+
+  // 403 khi thiếu quyền xemLuong
+  xemLuongChoRequestHienTai = false;
+  try {
+    const res403 = await app.inject({ method: 'GET', url: `/payroll/support-allowances?periodId=${period.id}` });
+    assert.equal(res403.statusCode, 403);
+  } finally {
+    xemLuongChoRequestHienTai = true;
+  }
 });
 
 test('A-01: chặn 403 khi thiếu quyền xemLuong trên các controller payroll (payrollCalculation + payrollPeriods)', async () => {

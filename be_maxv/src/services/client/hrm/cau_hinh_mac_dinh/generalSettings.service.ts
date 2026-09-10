@@ -132,6 +132,12 @@ export function khoiTaoCauHinhMacDinh() {
     // Sao chép nông từng phần tử: đối tượng ở `BIEU_THUE_CHUAN_7_BAC` là hằng dùng chung, đừng
     // để một nơi gọi lỡ tay sửa tại chỗ rồi mọi nơi khác lãnh đủ.
     taxBrackets: BIEU_THUE_CHUAN_7_BAC.map((b) => ({ ...b })),
+    // ADR-010 QĐ-2 (2026-09-10) — Bảng lương tổng hợp: 3 tham số thuế/miễn thuế mới của
+    // BR-dltl-026/027. Khác hệ số trần bảo hiểm (`× 20`, xem `constants/hrm/du_lieu_tinh_luong/
+    // insuranceCaps.ts`) — đây là SỐ TIỀN/THUẾ SUẤT nên là cột cấu hình, không phải hằng số.
+    lunchAllowanceTaxFreeCap: 730000, // TT 26/2016/TT-BLĐTBXH
+    withholdingTaxRate: 10.0, // Điều 25 TT 111/2013
+    withholdingTaxThreshold: 2000000, // Điều 25 Khoản 1 Điểm i TT 111/2013
   };
 }
 
