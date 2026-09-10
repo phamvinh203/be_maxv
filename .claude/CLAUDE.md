@@ -399,6 +399,46 @@ Các hành động có thể gây mất dữ liệu hoặc downtime phải đư�
 
 ---
 
+# Tổ chức file theo tính năng (Feature-scoped file organization)
+
+> Áp dụng cho `be_maxv` và mọi frontend app (`hdđt_maxv`, `maxv`, `fe_maxv`). Nguyên tắc: file nào chỉ phục vụ 1 feature/module nghiệp vụ thì nằm trong subfolder đặt tên theo feature đó, không nằm phẳng ở root của thư mục kỹ thuật (`api/`, `helpers/`, `constants/`, `utils/`, `scripts/`, `__tests__/`, `calculations/`...). Mục đích: thư mục kỹ thuật luôn dễ quét, không lẫn lộn file của nhiều feature khác nhau.
+
+## Quy tắc quyết định: 1 feature dùng hay nhiều feature dùng?
+
+Trước khi thêm file mới vào 1 thư mục kỹ thuật (không tính file dùng-1-lần như component/controller/service — những cái đó vốn đã nằm trong folder feature của nó):
+
+- **Chỉ 1 feature/module nghiệp vụ dùng** (vd chỉ HRM, chỉ `dich_vu_cong`) → đặt trong subfolder đặt tên đúng slug feature đó.
+- **≥ 2 feature không liên quan cùng dùng** (vd cả `accounting` lẫn `hrm` lẫn `to_khai`) → đây là hạ tầng dùng chung, để phẳng ở root của thư mục kỹ thuật — KHÔNG ép vào subfolder chỉ vì "trông gọn hơn". Ép vào 1 feature cụ thể là sai (file đó không thuộc riêng feature nào), tách mỗi file 1 folder riêng hoặc gom vào 1 bucket "misc" cũng sai (rối hơn, không rõ hơn).
+- Không chắc → grep tìm toàn bộ nơi import file đó rồi mới quyết, đừng đoán qua tên file (tên file gợi ý sai domain là chuyện thường xảy ra).
+
+## Cấu trúc mẫu đã áp dụng
+
+**Backend (`be_maxv/src/`)** — mỗi thư mục kỹ thuật có subfolder `<feature>/` cho phần riêng của feature đó, slug PHẢI khớp đúng slug đã dùng ở `controllers/client/<feature>/` + `services/client/<feature>/` + `routes/<feature>/` (vd `hrm`, `dich_vu_cong`, `hddt`, `to_khai`, `accounting`):
+- `helpers/<feature>/`, `constants/<feature>/`, `utils/<feature>/`, `scripts/<feature>/` — file chỉ 1 feature dùng.
+- `__tests__/<feature>/` — test file gom theo feature bị test (dò qua import TRONG file test, KHÔNG theo tên file — tên test hay đặt theo mã bug/mã nghiệp vụ chứ không theo feature). `package.json` script `test` PHẢI dùng glob đệ quy (`src/__tests__/**/*.test.ts`), không phẳng — nếu không test trong subfolder sẽ bị bỏ sót mà không báo lỗi.
+
+**Frontend (`hdđt_maxv/src/features/<feature>/`, tương tự cho `maxv/`, `fe_maxv/`)**:
+- `api/<module>/` — API hook/service chỉ 1 module con dùng, tên subfolder khớp `components/<module>/`.
+- `calculations/<module>/` — logic tính toán thuần (không phụ thuộc React) chỉ 1 module dùng.
+- `_shared/` — util/constants dùng chung TOÀN BỘ feature (≥ 2 module con cùng dùng) — theo đúng convention `_shared` đã có ở `features/_shared/` và `features/accounting/_shared/`.
+- `mock/` — file chỉ phục vụ mock data (không phải code thật), kể cả khi trùng tên với 1 file thật ở nơi khác.
+
+## Khi thêm file mới cho feature/module MỚI
+
+Tạo file mới thẳng vào subfolder feature ngay từ đầu (không tạo phẳng ở root rồi tính sau) — trừ khi ngay từ đầu đã rõ đây là hạ tầng dùng chung cho nhiều feature.
+
+## Gotcha khi refactor/di chuyển file cũ vào subfolder (rút từ kinh nghiệm thực tế)
+
+Sửa import KHÔNG chỉ dừng ở `import ... from "..."` tĩnh — dò thêm các dạng sau, dễ bị bỏ sót vì tsc không luôn bắt được:
+- `typeof import('...')` và `await import('...')` (dynamic import) — kể cả khi path nằm xuống dòng riêng (`import(\n  '...'\n)`), không nằm cùng dòng với từ khoá `import(`.
+- `mock.module('...')` (Node test runner mock) — path là string thuần trong lời gọi hàm, KHÔNG phải cú pháp import, tsc không bắt được — chỉ lộ ra khi chạy `npm test` thật.
+- Đường dẫn script trong `package.json` (vd `"hrm:xxx": "tsx src/scripts/..."`) và glob trong script `test`.
+- File TỰ DI CHUYỂN cũng phải tự sửa import của CHÍNH NÓ trỏ tới thứ KHÔNG di chuyển (vd `./types`, `./constants` ở nguyên chỗ cũ) — vì độ sâu thư mục của chính nó đã đổi, không phải chỉ sửa import trỏ tới file khác vừa di chuyển cùng đợt.
+
+Luôn verify sau khi gom file: `tsc`/`tsc -b` (hoặc `typecheck`), `lint`, và chạy lại **toàn bộ** test suite so khớp số lượng test + tên test fail với baseline TRƯỚC khi refactor — không chỉ tin exit code hay số lỗi tsc, vì lỗi loại `mock.module`/dynamic import chỉ hiện khi chạy test thật.
+
+---
+
 # Decision Making
 
 Khi có nhiều phương án:
