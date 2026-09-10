@@ -794,6 +794,21 @@ export interface DongLuongHoTro {
   tong: number;
 }
 
+/**
+ * Một cột động của tab "Lương hỗ trợ" — tới từ `GET /payroll/support-allowances` (`columns`).
+ *
+ * Cố ý KHÔNG dùng lại `KhoanLuong` (thực thể đầy đủ của "Cài đặt lương › Danh mục khoản"): API
+ * chỉ trả 4 trường mô tả cột, ép vào `KhoanLuong` sẽ phải bịa `loai`/`ghi_chu`/`tinh_bhxh`/`ty_le`
+ * không có căn cứ.
+ */
+export interface KhoanHoTroCot {
+  ma_khoan: string;
+  ten_khoan: string;
+  /** Từ QĐ-9 (ADR-010), đã là dữ liệu quyết định tiền thuế — không còn thuần hiển thị. */
+  chiu_thue_tncn: boolean;
+  la_khoan_an_ca: boolean;
+}
+
 // ─────────────────────── Cài đặt lương › Set lương ───────────────────────
 
 /** Cách khoản này vào thu nhập chịu thuế TNCN. */

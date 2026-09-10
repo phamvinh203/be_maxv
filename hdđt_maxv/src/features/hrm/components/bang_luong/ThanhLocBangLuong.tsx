@@ -9,7 +9,7 @@ import Chip from "@mui/material/Chip";
 import SearchRounded from "@mui/icons-material/SearchRounded";
 import { sapXepCay } from "../../_shared/cay";
 import { KIEU_LUONG, LOAI_HD } from "../../_shared/constants";
-import { usePhongBanList } from "../../mock/hooks/phongBan";
+import { usePhongBanList } from "../../api/du_lieu_nhan_vien/phongBanQueries";
 import type { BangLuongFilters, KieuLuong, LoaiHopDong } from "../../types";
 
 interface Props {

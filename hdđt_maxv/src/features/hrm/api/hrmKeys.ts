@@ -165,12 +165,21 @@ export const hrmPayrollDataKeys = {
     ["hrm-payroll-data", companyId, "adjustments", periodId] as const,
 };
 
-/** Bảng lương tính toán và snapshot */
+/**
+ * Bảng lương tính toán và snapshot.
+ *
+ * `supportAllowances` thêm 2026-09-10 (tab "Lương hỗ trợ", `GET /payroll/support-allowances`) —
+ * cùng tiền tố `"hrm-payroll-calculation"` với `calculate`/`sheetLines` để `useInvalidatePayroll()`
+ * (`payrollPeriodsQueries.ts`, invalidate theo `all`) tự quét luôn khóa này khi khóa/mở lại/duyệt
+ * kỳ lương — không phải sửa thêm chỗ khác.
+ */
 export const hrmPayrollCalculationKeys = {
   all: ["hrm-payroll-calculation"] as const,
   calculate: (companyId: string | null, periodId: string) =>
     ["hrm-payroll-calculation", companyId, "calculate", periodId] as const,
   sheetLines: (companyId: string | null, periodId: string) =>
     ["hrm-payroll-calculation", companyId, "sheet-lines", periodId] as const,
+  supportAllowances: (companyId: string | null, periodId: string) =>
+    ["hrm-payroll-calculation", companyId, "support-allowances", periodId] as const,
 };
 

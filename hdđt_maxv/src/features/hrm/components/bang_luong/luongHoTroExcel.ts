@@ -6,7 +6,7 @@
  */
 
 import type { Worksheet } from "exceljs";
-import type { DongLuongHoTro, KhoanLuong } from "../../types";
+import type { DongLuongHoTro, KhoanHoTroCot } from "../../types";
 
 const HEADER_FILL = "FFDDE6F2";
 const TONG_FILL = "FFF3E8D2";
@@ -45,7 +45,7 @@ function toHang(ws: Worksheet, hang: number, soCot: number, mau: string): void {
  */
 export async function xuatLuongHoTroExcel(
   rows: DongLuongHoTro[],
-  khoanHoTro: KhoanLuong[],
+  khoanHoTro: KhoanHoTroCot[],
   nhanKy: string,
 ): Promise<void> {
   const { Workbook } = await import("exceljs");

@@ -13,11 +13,15 @@
  *    cumulative ↔ incremental trước đây **đã bị xóa** — đừng dựng lại dưới tên khác. Bậc mở
  *    là `khoang: null`, KHÔNG phải `0` và KHÔNG phải `999999999999`.
  *
- * PHẠM VI `[cập nhật 2026-09-08 đợt 3]`: đây là nguồn cấu hình **duy nhất** của cả khu HRM —
- * màn Cấu hình mặc định, khu Tăng ca (5 component, cả đường GHI ở `QuanLyTangCaDialog`), bảng
- * lương (`mock/hooks/bangLuong.ts`) và bảng chấm công (`mock/hooks/chamCong.ts`).
+ * PHẠM VI `[cập nhật 2026-09-08 đợt 3]`: đây là nguồn cấu hình **duy nhất** của màn Cấu hình mặc
+ * định, khu Tăng ca (5 component, cả đường GHI ở `QuanLyTangCaDialog`) và bảng chấm công
+ * (`mock/hooks/chamCong.ts`).
  * `mock/hooks/cauHinh.ts` **không còn ai import**; đừng dựng lại đường đọc từ kho giả, vì hai
  * bản trùng tên hàm (`useCauHinh`, `useLuuCauHinh`) nên nhập nhầm là im lặng đi sai nguồn.
+ *
+ * `[cập nhật 2026-09-10]` **Bảng lương KHÔNG còn dùng hook này.** `mock/hooks/bangLuong.ts` đã bị
+ * xóa; `api/bang_luong/bangLuongQueries.ts` đọc thẳng `GET /payroll/calculate` — thuế/bảo hiểm đã
+ * tính sẵn ở `be_maxv` (đọc `GeneralSetting` phía server, không qua `useCauHinh()` của FE nữa).
  */
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
