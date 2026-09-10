@@ -1,12 +1,12 @@
 import type { PrismaClient, PayrollPeriodStatus } from '../../../../generated/tenant';
 import { ConflictError, BadRequestError } from '../../../../helpers/errors';
-import { PayrollError } from '../../../../helpers/payrollErrors';
-import { PAYROLL_ERROR_CODES } from '../../../../constants/payrollErrors';
+import { PayrollError } from '../../../../helpers/hrm/payrollErrors';
+import { PAYROLL_ERROR_CODES } from '../../../../constants/hrm/payrollErrors';
 import { HttpStatus } from '../../../../constants/httpStatus';
 import {
   getPayrollPeriodOrThrow,
   getPayrollPeriodStatusOrThrow,
-} from '../../../../helpers/payrollPeriodLockGuard';
+} from '../../../../helpers/hrm/payrollPeriodLockGuard';
 import type {
   CreatePayrollPeriodInput,
   ListPayrollPeriodsQuery,

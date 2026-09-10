@@ -1,12 +1,12 @@
 import type { AttendanceType, OvertimeType, PrismaClient } from '../../../../generated/tenant';
 import { NotFoundError } from '../../../../helpers/errors';
-import { PayrollError } from '../../../../helpers/payrollErrors';
-import { PAYROLL_ERROR_CODES } from '../../../../constants/payrollErrors';
+import { PayrollError } from '../../../../helpers/hrm/payrollErrors';
+import { PAYROLL_ERROR_CODES } from '../../../../constants/hrm/payrollErrors';
 import { HttpStatus } from '../../../../constants/httpStatus';
 import {
   assertPayrollPeriodWritable,
   getPayrollPeriodOrThrow,
-} from '../../../../helpers/payrollPeriodLockGuard';
+} from '../../../../helpers/hrm/payrollPeriodLockGuard';
 import {
   buildActiveEmployeeWhere,
   groupByMaNv,

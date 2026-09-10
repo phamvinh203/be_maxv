@@ -1,5 +1,5 @@
 import type { FastifyReply, FastifyRequest } from 'fastify';
-import { dbCoQuyenLuongPayroll } from '../../../../helpers/payrollAccessGuard';
+import { dbCoQuyenLuongPayroll } from '../../../../helpers/hrm/payrollAccessGuard';
 import { sendCreated, sendOk } from '../../../../helpers/response';
 import { validateBody, validateParams, validateQuery } from '../../../../utils/validate';
 import { z } from 'zod';

@@ -2,7 +2,7 @@ import type { GeneralSetting, Holiday, PrismaClient } from '../../../../generate
 import {
   getPayrollPeriodOrThrow,
   getPayrollPeriodStatusOrThrow,
-} from '../../../../helpers/payrollPeriodLockGuard';
+} from '../../../../helpers/hrm/payrollPeriodLockGuard';
 import { groupByMaNv } from '../../../../utils/du_lieu_tinh_luong/payrollAggregation.util';
 
 /** Biểu thuế TNCN 7 bậc lũy tiến từng phần theo Luật Thuế TNCN hiện hành */

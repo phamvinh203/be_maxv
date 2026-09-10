@@ -1,5 +1,5 @@
 import type { Prisma, PrismaClient } from '../../../../generated/tenant';
-import { HRM_CANH_BAO } from '../../../../constants/hrmCanhBao';
+import { HRM_CANH_BAO } from '../../../../constants/hrm/hrmCanhBao';
 import {
   chuanHoaBacMo,
   MOC_TUONG_THICH_BAC_MO,

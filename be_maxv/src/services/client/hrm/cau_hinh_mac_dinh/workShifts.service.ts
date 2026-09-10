@@ -6,7 +6,7 @@ import { MESSAGES } from '../../../../constants/messages';
 import {
   HRM_CANH_BAO,
   NGUONG_GIO_CA_CANH_BAO,
-} from '../../../../constants/hrmCanhBao';
+} from '../../../../constants/hrm/hrmCanhBao';
 import type {
   CreateWorkShiftInput,
   UpdateWorkShiftInput,

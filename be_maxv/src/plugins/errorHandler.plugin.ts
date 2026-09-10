@@ -9,7 +9,7 @@ import {
   MailError,
   DriveApiError,
 } from '../helpers/errors';
-import { PayrollError } from '../helpers/payrollErrors';
+import { PayrollError } from '../helpers/hrm/payrollErrors';
 import { HttpStatus } from '../constants/httpStatus';
 import { MESSAGES } from '../constants/messages';
 // Hai client sinh ra (sys + tenant) dùng CHUNG một lớp lỗi runtime (đã kiểm chứng bằng
