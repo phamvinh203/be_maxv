@@ -670,6 +670,62 @@ GET /payroll/calculate?periodId=..
   chú thích rõ số liệu đã sửa so với bảng test-matrix cũ). Cần BA/QA xác nhận lại bảng test-matrix
   Nhóm 6 là lỗi đánh máy của QA, không phải business rule đổi ý.
 
+### 1.10. Seed dữ liệu mẫu (dev tooling, 2026-09-10) — `npm run hrm:seed`
+
+> Dev tooling thuần túy (KHÔNG phải nghiệp vụ) — dựng cho ĐÚNG MỘT tenant test (`test1@gmail.com`
+> / `12345abc`, MST `0111142786`) để QA/Frontend test tay qua trình duyệt. Không đụng 10 tenant
+> thật khác trong `maxv2_sys`.
+
+**Luồng dữ liệu ngắn gọn:**
+
+```
+npm run hrm:seed
+  │
+  ├─► seed-control-plane.ts (maxv2_sys, control plane)
+  │     ensureControlPlaneTestTenant()
+  │       upsert User(test1@gmail.com, role=OWNER, hash bcrypt qua utils/password.ts)
+  │       upsert DonVi(MST 0111142786) — DỪNG LẠI nếu MST thuộc owner khác
+  │       provisionTenant() nếu DB tenant/READY chưa có (services/shared/provisioning.service.ts)
+  │       gia hạn Subscription nếu < 30 ngày còn lại, bảo đảm plan.features.hrm = true
+  │     → trả { ownerId, donViId, mst, dbName }
+  │
+  └─► prisma/tenant/seed.ts (DB tenant maxv_0111142786_app)
+        wipeHrmDomain(db)              — xóa sạch domain HRM/Payroll cũ (thứ tự an toàn FK)
+        seedConfig(db)                 — restoreDefault() + 4 ca làm việc + quickGenerateHolidays()
+        seedPhongBan/NhanVien/HopDong/NguoiPhuThuoc(db)  — gọi ĐÚNG service thật (create*)
+        seedSalaryItems/Structure/EmployeeSalaries(db)   — 9 khoản × 7 category, setEmployeeSalary()+approveEmployeeSalaries()
+        seedPayrollCatalogs(db)        — KPI/Sản phẩm/Chuyên cần/Ứng-bù trừ
+        seedPayrollPeriodData() × 2    — kỳ tháng trước + tháng hiện tại, đủ 8 phân hệ nhập liệu
+        lockPayrollPeriod(kỳ trước)    — khóa sổ THẬT qua snapshotPayrollSheet(), không chép tay dữ liệu
+        sanityCheck()                  — in gross/net vài nhân viên mẫu qua getPayrollSheetLines()
+```
+
+**Bảng "thao tác → file":**
+
+| Thao tác | File |
+|---|---|
+| Bootstrap control-plane (user/donVi/subscription) | `be_maxv/src/scripts/hrm/seed-control-plane.ts` |
+| Seed toàn bộ domain HRM/Payroll của tenant | `be_maxv/prisma/tenant/seed.ts` |
+| NPM script | `package.json` → `"hrm:seed": "tsx prisma/tenant/seed.ts"` |
+
+**Quyết định thiết kế quan trọng nhất — "xóa sạch rồi dựng lại" (wipe-then-rebuild):**
+
+Tenant MST `0111142786` khi khảo sát đã có sẵn một ít dữ liệu THỦ CÔNG của các phiên QA/dev
+trước (4 phòng ban/4 nhân viên/2 kỳ lương, KHÔNG phải dữ liệu kinh doanh thật — 0 chứng từ kế
+toán trong cùng tenant) và không đủ phủ hết nhánh nghiệp vụ yêu cầu. `prisma/tenant/seed.ts` xóa
+sạch domain HRM/Payroll (`wipeHrmDomain()`, thứ tự theo đúng ràng buộc FK cascade/restrict của
+`prisma/tenant/schema.prisma`) rồi dựng lại TOÀN BỘ bằng RNG có seed cố định (`mulberry32(20260910)`)
+— chạy lại nhiều lần cho ra ĐÚNG một bộ dữ liệu giống hệt nhau. **KHÔNG dùng cách này cho migration
+sản xuất** — chỉ hợp lý cho dev seed tooling trên tenant test đã xác nhận không có dữ liệu thật.
+
+**TUYỆT ĐỐI KHÔNG NHÂN ĐÔI:** mọi bước ghi dữ liệu nghiệp vụ (sinh mã tự động, tính giờ công/OT,
+kiểm chồng lấn hợp đồng, tính thuế/bảo hiểm, khóa sổ...) đều gọi THẲNG service thật đã liệt kê ở
+Mục 1.2-1.9 — seed script không tự chép lại một công thức nào. Nếu cần thêm dữ liệu mẫu, ưu tiên
+gọi thêm service có sẵn thay vì `db.<model>.create()` trực tiếp cho các bảng có business rule.
+
+**Không cần chạy lại `sync:tenants`/`hrm:constraints` sau seed** — script chỉ ghi dữ liệu, không
+đụng schema/constraint của tenant (đã áp sẵn lúc `provisionTenant()`).
+
 ---
 
 ## 2. Frontend (`hdđt_maxv`)
@@ -1170,3 +1226,40 @@ công, 12346 module). **Chưa test tay qua trình duyệt với dữ liệu tena
 ở kỳ LOCKED khớp đúng snapshot đã lưu lúc khóa sổ, (b) badge/nút đổi nhãn đúng khi chuyển qua lại
 DRAFT ↔ LOCKED, (c) `normalizePayrollLine()` áp đúng cho response thật (chỉ verify qua đọc code
 service be_maxv + kiểu Prisma schema, chưa gọi API thật).
+
+### 2.14. 3 tham số pháp lý (ADR-010) + cờ `isMealAllowance` — nối UI cho dữ liệu BE đã có sẵn (2026-09-10, frontend-engineer)
+
+Việc thuần FE: `be_maxv` đã có sẵn 3 cột `GeneralSetting` (`lunchAllowanceTaxFreeCap` /
+`withholdingTaxRate` / `withholdingTaxThreshold`) và cột `SalaryItem.isMealAllowance` từ đợt ADR-010
+(Mục 1.10), route `GET`/`PUT /hrm/settings/general` và `POST`/`PATCH /hrm/salary-items` đã nhận/trả
+đủ — chỉ thiếu đường dẫn dữ liệu ở FE. KHÔNG đụng `be_maxv`.
+
+**Đơn vị `withholdingTaxRate` — điểm dễ sai nhất, đã đối chiếu kỹ:** cột là **số nguyên phần
+trăm** (`Decimal(5,2)`, mặc định `10.0` nghĩa là 10%), CÙNG quy ước với `insuranceEmployeeSocial`
+(`bhxh_nv` = 8, không phải 0.08) — KHÔNG phải phân số 0..1. Domain field FE `ty_le_khau_tru_thu_viec`
+giữ nguyên đơn vị này ở cả 3 lớp: type (`number`, không đổi tên gợi ý "rate 0-1"), giá trị mặc định
+(`cauHinhMacDinhGoc()` = `10`, KHÔNG phải `0.1`), và phép kiểm trước khi gửi (`0 ≤ x ≤ 100`, khớp
+`z.number().min(0).max(100)` của `generalSettings.validator.ts:160`).
+
+- **Thiết lập chung** — 3 field mới đi theo đúng đường ống Decimal-là-chuỗi có sẵn ở Mục 2.2/2.1
+  (`GeneralSettingApiData` đọc `string`, `UpdateGeneralSettingsApiBody` ghi `number`, `Number()` chỉ
+  một chỗ trong `veKieuFeCauHinh()`). Render ở khối `NhomCauHinh` mới trong `ThueSection.tsx`, dưới
+  khối "Giảm trừ thuế TNCN" — KHÔNG tạo section riêng vì cùng nhóm nghiệp vụ thuế TNCN.
+- **Danh mục khoản lương** — cờ `phu_cap_an_trua` đi theo đúng khuôn `isTaxable`/`chiu_thue_tncn`
+  đã có (đọc/ghi ở `salaryItemsQueries.ts`, mặc định `false` ở `formDefaults.ts`). Ô tích chỉ hiện ở
+  dialog khi `MoTaLoaiKhoan.coMienAnTrua === true` — **chỉ bật cho loại `luong_ho_tro`** (nhóm "Hỗ
+  trợ ăn ca, xăng xe, điện thoại"), 6 loại còn lại giữ `false`. Người dùng vẫn CÓ THỂ tự tick cờ
+  `isTaxable`/`tinh_bhxh` độc lập với `phu_cap_an_trua` — ba cờ không loại trừ nhau, nghiệp vụ tính
+  thuế (trần miễn thuế cộng lớp nào trước) là việc của `payrollCalculation.service.ts` (be_maxv),
+  FE chỉ truyền cờ thô.
+- **Domain type dùng chung buộc phải sửa `mock/seed.ts`** dù ngoài phạm vi yêu cầu ban đầu: thêm
+  `TypeScript required field` vào `CauHinhMacDinh`/`KhoanLuong` làm `CAU_HINH_MAU`/`KHOAN_LUONG_MAU`
+  (dữ liệu demo tĩnh, không phải hook) không còn compile — đây là ví dụ cụ thể của nguyên tắc "đổi
+  type dùng chung thì sửa luôn nơi dùng nó", không phải lấn phạm vi. `KL08` "Phụ cấp tiền cơm" được
+  gán `phu_cap_an_trua: true` (khoản duy nhất mang nghĩa ăn trưa/ăn ca trong dữ liệu mẫu), 18 khoản
+  còn lại `false`.
+
+Kiểm chứng: `npx tsc -b` (exit 0, sau khi sửa `mock/seed.ts`) · `npm run lint` (0 lỗi) · `npm run
+build` (thành công, 12346 module — 2 cảnh báo Rolldown đã có từ trước, không mới). **Chưa test tay
+qua trình duyệt** — không có tài khoản/tenant test trong môi trường này, chỉ xác nhận qua đọc code
+be_maxv (schema/validator/service) + build sạch.

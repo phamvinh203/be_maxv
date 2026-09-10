@@ -18,6 +18,7 @@
     "hrm:constraints": "tsx src/scripts/hrm/apply-hrm-constraints.ts",
     "hrm:chuyen-file": "tsx src/scripts/hrm/chuyen-file-tai-lieu.ts",
     "hrm:chuan-hoa-thue": "tsx src/scripts/hrm/chuan-hoa-bieu-thue.ts",
+    "hrm:seed": "tsx prisma/tenant/seed.ts",
     "typecheck": "tsc --noEmit",
     "lint": "eslint src",
     "lint:fix": "eslint src --fix",
