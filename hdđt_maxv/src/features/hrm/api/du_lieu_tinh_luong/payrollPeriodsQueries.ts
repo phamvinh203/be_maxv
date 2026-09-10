@@ -23,12 +23,20 @@ import {
 
 export type { PayrollPeriodApiItem, PayrollPeriodStatusApi } from "./payrollPeriodsApi";
 
-export function usePayrollPeriodList(params?: ListPayrollPeriodsParams) {
+/**
+ * `options.enabled = false` để hoãn gọi khi CHƯA chắc phiên có quyền xem lương — cả nhóm
+ * `/payroll-*` trả 403 cho người không có quyền (`dbCoQuyenLuongPayroll`). Dashboard dùng để
+ * không bắn request chắc chắn hỏng.
+ */
+export function usePayrollPeriodList(
+  params?: ListPayrollPeriodsParams,
+  options?: { enabled?: boolean },
+) {
   const { currentCompanyId, isAuthenticated } = useAuth();
   return useQuery({
     queryKey: [...hrmPayrollPeriodKeys.list(currentCompanyId), params],
     queryFn: () => listPayrollPeriods(params),
-    enabled: isAuthenticated && !!currentCompanyId,
+    enabled: isAuthenticated && !!currentCompanyId && (options?.enabled ?? true),
   });
 }
 

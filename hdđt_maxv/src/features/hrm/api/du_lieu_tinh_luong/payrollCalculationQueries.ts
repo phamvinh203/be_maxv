@@ -7,7 +7,7 @@
  * nào) — cả ba hook tự tắt query (`enabled: false`) thay vì bắn request với `periodId=""`.
  */
 
-import { useQuery } from "@tanstack/react-query";
+import { queryOptions, useQuery } from "@tanstack/react-query";
 import { useAuth } from "@/features/auth/useAuth";
 import { hrmPayrollCalculationKeys } from "../hrmKeys";
 import {
@@ -52,9 +52,22 @@ export function useSupportAllowancesQuery(periodId: string | null) {
  */
 export function usePayrollSheetLinesQuery(periodId: string | null) {
   const { currentCompanyId, isAuthenticated } = useAuth();
-  return useQuery({
-    queryKey: hrmPayrollCalculationKeys.sheetLines(currentCompanyId, periodId ?? ""),
+  return useQuery(payrollSheetLinesOptions(currentCompanyId, periodId, isAuthenticated));
+}
+
+/**
+ * Cấu hình truy vấn sheet-lines — MỘT chỗ khai `queryKey`/`queryFn`/`enabled`, dùng cho cả hook ở
+ * trên lẫn `useQueries` nhiều kỳ của Dashboard (`api/dashboard/dashboardQueries.ts`). Hai nơi tự
+ * khai riêng là hai mục cache có thể lệch nhau mà không lỗi kiểu nào báo.
+ */
+export function payrollSheetLinesOptions(
+  companyId: string | null,
+  periodId: string | null,
+  isAuthenticated: boolean,
+) {
+  return queryOptions({
+    queryKey: hrmPayrollCalculationKeys.sheetLines(companyId, periodId ?? ""),
     queryFn: () => getPayrollSheetLines(periodId as string),
-    enabled: isAuthenticated && !!currentCompanyId && !!periodId,
+    enabled: isAuthenticated && !!companyId && !!periodId,
   });
 }

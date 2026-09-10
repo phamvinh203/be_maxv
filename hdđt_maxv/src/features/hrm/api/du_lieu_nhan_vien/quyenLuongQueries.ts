@@ -48,6 +48,12 @@ export interface QuyenXemLuong {
   coQuyen: boolean;
   /** Chắc chắn KHÔNG có quyền — chỉ khi đó mới ẩn/khóa giao diện. */
   biTuChoi: boolean;
+  /**
+   * Danh sách nhân viên đã tải xong (hoặc là OWNER) — tức `trangThai` là kết luận cuối, không phải
+   * "chưa rõ vì đang tải". Nơi muốn đợi biết quyền rồi mới gọi nhóm `/payroll-*` (tránh một 403 vô
+   * ích) dùng cờ này; `"chua_ro"` + `daXacDinh` = công ty chưa có nhân viên, để máy chủ chốt.
+   */
+  daXacDinh: boolean;
 }
 
 export function useQuyenXemLuong(): QuyenXemLuong {
@@ -61,7 +67,7 @@ export function useQuyenXemLuong(): QuyenXemLuong {
    * bỏ ba trường ngân hàng khỏi thân request), import hai chiều là vòng import. Đổi `enabled`
    * hay `queryFn` ở một bên thì phải đổi cả bên kia.
    */
-  const { data } = useQuery({
+  const { data, isPending } = useQuery({
     queryKey: hrmNhanVienKeys.list(currentCompanyId),
     queryFn: () => listNhanVien(),
     enabled: isAuthenticated && !!currentCompanyId,
@@ -70,14 +76,14 @@ export function useQuyenXemLuong(): QuyenXemLuong {
   return useMemo(() => {
     // OWNER: luật của máy chủ, không cần suy từ payload.
     if (user?.role === "OWNER") {
-      return { trangThai: "co", coQuyen: true, biTuChoi: false };
+      return { trangThai: "co", coQuyen: true, biTuChoi: false, daXacDinh: true };
     }
 
     const mau = data?.[0];
     if (!mau) {
       // Chưa tải xong hoặc công ty chưa có nhân viên nào — không kết luận, và mở để máy chủ
       // là bên nói lời cuối. Chặn ở đây sẽ khóa nhầm người có quyền chỉ vì mạng chậm.
-      return { trangThai: "chua_ro", coQuyen: true, biTuChoi: false };
+      return { trangThai: "chua_ro", coQuyen: true, biTuChoi: false, daXacDinh: !isPending };
     }
 
     const co = coTruongNganHang(mau);
@@ -85,6 +91,7 @@ export function useQuyenXemLuong(): QuyenXemLuong {
       trangThai: co ? "co" : "khong",
       coQuyen: co,
       biTuChoi: !co,
+      daXacDinh: true,
     };
-  }, [user?.role, data]);
+  }, [user?.role, data, isPending]);
 }

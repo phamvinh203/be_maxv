@@ -1,14 +1,15 @@
 import { useState, useMemo, type ReactNode } from "react";
 import { usePayrollPeriodList } from "../../api/du_lieu_tinh_luong/payrollPeriodsQueries";
-import { PayrollPeriodContext } from "./useCurrentPayrollPeriod";
-
-const STORAGE_KEY = "hrm_selected_payroll_period_id";
+import { kyDaKhoaSo } from "../../_shared/constants";
+import {
+  docKyLuongDaChon,
+  luuKyLuongDaChon,
+  PayrollPeriodContext,
+} from "./useCurrentPayrollPeriod";
 
 export function PayrollPeriodProvider({ children }: { children: ReactNode }) {
   const { data: periods = [], isLoading } = usePayrollPeriodList();
-  const [overrideId, setOverrideId] = useState<string | null>(() => {
-    return localStorage.getItem(STORAGE_KEY);
-  });
+  const [overrideId, setOverrideId] = useState<string | null>(docKyLuongDaChon);
 
   const selectedPeriodId = useMemo(() => {
     if (periods.length === 0) return null;
@@ -20,18 +21,14 @@ export function PayrollPeriodProvider({ children }: { children: ReactNode }) {
 
   const handleSelect = (id: string) => {
     setOverrideId(id);
-    localStorage.setItem(STORAGE_KEY, id);
+    luuKyLuongDaChon(id);
   };
 
   const selectedPeriod = useMemo(() => {
     return periods.find((p) => p.id === selectedPeriodId) ?? null;
   }, [periods, selectedPeriodId]);
 
-  const isLocked =
-    selectedPeriod?.status === "LOCKED" ||
-    selectedPeriod?.status === "APPROVED" ||
-    selectedPeriod?.status === "PAID" ||
-    selectedPeriod?.status === "ARCHIVED";
+  const isLocked = selectedPeriod ? kyDaKhoaSo(selectedPeriod.status) : false;
 
   const isReadOnly = isLocked || selectedPeriod?.status === "PENDING_REVIEW";
 

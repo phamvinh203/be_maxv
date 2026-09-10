@@ -182,11 +182,13 @@ function thongTinVeApi(
 }
 
 /**
- * Truy vấn gốc của danh sách nhân viên.
+ * Truy vấn gốc của danh sách nhân viên — dòng BE NGUYÊN BẢN, chưa qua `veKieuFe`. Export cho màn
+ * cần các trường BE tính sẵn mà kiểu FE bỏ đi hoặc làm mất thông tin (`loai_hop_dong` 3 nhóm,
+ * `ngay_hieu_luc_toi`, `so_npt`, `ten_pb`) — hiện là Dashboard.
  * `api/quyenLuongQueries.ts` khai lại ĐÚNG khóa và ĐÚNG hàm tải này để suy quyền xem lương —
  * đổi `queryKey`/`queryFn`/`enabled` ở đây thì phải đổi cả bên đó.
  */
-function useDanhSachNhanVien() {
+export function useDanhSachNhanVien() {
   const { isAuthenticated, currentCompanyId } = useAuth();
   // KHÔNG dùng `placeholderData: (prev) => prev`: nó giữ dữ liệu cũ xuyên qua việc ĐỔI query
   // key, mà key ở đây gắn `currentCompanyId` — đổi công ty sẽ hiện nguyên danh sách nhân viên của

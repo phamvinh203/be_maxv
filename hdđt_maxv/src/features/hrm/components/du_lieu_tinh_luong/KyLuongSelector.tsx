@@ -19,6 +19,7 @@ import CheckCircleRounded from "@mui/icons-material/CheckCircleRounded";
 import UndoRounded from "@mui/icons-material/UndoRounded";
 import { toast } from "react-toastify";
 import { getApiError } from "@/lib/apiClient";
+import { tenKyMacDinh, TRANG_THAI_KY } from "../../_shared/constants";
 import { useCurrentPayrollPeriod } from "./useCurrentPayrollPeriod";
 import {
   useApprovePayrollPeriod,
@@ -45,9 +46,7 @@ export default function KyLuongSelector() {
   const now = new Date();
   const [thangMoi, setThangMoi] = useState(now.getMonth() + 1);
   const [namMoi, setNamMoi] = useState(now.getFullYear());
-  const [tenMoi, setTenMoi] = useState(
-    `Kỳ lương tháng ${now.getMonth() + 1}/${now.getFullYear()}`,
-  );
+  const [tenMoi, setTenMoi] = useState(tenKyMacDinh(now.getMonth() + 1, now.getFullYear()));
 
   const taoKyMut = useCreatePayrollPeriod();
   const submitMut = useSubmitPayrollPeriod();
@@ -61,7 +60,7 @@ export default function KyLuongSelector() {
       const res = await taoKyMut.mutateAsync({
         month: thangMoi,
         year: namMoi,
-        name: tenMoi.trim() || `Kỳ lương tháng ${thangMoi}/${namMoi}`,
+        name: tenMoi.trim() || tenKyMacDinh(thangMoi, namMoi),
       });
       toast.success("Tạo kỳ lương thành công.");
       setSelectedPeriodId(res.id);
@@ -132,22 +131,16 @@ export default function KyLuongSelector() {
 
   const statusChip = () => {
     if (!selectedPeriod) return null;
-    switch (selectedPeriod.status) {
-      case "DRAFT":
-        return <Chip label="Bản nháp" size="small" color="default" />;
-      case "PENDING_REVIEW":
-        return <Chip label="Chờ duyệt" size="small" color="info" />;
-      case "LOCKED":
-        return <Chip label="Đã khóa sổ" size="small" color="warning" icon={<LockRounded />} />;
-      case "APPROVED":
-        return <Chip label="Đã duyệt" size="small" color="success" icon={<CheckCircleRounded />} />;
-      case "PAID":
-        return <Chip label="Đã chi trả" size="small" color="success" />;
-      case "ARCHIVED":
-        return <Chip label="Lưu trữ" size="small" />;
-      default:
-        return null;
-    }
+    const trangThai = TRANG_THAI_KY[selectedPeriod.status];
+    // Trạng thái lạ (BE thêm giá trị mới trước FE) thì không vẽ chip, không vỡ màn.
+    if (!trangThai) return null;
+    const icon =
+      selectedPeriod.status === "LOCKED" ? (
+        <LockRounded />
+      ) : selectedPeriod.status === "APPROVED" ? (
+        <CheckCircleRounded />
+      ) : undefined;
+    return <Chip label={trangThai.nhan} size="small" color={trangThai.mau} icon={icon} />;
   };
 
   return (
@@ -301,7 +294,7 @@ export default function KyLuongSelector() {
                 onChange={(e) => {
                   const m = Number(e.target.value);
                   setThangMoi(m);
-                  setTenMoi(`Kỳ lương tháng ${m}/${namMoi}`);
+                  setTenMoi(tenKyMacDinh(m, namMoi));
                 }}
               >
                 {Array.from({ length: 12 }, (_, i) => i + 1).map((m) => (
@@ -319,7 +312,7 @@ export default function KyLuongSelector() {
                 onChange={(e) => {
                   const y = Number(e.target.value);
                   setNamMoi(y);
-                  setTenMoi(`Kỳ lương tháng ${thangMoi}/${y}`);
+                  setTenMoi(tenKyMacDinh(thangMoi, y));
                 }}
               />
             </Stack>

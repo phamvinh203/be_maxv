@@ -25,6 +25,7 @@ import type {
   QuanHe,
   TrangThai,
 } from "../types";
+import type { PayrollPeriodStatusApi } from "../api/du_lieu_tinh_luong/payrollPeriodsApi";
 
 export interface LuaChon<T extends string> {
   value: T;
@@ -421,6 +422,34 @@ export const CHIEU_BU_TRU: (LuaChon<ChieuBuTru> & { mau: "error" | "success" })[
 export function moTaChieuBuTru(chieu: ChieuBuTru) {
   // Chiều lạ (dữ liệu cũ, hoặc mã gõ tay) vẫn phải render được — rơi về "trừ".
   return CHIEU_BU_TRU.find((item) => item.value === chieu) ?? CHIEU_BU_TRU[0]!;
+}
+
+/**
+ * Nhãn + màu chip của 6 trạng thái kỳ lương — MỘT nguồn cho ô chọn kỳ (`KyLuongSelector`) và
+ * Dashboard, để cùng một kỳ không mang hai tên ở hai màn.
+ */
+export const TRANG_THAI_KY: Record<
+  PayrollPeriodStatusApi,
+  { nhan: string; mau: "default" | "info" | "warning" | "success" }
+> = {
+  DRAFT: { nhan: "Bản nháp", mau: "default" },
+  PENDING_REVIEW: { nhan: "Chờ duyệt", mau: "info" },
+  LOCKED: { nhan: "Đã khóa sổ", mau: "warning" },
+  APPROVED: { nhan: "Đã duyệt", mau: "success" },
+  PAID: { nhan: "Đã chi trả", mau: "success" },
+  ARCHIVED: { nhan: "Lưu trữ", mau: "default" },
+};
+
+/**
+ * Từ khóa sổ trở đi: bảng lương đọc snapshot đóng băng, dữ liệu tính lương chỉ đọc. Trước đó
+ * (nháp / chờ duyệt) bảng lương còn tính live — số là "tạm tính".
+ */
+export function kyDaKhoaSo(status: PayrollPeriodStatusApi): boolean {
+  return status === "LOCKED" || status === "APPROVED" || status === "PAID" || status === "ARCHIVED";
+}
+
+export function tenKyMacDinh(thang: number, nam: number): string {
+  return `Kỳ lương tháng ${thang}/${nam}`;
 }
 
 export const LOAI_NGAY_LE: LuaChon<LoaiNgayLe>[] = [
