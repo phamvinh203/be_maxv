@@ -5,7 +5,7 @@
  */
 
 import type { CellValue, Workbook, Worksheet } from "exceljs";
-import { sinhIdDongSanPham, thanhTienSanPham, tongTienSanPham } from "../../../luongSanPham";
+import { sinhIdDongSanPham, thanhTienSanPham, tongTienSanPham } from "../../../calculations/du_lieu_tinh_luong/luongSanPham";
 import type { DongLuongSanPham, LuongSanPhamNhanVienRow, SanPham } from "../../../types";
 
 /** Cột của sheet "Lương sản phẩm" — thứ tự này là hợp đồng giữa xuất và nhập. */

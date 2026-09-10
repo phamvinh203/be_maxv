@@ -1,7 +1,7 @@
 ---
 type: srs-flows
 feature: hrm
-updated: 2026-09-07
+updated: 2026-09-08
 ---
 
 # HRM — Flows
@@ -455,3 +455,182 @@ Ba điểm nghiệp vụ then chốt:
 3. **Ngưỡng "sắp hết hạn" chưa chốt** (OQ-hrm-14). Tới khi có ngưỡng, hệ thống **chỉ** phân biệt còn hạn và đã hết hạn; **không** được tự đặt một con số mặc định rồi cảnh báo theo nó.
 
 **Ràng buộc hiệu năng**: chỉ báo cho cả danh sách phải lấy trong **một lượt truy vấn**, không truy vấn theo từng dòng (FR-hrm-040, cùng ràng buộc với NFR-hrm-004). Đây là điểm dễ hỏng nhất của tính năng này: đối chiếu bộ giấy tờ bắt buộc cho từng nhân viên là công thức sinh N+1 rất tự nhiên.
+
+---
+
+## Flow: Xem, Cập nhật Thiết lập chung & Khôi phục cấu hình chuẩn `[MỚI]`
+
+**Trigger**: Người dùng mở tab "Thiết lập chung" trong phân hệ HRM, chỉnh sửa các tham số và bấm "Lưu cấu hình", hoặc bấm "Khôi phục mặc định".
+**Related UC**: UC-hrm-18, UC-hrm-19
+**Related FR**: FR-hrm-045, FR-hrm-046, FR-hrm-047
+**Related BR**: BR-hrm-070, BR-hrm-071, BR-hrm-072, BR-hrm-073, BR-hrm-080, BR-hrm-081, BR-hrm-082, BR-hrm-083
+**Related E**: E-hrm-067, E-hrm-068, E-hrm-069, E-hrm-077, E-hrm-080, E-hrm-081, E-hrm-082
+
+> **Cập nhật 2026-09-08 (đợt thẩm định lại biểu thuế TNCN).** Nhánh thẩm định biểu thuế trong luồng này được viết lại: trước đây chỉ kiểm một điều kiện (thuế suất tăng dần), nay kiểm trọn bốn điều kiện toàn vẹn của BR-hrm-082 và có thêm nhánh **lưu thành công kèm cảnh báo lệch biểu chuẩn** (BR-hrm-083). Giá trị khởi tạo tự động và giá trị khôi phục mặc định là **biểu 7 bậc** theo BR-hrm-081.
+
+```mermaid
+sequenceDiagram
+    autonumber
+    actor User as Quản trị viên (ADMIN / OWNER)
+    participant FE as Giao diện HRM (React)
+    participant BE as Fastify Server
+    participant DB as PostgreSQL (Tenant DB)
+
+    Note over User,DB: 1. Đọc cấu hình & Tự phục hồi (Self-healing pattern)
+    User->>FE: Mở màn hình Thiết lập chung
+    FE->>BE: GET /api/v1/hrm/settings/general
+    BE->>DB: findUnique(id = "DEFAULT")
+    alt Chưa có bản ghi DEFAULT (lần đầu vào tenant)
+        BE->>DB: upsert khởi tạo bộ giá trị chuẩn luật VN (BLLĐ 2019, NĐ 73/2024, NĐ 74/2024, NQ 954/2020) + biểu thuế 7 bậc Điều 22 Luật Thuế TNCN
+    end
+    DB-->>BE: Trả bản ghi cấu hình DEFAULT
+    BE-->>FE: 200 OK (hơn 30 tham số + biểu thuế 7 bậc, khoang = ngưỡng trên lũy kế)
+    FE-->>User: Hiển thị 5 nhóm tham số ở chế độ Đã lưu (Saved)
+
+    Note over User,DB: 2. Chỉnh sửa nhiều ô tham số (Draft mode & Batch update)
+    User->>FE: Chỉnh sửa giờ công, mức lương cơ sở, tỷ lệ bảo hiểm, các bậc thuế...
+    Note over FE: Chuyển sang trạng thái Bản nháp (Draft)
+    User->>FE: Bấm "Lưu cấu hình"
+    FE->>BE: PUT /api/v1/hrm/settings/general (gửi payload gom toàn bộ tham số)
+    
+    alt Vai trò không phải ADMIN hoặc OWNER
+        BE-->>FE: 403 Forbidden (E-hrm-077: Chỉ ADMIN hoặc OWNER được cập nhật)
+    else Giờ công chuẩn ngoài khoảng 1.0 - 24.0h
+        BE-->>FE: 400 Bad Request (E-hrm-067: Giờ công chuẩn phải từ 1.0 đến 24.0h)
+    else Lương cơ sở hoặc lương tối thiểu vùng <= 0
+        BE-->>FE: 400 Bad Request (E-hrm-068: Lương cơ sở và lương vùng phải > 0)
+    else Biểu thuế rỗng hoặc chỉ 1 bậc
+        BE-->>FE: 400 Bad Request (E-hrm-081: Biểu thuế phải có ít nhất 2 bậc)
+    else Ngưỡng lũy kế không tăng nghiêm ngặt
+        BE-->>FE: 400 Bad Request (E-hrm-080: Ngưỡng bậc sau phải lớn hơn bậc trước)
+    else Thuế suất bậc sau <= bậc liền trước (vi phạm lũy tiến)
+        BE-->>FE: 400 Bad Request (E-hrm-069: Thuế suất bậc sau phải lớn hơn bậc trước)
+    else Bậc cuối không phải bậc mở
+        BE-->>FE: 400 Bad Request (E-hrm-082: Bậc cuối phải áp cho toàn bộ phần vượt)
+    else Hợp lệ
+        BE->>DB: upsert(where: id = "DEFAULT", data: payload)
+        DB-->>BE: Bản ghi đã cập nhật
+        BE->>BE: Ghi nhật ký kiểm toán (BR-hrm-066 nhóm 6)
+        alt Biểu thuế khác biểu chuẩn 7 bậc (BR-hrm-083)
+            BE-->>FE: 200 OK + warning "CANH_BAO_BIEU_THUE_LECH_CHUAN"
+            FE-->>User: Lưu thành công, hiện dải cảnh báo "Biểu thuế đang khác biểu chuẩn theo luật"
+        else Biểu thuế đúng biểu chuẩn
+            BE-->>FE: 200 OK (data đã cập nhật)
+            FE-->>User: Thông báo "Lưu cấu hình thành công", chuyển về trạng thái Saved
+        end
+    end
+
+    Note over User,DB: 3. Khôi phục cấu hình mặc định gốc
+    User->>FE: Bấm "Khôi phục mặc định"
+    FE->>User: Hiển thị popup xác nhận — nêu rõ sẽ ghi đè CẢ biểu thuế công ty đã tự đặt (FR-hrm-047)
+    User->>FE: Xác nhận khôi phục
+    FE->>BE: POST /api/v1/hrm/settings/general/restore-default
+    alt Vai trò không phải ADMIN hoặc OWNER
+        BE-->>FE: 403 Forbidden (E-hrm-077)
+    else Hợp lệ
+        BE->>DB: upsert ghi đè toàn bộ tham số DEFAULT về chuẩn gốc luật VN, biểu thuế về đúng 7 bậc Điều 22
+        DB-->>BE: Bản ghi chuẩn gốc
+        BE->>BE: Ghi nhật ký kiểm toán (BR-hrm-066 nhóm 6)
+        BE-->>FE: 200 OK
+        FE-->>User: Nạp lại bộ tham số gốc lên màn hình, thông báo thành công
+    end
+```
+
+---
+
+## Flow: Quản lý Ca làm việc (Sinh mã tự động, ca qua đêm & tính giờ công) `[MỚI]`
+
+**Trigger**: Người dùng tạo mới, xem danh sách, cập nhật thông tin hoặc xóa một ca làm việc.
+**Related UC**: UC-hrm-20
+**Related FR**: FR-hrm-048, FR-hrm-049, FR-hrm-050
+**Related BR**: BR-hrm-074, BR-hrm-075, BR-hrm-076
+**Related E**: E-hrm-070, E-hrm-071, E-hrm-072, E-hrm-073, E-hrm-078
+
+```mermaid
+flowchart TD
+    A[Người dùng mở Danh mục Ca làm việc] --> B[GET /api/v1/hrm/work-shifts]
+    B --> C[Máy chủ đọc danh sách ca trong hrm_work_shifts]
+    C --> D[Tính động cho từng ca:<br/>- isOvernight: endTime <= startTime<br/>- workingHours: trừ nghỉ giữa ca]
+    D --> E[Hiển thị bảng ca làm việc kèm giờ công và huy hiệu Ca qua đêm]
+
+    E --> F{Hành động}
+    
+    %% Tạo ca
+    F -- "Tạo mới ca" --> G[Mở form Thêm ca làm việc]
+    G --> H[Nhập Tên ca, Giờ vào, Giờ ra, Nghỉ giữa ca >= 0<br/>Mã ca: tự nhập hoặc để trống]
+    H --> I[POST /api/v1/hrm/work-shifts]
+    I --> J{Tên ca có rỗng?}
+    J -- Rỗng --> J1[400 E-hrm-070 Tên ca không được để trống]
+    J -- Hợp lệ --> K{Giờ vào và Giờ ra hợp lệ 24h?}
+    K -- Không hợp lệ --> K1[400 E-hrm-071 Giờ ca bắt buộc đúng định dạng HH:mm]
+    K -- Hợp lệ --> L{Mã ca để trống?}
+    L -- Để trống --> L1{Còn mã trống trong khoảng CA01-CA99?}
+    L1 -- Hết 99 ca --> L1_Err[400 E-hrm-078 Đã đạt giới hạn 99 ca tự sinh]
+    L1 -- Còn mã --> L1_Gap[Cấp mã gap nhỏ nhất CAxx]
+    L -- Có nhập --> L2[Kiểm tra trùng mã code trong tenant]
+    L2 -- Bị trùng --> L3[409 E-hrm-073 Mã ca đã tồn tại]
+    L2 -- Không trùng --> M1
+    L1_Gap --> M1[Xác định ca qua đêm: isOvernight = endTime <= startTime]
+    M1 --> M2[Tính workingHours = Tổng phút làm - breakMinutes / 60]
+    M2 --> M3{workingHours > 0?}
+    M3 -- Không --> M4[400 E-hrm-072 Nghỉ không âm và giờ công ròng phải lớn hơn 0]
+    M3 -- Có --> M5{workingHours > 12.0h?}
+    M5 -- Có --> M5_Warn[Kèm cảnh báo CANH_BAO_GIO_LAM_VUOT_TRAN_BLLD Điều 105 & 107 BLLĐ]
+    M5 -- Không --> M5_Ok[Lưu bình thường]
+    M5_Warn --> M6_Save[Lưu bản ghi vào hrm_work_shifts với status = ACTIVE]
+    M5_Ok --> M6_Save
+    M6_Save --> M7[Trả về 201 Created kèm isOvernight, workingHours và cờ warning nếu có]
+
+    %% Sửa ca
+    F -- "Chỉnh sửa ca" --> N[Mở modal sửa ca]
+    N --> N1[PATCH /api/v1/hrm/work-shifts/:id<br/>Cho phép sửa name, startTime, endTime, breakMinutes, status<br/>CẤM sửa code]
+    N1 --> N2[Merge dữ liệu cũ + mới, tính lại workingHours > 0]
+    N2 --> N3[Cập nhật bản ghi, trả về 200 OK kèm warning nếu ca > 12h]
+
+    %% Xóa ca
+    F -- "Xóa ca" --> P[DELETE /api/v1/hrm/work-shifts/:id]
+    P --> P1{Ca đã được dùng trong phân ca / chấm công?}
+    P1 -- Đã dùng --> P2[409 Ràng buộc dữ liệu - yêu cầu chuyển status sang INACTIVE]
+    P1 -- Chưa dùng --> P3[Xóa cứng ca làm việc, trả về 200 OK]
+```
+
+---
+
+## Flow: Quản lý Lịch ngày lễ & Tạo nhanh 11 ngày nghỉ lễ chuẩn Việt Nam `[MỚI]`
+
+**Trigger**: Người dùng xem danh sách ngày lễ, tạo mới ngày lễ lẻ, hoặc bấm "Tạo nhanh" lịch nghỉ lễ cho cả năm theo luật định.
+**Related UC**: UC-hrm-21, UC-hrm-22
+**Related FR**: FR-hrm-051, FR-hrm-052, FR-hrm-053, FR-hrm-054
+**Related BR**: BR-hrm-077, BR-hrm-078, BR-hrm-079
+**Related E**: E-hrm-074, E-hrm-075, E-hrm-076, E-hrm-079
+
+```mermaid
+flowchart TD
+    Start[Người dùng mở tab Lịch ngày lễ] --> List[GET /api/v1/hrm/holidays<br/>Lọc theo year, filter THIS_YEAR/ANNUAL/ALL, type]
+    List --> View[Hiển thị danh sách ngày lễ kèm thứ trong tuần và cờ có lương]
+
+    View --> Action{Chọn thao tác}
+
+    %% Thêm ngày lễ đơn lẻ
+    Action -- "Thêm ngày lễ mới" --> Form[Nhập Ngày, Tên lễ, Loại lễ NATIONAL/LUNAR/COMPANY/COMPENSATORY,<br/>cờ lặp hàng năm, cờ có lương]
+    Form --> Post[POST /api/v1/hrm/holidays]
+    Post --> V1{Thiếu Ngày hoặc Tên lễ?}
+    V1 -- Có --> E1[400 E-hrm-074 Tên và ngày không được để trống]
+    V1 -- Không --> V2{Loại lễ là LUNAR hoặc COMPENSATORY mà bật cờ lặp?}
+    V2 -- Đúng --> E2[400 E-hrm-075 Lễ âm lịch và nghỉ bù không thể lặp theo dương lịch]
+    V2 -- Không --> V_Trim[Tự động .trim khoảng trắng thừa ở đầu/cuối tên lễ]
+    V_Trim --> V3{Trùng cả date và name đã trim trong tenant?}
+    V3 -- Có --> E3[409 E-hrm-076 Ngày này đã có ngày lễ cùng tên trong hệ thống]
+    V3 -- Không --> Save[Lưu bản ghi vào hrm_holidays, trả 201 Created]
+
+    %% Tạo nhanh
+    Action -- "Tạo nhanh lịch nghỉ lễ" --> Quick[Bấm nút Tạo nhanh, chọn năm chỉ định]
+    Quick --> CheckYear{Năm có nằm trong khoảng 2024 đến 2030?}
+    CheckYear -- Ngoài dải --> ErrYear[400 E-hrm-079 Năm khởi tạo phải từ 2024 đến 2030]
+    CheckYear -- Hợp lệ --> GenPost[POST /api/v1/hrm/holidays/quick-generate với body: year]
+    GenPost --> Tra[Hệ thống nạp 11 ngày nghỉ lễ chuẩn Điều 112 BLLĐ 2019:<br/>1. 01/01 Tết Dương lịch 1 ngày<br/>2. Tết Âm lịch 5 ngày tra bảng âm lịch tĩnh<br/>3. 10/3 AL Giỗ Tổ Hùng Vương 1 ngày tra bảng âm lịch tĩnh<br/>4. 30/04 Ngày Chiến thắng 1 ngày<br/>5. 01/05 Quốc tế Lao động 1 ngày<br/>6. 02/09 Quốc khánh và 01 ngày liền kề 2 ngày]
+    Tra --> SkipDup[Chèn danh sách với cơ chế Idempotent: skipDuplicates = true]
+    SkipDup --> Result[Bỏ qua các ngày đã có trùng date và name đã trim<br/>Chỉ thêm các ngày còn thiếu]
+    Result --> Res200[Trả về 200 OK kèm danh sách 11 ngày lễ của năm<br/>và số lượng ngày mới được thêm]
+    Res200 --> UpdateUI[Giao diện làm mới danh sách ngày lễ]
+```

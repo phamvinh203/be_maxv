@@ -12,7 +12,7 @@ import Button from "@mui/material/Button";
 import Divider from "@mui/material/Divider";
 import Alert from "@mui/material/Alert";
 import HistoryRounded from "@mui/icons-material/HistoryRounded";
-import { sapXepCay } from "../../../cay";
+import { sapXepCay } from "../../../_shared/cay";
 import {
   CHUC_VU,
   GIOI_TINH,
@@ -20,14 +20,14 @@ import {
   LOAI_HD,
   NGAN_HANG_VN,
   TRANG_THAI_NV,
-} from "../../../constants";
-import { ngayVn, nhan, tienVn } from "../../../format";
+} from "../../../_shared/constants";
+import { ngayVn, nhan, tienVn } from "../../../_shared/format";
 // Phải là danh sách phòng ban THẬT: BE chặn ma_pb không tồn tại, chọn từ mock sẽ lưu lỗi 404.
-import { usePhongBanList } from "../../../api/phongBanQueries";
+import { usePhongBanList } from "../../../api/du_lieu_nhan_vien/phongBanQueries";
 import {
   LOI_KHONG_CO_QUYEN_LUONG,
   useQuyenXemLuong,
-} from "../../../api/quyenLuongQueries";
+} from "../../../api/du_lieu_nhan_vien/quyenLuongQueries";
 import type {
   GioiTinh,
   HopDong,

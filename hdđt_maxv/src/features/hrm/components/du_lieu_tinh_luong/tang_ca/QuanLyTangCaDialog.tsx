@@ -9,8 +9,12 @@ import Stack from "@mui/material/Stack";
 import Button from "@mui/material/Button";
 import Typography from "@mui/material/Typography";
 import { getErrorMessage } from "../../../../../lib/errors";
-import { LOAI_TANG_CA } from "../../../constants";
-import { useCauHinh, useLuuCauHinh } from "../../../mock/hooks/cauHinh";
+import { LOAI_TANG_CA } from "../../../_shared/constants";
+import {
+  useCauHinh,
+  useLuuCauHinh,
+  useTrangThaiCauHinh,
+} from "../../../api/cau_hinh_mac_dinh/cauHinhQueries";
 import type { CauHinhMacDinh } from "../../../types";
 import SoField from "../../cau_hinh_mac_dinh/SoField";
 
@@ -39,10 +43,20 @@ type KhoaSoTangCa =
  */
 export default function QuanLyTangCaDialog({ open, onClose }: Props) {
   const daLuu = useCauHinh();
+  const { dangTai, loi } = useTrangThaiCauHinh();
   const luuCauHinh = useLuuCauHinh();
 
   const [values, setValues] = useState<CauHinhMacDinh>(daLuu);
   const [dangLuu, setDangLuu] = useState(false);
+
+  /*
+   * Khóa nút Lưu khi chưa tải xong hoặc tải hỏng.
+   *
+   * `useCauHinh()` trả **bộ chuẩn pháp luật** trong lúc chờ máy chủ, để form có khung hiện lên.
+   * Nút Lưu gửi `PUT` **toàn bộ** bộ tham số, nên bấm lúc đó là ghi đè cấu hình thật của công ty
+   * (kể cả biểu thuế riêng) bằng bộ chuẩn — mà người dùng chỉ định sửa mấy ô hệ số tăng ca.
+   */
+  const khoaLuu = dangLuu || dangTai || loi;
 
   useEffect(() => {
     if (!open) return;
@@ -140,7 +154,7 @@ export default function QuanLyTangCaDialog({ open, onClose }: Props) {
         <Button
           variant="contained"
           onClick={handleLuu}
-          disabled={dangLuu}
+          disabled={khoaLuu}
           sx={{ textTransform: "none" }}
         >
           Lưu thay đổi

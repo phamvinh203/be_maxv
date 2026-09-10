@@ -2,14 +2,19 @@
 type: test-report
 feature: hrm
 status: in-review
-updated: 2026-09-07
+updated: 2026-09-08
 links:
   - docs/hrm/qa/test-cases.md
   - docs/hrm/qa/issues-and-bugs.md
   - docs/hrm/architecture/api-contract.md
   - docs/hrm/architecture/dev-notes.md
   - docs/hrm-ba-signoff-2026-09-07.md
+  - docs/hrm/agents-tester-qa/qa-verification-report-2026-09-08-dot-2.md
 ---
+
+> **Tệp này có HAI phần.**
+> **Phần I** (Mục 1–9) — đợt **P0**, kiểm chứng ngày 2026-09-07: phòng ban / nhân viên / hợp đồng / người phụ thuộc / tài liệu.
+> **Phần II** (Mục 11–16, cuối tệp) — đợt **Cấu hình mặc định · Ca làm việc · Lịch ngày lễ**, kiểm chứng ngày 2026-09-08, **chạy thật qua HTTP `app.inject()`**.
 
 # HRM — BÁO CÁO KIỂM THỬ PHASE B (đợt P0)
 
@@ -423,3 +428,343 @@ Chi tiết đầy đủ (mức độ, bước tái hiện, kỳ vọng ↔ thự
 ---
 
 *Báo cáo lập ngày 2026-09-07 bởi Tester-QA, Phase B đợt P0. Không sửa một dòng mã sản phẩm nào; không chạy migration hay hai script vận hành lên bất kỳ cơ sở dữ liệu nào. Cây làm việc git sau khi kiểm thử giống hệt trước khi kiểm thử (worktree đối chứng đã gỡ sạch).*
+
+---
+---
+
+# PHẦN II — HRM › BÁO CÁO KIỂM THỬ PHASE B ĐỢT 2
+
+*Cụm **Cấu hình mặc định · Ca làm việc · Lịch ngày lễ** · Kiểm chứng ngày 2026-09-08 · Phạm vi: `TC-hrm-273 … TC-hrm-327` (55 ca)*
+
+> **Kết luận một dòng:** mã máy chủ của cả 3 thực thể **ĐẠT** — **52/55 ca chạy thật và PASS**, cộng 9 phép kiểm riêng `KR-01…KR-09` PASS toàn bộ. Ba điểm còn treo: **1 ca không dựng được tiền điều kiện** (chưa có bảng `hrm_work_schedules`) và **2 ca FAIL do câu chữ `test-cases.md` lệch với `api-contract.md`** — **không ca nào FAIL vì mã sai**.
+>
+> Báo cáo nghiệm thu đầy đủ: [`docs/hrm/agents-tester-qa/qa-verification-report-2026-09-08-dot-2.md`](../agents-tester-qa/qa-verification-report-2026-09-08-dot-2.md). Tệp đó cũng nêu đích danh **ba điểm sai** của báo cáo nghiệm thu đợt 1 và **thay thế** nó.
+
+---
+
+## 11. Đây là lần đầu tiên endpoint HRM được gọi thật
+
+Món nợ ghi ở `CONTEXT_SUMMARY.md` Mục 10.6 (*"Dựng khung test tích hợp có `app.inject()` — 12 ca endpoint vẫn chưa chạy được, và chưa một endpoint HRM nào được gọi thật"*) **đã trả**.
+
+### 11.1. Rào cản 401 — căn nguyên và cách vượt
+
+`src/__tests__/adminOwner.test.ts` hỏng **5/5 với 401** từ trước đợt này. Căn nguyên:
+
+```
+POST /api/v1/auth/login  ->  200 OK
+{"success":true,"data":{"user":{…},"companies":[…],"activeDonViId":"…","modules":{…}}}
+                                       ^ KHÔNG còn trường accessToken
+```
+
+`helpers/authTokens.ts::issueTokens()` đặt cả access lẫn refresh vào **cookie httpOnly**; thân phản hồi không còn token. Bản test cũ đọc `data.accessToken` → `undefined` → gửi `Authorization: Bearer undefined`. `@fastify/jwt` ưu tiên header khi header có mặt và khớp `/^Bearer\s/i` (`node_modules/@fastify/jwt/index.js:258`) nên nó lấy đúng chuỗi `"undefined"` làm token ⇒ **401 ở mọi ca**.
+
+**Phân loại: *Test failed*, KHÔNG phải *Product bug*.** Chuyển vé sang cookie httpOnly là thiết kế cố ý (chống đánh cắp qua XSS), ghi rõ trong `constants/auth.ts` và `authTokens.ts`.
+
+Khung mới đi **đúng đường xác thực của sản phẩm**, không tự ký JWT tay:
+
+```
+POST /api/v1/auth/login              -> lấy cookie accessToken (httpOnly)
+POST /api/v1/companies/:id/switch    -> cấp lại cookie có nhúng donViId của công ty cần test
+mọi lượt gọi HRM                     -> app.inject({ cookies: { accessToken: <vé> } })
+```
+
+Vé đi trọn chuỗi guard thật: hook `preHandler` của `hrm.route.ts` → `app.authenticate(req)` → `requireModule('hrm')` → `resolveTenantDb(req)`.
+
+### 11.2. Môi trường và cách cô lập dữ liệu
+
+| Việc | Cách làm |
+|:---|:---|
+| Tài khoản | `qa.hrm.owner@test.local` (OWNER) + `qa.hrm.staff@test.local` (OWNER_EMPLOYEE, có `DonViAccess` **chỉ** vào công ty A) |
+| Gói thuê bao | Gói riêng `QA_HRM_PLAN`, `features: { hrm: true, … }` |
+| DB tenant | **Tự cấp 2 DB mới** `maxv_9970000001_app` (A) và `maxv_9970000002_app` (B) bằng `provisionTenant()` — CREATE DATABASE + `prisma db push` + `applyTenantConstraints` |
+| Dọn dẹp | `cleanup()` chạy **cả trước lẫn sau**: `dropTenant()` cả 2 DB, xóa don_vi / access / subscription / plan / user / dòng `syslog` của tài khoản test |
+
+**Đối chứng sau lượt chạy cuối** (truy vấn thật):
+
+```
+{"userTest":0,"donViTest":0,"planTest":0,"syslogHRM":0,"tongDonVi":10,"tongUser":10}
+DB test con lai: []
+```
+
+Số công ty và người dùng **y hệt trước khi chạy** (10 / 10). Không chạm một dòng nào của tenant thật. Không khởi động hay tắt máy chủ dev. Không chạy `sync:tenants`.
+
+---
+
+## 12. Số liệu chạy thật
+
+### 12.1. Lệnh
+
+| Lệnh | Kết quả |
+|:---|:---|
+| `cd be_maxv && npm run typecheck` | **exit 0** |
+| `cd be_maxv && npm run lint` | **exit 0** — `183 problems (0 errors, 183 warnings)` |
+| `npx tsx --test src/__tests__/hrmSettingsShiftsHolidaysApi.test.ts` | `tests 70 · pass 66 · fail 4` — quy về **lá: 64 pass / 2 fail** (2 con số fail còn lại là khối cha) |
+| `npx tsx --test src/__tests__/hrmSettingsShiftsHolidays.test.ts` | `tests 32 · pass 32 · fail 0` |
+| `npx tsx --test src/__tests__/adminOwner.test.ts` | `tests 5 · pass 5 · fail 0` (sau khi sửa **test**) |
+| `cd be_maxv && npm test` | `tests 577 · pass 573 · fail 4 · duration_ms 21126` |
+| `cd hdđt_maxv && npx tsc --noEmit` | **exit 0** |
+| `cd hdđt_maxv && npm run lint` | **exit 0** |
+| `cd hdđt_maxv && npm run build` | **exit 0** — `built in 3.19s` |
+
+**Hồi quy:** 4 con số fail của `npm test` **chỉ gồm** 2 ca lá `TC-hrm-301`, `TC-hrm-316` và 2 khối cha của chúng. Không module nào khác đỏ. Trước đợt này bộ test có **5 ca đỏ thường trực** (adminOwner) — nay đã xanh.
+
+### 12.2. Tổng hợp 55 ca
+
+| Nhóm | Số ca | Chạy thật | PASS | FAIL | KHÔNG CHẠY ĐƯỢC |
+|:---|:--:|:--:|:--:|:--:|:--:|
+| 7.1 Cấu hình mặc định (273–287) | 15 | 15 | **15** | 0 | 0 |
+| 7.2 Ca làm việc (288–309) | 22 | 21 | **20** | 1 (`301`) | 1 (`308`) |
+| 7.3 Lịch ngày lễ (310–327) | 18 | 18 | **17** | 1 (`316`) | 0 |
+| **Cộng** | **55** | **54** | **52** | **2** | **1** |
+
+Tổng số lượt gọi HTTP thật trong một lượt chạy: **121**.
+
+---
+
+## 13. Kết quả từng ca — mã trạng thái THẬT
+
+> Cột "Trạng thái thật" chép từ nhật ký lượt gọi. Ca gửi nhiều lượt thì liệt kê đủ.
+
+### 13.1. Cấu hình mặc định — `TC-hrm-273 … TC-hrm-287`
+
+| Ca | Lượt gọi | Trạng thái thật | Kết luận |
+|:---|:---|:---|:--:|
+| TC-hrm-273 | `GET /settings/general` (tenant trắng) | **200** — tự khởi tạo `DEFAULT`, 33 trường, `baseSalary:"2340000"`, `standardHoursPerDay:"8"`, **`taxBrackets` 7 bậc, bậc cuối `null`, trần 35%** | PASS |
+| TC-hrm-274 | `GET` lần 2 | **200** — khớp 100% bản ghi đọc thẳng từ DB (đối chiếu `standardHoursPerDay`, `baseSalary`, `taxBrackets`) | PASS |
+| TC-hrm-275 | `PUT {standardHoursPerDay:7.5, saturdayPolicy:"OFF", unionFeeEmployeeRate:0.8}` | **200** — 3 trường đổi đúng; `baseSalary` và `sundayPolicy` giữ nguyên; **không** có `warning` | PASS |
+| TC-hrm-276 | `PUT 1.0` · `PUT 24.0` | **200** · **200** | PASS |
+| TC-hrm-277 | `PUT 0.9` · `24.1` · `0` | **400** ×3 — `Giờ công chuẩn/ngày phải nằm trong khoảng từ 1.0 đến 24.0 giờ.` Giá trị trong DB không đổi | PASS |
+| TC-hrm-278 | `baseSalary 0 / -500000`, `regionMinSalary 0 / -1000` | **400** ×4 — `Lương cơ sở và lương tối thiểu vùng phải là số nguyên lớn hơn 0.` | PASS |
+| TC-hrm-279 | `PUT {baseSalary:1, regionMinSalary:1}` | **200** | PASS |
+| TC-hrm-280 | biểu 2 bậc `5%/5%` · `5%/4%` | **400** ×2 — `Thuế suất của bậc thuế sau phải lớn hơn bậc liền trước.` | PASS |
+| TC-hrm-281 | biểu 7 bậc chuẩn | **200** — lưu đủ 7 bậc, **vắng hẳn** `warning` | PASS |
+| TC-hrm-282 | `PUT` bằng vé `OWNER_EMPLOYEE` | **403** — `Chỉ Quản trị viên (ADMIN) hoặc Chủ doanh nghiệp (OWNER) mới có quyền cập nhật hoặc khôi phục Cấu hình mặc định.` | PASS |
+| TC-hrm-283 | `POST /settings/general/restore-default` | **200** (không phải 201) — mọi tham số về chuẩn, `taxBrackets` 7 bậc, không `warning` | PASS |
+| TC-hrm-284 | `restore-default` bằng vé nhân viên | **403** | PASS |
+| TC-hrm-285 | `GET` bằng vé nhân viên | **200** | PASS |
+| TC-hrm-286 | `POST /settings/general` · `DELETE /settings/general` | **404** ×2 — `Route POST:/api/v1/hrm/settings/general not found` | PASS |
+| TC-hrm-287 | A `PUT 7.0` → **200** (`"7"`); B `GET` → **200** (`"8"`) | Cấu hình độc lập giữa 2 DB tenant | PASS |
+
+### 13.2. Ca làm việc — `TC-hrm-288 … TC-hrm-309`
+
+| Ca | Lượt gọi | Trạng thái thật | Kết luận |
+|:---|:---|:---|:--:|
+| TC-hrm-288 | `POST` bỏ trống mã, 08:00–17:00, nghỉ 60 | **201** — `"code":"CA01","isOvernight":false,"workingHours":8,"status":"ACTIVE"` | PASS |
+| TC-hrm-289 | `POST code:"CA02"`, 06:00–14:00, nghỉ 30 | **201** — `workingHours: 7.5` | PASS |
+| TC-hrm-290 | 22:00–06:00, nghỉ 30 | **201** — `isOvernight:true, workingHours:7.5` | PASS |
+| TC-hrm-291 | 20:00–04:00, nghỉ 60 | **201** — `isOvernight:true, workingHours:7` | PASS |
+| TC-hrm-292 | 08:00–08:00, nghỉ 120 | **201** — `isOvernight:true, workingHours:22, "warning":"CANH_BAO_GIO_LAM_VUOT_TRAN_BLLD"` | PASS |
+| TC-hrm-293 | 00:00–08:00, nghỉ 0 | **201** — `isOvernight:false, workingHours:8` | PASS |
+| TC-hrm-294 | thiếu `name` · `name:"   "` | **400** ×2 — `Tên ca làm việc không được để trống.` | PASS |
+| TC-hrm-295 | `"8:00"` · `"25:00"` · thiếu `endTime` | **400** ×3 — thông điệp về `HH:mm` | PASS |
+| TC-hrm-296 | `breakMinutes:-15` | **400** | PASS |
+| TC-hrm-297 | ca 4h nghỉ 240 · nghỉ 300 | **400** ×2 | PASS |
+| TC-hrm-298 | `POST code:"CA01"` khi đã có | **409** — `Mã ca làm việc đã tồn tại…` | PASS |
+| TC-hrm-299 | có `CA01`+`CA03`, `POST` bỏ trống mã | **201** — `"code":"CA02"` (gap scanning đúng) | PASS |
+| TC-hrm-300 | 5 ca, `GET ?page=1&pageSize=10` | **200** — `total:5`, mọi phần tử có `isOvernight` (boolean) và `workingHours` (số) | PASS |
+| **TC-hrm-301** | `GET ?search=chinh&status=ACTIVE` | **200** nhưng `"items":[],"total":0` — kỳ vọng 1 | **FAIL** |
+| | *(đối chứng)* `?search=chính&status=ACTIVE` | **200**, `total:1` = "Ca hành chính" | — |
+| | *(đối chứng)* `?status=INACTIVE` | **200**, `total:1` = "Ca đêm" | — |
+| TC-hrm-302 | `GET /work-shifts/{id}` | **200** — đủ `isOvernight`, `workingHours` | PASS |
+| TC-hrm-303 | `GET /work-shifts/ws_999` | **404** | PASS |
+| TC-hrm-304 | `PATCH {name, breakMinutes:30, status:"INACTIVE"}` | **200** — `workingHours` tự tính lại **8.5**, `code` vẫn `CA01` | PASS |
+| TC-hrm-305 | `PATCH {code:"CA99", name:…}` | **200** — `code` vẫn `"CA01"`; đối chiếu DB cũng `CA01` (schema update không nhận `code`) | PASS |
+| TC-hrm-306 | ca 4h, `PATCH {breakMinutes:250}` | **400** — merge dữ liệu cũ + mới phát hiện `workingHours <= 0` | PASS |
+| TC-hrm-307 | `DELETE /work-shifts/{id}` | **200** — đọc lại DB: bản ghi đã biến mất (xóa cứng) | PASS |
+| **TC-hrm-308** | — | Không dựng được tiền điều kiện: `information_schema` cho `hrm_work_schedules` = **0 bảng** | **KHÔNG CHẠY ĐƯỢC** |
+| TC-hrm-309 | A `POST code:"CA01"` → **201**; B `POST code:"CA01"` → **201** | A thấy `total:1` ("Ca A"), B thấy `total:1` ("Ca B") | PASS |
+
+### 13.3. Lịch ngày lễ — `TC-hrm-310 … TC-hrm-327`
+
+| Ca | Lượt gọi | Trạng thái thật | Kết luận |
+|:---|:---|:---|:--:|
+| TC-hrm-310 | `POST 2026-04-30 NATIONAL isAnnual:true` | **201** | PASS |
+| TC-hrm-311 | `POST 2026-02-17 LUNAR isAnnual:false` | **201** | PASS |
+| TC-hrm-312 | `POST LUNAR isAnnual:true` | **400** — thông điệp lễ âm lịch không lặp theo dương lịch | PASS |
+| TC-hrm-313 | thiếu `date` · `name:""` | **400** ×2 | PASS |
+| TC-hrm-314 | tạo `(2026-01-01, "Tết Dương lịch")` 2 lần | **201** rồi **409** | PASS |
+| TC-hrm-315 | cùng ngày `2026-09-02`, khác tên | **201** — khóa duy nhất là cặp `(date, name)` | PASS |
+| **TC-hrm-316** | `GET ?year=2026&filter=THIS_YEAR` | **200**, `isPaid` **có**. Trường thật: `["id","date","name","type","isAnnual","isPaid","note","createdAt","updatedAt"]` — **không có "thứ trong tuần"** | **FAIL** |
+| TC-hrm-317 | `GET ?filter=ANNUAL` | **200** — mọi phần tử `isAnnual:true`; ngày lễ `isAnnual:false` không lọt vào | PASS |
+| TC-hrm-318 | `GET /holidays/{id}` | **200** | PASS |
+| TC-hrm-319 | `PATCH {name, note, isPaid}` | **200** | PASS |
+| TC-hrm-320 | `PATCH {type:"LUNAR"}` (cờ lặp cũ = true) · `PATCH {type:"LUNAR", isAnnual:true}` | **400** ×2 | PASS |
+| TC-hrm-321 | `DELETE /holidays/{id}` | **200** — DB không còn bản ghi | PASS |
+| TC-hrm-322 | `POST /holidays/quick-generate {year:2026}` trên tenant trắng | **200** (không phải 201) — `totalStandard:11, addedCount:11, skippedCount:0`; DB đếm được **11** | PASS |
+| TC-hrm-323 | đã có `01/01`, chạy tạo nhanh | **200** — `addedCount:10, skippedCount:1`; DB **11** | PASS |
+| TC-hrm-324 | bấm lần 2 | **200** — `addedCount:0, skippedCount:11`, `items` vẫn 11; DB **11** | PASS |
+| TC-hrm-325 | `year:2024` · `year:2030` | **200** ×2, mỗi lượt `totalStandard:11, addedCount:11` | PASS |
+| TC-hrm-326 | `year:2023` · `year:2031` | **400** ×2 | PASS |
+| TC-hrm-327 | A tạo lễ riêng → **201**; B `GET ?filter=ALL` → **200**, `total:0`. Chiều ngược lại cũng vậy | Dữ liệu ngày lễ độc lập tuyệt đối | PASS |
+
+### 13.4. Chín phép kiểm riêng — `KR-01 … KR-09` (9/9 PASS)
+
+| Mã | Nội dung | Trạng thái thật |
+|:---|:---|:---|
+| KR-01 | `PUT` biểu thuế lệch chuẩn (3 bậc) | **200** + `"warning":"CANH_BAO_BIEU_THUE_LECH_CHUAN"`, dữ liệu vẫn lưu |
+| KR-02 | 4 điều kiện toàn vẹn `BR-hrm-082` + cửa tương thích ngược | 1 bậc → **400** `…ít nhất 2 bậc` · ngưỡng giảm → **400** · bậc cuối hữu hạn → **400** `Bậc thuế cuối cùng phải áp cho toàn bộ phần thu nhập vượt bậc liền trước.` · mốc `999999999999` → **200** và được chuẩn hóa thành `"khoang":null` |
+| KR-03 | Nhật ký kiểm toán ghi thật vào bảng `syslog` | 2 dòng: `HRM_UPDATE_GENERAL_SETTINGS` và `HRM_RESTORE_GENERAL_SETTINGS`, đúng `userId`, đúng `donViId`, `chiTiet:{"khoaNghiepVu":"DEFAULT"}` |
+| KR-04 | Decimal ra chuỗi + vòng `GET → PUT` | `GET` → `"standardHoursPerDay":"8"` (chuỗi) · `PUT` nguyên payload → **400** · `PUT` sau `Number()` → **200** |
+| KR-05 | Không vé / vé rác | **401** ×2 |
+| KR-06 | Cảnh báo ca > 12h ở **cả 4 đường đọc** | sau `POST` **201** · `GET` danh sách **200** · `GET` chi tiết **200** · sau `PATCH` **200** — cả 4 đều có `"warning":"CANH_BAO_GIO_LAM_VUOT_TRAN_BLLD"`; ca 8h **vắng hẳn** trường này |
+| KR-07 | `?isPaid=false` | **200**, `total:1`, đúng bản ghi "Không lương". `?isPaid=true` → đúng bản ghi "Có lương". `?isPaid=abc` → **400** |
+| KR-08 | Đủ `CA01…CA99` rồi bỏ trống mã | **400** — `Đã đạt giới hạn 99 ca làm việc tự sinh. Vui lòng tự nhập mã ca hoặc giải phóng ca không sử dụng.`; tự nhập `CA100` → **201** |
+| KR-09 | Tên ngày lễ có khoảng trắng thừa | **409** — `.trim()` chặn đúng; DB chỉ còn 1 bản ghi |
+
+---
+
+## 14. Log nguyên văn — trích các lượt gọi then chốt
+
+**TC-hrm-273 — tự khởi tạo cấu hình trên tenant trắng**
+
+```
+[TC-hrm-273] GET lần đầu :: GET /api/v1/hrm/settings/general -> 200
+{"success":true,"data":{"id":"DEFAULT","standardWorkingDaysMethod":"FIXED_26","saturdayPolicy":"HALF_DAY",
+"sundayPolicy":"OFF","standardHoursPerDay":"8","baseAnnualLeaveDays":12,"seniorityYearsForExtraDay":5,
+"otRateWeekdayDay":"150","otRateWeekdayNight":"200","otRateWeekendDay":"200","otRateWeekendNight":"270",
+"otRateHolidayDay":"300","otRateHolidayNight":"390","maxOtHoursPerMonth":40,"warningOtHoursPerYear":200,
+"maxOtHoursPerYear":300,"baseSalary":"2340000","regionMinSalary":"4960000","insuranceEmployeeSocial":"8",
+"insuranceEmployeeHealth":"1.5","insuranceEmployeeUnemployment":"1","insuranceCompanySocial":"17.5",
+"insuranceCompanyHealth":"3","insuranceCompanyUnemployment":"1","unionFeeEmployeeRate":"1",
+"unionFeeMaxAmount":"234000","unionFeeCompanyRate":"2","personalDeduction":"11000000",
+"dependentDeduction":"4400000","taxBrackets":[{"khoang":5000000,"thueSuat":5},{"khoang":10000000,"thueSuat":10},
+{"khoang":18000000,"thueSuat":15},{"khoang":32000000,"thueSuat":20},{"khoang":52000000,"thueSuat":25},
+{"khoang":80000000,"thueSuat":30},{"khoang":null,"thueSuat":35}],
+"createdAt":"2026-09-08T06:36:21.047Z","updatedAt":"2026-09-08T06:36:21.047Z"}}
+```
+
+**TC-hrm-292 + KR-06 — cảnh báo ca 22h ở cả 4 đường đọc**
+
+```
+[TC-hrm-292] POST ca trực 24h :: POST /api/v1/hrm/work-shifts -> 201
+{"success":true,"data":{"id":"6996c3c9-…","code":"CA05","name":"Ca trực 24h","startTime":"08:00",
+"endTime":"08:00","breakMinutes":120,"status":"ACTIVE",…,"isOvernight":true,"workingHours":22,
+"warning":"CANH_BAO_GIO_LAM_VUOT_TRAN_BLLD"}}
+
+[KR-06] GET chi tiết :: GET /api/v1/hrm/work-shifts/6996c3c9-… -> 200
+{"success":true,"data":{…,"isOvernight":true,"workingHours":22,"warning":"CANH_BAO_GIO_LAM_VUOT_TRAN_BLLD"}}
+
+[KR-06] PATCH :: PATCH /api/v1/hrm/work-shifts/6996c3c9-… -> 200
+{"success":true,"data":{…,"name":"Ca trực 24h (đổi tên)","workingHours":22,
+"warning":"CANH_BAO_GIO_LAM_VUOT_TRAN_BLLD"}}
+
+# đối chứng: phần tử CA01 (8h) trong GET danh sách KHÔNG có trường warning
+{"id":"b9ae2ed4-…","code":"CA01","name":"Ca hành chính",…,"isOvernight":false,"workingHours":8}
+```
+
+**KR-03 — nhật ký kiểm toán đọc thẳng từ bảng `syslog`**
+
+```
+KR-03 syslog thực đọc từ DB:
+[{"hanhDong":"HRM_UPDATE_GENERAL_SETTINGS","userId":"c98f3022-…","donViId":"5e9807cd-…",
+  "chiTiet":{"khoaNghiepVu":"DEFAULT"},"level":"INFO"},
+ {"hanhDong":"HRM_RESTORE_GENERAL_SETTINGS","userId":"c98f3022-…","donViId":"5e9807cd-…",
+  "chiTiet":{"khoaNghiepVu":"DEFAULT"},"level":"INFO"}]
+```
+
+**KR-04 — Decimal ra chuỗi, vòng GET rồi PUT**
+
+```
+[KR-04] GET                                        -> 200   "standardHoursPerDay":"8"   (chuỗi)
+[KR-04] (a) PUT nguyên payload GET (Decimal chuỗi) -> 400   (đúng hợp đồng: ghi phải là SỐ)
+[KR-04] (b) PUT sau khi Number() hóa Decimal       -> 200
+```
+
+**TC-hrm-322 / 323 / 324 — tạo nhanh 11 ngày lễ và tính idempotent**
+
+```
+[TC-hrm-322] -> 200  {"year":2026,"totalStandard":11,"addedCount":11,"skippedCount":0,"items":[…11 mục…]}
+[TC-hrm-323] -> 200  {"year":2026,"totalStandard":11,"addedCount":10,"skippedCount":1, …}
+[TC-hrm-324] -> 200  {"year":2026,"totalStandard":11,"addedCount":0,"skippedCount":11, …}
+```
+
+11 mục sinh ra: `2026-01-01` Tết Dương lịch · `02-16` 29 Tết · `02-17` 30 Tết · `02-18/19/20` Mùng 1/2/3 · `04-26` Giỗ Tổ Hùng Vương · `04-30` Ngày Giải phóng miền Nam · `05-01` Ngày Quốc tế Lao động · `09-01` Nghỉ liền kề Quốc khánh · `09-02` Ngày Quốc khánh. Đúng Điều 112 BLLĐ 2019.
+
+> ⚠️ **ĐÍNH CHÍNH (2026-09-08, sau vòng Quality Gate).** Đoạn ghi chép ngay trên là **lượt chạy trước khi sửa `B2`**, và câu "Đúng Điều 112 BLLĐ 2019" ở cuối là **SAI** — chính bộ ngày đó mới là lỗi. Giữ nguyên đoạn trên làm lưu vết, nhưng đừng dùng làm chuẩn.
+>
+> Sai ở hai chỗ: **Mùng 1 Tết 2026 là `02-17`, không phải `02-18`**; và **không hề tồn tại "30 Tết" năm 2026** vì tháng Chạp năm đó chỉ có 29 ngày. Bộ đúng do thuật toán sinh (`amLich.util.ts`, quy chiếu UTC+7):
+>
+> `01-01` Tết Dương lịch · `02-15` **28 Tết** · `02-16` **29 Tết** · `02-17` **Mùng 1** · `02-18` Mùng 2 · `02-19` Mùng 3 · `04-26` Giỗ Tổ · `04-30` · `05-01` · `09-01` · `09-02`.
+>
+> **Vì sao lượt kiểm thử đó không bắt được:** ca kiểm thử khi ấy neo đích danh vào chính bộ số sai, nên nó xác nhận lại cái sai thay vì kiểm chứng. Xem `CONTEXT_SUMMARY.md` Mục 16 và `agents-code-reviewer/code-review-2026-09-08.md` mục **B2**.
+>
+> **Nguồn gốc lỗi:** bộ số này được chép từ tài liệu mẫu `docs/nestjs/hr/architecture/hr-api-contract.md` dòng 1179-1182 — bộ đó là **tài liệu tham khảo, không phải đặc tả thật của MAXV** (xem `.claude/CLAUDE.md`). Không sửa bộ mẫu; ghi lại đây để người sau không chép tiếp.
+
+**KR-07 — `?isPaid=false` nay lọc đúng nhóm**
+
+```
+[KR-07] GET isPaid=false :: GET /api/v1/hrm/holidays?filter=ALL&isPaid=false -> 200
+{"success":true,"data":{"items":[{…,"name":"Không lương","isPaid":false,…}],"total":1,…}}
+[KR-07] GET isPaid=abc  :: GET /api/v1/hrm/holidays?isPaid=abc -> 400
+```
+
+**KR-08 — trần 99 mã tự sinh**
+
+```
+[KR-08] POST không mã khi đã đủ 99 :: POST /api/v1/hrm/work-shifts -> 400
+{"success":false,"message":"Đã đạt giới hạn 99 ca làm việc tự sinh. Vui lòng tự nhập mã ca hoặc giải phóng ca không sử dụng."}
+[KR-08] POST tự nhập mã CA100 -> 201
+```
+
+**Hai ca FAIL — nguyên văn**
+
+```
+[TC-hrm-301] (a) search=chinh :: GET /api/v1/hrm/work-shifts?search=chinh&status=ACTIVE -> 200
+{"success":true,"data":{"items":[],"total":0,"page":1,"pageSize":20,"totalPages":1}}
+[TC-hrm-301] (b) search=chính :: GET …?search=ch%C3%ADnh&status=ACTIVE -> 200   total = 1
+
+TC-hrm-316 các trường của một phần tử:
+["id","date","name","type","isAnnual","isPaid","note","createdAt","updatedAt"]
+
+TC-hrm-308: số bảng hrm_work_schedules trong tenant A = 0
+```
+
+---
+
+## 15. Phân loại bốn kết quả — theo đúng Mục 8.2 của `test-cases.md`
+
+| Kết quả | Số ca | Phân loại | Vì sao |
+|:---|:--:|:---|:---|
+| `adminOwner.test.ts` hỏng 401 | 5 | **Test failed** | Bản test đọc `data.accessToken` — trường đã bị bỏ khi vé chuyển sang cookie httpOnly. Sản phẩm đúng. Đã sửa **test**, nay 5/5 PASS |
+| `TC-hrm-301` | 1 | **Test data issue + khoảng trống nghiệp vụ** | Từ khóa không dấu cho tên có dấu. Mã làm **đúng** `api-contract.md` 7E.2 (`contains`, chỉ bỏ hoa/thường). Nhưng gõ không dấu là thói quen thật ⇒ mở `BUG-HRM-50` cho BA quyết |
+| `TC-hrm-316` | 1 | **Test data issue (câu chữ lệch hợp đồng)** | `api-contract.md` 7F.2 không hứa trường "thứ trong tuần"; giao diện đã tự tính (`LichNgayLePanel.tsx:46-48`). Nhu cầu nghiệp vụ **được đáp ứng** |
+| `TC-hrm-308` | 1 | **Test environment issue** | Chưa có thực thể `hrm_work_schedules` trong `prisma/tenant/schema.prisma` ⇒ không dựng được tiền điều kiện |
+| **Product bug mới** | **0** | — | Không phát hiện lỗi sản phẩm mới nào ở cụm này |
+
+---
+
+## 16. Kết luận và khuyến nghị của QA
+
+### 16.1. Phán quyết
+
+> ### ĐẠT CÓ ĐIỀU KIỆN
+>
+> **Được merge phần mã máy chủ.** **Chưa được ghi "nghiệm thu hoàn tất"** cho tới khi ba việc ở Mục 16.2 xong.
+
+### 16.2. Ba việc phải xong
+
+1. **BA chốt `BUG-HRM-50`** — có làm tìm kiếm bỏ dấu cho `/work-shifts` (và các danh mục HRM khác) hay không. Chốt xong mới sửa được câu chữ `TC-hrm-301`.
+2. **QA sửa câu chữ `test-cases.md`** — `TC-hrm-273` ("5 bậc" sang **7 bậc**), `TC-hrm-316` (bỏ "thứ trong tuần" khỏi kỳ vọng máy chủ), `TC-hrm-308` (đánh dấu hoãn). *Đã làm ở đợt này.*
+3. **Mở lại `TC-hrm-308`** khi thực thể `hrm_work_schedules` ra đời — Architect + QA.
+
+### 16.3. Còn nợ ngoài phạm vi cụm này
+
+| Nợ | Cần gì để đóng |
+|:---|:---|
+| `BUG-HRM-46` — cấu hình không có hiệu lực thời gian | Bảng lương khi chốt kỳ phải **chụp ảnh** tham số. Chưa có `hrm_payroll_periods` nên chưa kiểm được |
+| `BUG-HRM-48` — bảng tra âm lịch dừng ở 2030 | `TC-hrm-326` xác nhận 2031 trả 400. Nợ kỹ thuật đã ghi nhận |
+| Kiểm thử giao diện | Chưa có bộ chạy test ở `maxv/`, `hdđt_maxv/`, `fe_maxv/`. Phần giao diện mới chỉ bảo đảm ở mức `tsc` + `lint` + `build` sạch |
+| Ca đồng thời (hai người cùng bấm Lưu) | Khung bắn song song. Hiện `createWorkShift` thử lại 5 lượt và `quickGenerate` bọc giao dịch — mới chỉ đọc mã, chưa dựng được va chạm thật |
+
+### 16.4. Thay đổi mã do QA thực hiện
+
+**Không sửa một dòng mã sản phẩm nào.**
+
+| Tệp | Loại |
+|:---|:---|
+| `be_maxv/src/__tests__/hrmSettingsShiftsHolidaysApi.test.ts` | **mới** — khung test tích hợp HTTP, 66 phép kiểm lá, 121 lượt gọi |
+| `be_maxv/src/__tests__/adminOwner.test.ts` | **sửa TEST** — chuyển từ header `Bearer` sang cookie `accessToken`; 5/5 FAIL sang 5/5 PASS |
+
+---
+
+*Phần II lập ngày 2026-09-08 bởi Lead Tester-QA. Mọi con số PASS trong phần này là số ca đã thực sự gọi HTTP và thực sự đạt. Hai DB tenant do bộ test tự cấp đã được DROP sạch; control plane sau khi chạy có đúng 10 công ty và 10 người dùng, y hệt trước khi chạy.*

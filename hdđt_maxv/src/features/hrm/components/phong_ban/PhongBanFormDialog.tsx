@@ -9,9 +9,9 @@ import MenuItem from "@mui/material/MenuItem";
 import Button from "@mui/material/Button";
 import Stack from "@mui/material/Stack";
 import { getErrorMessage } from "../../../../lib/errors";
-import { layConChau, sapXepCay } from "../../cay";
-import { TRANG_THAI_PB } from "../../constants";
-import { useLuuPhongBan, usePhongBanList } from "../../api/phongBanQueries";
+import { layConChau, sapXepCay } from "../../_shared/cay";
+import { TRANG_THAI_PB } from "../../_shared/constants";
+import { useLuuPhongBan, usePhongBanList } from "../../api/du_lieu_nhan_vien/phongBanQueries";
 import type { PhongBanRow, TrangThai } from "../../types";
 
 interface Props {

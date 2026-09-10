@@ -5,7 +5,7 @@ import CalendarMonthRounded from "@mui/icons-material/CalendarMonthRounded";
 import BeachAccessRounded from "@mui/icons-material/BeachAccessRounded";
 import MoreTimeRounded from "@mui/icons-material/MoreTimeRounded";
 import ReportProblemRounded from "@mui/icons-material/ReportProblemRounded";
-import { CHINH_SACH_NGAY, PHUONG_PHAP_NGAY_CONG } from "../../../constants";
+import { CHINH_SACH_NGAY, PHUONG_PHAP_NGAY_CONG } from "../../../_shared/constants";
 import type {
   CauHinhMacDinh,
   ChinhSachNgay,

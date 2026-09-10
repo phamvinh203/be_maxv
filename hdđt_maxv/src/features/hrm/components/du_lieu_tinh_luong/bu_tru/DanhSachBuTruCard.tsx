@@ -13,8 +13,8 @@ import Tooltip from "@mui/material/Tooltip";
 import Typography from "@mui/material/Typography";
 import DeleteRounded from "@mui/icons-material/DeleteRounded";
 import { getErrorMessage } from "../../../../../lib/errors";
-import { tienVn } from "../../../format";
-import { useXoaBanBuTru } from "../../../mock/hooks/buTru";
+import { tienVn } from "../../../_shared/format";
+import { useApplyAdjustments } from "../../../api/du_lieu_tinh_luong/payrollInputsQueries";
 import type { BuTruNhanVienRow, LocNhanVienKyLuong, PhamViApDung } from "../../../types";
 import XacNhanXoaDialog from "../../XacNhanXoaDialog";
 import ThanhLocKyLuong from "../ThanhLocKyLuong";
@@ -26,9 +26,8 @@ interface Props {
   onFilters: (filters: LocNhanVienKyLuong) => void;
   /** Danh sách đã lọc — cũng chính là danh sách "Áp dụng bù trừ" sẽ ghi. */
   rows: BuTruNhanVienRow[];
-  coThayDoi: boolean;
-  dangLuu: boolean;
-  onLuu: () => void;
+  periodId: string;
+  isReadOnly: boolean;
 }
 
 /**
@@ -44,17 +43,21 @@ export default function DanhSachBuTruCard({
   filters,
   onFilters,
   rows,
-  coThayDoi,
-  dangLuu,
-  onLuu,
+  periodId,
+  isReadOnly,
 }: Props) {
-  const xoaBan = useXoaBanBuTru();
+  const applyMut = useApplyAdjustments(periodId);
   const [dangXoa, setDangXoa] = useState<BuTruNhanVienRow | undefined>(undefined);
 
   const xacNhanXoa = async () => {
     if (!dangXoa) return;
     try {
-      await xoaBan(dangXoa.ma_nv);
+      await applyMut.mutateAsync({
+        periodId,
+        scope: "nhan_vien",
+        employeeIds: [dangXoa.ma_nv],
+        items: [],
+      });
       toast.success(`Đã xóa khoản bù trừ của ${dangXoa.ho_ten}.`);
     } catch (err) {
       toast.error(getErrorMessage(err, "Không xóa được khoản bù trừ."));
@@ -71,9 +74,6 @@ export default function DanhSachBuTruCard({
         filters={filters}
         onFilters={onFilters}
         soNhanVien={rows.length}
-        coThayDoi={coThayDoi}
-        dangLuu={dangLuu}
-        onLuu={onLuu}
       />
 
       <TableContainer sx={{ mt: 1 }}>
@@ -144,7 +144,7 @@ export default function DanhSachBuTruCard({
                         <IconButton
                           size="small"
                           color="error"
-                          disabled={chuaAp}
+                          disabled={isReadOnly || chuaAp}
                           onClick={() => setDangXoa(row)}
                         >
                           <DeleteRounded fontSize="small" />

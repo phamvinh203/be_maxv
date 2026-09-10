@@ -9,9 +9,9 @@ import ButtonBase from "@mui/material/ButtonBase";
 import TextField from "@mui/material/TextField";
 import InputAdornment from "@mui/material/InputAdornment";
 import { alpha } from "@mui/material/styles";
-import { LOAI_CONG, moTaLoaiCong } from "../../../constants";
-import { nhanThu, type NgayCham } from "../../../chamCong";
-import { ngayVn } from "../../../format";
+import { LOAI_CONG, moTaLoaiCong } from "../../../_shared/constants";
+import { nhanThu, type NgayCham } from "../../../calculations/du_lieu_tinh_luong/chamCong";
+import { ngayVn } from "../../../_shared/format";
 import type { LoaiCong, OChamCong } from "../../../types";
 
 interface Props {

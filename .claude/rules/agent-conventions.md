@@ -10,17 +10,19 @@ paths:
 
 ## Bộ agent hiện có
 
-### Agent pipeline (7 vai — Standard Workflow)
+### Agent pipeline (7 vai — Standard Workflow Backend-First)
 
-| Vai | `name` | Phase | Model | Tools |
-|---|---|---|---|---|
-| Business Analyst | `business-analyst` | 1 · 2.5 (Sign-off Gate) | sonnet | Read, Write, Edit, Bash, Glob, Grep, Skill |
-| Architect | `architect` | 2 | opus | Read, Write, Edit, Bash, Glob, Grep, Skill |
-| Tester QA | `tester-qa` | 2 (Phase A) · 4 (Phase B) | sonnet | Read, Write, Edit, Bash, Glob, Grep, Skill |
-| Backend Engineer | `backend-engineer` | 3 | sonnet | Read, Write, Edit, Bash, Glob, Grep, Skill |
-| Frontend Engineer | `frontend-engineer` | 3 | sonnet | Read, Write, Edit, Bash, Glob, Grep, Skill |
-| Code Reviewer | `code-reviewer` | 5 | opus | Read, Glob, Grep, Bash, Skill |
-| DevOps Engineer | `devops-engineer` | 6 | sonnet | Read, Write, Edit, Bash, Glob, Grep, Skill |
+| Vai | `name` | Phase | Model | Tools | Trạng thái |
+|---|---|---|---|---|---|
+| Business Analyst | `business-analyst` | 1 · 2.5 (Sign-off Gate) | sonnet | Read, Write, Edit, Bash, Glob, Grep, Skill | ✅ hoạt động |
+| Architect | `architect` | 2 | opus | Read, Write, Edit, Bash, Glob, Grep, Skill | ✅ hoạt động |
+| Tester QA | `tester-qa` | 2 (Phase A) · 4 (Phase B) | sonnet | Read, Write, Edit, Bash, Glob, Grep, Skill | ✅ hoạt động |
+| Backend Engineer | `backend-engineer` | 3 | sonnet | Read, Write, Edit, Bash, Glob, Grep, Skill | ✅ hoạt động |
+| Code Reviewer | `code-reviewer` | 5 | opus | Read, Glob, Grep, Bash, Write, Edit, Skill (ghi duy nhất `docs/<feature>/review-findings.md`) | ✅ hoạt động |
+| Frontend Engineer | `frontend-engineer` | (sau backend, khi kích hoạt) | sonnet | Read, Write, Edit, Bash, Glob, Grep, Skill | ⏸️ tạm ngừng |
+| DevOps Engineer | `devops-engineer` | (6, khi kích hoạt) | sonnet | Read, Write, Edit, Bash, Glob, Grep, Skill | ⏸️ tạm ngừng |
+
+> ⏸️ `frontend-engineer` và `devops-engineer` tạm ngừng theo luồng Backend-First mới — chỉ kích hoạt khi user yêu cầu rõ ràng. Lưu vết bắt buộc: backend-engineer append `docs/<feature>/work-log.md` sau mỗi phiên; code-reviewer ghi `docs/<feature>/review-findings.md` (format xem CLAUDE.md).
 
 ### Agent review chuyên biệt (được skill spawn, không nằm trong pipeline)
 
@@ -36,7 +38,7 @@ paths:
 
 - Agent nào **được khuyến nghị dùng skill sơ đồ** (`activity`, `sequence`, `erd`, `state`, `activity-swimlane`, `usecase-diagram`, `bpmn`, `d2-*`) **BẮT BUỘC có `Bash`** — mọi skill đó đều render/verify qua CLI (`mermaid-verify.mjs`, `render.sh`, `d2`, engine bpmn).
   - *Lưu ý quan trọng cho BA*: Tạm thời **BỎ HOÀN TOÀN** việc sinh file sơ đồ rời dạng `.svg`, `.puml`, `.png`. Agent `business-analyst` tập trung 100% vào việc sinh tài liệu `.md` (mô tả text, bảng hoặc Mermaid inline trong `.md`), không gọi `activity-swimlane`, `usecase-diagram` hay `render.sh`.
-- Agent chỉ đọc/nhận xét (`code-reviewer`, `diagram-reviewer`) **KHÔNG cấp `Write`/`Edit`** — bảo đảm đúng vai "chỉ review, không tự sửa".
+- Agent review KHÔNG sửa code: `code-reviewer` có `Write`/`Edit` nhưng quyền ghi DUY NHẤT là `docs/<feature>/review-findings.md` (lưu vết findings + trạng thái fix); `diagram-reviewer` vẫn **KHÔNG cấp `Write`/`Edit`**.
 - **Subagent không spawn được subagent.** Skill `/sequence` và `/activity` khai `Task` để gọi `diagram-reviewer`; bước đó chỉ chạy khi skill được gọi từ session chính. Agent chạy dưới dạng subagent gặp diagram phức tạp → báo lại session chính, không tự xử.
 
 ## Trạng thái toolchain (cập nhật khi cài thêm)
@@ -56,7 +58,7 @@ Chỉ dùng đúng một chuỗi, ghi trong `docs/<feature>/CONTEXT_SUMMARY.md`:
 Status: Ready for Implementation
 ```
 
-BA set chuỗi này ở Phase 2.5. `backend-engineer` và `frontend-engineer` đều chờ đúng chuỗi này ở bước 0. Không phát sinh biến thể (`Ready for Backend`, `Ready for FE`...) — lệch chuỗi = gate treo vĩnh viễn.
+BA set chuỗi này ở Phase 2.5. `backend-engineer` chờ đúng chuỗi này ở bước 0 (frontend-engineer ⏸️ tạm ngừng — khi kích hoạt lại cũng chờ đúng chuỗi này). Không phát sinh biến thể (`Ready for Backend`, `Ready for FE`...) — lệch chuỗi = gate treo vĩnh viễn.
 
 ## Path convention
 

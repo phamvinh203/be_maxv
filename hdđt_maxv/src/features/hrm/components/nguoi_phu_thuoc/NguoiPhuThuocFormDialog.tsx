@@ -9,10 +9,10 @@ import MenuItem from "@mui/material/MenuItem";
 import Button from "@mui/material/Button";
 import Stack from "@mui/material/Stack";
 import { getErrorMessage } from "../../../../lib/errors";
-import { nptRong } from "../../formDefaults";
-import { useLuuNguoiPhuThuoc } from "../../api/nguoiPhuThuocQueries";
+import { nptRong } from "../../_shared/formDefaults";
+import { useLuuNguoiPhuThuoc } from "../../api/du_lieu_nhan_vien/nguoiPhuThuocQueries";
 // Phải là danh sách nhân viên THẬT: BE chặn ma_nv không tồn tại, chọn từ mock sẽ lưu lỗi 404.
-import { useNhanVienList } from "../../api/nhanVienQueries";
+import { useNhanVienList } from "../../api/du_lieu_nhan_vien/nhanVienQueries";
 import type { NguoiPhuThuoc, NguoiPhuThuocFormValues } from "../../types";
 import NguoiPhuThuocForm from "./NguoiPhuThuocForm";
 

@@ -10,10 +10,10 @@ import ListItemText from "@mui/material/ListItemText";
 import Stack from "@mui/material/Stack";
 import Chip from "@mui/material/Chip";
 import Typography from "@mui/material/Typography";
-import { nhanBanDongBuTru, tongBiTru } from "../../../buTru";
-import { tienVn } from "../../../format";
-import { useBanBuTruList, useKhoanBuTruList } from "../../../mock/hooks/buTru";
-import { useNhanVienList } from "../../../mock/hooks/nhanVien";
+import { nhanBanDongBuTru } from "../../../calculations/du_lieu_tinh_luong/buTru";
+import { tienVn } from "../../../_shared/format";
+import { useAdjustmentDataList } from "../../../api/du_lieu_tinh_luong/payrollInputsQueries";
+import { useCurrentPayrollPeriod } from "../useCurrentPayrollPeriod";
 import type { DongBuTru } from "../../../types";
 
 interface Props {
@@ -24,40 +24,45 @@ interface Props {
 }
 
 /**
- * Chép lại bảng ứng - bù trừ của một nhân viên đã áp trước đó.
+ * Chép lại bảng ứng - bù trừ của một nhân viên đã áp trước đó **trong cùng kỳ lương đang chọn**.
  *
  * Hay dùng cho các khoản đồng loạt: cả tổ cùng trừ tiền cơm, cùng nhận bù chênh
  * lệch bảo hiểm — chép rồi sửa số tiền nhanh hơn chọn lại từng khoản.
  */
 export default function TaiSuDungBuTruDialog({ open, onClose, onChon }: Props) {
-  const banList = useBanBuTruList();
-  const nhanVien = useNhanVienList();
-  const danhMuc = useKhoanBuTruList();
+  const { selectedPeriodId } = useCurrentPayrollPeriod();
+  const { data: adjustmentData } = useAdjustmentDataList({ periodId: selectedPeriodId ?? "" });
 
   const danhSach = useMemo(() => {
-    const tenNvTheoMa = new Map(nhanVien.map((nv) => [nv.ma_nv, nv.ho_ten]));
-    const khoanTheoMa = new Map(danhMuc.map((bt) => [bt.ma_bt, bt]));
-    return banList
-      .map((ban) => ({
-        ma_nv: ban.ma_nv,
-        ho_ten: tenNvTheoMa.get(ban.ma_nv) ?? ban.ma_nv,
-        dong: ban.dong,
-        tong: tongBiTru(ban.dong, khoanTheoMa),
-        // Liệt kê tên khoản ngay ở dòng chọn — không phải bấm vào mới biết bảng
-        // đó gồm những gì.
-        tomTat: ban.dong
-          .map((d) => khoanTheoMa.get(d.ma_bt)?.ten_bt ?? d.ma_bt)
-          .join(" · "),
-      }))
+    return (adjustmentData ?? [])
+      .filter((ban) => ban.records.length > 0)
+      .map((ban) => {
+        const dong: DongBuTru[] = ban.records.map((r) => ({
+          id: r.id,
+          ma_bt: r.adjustmentItem?.code ?? r.adjustmentItemId,
+          so_tien: r.amount,
+        }));
+        return {
+          ma_nv: ban.ma_nv,
+          ho_ten: ban.ho_ten,
+          dong,
+          tong: ban.netAdjustment,
+          // Liệt kê tên khoản ngay ở dòng chọn — không phải bấm vào mới biết bảng
+          // đó gồm những gì.
+          tomTat: ban.records
+            .map((r) => r.adjustmentItem?.name ?? r.adjustmentItemId)
+            .join(" · "),
+        };
+      })
       .sort((a, b) => a.ma_nv.localeCompare(b.ma_nv));
-  }, [banList, nhanVien, danhMuc]);
+  }, [adjustmentData]);
 
   return (
     <Dialog open={open} onClose={onClose} maxWidth="sm" fullWidth>
       <DialogTitle sx={{ pb: 0.5 }}>Tái sử dụng bảng ứng - bù trừ</DialogTitle>
       <Typography variant="body2" color="text.secondary" sx={{ px: 3, pb: 1 }}>
-        Chọn một nhân viên để chép bảng của họ vào bảng đang soạn. Bảng đang soạn sẽ bị thay
-        thế.
+        Chọn một nhân viên đã có khoản bù trừ trong kỳ lương này để chép bảng của họ vào bảng
+        đang soạn. Bảng đang soạn sẽ bị thay thế.
       </Typography>
 
       <DialogContent dividers sx={{ p: 0 }}>
@@ -104,7 +109,8 @@ export default function TaiSuDungBuTruDialog({ open, onClose, onChon }: Props) {
               color="text.disabled"
               sx={{ textAlign: "center", py: 5, px: 3 }}
             >
-              Chưa có nhân viên nào được áp khoản bù trừ, nên chưa có bảng nào để tái sử dụng.
+              Chưa có nhân viên nào được áp khoản bù trừ trong kỳ này, nên chưa có bảng nào để
+              tái sử dụng.
             </Typography>
           )}
         </List>

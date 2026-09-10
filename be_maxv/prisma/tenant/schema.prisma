@@ -909,9 +909,20 @@ model hrm_nhan_vien {
   /// tiên. Lưu ID vì tên thư mục chỉ là nhãn — đổi tên nhân viên không được làm đứt liên kết.
   drive_folder_id String? @db.VarChar(64)
 
-  nguoi_phu_thuoc hrm_nguoi_phu_thuoc[]
-  tai_lieu        hrm_tai_lieu[]
-  hop_dong        hrm_hop_dong[]
+  nguoi_phu_thuoc   hrm_nguoi_phu_thuoc[]
+  tai_lieu          hrm_tai_lieu[]
+  hop_dong          hrm_hop_dong[]
+  luong_thiet_lap   EmployeeSalary?
+
+  attendanceRecords AttendanceRecord[]
+  overtimeRecords   OvertimeRecord[]
+  kpiRecords        KpiRecord[]
+  bonusRecords      BonusRecord[]
+  pieceworkRecords  PieceworkRecord[]
+  commissionRecords CommissionRecord[]
+  diligenceRecords  DiligenceRecord[]
+  adjustmentRecords SalaryAdjustmentRecord[]
+  payrollSheetLines PayrollSheetLine[]
 
   @@index([ma_pb])
   @@index([so_cccd])
@@ -1059,4 +1070,700 @@ model hrm_tai_lieu_file {
   /// CỐ Ý KHÔNG có ràng buộc duy nhất trên `drive_file_id`: Google có thể cấp lại id cho file
   /// khác sau khi xóa, ràng buộc như vậy chặn oan mà không bảo vệ được gì (M-14).
   @@index([tai_lieu_id])
+}
+
+// ============================================================
+//  HRM › NỀN TẢNG: CẤU HÌNH MẶC ĐỊNH, CA LÀM VIỆC & LỊCH NGÀY LỄ
+// ============================================================
+
+enum WorkDayMethod {
+  FIXED_26
+  FIXED_24
+  ACTUAL_MONTH
+}
+
+enum DayPolicy {
+  FULL_DAY
+  HALF_DAY
+  OFF
+}
+
+enum ShiftStatus {
+  ACTIVE
+  INACTIVE
+}
+
+enum HolidayType {
+  NATIONAL
+  LUNAR
+  COMPANY
+  COMPENSATORY
+}
+
+/// Cấu hình mặc định toàn công ty (Singleton DEFAULT)
+model GeneralSetting {
+  id                            String        @id @default("DEFAULT") @db.VarChar(32)
+  standardWorkingDaysMethod     WorkDayMethod @default(FIXED_26)
+  saturdayPolicy                DayPolicy     @default(HALF_DAY)
+  sundayPolicy                  DayPolicy     @default(OFF)
+  standardHoursPerDay           Decimal       @default(8.0) @db.Decimal(4, 2)
+  baseAnnualLeaveDays           Int           @default(12)
+  seniorityYearsForExtraDay     Int           @default(5)
+  otRateWeekdayDay              Decimal       @default(150.0) @db.Decimal(5, 2)
+  otRateWeekdayNight            Decimal       @default(200.0) @db.Decimal(5, 2)
+  otRateWeekendDay              Decimal       @default(200.0) @db.Decimal(5, 2)
+  otRateWeekendNight            Decimal       @default(270.0) @db.Decimal(5, 2)
+  otRateHolidayDay              Decimal       @default(300.0) @db.Decimal(5, 2)
+  otRateHolidayNight            Decimal       @default(390.0) @db.Decimal(5, 2)
+  maxOtHoursPerMonth            Int           @default(40)
+  warningOtHoursPerYear         Int           @default(200)
+  maxOtHoursPerYear             Int           @default(300)
+  baseSalary                    Decimal       @default(2340000) @db.Decimal(15, 2)
+  regionMinSalary               Decimal       @default(4960000) @db.Decimal(15, 2)
+  insuranceEmployeeSocial       Decimal       @default(8.0) @db.Decimal(5, 2)
+  insuranceEmployeeHealth       Decimal       @default(1.5) @db.Decimal(5, 2)
+  insuranceEmployeeUnemployment Decimal       @default(1.0) @db.Decimal(5, 2)
+  insuranceCompanySocial        Decimal       @default(17.5) @db.Decimal(5, 2)
+  insuranceCompanyHealth        Decimal       @default(3.0) @db.Decimal(5, 2)
+  insuranceCompanyUnemployment  Decimal       @default(1.0) @db.Decimal(5, 2)
+  unionFeeEmployeeRate          Decimal       @default(1.0) @db.Decimal(5, 2)
+  unionFeeMaxAmount             Decimal       @default(234000) @db.Decimal(15, 2)
+  unionFeeCompanyRate           Decimal       @default(2.0) @db.Decimal(5, 2)
+  personalDeduction             Decimal       @default(11000000) @db.Decimal(15, 2)
+  dependentDeduction            Decimal       @default(4400000) @db.Decimal(15, 2)
+  taxBrackets                   Json          @db.JsonB
+
+  /// BR-dltl-027 — Trần miễn thuế TNCN của phụ cấp ăn ca/ăn trưa mỗi tháng (TT 26/2016:
+  /// 730.000đ). Phần vượt trần tính vào thu nhập chịu thuế. Trần này được QUY ĐỔI THEO CÔNG
+  /// khi tính (AC-dltl-23) — cột lưu mức tháng đầy đủ. ADR-010 QĐ-2.
+  lunchAllowanceTaxFreeCap       Decimal      @default(730000)  @db.Decimal(15, 2)
+
+  /// BR-dltl-026 — Thuế suất khấu trừ tại nguồn cho HĐ thử việc/thời vụ (Điều 25 TT 111/2013:
+  /// 10%). Đơn vị PHẦN TRĂM (10.00 = 10%) — cùng quy ước với các cột insurance.. / unionFee..
+  withholdingTaxRate             Decimal      @default(10.0)    @db.Decimal(5, 2)
+
+  /// BR-dltl-026 — Ngưỡng thu nhập mỗi lần trả bắt đầu phải khấu trừ 10% (2.000.000đ).
+  withholdingTaxThreshold        Decimal      @default(2000000) @db.Decimal(15, 2)
+
+  createdAt                     DateTime      @default(now())
+  updatedAt                     DateTime      @default(now()) @updatedAt
+
+  @@map("hrm_general_settings")
+}
+
+/// Ca làm việc trong doanh nghiệp
+model WorkShift {
+  id           String      @id @default(uuid()) @db.VarChar(64)
+  code         String      @unique @db.VarChar(20)
+  name         String      @db.VarChar(100)
+  startTime    String      @db.VarChar(5)
+  endTime      String      @db.VarChar(5)
+  breakMinutes Int         @default(0)
+  status       ShiftStatus @default(ACTIVE)
+  createdAt    DateTime    @default(now())
+  updatedAt    DateTime    @default(now()) @updatedAt
+
+  @@index([status])
+  @@map("hrm_work_shifts")
+}
+
+/// Lịch ngày lễ, tết trong năm
+model Holiday {
+  id        String      @id @default(uuid()) @db.VarChar(64)
+  date      DateTime    @db.Date
+  name      String      @db.VarChar(150)
+  type      HolidayType @default(NATIONAL)
+  isAnnual  Boolean     @default(true)
+  isPaid    Boolean     @default(true)
+  note      String?     @db.VarChar(500)
+  createdAt DateTime    @default(now())
+  updatedAt DateTime    @default(now()) @updatedAt
+
+  @@unique([date, name])
+  @@index([date])
+  @@index([type])
+  @@map("hrm_holidays")
+}
+
+// ============================================================
+//  HRM › CÀI ĐẶT LƯƠNG: DANH MỤC KHOẢN LƯƠNG, CẤU TRÚC LƯƠNG & SET LƯƠNG
+// ============================================================
+
+enum SalaryItemCategory {
+  FIXED_ALLOWANCE
+  BENEFIT_ALLOWANCE
+  DELIVERY_PIECEWORK
+  COMMISSION_PERCENTAGE
+  KPI_PERFORMANCE
+  PERIODIC_BONUS
+  ATTENDANCE_ALLOWANCE
+}
+
+enum SalaryItemStatus {
+  ACTIVE
+  INACTIVE
+}
+
+enum TaxTreatment {
+  TAXABLE
+  EXEMPT
+}
+
+enum CalculationMethod {
+  MONTHLY_FIXED
+  ACTUAL_WORKDAYS
+  HOURLY
+  OUTPUT_BASED
+  REVENUE_PERCENTAGE
+  KPI_BASED
+  MANUAL_ENTRY
+}
+
+enum SalaryApprovalStatus {
+  DRAFT
+  PENDING_APPROVAL
+  APPROVED
+  REJECTED
+}
+
+/// Danh mục khoản lương & phụ cấp (HRM)
+model SalaryItem {
+  id                String             @id @default(uuid()) @db.VarChar(64)
+  code              String             @unique @db.VarChar(20)
+  name              String             @db.VarChar(200)
+  category          SalaryItemCategory
+  description       String?            @db.VarChar(500)
+  isSocialInsurance Boolean            @default(false)
+  isTaxable         Boolean            @default(true)
+
+  /// BR-dltl-027 — Khoản này là phụ cấp ăn ca/ăn trưa: miễn thuế TNCN tới
+  /// GeneralSetting.lunchAllowanceTaxFreeCap (730.000đ/tháng, quy đổi theo công), phần vượt
+  /// tính vào thu nhập chịu thuế. Kế toán tự đánh dấu — hệ thống KHÔNG đoán theo tên khoản.
+  /// ADR-010 QĐ-4.
+  isMealAllowance   Boolean            @default(false)
+
+  defaultRate       Decimal?           @db.Decimal(5, 2)
+  status            SalaryItemStatus   @default(ACTIVE)
+  createdAt         DateTime           @default(now())
+  updatedAt         DateTime           @default(now()) @updatedAt
+
+  structureItems    SalaryStructureItem[]
+  employeeItems     EmployeeSalaryItem[]
+  bonusRecords      BonusRecord[]
+  commissionRecords CommissionRecord[]
+
+  @@index([category])
+  @@index([status])
+  @@map("hrm_salary_items")
+}
+
+/// Cấu trúc lương khung của doanh nghiệp
+model SalaryStructure {
+  id            String                @id @default(uuid()) @db.VarChar(64)
+  effectiveFrom DateTime              @db.Date
+  effectiveTo   DateTime?             @db.Date
+  note          String?               @db.VarChar(1000)
+  isActive      Boolean               @default(true)
+  createdAt     DateTime              @default(now())
+  updatedAt     DateTime              @default(now()) @updatedAt
+
+  items         SalaryStructureItem[]
+
+  @@index([isActive])
+  @@map("hrm_salary_structures")
+}
+
+/// Bảng chi tiết từng dòng trong cấu trúc lương khung
+model SalaryStructureItem {
+  id                String            @id @default(uuid()) @db.VarChar(64)
+  salaryStructureId String            @db.VarChar(64)
+  salaryItemId      String            @db.VarChar(64)
+  taxTreatment      TaxTreatment      @default(TAXABLE)
+  isOvertimeBase    Boolean           @default(false)
+  calculationMethod CalculationMethod @default(MONTHLY_FIXED)
+  defaultAmount     Decimal           @default(0) @db.Decimal(18, 2)
+
+  salaryStructure   SalaryStructure   @relation(fields: [salaryStructureId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  salaryItem        SalaryItem        @relation(fields: [salaryItemId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+
+  @@unique([salaryStructureId, salaryItemId])
+  @@index([salaryStructureId])
+  @@index([salaryItemId])
+  @@map("hrm_salary_structure_items")
+}
+
+/// Mức lương thiết lập cho từng nhân viên (Set lương)
+model EmployeeSalary {
+  id               String               @id @default(uuid()) @db.VarChar(64)
+  ma_nv            String               @unique @db.VarChar(24)
+  setupVersion     Int                  @default(1)
+  effectiveFrom    DateTime             @db.Date
+  effectiveTo      DateTime?            @db.Date
+  totalAmount      Decimal              @default(0) @db.Decimal(18, 2)
+  status           SalaryApprovalStatus @default(PENDING_APPROVAL)
+  approvedByUserId String?              @db.VarChar(64)
+  approvedAt       DateTime?
+
+  createdAt        DateTime             @default(now())
+  updatedAt        DateTime             @default(now()) @updatedAt
+
+  nhan_vien        hrm_nhan_vien        @relation(fields: [ma_nv], references: [ma_nv], onDelete: Cascade, onUpdate: Cascade)
+  items            EmployeeSalaryItem[]
+
+  @@index([ma_nv])
+  @@index([status])
+  @@map("hrm_employee_salaries")
+}
+
+/// Chi tiết số tiền từng khoản của nhân viên
+model EmployeeSalaryItem {
+  id               String         @id @default(uuid()) @db.VarChar(64)
+  employeeSalaryId String         @db.VarChar(64)
+  salaryItemId     String         @db.VarChar(64)
+  amount           Decimal        @default(0) @db.Decimal(18, 2)
+
+  employeeSalary   EmployeeSalary @relation(fields: [employeeSalaryId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  salaryItem       SalaryItem     @relation(fields: [salaryItemId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+
+  @@unique([employeeSalaryId, salaryItemId])
+  @@index([employeeSalaryId])
+  @@index([salaryItemId])
+  @@map("hrm_employee_salary_items")
+}
+
+// ============================================================
+//  HRM › DỮ LIỆU TÍNH LƯƠNG: CÁC ENUM NGHIỆP VỤ
+// ============================================================
+
+/// Vòng đời 6 trạng thái của Kỳ tính lương (BR-dltl-001)
+enum PayrollPeriodStatus {
+  DRAFT
+  PENDING_REVIEW
+  LOCKED
+  APPROVED
+  PAID
+  ARCHIVED
+}
+
+/// 8 loại ngày công theo chuẩn chấm công doanh nghiệp
+enum AttendanceType {
+  lam_viec
+  nua_ngay
+  cong_tac
+  nghi_phep
+  nghi_le
+  om
+  khong_luong
+  khac
+}
+
+/// 6 loại làm thêm giờ theo Bộ luật Lao động 2019
+enum OvertimeType {
+  ngay_thuong_ngay
+  ngay_thuong_dem
+  chu_nhat_ngay
+  chu_nhat_dem
+  ngay_le_ngay
+  ngay_le_dem
+}
+
+/// Phương thức khấu trừ lỗi chuyên cần
+enum DiligenceDeductionMethod {
+  theo_gio
+  theo_lan
+  mat_toan_bo
+}
+
+/// Chiều điều chỉnh của khoản ứng - bù trừ lương
+enum AdjustmentDirection {
+  tru
+  bu
+}
+
+/// Trạng thái hoạt động của danh mục (KPI, Sản phẩm, Chuyên cần, Bù trừ)
+enum CatalogStatus {
+  ACTIVE
+  INACTIVE
+}
+
+// ============================================================
+//  HRM › DỮ LIỆU TÍNH LƯƠNG: KỲ LƯƠNG, 8 PHÂN HỆ BIẾN ĐỘNG & BẢNG LƯƠNG
+// ============================================================
+
+/// 1. Kỳ tính lương (PayrollPeriod)
+model PayrollPeriod {
+  id               String              @id @default(uuid()) @db.VarChar(64)
+  code             String              @unique @db.VarChar(20) // Định dạng YYYY-MM
+  name             String              @db.VarChar(100)
+  month            Int
+  year             Int
+  startDate        DateTime            @db.Date
+  endDate          DateTime            @db.Date
+  status           PayrollPeriodStatus @default(DRAFT)
+
+  lockedByUserId   String?             @db.VarChar(64)
+  lockedAt         DateTime?
+  approvedByUserId String?             @db.VarChar(64)
+  approvedAt       DateTime?
+
+  createdAt        DateTime            @default(now())
+  updatedAt        DateTime            @default(now()) @updatedAt
+
+  attendanceRecords AttendanceRecord[]
+  overtimeRecords   OvertimeRecord[]
+  kpiRecords        KpiRecord[]
+  bonusRecords      BonusRecord[]
+  pieceworkRecords  PieceworkRecord[]
+  commissionRecords CommissionRecord[]
+  diligenceRecords  DiligenceRecord[]
+  adjustmentRecords SalaryAdjustmentRecord[]
+  payrollSheetLines PayrollSheetLine[]
+
+  @@index([status])
+  @@index([year, month])
+  @@map("hrm_payroll_periods")
+}
+
+/// 2. Bảng Chấm công chi tiết theo ngày (AttendanceRecord)
+model AttendanceRecord {
+  id             String         @id @default(uuid()) @db.VarChar(64)
+  periodId       String         @db.VarChar(64)
+  ma_nv          String         @db.VarChar(24)
+  workDate       DateTime       @db.Date
+  attendanceType AttendanceType
+  actualHours    Decimal        @default(8.00) @db.Decimal(4, 2)
+  workDayValue   Decimal        @default(1.00) @db.Decimal(3, 2)
+  note           String?        @db.VarChar(500)
+
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @default(now()) @updatedAt
+
+  period         PayrollPeriod  @relation(fields: [periodId], references: [id], onDelete: Cascade)
+  nhan_vien      hrm_nhan_vien  @relation(fields: [ma_nv], references: [ma_nv], onDelete: Cascade)
+
+  @@unique([periodId, ma_nv, workDate])
+  @@index([periodId, ma_nv])
+  @@index([workDate])
+  @@map("hrm_attendance_records")
+}
+
+/// 3. Bảng Tăng ca ngoài giờ (OvertimeRecord)
+model OvertimeRecord {
+  id             String        @id @default(uuid()) @db.VarChar(64)
+  periodId       String        @db.VarChar(64)
+  ma_nv          String        @db.VarChar(24)
+  otType         OvertimeType
+  hours          Decimal       @db.Decimal(5, 2)
+  ratePercent    Decimal       @db.Decimal(5, 2)
+  convertedHours Decimal       @db.Decimal(6, 2)
+  note           String?       @db.VarChar(500)
+
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @default(now()) @updatedAt
+
+  period         PayrollPeriod @relation(fields: [periodId], references: [id], onDelete: Cascade)
+  nhan_vien      hrm_nhan_vien @relation(fields: [ma_nv], references: [ma_nv], onDelete: Cascade)
+
+  @@unique([periodId, ma_nv, otType])
+  @@index([periodId, ma_nv])
+  @@map("hrm_overtime_records")
+}
+
+/// 4. Danh mục Chỉ tiêu KPI (KpiItem)
+model KpiItem {
+  id            String        @id @default(uuid()) @db.VarChar(64)
+  code          String        @unique @db.VarChar(20) // KPI01..KPI99
+  name          String        @db.VarChar(200)
+  unit          String        @db.VarChar(50)
+  defaultWeight Int           @default(100)
+  status        CatalogStatus @default(ACTIVE)
+
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @default(now()) @updatedAt
+
+  records       KpiRecord[]
+
+  @@index([status])
+  @@map("hrm_kpi_items")
+}
+
+/// 5. Bảng Đánh giá KPI nhân viên theo kỳ (KpiRecord)
+model KpiRecord {
+  id             String        @id @default(uuid()) @db.VarChar(64)
+  periodId       String        @db.VarChar(64)
+  ma_nv          String        @db.VarChar(24)
+  kpiItemId      String        @db.VarChar(64)
+  weight         Int           @default(100)
+  targetValue    Decimal       @db.Decimal(12, 2)
+  actualValue    Decimal       @db.Decimal(12, 2)
+  completionRate Decimal       @db.Decimal(6, 2)
+  note           String?       @db.VarChar(500)
+
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @default(now()) @updatedAt
+
+  period         PayrollPeriod @relation(fields: [periodId], references: [id], onDelete: Cascade)
+  nhan_vien      hrm_nhan_vien @relation(fields: [ma_nv], references: [ma_nv], onDelete: Cascade)
+  kpiItem        KpiItem       @relation(fields: [kpiItemId], references: [id], onDelete: Restrict)
+
+  @@unique([periodId, ma_nv, kpiItemId])
+  @@index([periodId, ma_nv])
+  @@index([kpiItemId])
+  @@map("hrm_kpi_records")
+}
+
+/// 6. Bảng Thưởng nhân viên theo kỳ (BonusRecord)
+model BonusRecord {
+  id           String        @id @default(uuid()) @db.VarChar(64)
+  periodId     String        @db.VarChar(64)
+  ma_nv        String        @db.VarChar(24)
+  salaryItemId String        @db.VarChar(64)
+  amount       Decimal       @default(0) @db.Decimal(18, 2)
+  note         String?       @db.VarChar(500)
+
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @default(now()) @updatedAt
+
+  period       PayrollPeriod @relation(fields: [periodId], references: [id], onDelete: Cascade)
+  nhan_vien    hrm_nhan_vien @relation(fields: [ma_nv], references: [ma_nv], onDelete: Cascade)
+  salaryItem   SalaryItem    @relation(fields: [salaryItemId], references: [id], onDelete: Restrict)
+
+  @@unique([periodId, ma_nv, salaryItemId])
+  @@index([periodId, ma_nv])
+  @@index([salaryItemId])
+  @@map("hrm_bonus_records")
+}
+
+/// 7. Danh mục Sản phẩm / Công việc khoán (PieceworkProduct)
+model PieceworkProduct {
+  id        String        @id @default(uuid()) @db.VarChar(64)
+  code      String        @unique @db.VarChar(20) // SP01..SP99
+  name      String        @db.VarChar(200)
+  unit      String        @db.VarChar(50)
+  unitPrice Decimal       @default(0) @db.Decimal(18, 2)
+  status    CatalogStatus @default(ACTIVE)
+
+  createdAt DateTime      @default(now())
+  updatedAt DateTime      @default(now()) @updatedAt
+
+  records   PieceworkRecord[]
+
+  @@index([status])
+  @@map("hrm_piecework_products")
+}
+
+/// 8. Bảng Lương sản phẩm nghiệm thu theo kỳ (PieceworkRecord)
+model PieceworkRecord {
+  id          String           @id @default(uuid()) @db.VarChar(64)
+  periodId    String           @db.VarChar(64)
+  ma_nv       String           @db.VarChar(24)
+  productId   String           @db.VarChar(64)
+  unitPrice   Decimal          @db.Decimal(18, 2)
+  quantity    Decimal          @db.Decimal(10, 2)
+  totalAmount Decimal          @db.Decimal(18, 2)
+  note        String?          @db.VarChar(500)
+
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @default(now()) @updatedAt
+
+  period      PayrollPeriod    @relation(fields: [periodId], references: [id], onDelete: Cascade)
+  nhan_vien   hrm_nhan_vien    @relation(fields: [ma_nv], references: [ma_nv], onDelete: Cascade)
+  product     PieceworkProduct @relation(fields: [productId], references: [id], onDelete: Restrict)
+
+  @@unique([periodId, ma_nv, productId])
+  @@index([periodId, ma_nv])
+  @@index([productId])
+  @@map("hrm_piecework_records")
+}
+
+/// 9. Bảng Lương phần trăm / Hoa hồng doanh số theo kỳ (CommissionRecord)
+model CommissionRecord {
+  id             String        @id @default(uuid()) @db.VarChar(64)
+  periodId       String        @db.VarChar(64)
+  ma_nv          String        @db.VarChar(24)
+  salaryItemId   String        @db.VarChar(64)
+  baseAmount     Decimal       @db.Decimal(18, 2)
+  commissionRate Decimal       @db.Decimal(5, 2)
+  totalAmount    Decimal       @db.Decimal(18, 2)
+  note           String?       @db.VarChar(500)
+
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @default(now()) @updatedAt
+
+  period         PayrollPeriod @relation(fields: [periodId], references: [id], onDelete: Cascade)
+  nhan_vien      hrm_nhan_vien @relation(fields: [ma_nv], references: [ma_nv], onDelete: Cascade)
+  salaryItem     SalaryItem    @relation(fields: [salaryItemId], references: [id], onDelete: Restrict)
+
+  @@unique([periodId, ma_nv, salaryItemId])
+  @@index([periodId, ma_nv])
+  @@index([salaryItemId])
+  @@map("hrm_commission_records")
+}
+
+/// 10. Danh mục Loại vi phạm chuyên cần (DiligenceViolationType)
+model DiligenceViolationType {
+  id              String                   @id @default(uuid()) @db.VarChar(64)
+  code            String                   @unique @db.VarChar(20) // CC01..CC99
+  name            String                   @db.VarChar(200)
+  deductionMethod DiligenceDeductionMethod
+  penaltyRate     Decimal                  @default(0) @db.Decimal(18, 2)
+  status          CatalogStatus            @default(ACTIVE)
+
+  createdAt       DateTime                 @default(now())
+  updatedAt       DateTime                 @default(now()) @updatedAt
+
+  records         DiligenceRecord[]
+
+  @@index([status])
+  @@map("hrm_diligence_violation_types")
+}
+
+/// 11. Bảng Vi phạm Chuyên cần theo kỳ (DiligenceRecord)
+model DiligenceRecord {
+  id              String                 @id @default(uuid()) @db.VarChar(64)
+  periodId        String                 @db.VarChar(64)
+  ma_nv           String                 @db.VarChar(24)
+  violationTypeId String                 @db.VarChar(64)
+  violationDate   DateTime               @db.Date
+  violationHours  Decimal?               @db.Decimal(4, 2)
+  note            String?                @db.VarChar(500)
+
+  createdAt       DateTime               @default(now())
+  updatedAt       DateTime               @default(now()) @updatedAt
+
+  period          PayrollPeriod          @relation(fields: [periodId], references: [id], onDelete: Cascade)
+  nhan_vien       hrm_nhan_vien          @relation(fields: [ma_nv], references: [ma_nv], onDelete: Cascade)
+  violationType   DiligenceViolationType @relation(fields: [violationTypeId], references: [id], onDelete: Restrict)
+
+  @@unique([periodId, ma_nv, violationTypeId, violationDate])
+  @@index([periodId, ma_nv])
+  @@index([violationTypeId])
+  @@index([violationDate])
+  @@map("hrm_diligence_records")
+}
+
+/// 12. Danh mục Khoản ứng - bù trừ lương (SalaryAdjustmentItem)
+model SalaryAdjustmentItem {
+  id        String              @id @default(uuid()) @db.VarChar(64)
+  code      String              @unique @db.VarChar(20) // BT01..BT99
+  name      String              @db.VarChar(200)
+  direction AdjustmentDirection
+  status    CatalogStatus       @default(ACTIVE)
+
+  createdAt DateTime            @default(now())
+  updatedAt DateTime            @default(now()) @updatedAt
+
+  records   SalaryAdjustmentRecord[]
+
+  @@index([direction])
+  @@index([status])
+  @@map("hrm_salary_adjustment_items")
+}
+
+/// 13. Bảng Chi tiết Ứng - Bù trừ theo kỳ (SalaryAdjustmentRecord)
+model SalaryAdjustmentRecord {
+  id               String               @id @default(uuid()) @db.VarChar(64)
+  periodId         String               @db.VarChar(64)
+  ma_nv            String               @db.VarChar(24)
+  adjustmentItemId String               @db.VarChar(64)
+  amount           Decimal              @db.Decimal(18, 2)
+  note             String?              @db.VarChar(500)
+
+  createdAt        DateTime             @default(now())
+  updatedAt        DateTime             @default(now()) @updatedAt
+
+  period           PayrollPeriod        @relation(fields: [periodId], references: [id], onDelete: Cascade)
+  nhan_vien        hrm_nhan_vien        @relation(fields: [ma_nv], references: [ma_nv], onDelete: Cascade)
+  adjustmentItem   SalaryAdjustmentItem @relation(fields: [adjustmentItemId], references: [id], onDelete: Restrict)
+
+  @@unique([periodId, ma_nv, adjustmentItemId])
+  @@index([periodId, ma_nv])
+  @@index([adjustmentItemId])
+  @@map("hrm_salary_adjustment_records")
+}
+
+/// 14. Bảng Lương Tổng hợp Snapshot (PayrollSheetLine)
+model PayrollSheetLine {
+  id                         String        @id @default(uuid()) @db.VarChar(64)
+  periodId                   String        @db.VarChar(64)
+  ma_nv                      String        @db.VarChar(24)
+
+  employeeCode               String        @db.VarChar(24)
+  fullName                   String        @db.VarChar(254)
+  departmentName             String?       @db.VarChar(254)
+  positionName               String?       @db.VarChar(100)
+  contractType               String?       @db.VarChar(24)
+  salaryType                 String?       @db.VarChar(8)
+  dependentCount             Int           @default(0)
+
+  baseSalaryMonthly          Decimal       @default(0) @db.Decimal(18, 2)
+  standardWorkDays           Decimal       @db.Decimal(4, 2)
+  actualWorkDays             Decimal       @db.Decimal(4, 2)
+  otConvertedHours           Decimal       @db.Decimal(6, 2)
+
+  otAmount                   Decimal       @default(0) @db.Decimal(18, 2)
+  proratedWorkSalary         Decimal       @default(0) @db.Decimal(18, 2)
+  pieceworkSalary            Decimal       @default(0) @db.Decimal(18, 2)
+  bonusSalary                Decimal       @default(0) @db.Decimal(18, 2)
+  kpiSalary                  Decimal       @default(0) @db.Decimal(18, 2)
+  commissionSalary           Decimal       @default(0) @db.Decimal(18, 2)
+  diligenceSalary            Decimal       @default(0) @db.Decimal(18, 2)
+  grossIncome                Decimal       @default(0) @db.Decimal(18, 2)
+
+  taxableIncome              Decimal       @default(0) @db.Decimal(18, 2)
+  insuranceSalaryBase        Decimal       @default(0) @db.Decimal(18, 2)
+  employeeInsuranceDeduction Decimal       @default(0) @db.Decimal(18, 2)
+  companyInsuranceExpense    Decimal       @default(0) @db.Decimal(18, 2)
+  employeeUnionFee           Decimal       @default(0) @db.Decimal(18, 2)
+  companyUnionExpense        Decimal       @default(0) @db.Decimal(18, 2)
+
+  adjustmentNetAmount        Decimal       @default(0) @db.Decimal(18, 2)
+  personalIncomeTax          Decimal       @default(0) @db.Decimal(18, 2)
+  netTakeHomeSalary          Decimal       @default(0) @db.Decimal(18, 2)
+  totalCompanyCost           Decimal       @default(0) @db.Decimal(18, 2)
+
+  // ── ADR-010 (2026-09-10) — 15 cột mới, pipeline thuế/bảo hiểm 10 bước ──
+
+  // Nguồn lương 2 tầng (QĐ nghiệp vụ 1 — SRS 15.4)
+  contractBaseSalary          Decimal      @default(0) @db.Decimal(18, 2) // luong_chinh của HĐ
+  fixedAllowanceTotal         Decimal      @default(0) @db.Decimal(18, 2) // Σ mức THÁNG phụ cấp cố định
+  allowanceInPeriodTotal      Decimal      @default(0) @db.Decimal(18, 2) // phụ cấp SAU quy đổi công
+
+  // Tăng ca (BR-dltl-025)
+  otRawHours                  Decimal      @default(0) @db.Decimal(6, 2)  // giờ GỐC, chưa nhân hệ số
+  otTaxExemptAmount           Decimal      @default(0) @db.Decimal(18, 2) // phần vượt đơn giá giờ thường
+
+  // Trần ăn ca (BR-dltl-027)
+  mealAllowanceAmount         Decimal      @default(0) @db.Decimal(18, 2) // Σ khoản isMealAllowance trong kỳ
+  lunchAllowanceExemptAmount  Decimal      @default(0) @db.Decimal(18, 2) // phần được miễn (≤ trần đã quy đổi công)
+  lunchAllowanceTaxableAmount Decimal      @default(0) @db.Decimal(18, 2) // phần VƯỢT trần, phải chịu thuế
+
+  /// Miễn thuế theo khai báo (QĐ-9 — chủ dự án chốt Q-1 ngày 2026-09-10). Σ phụ cấp khai miễn
+  /// thuế (isTaxable = false HOẶC taxTreatment = EXEMPT), số tiền TRONG KỲ. KHÔNG gồm khoản
+  /// isMealAllowance — khoản đó nằm trọn ở mealAllowanceAmount và chịu trần riêng.
+  /// Bất biến: mealAllowanceAmount + otherAllowanceTaxExemptAmount <= allowanceInPeriodTotal
+  otherAllowanceTaxExemptAmount Decimal    @default(0) @db.Decimal(18, 2)
+
+  // Hai trần bảo hiểm độc lập (BR-dltl-024)
+  insuranceBaseBhxhByt        Decimal      @default(0) @db.Decimal(18, 2) // gốc tính BHXH+BHYT (đã kẹp trần)
+  insuranceBaseBhtn           Decimal      @default(0) @db.Decimal(18, 2) // gốc tính BHTN (đã kẹp trần)
+  insuranceCapAppliedBhxhByt  Boolean      @default(false)
+  insuranceCapAppliedBhtn     Boolean      @default(false)
+
+  // Rẽ nhánh phương pháp thuế (BR-dltl-026)
+  withholdingTaxApplied       Boolean      @default(false) // true = khấu trừ 10%, false = lũy tiến
+
+  // Truy vết phiên bản công thức — dòng cũ "v1", dòng khóa sau ADR-010 "v2"
+  engineVersion                String      @default("v1") @db.VarChar(16)
+
+  createdAt                  DateTime      @default(now())
+  updatedAt                  DateTime      @default(now()) @updatedAt
+
+  period                     PayrollPeriod @relation(fields: [periodId], references: [id], onDelete: Cascade)
+  nhan_vien                  hrm_nhan_vien @relation(fields: [ma_nv], references: [ma_nv], onDelete: Cascade)
+
+  @@unique([periodId, ma_nv])
+  @@index([periodId])
+  @@index([ma_nv])
+  @@map("hrm_payroll_sheet_lines")
 }

@@ -9,7 +9,7 @@ import PictureAsPdfRounded from "@mui/icons-material/PictureAsPdfRounded";
 import UploadFileRounded from "@mui/icons-material/UploadFileRounded";
 import VisibilityRounded from "@mui/icons-material/VisibilityRounded";
 import LinkOffRounded from "@mui/icons-material/LinkOffRounded";
-import { SO_FILE_TOI_DA, type FileScanApi } from "../../api/taiLieuQueries";
+import { SO_FILE_TOI_DA, type FileScanApi } from "../../api/du_lieu_nhan_vien/taiLieuQueries";
 
 /** `284512` -> `278 KB`. Dưới 1MB hiện KB cho gọn, từ 1MB trở lên hiện MB một chữ số lẻ. */
 function coFile(byte: number): string {

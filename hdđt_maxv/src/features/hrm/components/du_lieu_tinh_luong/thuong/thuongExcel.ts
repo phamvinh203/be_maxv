@@ -4,7 +4,7 @@
  */
 
 import type { CellValue, Workbook, Worksheet } from "exceljs";
-import { sinhIdDongThuong, thanhTien, tongTienThuong } from "../../../thuong";
+import { sinhIdDongThuong, thanhTien, tongTienThuong } from "../../../calculations/du_lieu_tinh_luong/thuong";
 import type { DongThuong, KhoanLuong, ThuongNhanVienRow } from "../../../types";
 
 /** Cột của sheet "Bảng thưởng" — thứ tự này là hợp đồng giữa xuất và nhập. */

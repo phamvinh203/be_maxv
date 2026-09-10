@@ -18,14 +18,14 @@ import Tooltip from "@mui/material/Tooltip";
 import Chip from "@mui/material/Chip";
 import AddRounded from "@mui/icons-material/AddRounded";
 import DeleteRounded from "@mui/icons-material/DeleteRounded";
-import { tienVn } from "../../../format";
+import { tienVn } from "../../../_shared/format";
 import {
   dongPhanTramRong,
   thanhTienPhanTram,
   tongCoSoPhanTram,
   tongTienPhanTram,
-} from "../../../luongPhanTram";
-import { useKhoanPhanTramList } from "../../../mock/hooks/luongPhanTram";
+} from "../../../calculations/du_lieu_tinh_luong/luongPhanTram";
+import { useKhoanPhanTramList } from "../../../api/cai_dat_luong/salaryItemsQueries";
 import type { DongLuongPhanTram } from "../../../types";
 import TienField from "../../TienField";
 

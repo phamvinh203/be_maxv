@@ -158,6 +158,70 @@ export const MESSAGES = {
     PHONG_BAN_ME_SELF: 'Phòng ban cha không thể là chính nó',
     PHONG_BAN_ME_VONG_LAP:
       'Không thể chọn phòng ban cấp dưới làm phòng ban cha (tạo vòng lặp trong cây tổ chức)',
+
+    // Cấu hình mặc định, Ca làm việc, Lịch ngày lễ (E-hrm-067..E-hrm-079)
+    WORK_SHIFT_NOT_FOUND: 'Không tìm thấy ca làm việc',
+    HOLIDAY_NOT_FOUND: 'Không tìm thấy ngày lễ',
+    WORK_SHIFT_IN_USE: 'Ca làm việc đang được sử dụng trong hệ thống, không thể xóa.',
+
+    GIO_CONG_CHUAN_INVALID:
+      'Giờ công chuẩn/ngày phải nằm trong khoảng từ 1.0 đến 24.0 giờ.',
+    LUONG_CO_SO_HOAC_VUNG_INVALID:
+      'Lương cơ sở và lương tối thiểu vùng phải là số nguyên lớn hơn 0.',
+    THUE_TNCN_KHONG_LUY_TIEN:
+      'Thuế suất của bậc thuế sau phải lớn hơn bậc liền trước.',
+    TEN_CA_LAM_VIEC_EMPTY: 'Tên ca làm việc không được để trống.',
+    GIO_VAO_RA_INVALID:
+      'Ca làm việc bắt buộc phải có giờ vào và giờ ra hợp lệ (định dạng HH:mm).',
+    NGHI_GIUA_CA_HOAC_GIO_CONG_INVALID:
+      'Thời gian nghỉ giữa ca không được âm và tổng giờ công thực tế phải lớn hơn 0.',
+    MA_CA_LAM_VIEC_EXISTED:
+      'Mã ca làm việc đã tồn tại trong công ty. Vui lòng chọn mã khác.',
+    TEN_NGAY_LE_HOAC_NGAY_EMPTY:
+      'Tên ngày lễ và ngày diễn ra không được để trống.',
+    LE_AM_LICH_KHONG_THE_LAP_LAI:
+      'Ngày lễ âm lịch không thể lặp lại theo dương lịch. Vui lòng tắt cờ lặp hàng năm và tạo cho từng năm.',
+    NGAY_LE_TRUNG_LAP: 'Ngày này đã có ngày lễ cùng tên trong hệ thống.',
+    CAN_QUYEN_ADMIN_HOAC_OWNER:
+      'Chỉ Quản trị viên (ADMIN) hoặc Chủ doanh nghiệp (OWNER) mới có quyền cập nhật hoặc khôi phục Cấu hình mặc định.',
+    GIOI_HAN_99_CA_TU_SINH:
+      'Đã đạt giới hạn 99 ca làm việc tự sinh. Vui lòng tự nhập mã ca hoặc giải phóng ca không sử dụng.',
+    /** E-hrm-079 — dải năm hợp lệ của "Tạo nhanh lịch ngày lễ" (BR-hrm-079). */
+    NAM_KHOI_TAO_LE_INVALID:
+      'Năm khởi tạo ngày lễ phải nằm trong khoảng từ 2024 đến 2030.',
+
+    /*
+     * Ba mã toàn vẹn biểu thuế TNCN — BR-hrm-082 (BA chốt QĐ #25), wording lấy nguyên văn từ
+     * `docs/hrm/srs/hrm-spec.md` Mục 8.10 và `api-contract.md` Mục 8.11.
+     */
+    NGUONG_THUE_KHONG_TANG:
+      'Ngưỡng thu nhập của bậc thuế sau phải lớn hơn bậc liền trước.',
+    BIEU_THUE_TOI_THIEU_2_BAC:
+      'Biểu thuế thu nhập cá nhân phải có ít nhất 2 bậc.',
+    BAC_THUE_CUOI_PHAI_MO:
+      'Bậc thuế cuối cùng phải áp cho toàn bộ phần thu nhập vượt bậc liền trước.',
+
+    /** Hết lượt thử cấp mã ca tự sinh vì có người khác chiếm mất — ADR-001 (retry-on-P2002). */
+    HE_THONG_BAN_CAP_MA_CA: 'Hệ thống đang bận cấp mã ca, vui lòng bấm lưu lại.',
+
+    // Cài đặt lương: Danh mục khoản lương, Cấu trúc lương & Set lương (E-sal-001..E-sal-011)
+    SALARY_ITEM_NOT_FOUND: 'Khoản lương không tồn tại',
+    SALARY_ITEM_NAME_EMPTY: 'Tên khoản lương không được để trống',
+    SALARY_ITEM_NAME_EXISTED: (tenKhoan: string) =>
+      `Đã có khoản tên "${tenKhoan}" trong loại này.`,
+    SALARY_ITEM_IN_USE:
+      'Khoản lương đang được sử dụng trong cấu trúc lương hoặc nhân viên, không thể xóa.',
+    SALARY_STRUCTURE_EMPTY: 'Cấu trúc lương phải có ít nhất một khoản.',
+    SALARY_STRUCTURE_DATES_INVALID:
+      'Ngày kết thúc hiệu lực phải sau ngày bắt đầu.',
+    SALARY_EMPLOYEE_NOT_FOUND: 'Nhân viên không tồn tại',
+    SALARY_EMPLOYEE_NO_ACTIVE_CONTRACT:
+      'Nhân viên không còn Hợp đồng hiệu lực tại thời điểm hiện tại.',
+    SALARY_ITEM_NOT_IN_STRUCTURE: (tenKhoan: string, maKhoan: string) =>
+      `Khoản lương "${tenKhoan}" (${maKhoan}) không thuộc cấu trúc lương khung hiện hành.`,
+    SALARY_TOTAL_AMOUNT_INVALID: 'Tổng lương phải lớn hơn 0.',
+    SALARY_DUPLICATE_ITEMS: 'Danh sách khoản lương gửi lên bị trùng lặp.',
+    GIOI_HAN_99_KHOAN_LUONG: 'Đã đạt giới hạn 99 khoản lương tự sinh.',
   },
 
   VALIDATION: {

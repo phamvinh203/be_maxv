@@ -1,6 +1,7 @@
 import fp from 'fastify-plugin';
 import {
   ConflictError,
+  BadRequestError,
   NotFoundError,
   UnauthorizedError,
   ForbiddenError,
@@ -8,6 +9,7 @@ import {
   MailError,
   DriveApiError,
 } from '../helpers/errors';
+import { PayrollError } from '../helpers/hrm/payrollErrors';
 import { HttpStatus } from '../constants/httpStatus';
 import { MESSAGES } from '../constants/messages';
 // Hai client sinh ra (sys + tenant) dùng CHUNG một lớp lỗi runtime (đã kiểm chứng bằng
@@ -21,10 +23,23 @@ import { Prisma } from '../generated/tenant';
 export default fp(
   async (app) => {
     app.setErrorHandler((err, req, reply) => {
+      if (err instanceof PayrollError) {
+        return reply.status(err.statusCode).send({
+          success: false,
+          code: err.code,
+          errorCode: err.code,
+          message: err.message,
+        });
+      }
       if (err instanceof ValidationError) {
         return reply
           .status(HttpStatus.BAD_REQUEST)
           .send({ success: false, errors: err.details });
+      }
+      if (err instanceof BadRequestError) {
+        return reply
+          .status(HttpStatus.BAD_REQUEST)
+          .send({ success: false, message: err.message });
       }
       if (err instanceof ConflictError) {
         return reply

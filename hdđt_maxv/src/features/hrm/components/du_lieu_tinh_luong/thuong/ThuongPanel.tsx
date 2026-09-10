@@ -1,5 +1,6 @@
-import { useEffect, useRef, useState, type ChangeEvent } from "react";
+import { useEffect, useMemo, useRef, useState, type ChangeEvent } from "react";
 import { toast } from "react-toastify";
+import Alert from "@mui/material/Alert";
 import Box from "@mui/material/Box";
 import Paper from "@mui/material/Paper";
 import Stack from "@mui/material/Stack";
@@ -18,17 +19,14 @@ import ContentCopyRounded from "@mui/icons-material/ContentCopyRounded";
 import DeleteSweepRounded from "@mui/icons-material/DeleteSweepRounded";
 import TuneRounded from "@mui/icons-material/TuneRounded";
 import { getErrorMessage } from "../../../../../lib/errors";
-import { PHAM_VI_AP_DUNG } from "../../../constants";
-import { nhan, tienVn } from "../../../format";
-import { tongTienThuong } from "../../../thuong";
-import {
-  useApDungThuong,
-  useKhoanThuongList,
-  useLuuMauThuong,
-  useMauThuong,
-  useThuongRows,
-} from "../../../mock/hooks/thuong";
-import type { DongThuong, LocNhanVienKyLuong, PhamViApDung } from "../../../types";
+import { PHAM_VI_AP_DUNG } from "../../../_shared/constants";
+import { nhan, tienVn } from "../../../_shared/format";
+import { tongTienThuong } from "../../../calculations/du_lieu_tinh_luong/thuong";
+import { useKhoanThuongList, useKhoanLuongIdByCode } from "../../../api/cai_dat_luong/salaryItemsQueries";
+import { useApplyBonus, useBonusDataList } from "../../../api/du_lieu_tinh_luong/payrollInputsQueries";
+import { useCurrentPayrollPeriod } from "../useCurrentPayrollPeriod";
+import { mergeNhanVienKyLuongWithData, useNhanVienKyLuong } from "../useNhanVienKyLuong";
+import type { DongThuong, LocNhanVienKyLuong, PhamViApDung, ThuongNhanVienRow } from "../../../types";
 import XacNhanXoaDialog from "../../XacNhanXoaDialog";
 import BangKhoanThuongCard from "./BangKhoanThuongCard";
 import DanhSachThuongCard from "./DanhSachThuongCard";
@@ -39,25 +37,25 @@ import { docFileThuong, taiFileMauThuong, xuatThuongExcel } from "./thuongExcel"
 /**
  * Màn hình Thưởng của khu "Dữ liệu tính lương".
  *
- * Cùng lối làm việc với màn KPI: bảng giữ ở **bản nháp** trong state màn hình,
- * chỉ ghi xuống kho khi bấm "Lưu thay đổi" hoặc "Áp dụng thưởng"; và "Áp dụng
- * thưởng" ghi cho **toàn bộ nhân viên đang hiện ở danh sách bên dưới** — danh
- * sách nhìn thấy chính là danh sách sẽ bị ghi.
+ * Cùng lối làm việc với màn KPI (xem ghi chú ở `KpiPanel`): bảng là bản nháp cục bộ, ghi thật duy
+ * nhất qua "Áp dụng thưởng", LUÔN gửi `scope: 'nhan_vien'` kèm danh sách `ma_nv` tường minh —
+ * danh sách nhìn thấy chính là danh sách sẽ bị ghi.
  */
 export default function ThuongPanel() {
-  const daLuu = useMauThuong();
-  const danhMuc = useKhoanThuongList();
-  const luuMau = useLuuMauThuong();
-  const apDungThuong = useApDungThuong();
+  const { selectedPeriodId, isReadOnly } = useCurrentPayrollPeriod();
+  const periodId = selectedPeriodId ?? "";
 
-  const [mau, setMau] = useState<DongThuong[]>(daLuu);
+  const danhMuc = useKhoanThuongList();
+  const idTheoMa = useKhoanLuongIdByCode();
+  const applyMut = useApplyBonus(periodId);
+
+  const [mau, setMau] = useState<DongThuong[]>([]);
   const [phamVi, setPhamVi] = useState<PhamViApDung>("nhan_vien");
   const [filters, setFilters] = useState<LocNhanVienKyLuong>({
     q: "",
     ma_pb: "",
     loai_hd: "",
   });
-  const [dangLuu, setDangLuu] = useState(false);
 
   const [moQuanLy, setMoQuanLy] = useState(false);
   const [moTaiSuDung, setMoTaiSuDung] = useState(false);
@@ -65,36 +63,39 @@ export default function ThuongPanel() {
   const [moApDung, setMoApDung] = useState(false);
 
   const inputFile = useRef<HTMLInputElement>(null);
-  const rows = useThuongRows(phamVi, filters);
+  const nhanVien = useNhanVienKyLuong(phamVi, filters);
+  const { data: bonusData } = useBonusDataList({ periodId });
 
   useEffect(() => {
-    // Bám theo bảng đã lưu — vừa lưu xong, hoặc rời màn hình rồi quay lại.
     // eslint-disable-next-line react-hooks/set-state-in-effect
-    setMau(daLuu);
-  }, [daLuu]);
+    setMau([]);
+  }, [periodId]);
 
-  const coThayDoi = JSON.stringify(mau) !== JSON.stringify(daLuu);
+  const rows: ThuongNhanVienRow[] = useMemo(
+    () =>
+      mergeNhanVienKyLuongWithData(nhanVien, bonusData, (row, ban) => ({
+        ...row,
+        tien_thuong: ban ? ban.totalAmount : null,
+        so_khoan: ban?.records.length ?? 0,
+      })),
+    [nhanVien, bonusData],
+  );
 
-  const handleLuu = async () => {
-    setDangLuu(true);
-    try {
-      await luuMau(mau);
-      toast.success("Đã lưu bảng thưởng.");
-    } catch (err) {
-      toast.error(getErrorMessage(err, "Không lưu được bảng thưởng."));
-    } finally {
-      setDangLuu(false);
-    }
-  };
+  const coThayDoi = mau.length > 0;
 
   const handleApDung = async () => {
     setMoApDung(false);
     try {
-      const so = await apDungThuong(
-        rows.map((row) => row.ma_nv),
-        mau,
-      );
-      toast.success(`Đã áp bảng thưởng cho ${so} nhân viên.`);
+      await applyMut.mutateAsync({
+        periodId,
+        scope: "nhan_vien",
+        employeeIds: rows.map((row) => row.ma_nv),
+        items: mau.map((d) => ({
+          salaryItemId: idTheoMa.get(d.ma_khoan) ?? d.ma_khoan,
+          amount: d.so_tien,
+        })),
+      });
+      toast.success(`Đã áp bảng thưởng cho ${rows.length} nhân viên.`);
     } catch (err) {
       toast.error(getErrorMessage(err, "Không áp được thưởng."));
     }
@@ -119,21 +120,34 @@ export default function ThuongPanel() {
 
   const handleNhap = async (e: ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
-    // Xóa giá trị input ngay: không xóa thì chọn lại đúng file vừa lỗi sẽ không
-    // bắn `change` lần nữa và nút trông như hỏng.
     e.target.value = "";
     if (!file) return;
     try {
       const dong = await docFileThuong(file, danhMuc);
       setMau(dong);
-      toast.success(`Đã đọc ${dong.length} khoản thưởng từ file. Bấm "Lưu thay đổi" để ghi lại.`);
+      toast.success(`Đã đọc ${dong.length} khoản thưởng từ file. Bấm "Áp dụng thưởng" để ghi lại.`);
     } catch (err) {
       toast.error(getErrorMessage(err, "Không đọc được file Excel."));
     }
   };
 
+  if (!periodId) {
+    return (
+      <Alert severity="info">
+        Chưa có kỳ lương nào được chọn — tạo hoặc chọn một kỳ lương ở thanh phía trên trước khi
+        nhập thưởng.
+      </Alert>
+    );
+  }
+
   return (
     <Stack spacing={2.5}>
+      {isReadOnly && (
+        <Alert severity="warning">
+          Kỳ lương đang chọn đã khóa sổ/chờ duyệt — không thể sửa hoặc áp dụng thưởng mới.
+        </Alert>
+      )}
+
       <Paper variant="outlined" sx={{ p: 2 }}>
         <Stack
           direction={{ xs: "column", xl: "row" }}
@@ -151,6 +165,7 @@ export default function ThuongPanel() {
             <Button
               startIcon={<UploadFileRounded />}
               onClick={() => inputFile.current?.click()}
+              disabled={isReadOnly}
               sx={{ textTransform: "none" }}
             >
               Nhập Excel
@@ -166,7 +181,7 @@ export default function ThuongPanel() {
               variant="contained"
               startIcon={<PlaylistAddCheckRounded />}
               onClick={() => setMoApDung(true)}
-              disabled={mau.length === 0 || rows.length === 0}
+              disabled={isReadOnly || mau.length === 0 || rows.length === 0}
               sx={{ textTransform: "none" }}
             >
               Áp dụng thưởng ({rows.length})
@@ -174,6 +189,7 @@ export default function ThuongPanel() {
             <Button
               startIcon={<ContentCopyRounded />}
               onClick={() => setMoTaiSuDung(true)}
+              disabled={isReadOnly}
               sx={{ textTransform: "none" }}
             >
               Tái sử dụng
@@ -202,7 +218,7 @@ export default function ThuongPanel() {
               <Chip
                 size="small"
                 color="warning"
-                label="Bảng thưởng có thay đổi chưa lưu"
+                label="Bảng thưởng có nội dung chưa áp dụng"
                 sx={{ height: 22 }}
               />
             </Box>
@@ -220,9 +236,8 @@ export default function ThuongPanel() {
         filters={filters}
         onFilters={setFilters}
         rows={rows}
-        coThayDoi={coThayDoi}
-        dangLuu={dangLuu}
-        onLuu={handleLuu}
+        periodId={periodId}
+        isReadOnly={isReadOnly}
       />
 
       <QuanLyThuongDialog open={moQuanLy} onClose={() => setMoQuanLy(false)} />
@@ -264,7 +279,12 @@ export default function ThuongPanel() {
           <Button onClick={() => setMoApDung(false)} sx={{ textTransform: "none" }}>
             Hủy
           </Button>
-          <Button variant="contained" onClick={handleApDung} sx={{ textTransform: "none" }}>
+          <Button
+            variant="contained"
+            onClick={handleApDung}
+            disabled={applyMut.isPending}
+            sx={{ textTransform: "none" }}
+          >
             Áp dụng
           </Button>
         </DialogActions>

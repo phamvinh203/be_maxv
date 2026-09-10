@@ -1,0 +1,63 @@
+/**
+ * Danh mục 26 Mã lỗi chuẩn hóa của Phân hệ Dữ liệu Tính Lương (du_lieu_tinh_luong).
+ * Tuân thủ theo tài liệu SRS Mục 4.2 và QA Test Matrix.
+ */
+export const PAYROLL_ERROR_CODES = {
+  E_DLTL_001: 'E-dltl-001',
+  E_DLTL_002: 'E-dltl-002',
+  E_DLTL_003: 'E-dltl-003',
+  E_DLTL_004: 'E-dltl-004',
+  E_DLTL_005: 'E-dltl-005',
+  E_DLTL_006: 'E-dltl-006',
+  E_DLTL_007: 'E-dltl-007',
+  E_DLTL_008: 'E-dltl-008',
+  E_DLTL_009: 'E-dltl-009',
+  E_DLTL_010: 'E-dltl-010',
+  E_DLTL_011: 'E-dltl-011',
+  E_DLTL_012: 'E-dltl-012',
+  E_DLTL_013: 'E-dltl-013',
+  E_DLTL_014: 'E-dltl-014',
+  E_DLTL_015: 'E-dltl-015',
+  E_DLTL_016: 'E-dltl-016',
+  E_DLTL_017: 'E-dltl-017',
+  E_DLTL_018: 'E-dltl-018',
+  E_DLTL_019: 'E-dltl-019',
+  E_DLTL_020: 'E-dltl-020',
+  E_DLTL_021: 'E-dltl-021',
+  E_DLTL_022: 'E-dltl-022',
+  E_DLTL_023: 'E-dltl-023',
+  E_DLTL_024: 'E-dltl-024',
+  E_DLTL_025: 'E-dltl-025',
+  E_DLTL_026: 'E-dltl-026',
+} as const;
+
+export type PayrollErrorCode = typeof PAYROLL_ERROR_CODES[keyof typeof PAYROLL_ERROR_CODES];
+
+export const PAYROLL_ERROR_MESSAGES: Record<PayrollErrorCode, string> = {
+  [PAYROLL_ERROR_CODES.E_DLTL_001]: 'Kỳ lương đã bị khóa sổ hoặc đã duyệt, không thể thay đổi dữ liệu.',
+  [PAYROLL_ERROR_CODES.E_DLTL_002]: 'Nhân viên không tồn tại hoặc không có hợp đồng lao động bao phủ kỳ tính lương.',
+  [PAYROLL_ERROR_CODES.E_DLTL_003]: 'Chưa chọn phòng ban khi áp dụng theo phạm vi phòng ban.',
+  [PAYROLL_ERROR_CODES.E_DLTL_004]: 'Danh sách nhân viên áp dụng không được để trống.',
+  [PAYROLL_ERROR_CODES.E_DLTL_005]: 'Số giờ công không được âm hoặc vượt quá số giờ chuẩn trong ngày.',
+  [PAYROLL_ERROR_CODES.E_DLTL_006]: 'Loại tăng ca bị lặp lại trong bảng của nhân viên.',
+  [PAYROLL_ERROR_CODES.E_DLTL_007]: 'Số giờ tăng ca phải lớn hơn 0.',
+  [PAYROLL_ERROR_CODES.E_DLTL_008]: 'Còn dòng chưa chọn chỉ tiêu KPI hoặc mã chỉ tiêu không hợp lệ.',
+  [PAYROLL_ERROR_CODES.E_DLTL_009]: 'Chỉ tiêu KPI bị lặp lại trong bảng.',
+  [PAYROLL_ERROR_CODES.E_DLTL_010]: 'Tổng trọng số KPI phải lớn hơn 0.',
+  [PAYROLL_ERROR_CODES.E_DLTL_011]: 'Khoản thưởng bị lặp lại trong bảng của nhân viên.',
+  [PAYROLL_ERROR_CODES.E_DLTL_012]: 'Số tiền thưởng phải lớn hơn hoặc bằng 0.',
+  [PAYROLL_ERROR_CODES.E_DLTL_013]: 'Còn dòng sản phẩm chưa chọn mã sản phẩm hợp lệ.',
+  [PAYROLL_ERROR_CODES.E_DLTL_014]: 'Sản phẩm bị lặp lại trong bảng lương sản phẩm.',
+  [PAYROLL_ERROR_CODES.E_DLTL_015]: 'Đơn giá hoặc số lượng sản phẩm không được âm.',
+  [PAYROLL_ERROR_CODES.E_DLTL_016]: 'Khoản lương phần trăm bị lặp lại trong bảng.',
+  [PAYROLL_ERROR_CODES.E_DLTL_017]: 'Tỷ lệ hoa hồng phải từ 0% đến 100%.',
+  [PAYROLL_ERROR_CODES.E_DLTL_018]: 'Còn dòng chuyên cần chưa chọn loại lỗi hoặc chưa điền ngày.',
+  [PAYROLL_ERROR_CODES.E_DLTL_019]: 'Lỗi chuyên cần bị khai báo trùng lặp cho cùng một ngày.',
+  [PAYROLL_ERROR_CODES.E_DLTL_020]: 'Số giờ vi phạm chuyên cần không được âm.',
+  [PAYROLL_ERROR_CODES.E_DLTL_021]: 'Còn dòng bù trừ chưa chọn khoản hoặc mã khoản không hợp lệ.',
+  [PAYROLL_ERROR_CODES.E_DLTL_022]: 'Khoản bù trừ bị lặp lại trong bảng của nhân viên.',
+  [PAYROLL_ERROR_CODES.E_DLTL_023]: 'Số tiền bù trừ phải lớn hơn 0.',
+  [PAYROLL_ERROR_CODES.E_DLTL_024]: 'File Excel nhập vào không đúng cấu trúc mẫu quy định.',
+  [PAYROLL_ERROR_CODES.E_DLTL_025]: 'Kỳ lương không tồn tại trong hệ thống.',
+  [PAYROLL_ERROR_CODES.E_DLTL_026]: 'Đang có thao tác khóa sổ kỳ lương đồng thời, vui lòng thử lại.',
+};

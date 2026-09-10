@@ -1,5 +1,6 @@
 import Box from "@mui/material/Box";
 import Paper from "@mui/material/Paper";
+import Stack from "@mui/material/Stack";
 import Table from "@mui/material/Table";
 import TableBody from "@mui/material/TableBody";
 import TableCell from "@mui/material/TableCell";
@@ -8,9 +9,10 @@ import TableHead from "@mui/material/TableHead";
 import TableRow from "@mui/material/TableRow";
 import Tooltip from "@mui/material/Tooltip";
 import Typography from "@mui/material/Typography";
+import CircularProgress from "@mui/material/CircularProgress";
 import { alpha } from "@mui/material/styles";
-import { hauToCheDo, tienTheoCheDo } from "../../bangLuong";
-import { tienVn } from "../../format";
+import { hauToCheDo, tienTheoCheDo } from "../../calculations/bang_luong/bangLuong";
+import { tienVn } from "../../_shared/format";
 import type { CheDoHienThi, DongBangLuong } from "../../types";
 import { cotTheoMuc, tongTheoCot, type CotBangLuong } from "./cotBangLuong";
 
@@ -18,6 +20,8 @@ interface Props {
   rows: DongBangLuong[];
   cheDo: CheDoHienThi;
   rutGon: boolean;
+  /** Đang tải lần đầu/tải lại từ máy chủ — hiện spinner thay vì "Không có nhân viên". */
+  isLoading?: boolean;
 }
 
 /** Nội dung chi tiết của "Thu nhập" — hai khoản không có cột riêng nằm ở đây. */
@@ -44,7 +48,7 @@ function chiTietThuNhap(row: DongBangLuong): string {
  * và **Chuyên cần** không có cột riêng nên nếu không có tooltip thì hai khoản đó
  * biến mất khỏi màn hình dù vẫn nằm trong tổng.
  */
-export default function BangLuongTable({ rows, cheDo, rutGon }: Props) {
+export default function BangLuongTable({ rows, cheDo, rutGon, isLoading }: Props) {
   const cot = cotTheoMuc(rutGon);
   const tong = tongTheoCot(cot, rows);
   const hauTo = hauToCheDo(cheDo);
@@ -98,101 +102,112 @@ export default function BangLuongTable({ rows, cheDo, rutGon }: Props) {
         </TableHead>
 
         <TableBody>
-          {rows.map((row) => (
-            <TableRow key={row.ma_nv} hover>
-              {cot.map((c, i) => {
-                const chung = {
-                  align: c.align ?? ("right" as const),
-                  sx: { whiteSpace: "nowrap", ...dinhTrai(i) },
-                };
+          {isLoading && rows.length === 0 && (
+            <TableRow>
+              <TableCell colSpan={cot.length}>
+                <Stack sx={{ alignItems: "center", py: 4 }}>
+                  <CircularProgress size={24} />
+                </Stack>
+              </TableCell>
+            </TableRow>
+          )}
 
-                if (c.key === "ho_ten") {
-                  return (
-                    <TableCell key={c.key} {...chung}>
-                      <Typography variant="body2" sx={{ fontWeight: 600 }}>
-                        {row.ho_ten}
-                      </Typography>
-                      <Typography variant="caption" color="text.secondary">
-                        {row.ma_nv}
-                      </Typography>
-                    </TableCell>
-                  );
-                }
+          {!isLoading &&
+            rows.map((row) => (
+              <TableRow key={row.ma_nv} hover>
+                {cot.map((c, i) => {
+                  const chung = {
+                    align: c.align ?? ("right" as const),
+                    sx: { whiteSpace: "nowrap", ...dinhTrai(i) },
+                  };
 
-                if (c.key === "bo_phan") {
-                  return (
-                    <TableCell key={c.key} {...chung}>
-                      <Typography variant="body2">
-                        {row.ten_pb || "Chưa gán phòng ban"}
-                      </Typography>
-                      <Typography variant="caption" color="text.secondary">
-                        {row.ten_cv || "—"}
-                      </Typography>
-                    </TableCell>
-                  );
-                }
+                  if (c.key === "ho_ten") {
+                    return (
+                      <TableCell key={c.key} {...chung}>
+                        <Typography variant="body2" sx={{ fontWeight: 600 }}>
+                          {row.ho_ten}
+                        </Typography>
+                        <Typography variant="caption" color="text.secondary">
+                          {row.ma_nv}
+                        </Typography>
+                      </TableCell>
+                    );
+                  }
 
-                const so = c.value(row);
+                  if (c.key === "bo_phan") {
+                    return (
+                      <TableCell key={c.key} {...chung}>
+                        <Typography variant="body2">
+                          {row.ten_pb || "Chưa gán phòng ban"}
+                        </Typography>
+                        <Typography variant="caption" color="text.secondary">
+                          {row.ten_cv || "—"}
+                        </Typography>
+                      </TableCell>
+                    );
+                  }
 
-                if (c.key === "thu_nhap") {
-                  return (
-                    <TableCell key={c.key} {...chung}>
-                      <Tooltip title={chiTietThuNhap(row)}>
+                  const so = c.value(row);
+
+                  if (c.key === "thu_nhap") {
+                    return (
+                      <TableCell key={c.key} {...chung}>
+                        <Tooltip title={chiTietThuNhap(row)}>
+                          <Typography
+                            variant="body2"
+                            sx={{ fontWeight: 700, cursor: "help", display: "inline" }}
+                          >
+                            {oSo(c, so)}
+                          </Typography>
+                        </Tooltip>
+                      </TableCell>
+                    );
+                  }
+
+                  if (c.key === "thuc_linh") {
+                    return (
+                      <TableCell key={c.key} {...chung}>
                         <Typography
                           variant="body2"
-                          sx={{ fontWeight: 700, cursor: "help", display: "inline" }}
+                          sx={{ fontWeight: 700 }}
+                          // Thực lĩnh âm = tạm ứng vượt lương kỳ này, còn nợ lại.
+                          color={so < 0 ? "error.main" : "success.main"}
                         >
                           {oSo(c, so)}
                         </Typography>
-                      </Tooltip>
-                    </TableCell>
-                  );
-                }
+                      </TableCell>
+                    );
+                  }
 
-                if (c.key === "thuc_linh") {
+                  if (c.key === "bu_tru" && so !== 0) {
+                    return (
+                      <TableCell key={c.key} {...chung}>
+                        <Typography
+                          variant="body2"
+                          color={so > 0 ? "error.main" : "success.main"}
+                        >
+                          {so > 0 ? `− ${oSo(c, so)}` : `+ ${oSo(c, -so)}`}
+                        </Typography>
+                      </TableCell>
+                    );
+                  }
+
                   return (
                     <TableCell key={c.key} {...chung}>
-                      <Typography
-                        variant="body2"
-                        sx={{ fontWeight: 700 }}
-                        // Thực lĩnh âm = tạm ứng vượt lương kỳ này, còn nợ lại.
-                        color={so < 0 ? "error.main" : "success.main"}
-                      >
-                        {oSo(c, so)}
-                      </Typography>
+                      {so === 0 ? (
+                        <Box component="span" sx={{ color: "text.disabled" }}>
+                          0
+                        </Box>
+                      ) : (
+                        oSo(c, so)
+                      )}
                     </TableCell>
                   );
-                }
+                })}
+              </TableRow>
+            ))}
 
-                if (c.key === "bu_tru" && so !== 0) {
-                  return (
-                    <TableCell key={c.key} {...chung}>
-                      <Typography
-                        variant="body2"
-                        color={so > 0 ? "error.main" : "success.main"}
-                      >
-                        {so > 0 ? `− ${oSo(c, so)}` : `+ ${oSo(c, -so)}`}
-                      </Typography>
-                    </TableCell>
-                  );
-                }
-
-                return (
-                  <TableCell key={c.key} {...chung}>
-                    {so === 0 ? (
-                      <Box component="span" sx={{ color: "text.disabled" }}>
-                        0
-                      </Box>
-                    ) : (
-                      oSo(c, so)
-                    )}
-                  </TableCell>
-                );
-              })}
-            </TableRow>
-          ))}
-
-          {rows.length === 0 && (
+          {!isLoading && rows.length === 0 && (
             <TableRow>
               <TableCell colSpan={cot.length}>
                 <Typography

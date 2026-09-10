@@ -1,7 +1,7 @@
 /** Hook nghiệp vụ Lương sản phẩm. Xem ghi chú về chữ ký ở `hooks/phongBan.ts`. */
 
 import { useCallback, useMemo } from "react";
-import { nhanBanDongSanPham, tongTienSanPham } from "../../luongSanPham";
+import { nhanBanDongSanPham, tongTienSanPham } from "../../calculations/du_lieu_tinh_luong/luongSanPham";
 import type {
   BanLuongSanPhamNhanVien,
   DongLuongSanPham,

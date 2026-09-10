@@ -10,9 +10,9 @@ import ListItemText from "@mui/material/ListItemText";
 import Stack from "@mui/material/Stack";
 import Chip from "@mui/material/Chip";
 import Typography from "@mui/material/Typography";
-import { hieuSuat, mauHieuSuat, nhanBanDongKpi } from "../../../kpi";
-import { useBanKpiList, useChiTieuKpiList } from "../../../mock/hooks/kpi";
-import { useNhanVienList } from "../../../mock/hooks/nhanVien";
+import { hieuSuat, mauHieuSuat, nhanBanDongKpi } from "../../../calculations/du_lieu_tinh_luong/kpi";
+import { useKpiDataList } from "../../../api/du_lieu_tinh_luong/payrollInputsQueries";
+import { useCurrentPayrollPeriod } from "../useCurrentPayrollPeriod";
 import type { DongKpi } from "../../../types";
 
 interface Props {
@@ -23,39 +23,46 @@ interface Props {
 }
 
 /**
- * Chép lại bảng KPI của một nhân viên đã áp trước đó.
+ * Chép lại bảng KPI của một nhân viên đã áp trước đó **trong cùng kỳ lương đang chọn**.
  *
  * Phần lớn nhân viên cùng phòng dùng chung bộ chỉ tiêu, chỉ khác mục tiêu — mở
  * bảng của một người rồi sửa vài con số nhanh hơn nhiều so với thêm lại từng
  * dòng, và không sót chỉ tiêu nào.
  */
 export default function TaiSuDungKpiDialog({ open, onClose, onChon }: Props) {
-  const banKpi = useBanKpiList();
-  const nhanVien = useNhanVienList();
-  const danhMuc = useChiTieuKpiList();
+  const { selectedPeriodId } = useCurrentPayrollPeriod();
+  const { data: kpiData } = useKpiDataList({ periodId: selectedPeriodId ?? "" });
 
   const danhSach = useMemo(() => {
-    const tenNvTheoMa = new Map(nhanVien.map((nv) => [nv.ma_nv, nv.ho_ten]));
-    const tenKpiTheoMa = new Map(danhMuc.map((ct) => [ct.ma_kpi, ct.ten_kpi]));
-    return banKpi
-      .map((ban) => ({
-        ma_nv: ban.ma_nv,
-        ho_ten: tenNvTheoMa.get(ban.ma_nv) ?? ban.ma_nv,
-        dong: ban.dong,
-        hieu_suat: hieuSuat(ban.dong),
-        // Liệt kê tên chỉ tiêu ngay ở dòng chọn — không phải bấm vào mới biết
-        // bảng đó gồm những gì.
-        tomTat: ban.dong.map((d) => tenKpiTheoMa.get(d.ma_kpi) ?? d.ma_kpi).join(" · "),
-      }))
+    return (kpiData ?? [])
+      .filter((ban) => ban.totalKpiItems > 0)
+      .map((ban) => {
+        const dong: DongKpi[] = ban.records.map((r) => ({
+          id: r.id,
+          ma_kpi: r.kpiItem?.code ?? r.kpiItemId,
+          trong_so: r.weight,
+          muc_tieu: r.targetValue,
+          thuc_thi: r.actualValue,
+        }));
+        return {
+          ma_nv: ban.ma_nv,
+          ho_ten: ban.ho_ten,
+          dong,
+          hieu_suat: hieuSuat(dong),
+          // Liệt kê tên chỉ tiêu ngay ở dòng chọn — không phải bấm vào mới biết
+          // bảng đó gồm những gì.
+          tomTat: ban.records.map((r) => r.kpiItem?.name ?? r.kpiItemId).join(" · "),
+        };
+      })
       .sort((a, b) => a.ma_nv.localeCompare(b.ma_nv));
-  }, [banKpi, nhanVien, danhMuc]);
+  }, [kpiData]);
 
   return (
     <Dialog open={open} onClose={onClose} maxWidth="sm" fullWidth>
       <DialogTitle sx={{ pb: 0.5 }}>Tái sử dụng bảng KPI</DialogTitle>
       <Typography variant="body2" color="text.secondary" sx={{ px: 3, pb: 1 }}>
-        Chọn một nhân viên để chép bảng KPI của họ vào bảng đang soạn. Bảng đang soạn sẽ bị thay
-        thế.
+        Chọn một nhân viên đã có KPI trong kỳ lương này để chép bảng của họ vào bảng đang soạn.
+        Bảng đang soạn sẽ bị thay thế.
       </Typography>
 
       <DialogContent dividers sx={{ p: 0 }}>
@@ -98,7 +105,7 @@ export default function TaiSuDungKpiDialog({ open, onClose, onChon }: Props) {
               color="text.disabled"
               sx={{ textAlign: "center", py: 5, px: 3 }}
             >
-              Chưa có nhân viên nào được áp KPI, nên chưa có bảng nào để tái sử dụng.
+              Chưa có nhân viên nào được áp KPI trong kỳ này, nên chưa có bảng nào để tái sử dụng.
             </Typography>
           )}
         </List>

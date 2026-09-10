@@ -22,8 +22,8 @@ import DeleteRounded from "@mui/icons-material/DeleteRounded";
 import { getErrorMessage } from "../../../../../lib/errors";
 import {
   useKhoanPhanTramList,
-  useXoaKhoanPhanTram,
-} from "../../../mock/hooks/luongPhanTram";
+  useXoaKhoanLuong as useXoaKhoanPhanTram,
+} from "../../../api/cai_dat_luong/salaryItemsQueries";
 import type { KhoanLuong } from "../../../types";
 import KhoanLuongFormDialog from "../../cai_dat_luong/KhoanLuongFormDialog";
 import XacNhanXoaDialog from "../../XacNhanXoaDialog";

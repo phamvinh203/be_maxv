@@ -13,8 +13,7 @@ import Tooltip from "@mui/material/Tooltip";
 import Typography from "@mui/material/Typography";
 import DeleteRounded from "@mui/icons-material/DeleteRounded";
 import { getErrorMessage } from "../../../../../lib/errors";
-import { tienVn } from "../../../format";
-import { useXoaBanChuyenCan } from "../../../mock/hooks/chuyenCan";
+import { tienVn } from "../../../_shared/format";
 import type {
   ChuyenCanNhanVienRow,
   LocNhanVienKyLuong,
@@ -30,9 +29,9 @@ interface Props {
   onFilters: (filters: LocNhanVienKyLuong) => void;
   /** Danh sách đã lọc — cũng chính là danh sách "Áp dụng chuyên cần" sẽ ghi. */
   rows: ChuyenCanNhanVienRow[];
-  coThayDoi: boolean;
-  dangLuu: boolean;
-  onLuu: () => void;
+  isReadOnly: boolean;
+  /** Xóa hết bản ghi vi phạm của một nhân viên trong kỳ đang chọn. */
+  onXoaNhanVien: (maNv: string) => Promise<void>;
 }
 
 /**
@@ -48,17 +47,15 @@ export default function DanhSachChuyenCanCard({
   filters,
   onFilters,
   rows,
-  coThayDoi,
-  dangLuu,
-  onLuu,
+  isReadOnly,
+  onXoaNhanVien,
 }: Props) {
-  const xoaBan = useXoaBanChuyenCan();
   const [dangXoa, setDangXoa] = useState<ChuyenCanNhanVienRow | undefined>(undefined);
 
   const xacNhanXoa = async () => {
     if (!dangXoa) return;
     try {
-      await xoaBan(dangXoa.ma_nv);
+      await onXoaNhanVien(dangXoa.ma_nv);
       toast.success(`Đã xóa chuyên cần của ${dangXoa.ho_ten}.`);
     } catch (err) {
       toast.error(getErrorMessage(err, "Không xóa được chuyên cần."));
@@ -75,9 +72,6 @@ export default function DanhSachChuyenCanCard({
         filters={filters}
         onFilters={onFilters}
         soNhanVien={rows.length}
-        coThayDoi={coThayDoi}
-        dangLuu={dangLuu}
-        onLuu={onLuu}
       />
 
       <TableContainer sx={{ mt: 1 }}>
@@ -167,12 +161,12 @@ export default function DanhSachChuyenCanCard({
                   </TableCell>
 
                   <TableCell align="right">
-                    <Tooltip title={chuaAp ? "Chưa có gì để xóa" : "Xóa chuyên cần"}>
+                    <Tooltip title={row.so_dong > 0 ? "Xóa chuyên cần" : "Chưa có gì để xóa"}>
                       <Box component="span">
                         <IconButton
                           size="small"
                           color="error"
-                          disabled={chuaAp}
+                          disabled={isReadOnly || row.so_dong === 0}
                           onClick={() => setDangXoa(row)}
                         >
                           <DeleteRounded fontSize="small" />

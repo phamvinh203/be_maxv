@@ -15,7 +15,7 @@
  * - `MOCK-PB01` không có phòng ban con nhưng còn nhân viên → thử chặn xóa.
  */
 
-import { ngayLeChuanVN } from "../ngayLeChuan";
+import { ngayLeChuanVN } from "./ngayLeChuan";
 import type {
   BanBuTruNhanVien,
   BanChuyenCanNhanVien,
@@ -230,13 +230,24 @@ export const CAU_HINH_MAU: CauHinhMacDinh = {
   giam_tru_ban_than: 11000000,
   giam_tru_npt: 4400000,
 
-  // Lũy kế: 5tr → 10tr → 18tr → 32tr → phần vượt 32tr.
+  // ADR-010: trần miễn thuế ăn trưa (TT 26/2016/TT-BLĐTBXH), tỷ lệ + ngưỡng khấu trừ tại
+  // nguồn HĐ thử việc/thời vụ (Điều 25 TT 111/2013). `ty_le_khau_tru_thu_viec` là số nguyên
+  // phần trăm (10 = 10%), cùng đơn vị với `bhxh_nv`/`bhyt_nv` ở trên.
+  tran_mien_thue_an_trua: 730000,
+  ty_le_khau_tru_thu_viec: 10,
+  nguong_khau_tru_thu_viec: 2000000,
+
+  // Biểu 7 bậc Điều 22 Luật Thuế TNCN. `khoang` là NGƯỠNG TRÊN LŨY KẾ (BR-hrm-080), bậc
+  // cuối `null` = bậc mở. Bản 5 bậc dừng ở 25% trước đây cắt cụt ba bậc trên, khấu trừ
+  // thiếu với thu nhập tính thuế trên 52tr/tháng.
   bac_thue: [
     { khoang: 5000000, thue_suat: 5 },
-    { khoang: 5000000, thue_suat: 10 },
-    { khoang: 8000000, thue_suat: 15 },
-    { khoang: 14000000, thue_suat: 20 },
-    { khoang: 0, thue_suat: 25 },
+    { khoang: 10000000, thue_suat: 10 },
+    { khoang: 18000000, thue_suat: 15 },
+    { khoang: 32000000, thue_suat: 20 },
+    { khoang: 52000000, thue_suat: 25 },
+    { khoang: 80000000, thue_suat: 30 },
+    { khoang: null, thue_suat: 35 },
   ],
 };
 
@@ -251,27 +262,27 @@ export const CA_LAM_VIEC_MAU: CaLamViec[] = [
 
 /** Danh mục lương & phụ cấp — đủ bảy loại để thấy ngay cách bảng phân nhóm. */
 export const KHOAN_LUONG_MAU: KhoanLuong[] = [
-  { ma_khoan: "KL01", loai: "luong_phu_cap", ten_khoan: "Lương cơ bản", ghi_chu: "Khoản gốc trên hợp đồng lao động", tinh_bhxh: true, chiu_thue_tncn: true, ty_le: 0, status: "1" },
-  { ma_khoan: "KL02", loai: "luong_phu_cap", ten_khoan: "Phụ cấp có bảo hiểm xã hội", ghi_chu: "Cộng vào gốc đóng BHXH", tinh_bhxh: true, chiu_thue_tncn: true, ty_le: 0, status: "1" },
-  { ma_khoan: "KL03", loai: "luong_phu_cap", ten_khoan: "Phụ cấp không tính bảo hiểm xã hội", ghi_chu: "", tinh_bhxh: false, chiu_thue_tncn: true, ty_le: 0, status: "1" },
-  { ma_khoan: "KL04", loai: "luong_phu_cap", ten_khoan: "Phụ cấp độc hại", ghi_chu: "Theo danh mục nghề nặng nhọc, độc hại", tinh_bhxh: true, chiu_thue_tncn: false, ty_le: 0, status: "1" },
-  { ma_khoan: "KL05", loai: "luong_ho_tro", ten_khoan: "Hỗ trợ con nhỏ", ghi_chu: "Áp cho nhân viên có con dưới 6 tuổi", tinh_bhxh: false, chiu_thue_tncn: true, ty_le: 0, status: "1" },
-  { ma_khoan: "KL06", loai: "luong_ho_tro", ten_khoan: "Hỗ trợ nhà ở", ghi_chu: "Trong mức miễn thuế theo quy định", tinh_bhxh: false, chiu_thue_tncn: false, ty_le: 0, status: "1" },
-  { ma_khoan: "KL07", loai: "luong_ho_tro", ten_khoan: "Phụ cấp điện thoại", ghi_chu: "Theo quy chế công ty", tinh_bhxh: false, chiu_thue_tncn: false, ty_le: 0, status: "1" },
-  { ma_khoan: "KL08", loai: "luong_ho_tro", ten_khoan: "Phụ cấp tiền cơm", ghi_chu: "730.000 đ/tháng nằm trong mức miễn thuế", tinh_bhxh: false, chiu_thue_tncn: false, ty_le: 0, status: "1" },
-  { ma_khoan: "KL09", loai: "luong_nghiem_thu", ten_khoan: "Lương giao hàng", ghi_chu: "Trả theo số đơn đã giao", tinh_bhxh: false, chiu_thue_tncn: true, ty_le: 0, status: "1" },
-  { ma_khoan: "KL10", loai: "luong_nghiem_thu", ten_khoan: "Lương đóng hàng", ghi_chu: "Trả theo số kiện đã đóng", tinh_bhxh: false, chiu_thue_tncn: true, ty_le: 0, status: "1" },
-  { ma_khoan: "KL11", loai: "luong_nghiem_thu", ten_khoan: "Lương sản phẩm", ghi_chu: "Trả theo sản lượng đã nghiệm thu", tinh_bhxh: false, chiu_thue_tncn: true, ty_le: 0, status: "1" },
-  { ma_khoan: "KL12", loai: "luong_phan_tram", ten_khoan: "Lương %", ghi_chu: "Hoa hồng trên doanh thu đã thu tiền", tinh_bhxh: false, chiu_thue_tncn: true, ty_le: 3, status: "1" },
-  { ma_khoan: "KL13", loai: "luong_kpi", ten_khoan: "KPI", ghi_chu: "Theo mức hoàn thành chỉ tiêu", tinh_bhxh: false, chiu_thue_tncn: true, ty_le: 0, status: "1" },
-  { ma_khoan: "KL14", loai: "luong_thuong", ten_khoan: "Thưởng lễ", ghi_chu: "30/4, 1/5, 2/9, Tết Dương lịch, Tết Âm lịch", tinh_bhxh: false, chiu_thue_tncn: true, ty_le: 0, status: "1" },
-  { ma_khoan: "KL15", loai: "luong_thuong", ten_khoan: "Thưởng đột xuất", ghi_chu: "Theo quyết định từng lần", tinh_bhxh: false, chiu_thue_tncn: true, ty_le: 0, status: "1" },
-  { ma_khoan: "KL16", loai: "luong_thuong", ten_khoan: "Thưởng", ghi_chu: "Thưởng chung theo kỳ", tinh_bhxh: false, chiu_thue_tncn: true, ty_le: 0, status: "1" },
-  { ma_khoan: "KL17", loai: "luong_chuyen_can", ten_khoan: "Chuyên cần", ghi_chu: "Mất khi nghỉ không phép từ 1 ngày", tinh_bhxh: false, chiu_thue_tncn: true, ty_le: 0, status: "1" },
+  { ma_khoan: "KL01", loai: "luong_phu_cap", ten_khoan: "Lương cơ bản", ghi_chu: "Khoản gốc trên hợp đồng lao động", tinh_bhxh: true, chiu_thue_tncn: true, ty_le: 0, phu_cap_an_trua: false, status: "1" },
+  { ma_khoan: "KL02", loai: "luong_phu_cap", ten_khoan: "Phụ cấp có bảo hiểm xã hội", ghi_chu: "Cộng vào gốc đóng BHXH", tinh_bhxh: true, chiu_thue_tncn: true, ty_le: 0, phu_cap_an_trua: false, status: "1" },
+  { ma_khoan: "KL03", loai: "luong_phu_cap", ten_khoan: "Phụ cấp không tính bảo hiểm xã hội", ghi_chu: "", tinh_bhxh: false, chiu_thue_tncn: true, ty_le: 0, phu_cap_an_trua: false, status: "1" },
+  { ma_khoan: "KL04", loai: "luong_phu_cap", ten_khoan: "Phụ cấp độc hại", ghi_chu: "Theo danh mục nghề nặng nhọc, độc hại", tinh_bhxh: true, chiu_thue_tncn: false, ty_le: 0, phu_cap_an_trua: false, status: "1" },
+  { ma_khoan: "KL05", loai: "luong_ho_tro", ten_khoan: "Hỗ trợ con nhỏ", ghi_chu: "Áp cho nhân viên có con dưới 6 tuổi", tinh_bhxh: false, chiu_thue_tncn: true, ty_le: 0, phu_cap_an_trua: false, status: "1" },
+  { ma_khoan: "KL06", loai: "luong_ho_tro", ten_khoan: "Hỗ trợ nhà ở", ghi_chu: "Trong mức miễn thuế theo quy định", tinh_bhxh: false, chiu_thue_tncn: false, ty_le: 0, phu_cap_an_trua: false, status: "1" },
+  { ma_khoan: "KL07", loai: "luong_ho_tro", ten_khoan: "Phụ cấp điện thoại", ghi_chu: "Theo quy chế công ty", tinh_bhxh: false, chiu_thue_tncn: false, ty_le: 0, phu_cap_an_trua: false, status: "1" },
+  { ma_khoan: "KL08", loai: "luong_ho_tro", ten_khoan: "Phụ cấp tiền cơm", ghi_chu: "730.000 đ/tháng nằm trong mức miễn thuế", tinh_bhxh: false, chiu_thue_tncn: false, ty_le: 0, phu_cap_an_trua: true, status: "1" },
+  { ma_khoan: "KL09", loai: "luong_nghiem_thu", ten_khoan: "Lương giao hàng", ghi_chu: "Trả theo số đơn đã giao", tinh_bhxh: false, chiu_thue_tncn: true, ty_le: 0, phu_cap_an_trua: false, status: "1" },
+  { ma_khoan: "KL10", loai: "luong_nghiem_thu", ten_khoan: "Lương đóng hàng", ghi_chu: "Trả theo số kiện đã đóng", tinh_bhxh: false, chiu_thue_tncn: true, ty_le: 0, phu_cap_an_trua: false, status: "1" },
+  { ma_khoan: "KL11", loai: "luong_nghiem_thu", ten_khoan: "Lương sản phẩm", ghi_chu: "Trả theo sản lượng đã nghiệm thu", tinh_bhxh: false, chiu_thue_tncn: true, ty_le: 0, phu_cap_an_trua: false, status: "1" },
+  { ma_khoan: "KL12", loai: "luong_phan_tram", ten_khoan: "Lương %", ghi_chu: "Hoa hồng trên doanh thu đã thu tiền", tinh_bhxh: false, chiu_thue_tncn: true, ty_le: 3, phu_cap_an_trua: false, status: "1" },
+  { ma_khoan: "KL13", loai: "luong_kpi", ten_khoan: "KPI", ghi_chu: "Theo mức hoàn thành chỉ tiêu", tinh_bhxh: false, chiu_thue_tncn: true, ty_le: 0, phu_cap_an_trua: false, status: "1" },
+  { ma_khoan: "KL14", loai: "luong_thuong", ten_khoan: "Thưởng lễ", ghi_chu: "30/4, 1/5, 2/9, Tết Dương lịch, Tết Âm lịch", tinh_bhxh: false, chiu_thue_tncn: true, ty_le: 0, phu_cap_an_trua: false, status: "1" },
+  { ma_khoan: "KL15", loai: "luong_thuong", ten_khoan: "Thưởng đột xuất", ghi_chu: "Theo quyết định từng lần", tinh_bhxh: false, chiu_thue_tncn: true, ty_le: 0, phu_cap_an_trua: false, status: "1" },
+  { ma_khoan: "KL16", loai: "luong_thuong", ten_khoan: "Thưởng", ghi_chu: "Thưởng chung theo kỳ", tinh_bhxh: false, chiu_thue_tncn: true, ty_le: 0, phu_cap_an_trua: false, status: "1" },
+  { ma_khoan: "KL17", loai: "luong_chuyen_can", ten_khoan: "Chuyên cần", ghi_chu: "Mất khi nghỉ không phép từ 1 ngày", tinh_bhxh: false, chiu_thue_tncn: true, ty_le: 0, phu_cap_an_trua: false, status: "1" },
   // Hai khoản % dưới đây thêm sau nên mã nối tiếp cuối danh sách — đổi chỗ để
   // xếp cạnh KL12 sẽ làm lệch mã của mọi khoản đứng sau.
-  { ma_khoan: "KL18", loai: "luong_phan_tram", ten_khoan: "Hoa hồng khách hàng mới", ghi_chu: "Chỉ tính hợp đồng đầu tiên của khách", tinh_bhxh: false, chiu_thue_tncn: true, ty_le: 5, status: "1" },
-  { ma_khoan: "KL19", loai: "luong_phan_tram", ten_khoan: "Hoa hồng vượt chỉ tiêu", ghi_chu: "Áp cho phần doanh số vượt mục tiêu quý", tinh_bhxh: false, chiu_thue_tncn: true, ty_le: 2, status: "1" },
+  { ma_khoan: "KL18", loai: "luong_phan_tram", ten_khoan: "Hoa hồng khách hàng mới", ghi_chu: "Chỉ tính hợp đồng đầu tiên của khách", tinh_bhxh: false, chiu_thue_tncn: true, ty_le: 5, phu_cap_an_trua: false, status: "1" },
+  { ma_khoan: "KL19", loai: "luong_phan_tram", ten_khoan: "Hoa hồng vượt chỉ tiêu", ghi_chu: "Áp cho phần doanh số vượt mục tiêu quý", tinh_bhxh: false, chiu_thue_tncn: true, ty_le: 2, phu_cap_an_trua: false, status: "1" },
 ];
 
 /**

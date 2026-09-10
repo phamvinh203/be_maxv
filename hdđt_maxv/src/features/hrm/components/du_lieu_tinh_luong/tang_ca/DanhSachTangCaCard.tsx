@@ -13,9 +13,9 @@ import Tooltip from "@mui/material/Tooltip";
 import Typography from "@mui/material/Typography";
 import DeleteRounded from "@mui/icons-material/DeleteRounded";
 import { getErrorMessage } from "../../../../../lib/errors";
-import { gioVn, mauGioTangCa } from "../../../tangCa";
-import { useCauHinh } from "../../../mock/hooks/cauHinh";
-import { useXoaBanTangCa } from "../../../mock/hooks/tangCa";
+import { gioVn, mauGioTangCa } from "../../../calculations/du_lieu_tinh_luong/tangCa";
+import { useCauHinh } from "../../../api/cau_hinh_mac_dinh/cauHinhQueries";
+import { useDeleteOvertime } from "../../../api/du_lieu_tinh_luong/payrollInputsQueries";
 import type { LocNhanVienKyLuong, PhamViApDung, TangCaNhanVienRow } from "../../../types";
 import XacNhanXoaDialog from "../../XacNhanXoaDialog";
 import ThanhLocKyLuong from "../ThanhLocKyLuong";
@@ -27,9 +27,8 @@ interface Props {
   onFilters: (filters: LocNhanVienKyLuong) => void;
   /** Danh sách đã lọc — cũng chính là danh sách "Áp dụng tăng ca" sẽ ghi. */
   rows: TangCaNhanVienRow[];
-  coThayDoi: boolean;
-  dangLuu: boolean;
-  onLuu: () => void;
+  periodId: string;
+  isReadOnly: boolean;
 }
 
 /**
@@ -46,18 +45,17 @@ export default function DanhSachTangCaCard({
   filters,
   onFilters,
   rows,
-  coThayDoi,
-  dangLuu,
-  onLuu,
+  periodId,
+  isReadOnly,
 }: Props) {
   const cauHinh = useCauHinh();
-  const xoaBanTangCa = useXoaBanTangCa();
+  const deleteMut = useDeleteOvertime(periodId);
   const [dangXoa, setDangXoa] = useState<TangCaNhanVienRow | undefined>(undefined);
 
   const xacNhanXoa = async () => {
     if (!dangXoa) return;
     try {
-      await xoaBanTangCa(dangXoa.ma_nv);
+      await deleteMut.mutateAsync(dangXoa.ma_nv);
       toast.success(`Đã xóa tăng ca của ${dangXoa.ho_ten}.`);
     } catch (err) {
       toast.error(getErrorMessage(err, "Không xóa được tăng ca."));
@@ -74,9 +72,6 @@ export default function DanhSachTangCaCard({
         filters={filters}
         onFilters={onFilters}
         soNhanVien={rows.length}
-        coThayDoi={coThayDoi}
-        dangLuu={dangLuu}
-        onLuu={onLuu}
       />
 
       <TableContainer sx={{ mt: 1 }}>
@@ -153,7 +148,7 @@ export default function DanhSachTangCaCard({
                         <IconButton
                           size="small"
                           color="error"
-                          disabled={chuaAp}
+                          disabled={isReadOnly || chuaAp}
                           onClick={() => setDangXoa(row)}
                         >
                           <DeleteRounded fontSize="small" />
@@ -195,8 +190,8 @@ export default function DanhSachTangCaCard({
         tieuDe="Xóa tăng ca của nhân viên"
         noiDung={
           <>
-            Xóa bảng tăng ca của <strong>{dangXoa?.ho_ten}</strong> ({dangXoa?.ma_nv})? Giờ lũy
-            kế cả năm của nhân viên này cũng mất theo.
+            Xóa bảng tăng ca của <strong>{dangXoa?.ho_ten}</strong> ({dangXoa?.ma_nv}) trong kỳ
+            lương này?
           </>
         }
         onClose={() => setDangXoa(undefined)}

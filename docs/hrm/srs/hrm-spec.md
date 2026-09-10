@@ -1,8 +1,8 @@
 ---
 type: srs
 feature: hrm
-status: in-review
-updated: 2026-09-07
+status: approved
+updated: 2026-09-08
 priority: P0
 links:
   - docs/hrm/srs/hrm-flows.md
@@ -20,6 +20,10 @@ links:
 Tài liệu này được viết bằng cách **đối chiếu ngược từ mã nguồn đã triển khai**. Mọi con số, wording lỗi và quy tắc dưới đây đều trích từ mã thật, có ghi rõ file và dòng. Chỗ nào tài liệu mô tả điều mã **chưa** làm đều được đánh dấu `[CHƯA CÓ TRONG MÃ]` — đó là đầu việc, không phải mô tả hiện trạng.
 
 **Cập nhật 2026-09-07 (đợt chốt nghiệp vụ 16/16).** Bản này đã nạp đủ 16 quyết định nghiệp vụ ghi ở Mục 6.1 của `docs/hrm/CONTEXT_SUMMARY.md`. Quy tắc mới do các quyết định đó sinh ra được đánh dấu `[MỚI — QĐ #n]`, quy tắc bị sửa được đánh dấu `[SỬA THEO QĐ #n]`. Những dấu này chỉ để Architect và QA lần ngược tới quyết định gốc; chúng không thay đổi cách đọc quy tắc.
+
+**Cập nhật 2026-09-08 (hoàn nguyên quy tắc dải năm "Tạo nhanh").** Đợt đổi `BR-hrm-079` từ dải cố định 2024–2030 sang dải trượt `[năm nay − 5, năm nay + 10]` đã **bị chủ dự án thu hồi**; quy tắc trở lại **dải cố định 2024–2030**, đúng với mã nguồn đang chạy. Các mục bị ảnh hưởng mang dấu `[HOÀN NGUYÊN 2026-09-08]`. Lưu ý khi đọc: lý do của giới hạn này **đã đổi** — nó nay là một **giới hạn nghiệp vụ có chủ ý**, không còn là hệ quả của bảng tra âm lịch chép tay (bảng đó đã bị gỡ ở đợt sửa `B2`). Biên bản chốt dải trượt đã được đánh dấu **ĐÃ THU HỒI** và giữ lại làm lưu vết.
+
+**Cập nhật 2026-09-08 (đợt thẩm định lại biểu thuế TNCN — QĐ #22…#25).** Biểu thuế TNCN mặc định của cụm Cấu hình mặc định bị phát hiện lệch ba chiều giữa đặc tả, hợp đồng API và mã nguồn: đặc tả ghi 7 bậc, hợp đồng và mã nguồn chạy 5 bậc dừng ở thuế suất 25%. Bản 5 bậc **sai luật**. Đợt này chốt dứt điểm bốn việc — biểu chuẩn là **7 bậc** (BR-hrm-081), ngữ nghĩa `khoang` là **ngưỡng trên lũy kế** (BR-hrm-080), bổ sung **toàn vẹn cấu trúc biểu thuế** (BR-hrm-082) và **cảnh báo khi lệch biểu chuẩn** (BR-hrm-083) — kèm 3 mã lỗi mới `E-hrm-080…082`, 1 yêu cầu chức năng mới `FR-hrm-055` và 6 tiêu chí nghiệm thu mới `AC-hrm-67…72`. Căn cứ và trade-off đầy đủ ở `docs/hrm/agents-business-analyst/ba-reconciliation-report-2026-09-08.md`; biên bản đó **thay thế phần liên quan** của `docs/hrm-ba-signoff-2026-09-08.md`.
 
 ---
 
@@ -61,16 +65,19 @@ Tài liệu này được viết bằng cách **đối chiếu ngược từ mã
 | Hồ sơ tài liệu | Tạo bản ghi giấy tờ kèm **ngày hết hạn**, xem danh sách theo nhân viên và theo loại, sửa, xóa (xóa dòng thì xóa luôn file scan trên Drive) |
 | Bộ giấy tờ bắt buộc | Khai báo theo từng công ty: loại hợp đồng nào cần những loại giấy tờ nào; hệ thống tính chỉ báo hồ sơ đủ/thiếu cho từng nhân viên |
 | Cảnh báo hạn giấy tờ | Danh sách giấy tờ đã hết hạn và sắp hết hạn theo ngưỡng do công ty đặt |
+| Cấu hình mặc định (MỚI) | Cấu hình toàn diện hơn 30 tham số dùng chung toàn công ty (Singleton per tenant: ngày/giờ công chuẩn, nghỉ phép, OT, lương cơ sở/vùng, bảo hiểm, công đoàn, biểu thuế TNCN lũy tiến JSONB); batch update; chức năng khôi phục mặc định ban đầu theo luật định |
+| Ca làm việc (MỚI) | Quản lý danh mục ca làm việc (mã tự sinh `CA01`–`CA99` quét gap trống hoặc tự nhập), giờ vào/ra, nghỉ giữa ca; tự động nhận diện ca qua đêm và tính số giờ công thực tế ròng; chuyển đổi trạng thái Đang dùng/Ngừng dùng |
+| Lịch ngày lễ (MỚI) | Quản lý lịch nghỉ lễ trong năm, phân loại lễ (quốc gia, âm lịch, công ty), chu kỳ lặp hàng năm (khóa lặp cho lễ âm lịch), cờ hưởng nguyên lương; chức năng "Tạo nhanh" 11 ngày nghỉ lễ chuẩn Việt Nam theo Điều 112 BLLĐ 2019 (tính âm lịch bằng thuật toán quy chiếu giờ Việt Nam UTC+7, dải năm cố định 2024–2030, idempotent) |
 | Nhật ký thao tác | Ghi vết người thao tác cho nhóm thao tác phá hủy và sửa lương (xem NFR-hrm-011) |
 | File scan trên Google Drive | Kiểm trạng thái kết nối, liên kết tài khoản Google của doanh nghiệp, ngắt liên kết, tải file lên, xem file qua máy chủ, gỡ file |
 
 ### 2.2 Ngoài phạm vi đợt này
 
-Chấm công, ca làm việc, lịch nghỉ lễ, đơn nghỉ phép · Tính bảng lương, phiếu lương, các khoản thưởng/phụ cấp/khấu trừ · Cấu hình tham số lương và biểu thuế TNCN · Tờ khai thuế TNCN · Nhập khẩu hàng loạt từ Excel · Cổng tự phục vụ cho nhân viên.
+Chấm công chi tiết hàng ngày, đơn nghỉ phép/xin đi muộn về sớm · Tính bảng lương, phiếu lương, các khoản thưởng/phụ cấp phát sinh hàng kỳ · Tờ khai thuế TNCN chính thức gửi cơ quan thuế · Nhập khẩu hàng loạt từ Excel · Cổng thông tin tự phục vụ dành riêng cho nhân viên (Employee Self-Service).
 
 Riêng nhật ký thao tác: đợt này **có** ghi vết người thao tác cho nhóm thao tác nêu ở NFR-hrm-011, nhưng **không** lưu ảnh chụp giá trị trước và sau mỗi lần sửa — phần đó nằm ngoài phạm vi. Chính sách xóa cứng hồ sơ và thời hạn lưu trữ file scan sau khi nhân viên nghỉ cũng nằm ngoài phạm vi đợt này (xem A-hrm-10).
 
-> Giao diện `hdđt_maxv/src/features/hrm/` hiện đã có sẵn màn hình cho Chấm công, Bảng lương, Cấu hình, KPI, Tăng ca… nhưng toàn bộ chạy trên dữ liệu giả trong bộ nhớ (`features/hrm/mock/`). Chúng **không** thuộc phạm vi đặc tả này.
+> Giao diện `hdđt_maxv/src/features/hrm/` hiện đã có sẵn màn hình cho Chấm công, Bảng lương, KPI, Tăng ca… nhưng toàn bộ chạy trên dữ liệu giả trong bộ nhớ (`features/hrm/mock/`). Các màn hình này sẽ được kết nối ở các đợt phát triển tiếp theo sau khi hoàn tất hạ tầng nền tảng Cấu hình mặc định, Ca làm việc và Lịch ngày lễ.
 
 ---
 
@@ -80,9 +87,9 @@ Riêng nhật ký thao tác: đợt này **có** ghi vết người thao tác ch
 
 | Tác nhân | Là ai | Truy cập HRM thế nào |
 |---|---|---|
-| `OWNER` | Chủ tài khoản, sở hữu các công ty (`DonVi.ownerId`) | Vào được mọi công ty mình sở hữu |
-| `OWNER_EMPLOYEE` | Nhân viên của chủ tài khoản, được cấp quyền vào từng công ty qua `DonViAccess` | Chỉ vào được công ty được cấp |
-| `ADMIN` | Quản trị hệ thống MAXV | **Không truy cập được dữ liệu HRM của tenant** — đây là quyết định có chủ đích, không phải thiếu sót (BR-hrm-051) |
+| `OWNER` | Chủ tài khoản, sở hữu các công ty (`DonVi.ownerId`) | Toàn quyền vào mọi công ty mình sở hữu, bao gồm cấu hình nền tảng, thiết lập ca kíp và lịch nghỉ lễ |
+| `OWNER_EMPLOYEE` | Nhân viên của chủ tài khoản, được cấp quyền vào từng công ty qua `DonViAccess` | Vào được công ty được cấp quyền module HRM; thao tác ca làm việc, lịch ngày lễ; xem Cấu hình mặc định (không sửa/khôi phục) |
+| `ADMIN` | Quản trị hệ thống nền tảng MAXV | Quản trị cấp cao hệ thống. Đối với Cấu hình mặc định: có quyền xem/sửa/khôi phục thiết lập chuẩn theo quy định nền tảng (BR-hrm-070) |
 | Quyền xem dữ liệu lương | Một quyền nghiệp vụ cấp **bên trong** phạm vi `OWNER_EMPLOYEE`; `OWNER` luôn có sẵn | Không phải một vai trò hệ thống mới. Chỉ người được cấp quyền này mới đọc được lương chính, lương BHXH, số tài khoản ngân hàng và lịch sử hợp đồng (BR-hrm-059) |
 | Google | Dịch vụ ngoài, giữ file scan | Chỉ qua luồng OAuth và Drive API |
 
@@ -96,18 +103,110 @@ Cột "Hiện trạng mã" là điều mã đang làm; cột "Đã chốt" là m
 | Xem lương chính, lương BHXH, số tài khoản ngân hàng | Mọi người vào được công ty đều đọc đủ | Chỉ người **được cấp quyền xem dữ liệu lương** (BR-hrm-059, E-hrm-058) |
 | Xem lịch sử hợp đồng (`GET /hop-dong`) | Ai vào được công ty cũng lấy được **toàn bộ** hợp đồng của cả công ty trong một lượt gọi | Bắt buộc lọc theo đúng một nhân viên **và** phải có quyền xem dữ liệu lương (BR-hrm-059, E-hrm-058) |
 | Tạo / sửa / xóa hợp đồng | `OWNER` và `OWNER_EMPLOYEE` đều được | Chỉ người có quyền xem dữ liệu lương (BR-hrm-059) |
+| **Xem Cấu hình mặc định** (`GET /settings/general`) | Chưa có API | `OWNER`, `OWNER_EMPLOYEE`, `ADMIN` (tự động self-healing nếu chưa có dữ liệu) |
+| **Cập nhật Cấu hình mặc định** (`PUT /settings/general`) | Chưa có API | **Chỉ `OWNER` hoặc `ADMIN`** (BR-hrm-070, E-hrm-077) |
+| **Khôi phục Cấu hình mặc định gốc** (`POST /settings/general/restore-default`) | Chưa có API | **Chỉ `OWNER` hoặc `ADMIN`** (BR-hrm-070, E-hrm-077) |
+| **Quản lý Ca làm việc** (`/work-shifts` CRUD) | Chưa có API | `OWNER`, `OWNER_EMPLOYEE`, `ADMIN` (tạo, xem danh sách, xem chi tiết, sửa, xóa) |
+| **Quản lý Lịch ngày lễ & Tạo nhanh** (`/holidays` CRUD, quick-generate) | Chưa có API | `OWNER`, `OWNER_EMPLOYEE`, `ADMIN` (tạo, xem danh sách, xem chi tiết, sửa, xóa, tạo nhanh 11 ngày lễ VN) |
 | Kiểm trạng thái kết nối Drive | `OWNER` và `OWNER_EMPLOYEE` | Giữ nguyên |
 | Kết nối Drive **lần đầu** | `OWNER` và `OWNER_EMPLOYEE` | **Chỉ `OWNER`** (BR-hrm-045, E-hrm-059) |
 | **Đổi** sang tài khoản Google khác | Chỉ `OWNER` (403, E-hrm-041) | Giữ nguyên |
 | **Ngắt** kết nối Drive | Chỉ `OWNER` (403, E-hrm-042) | Giữ nguyên |
 | Tải lên / xem / gỡ file scan | `OWNER` và `OWNER_EMPLOYEE` | Giữ nguyên — nối xong thì mọi người có quyền vào công ty đều dùng được |
-| Mọi thao tác HRM chạm dữ liệu công ty | `ADMIN` bị 403 | Giữ nguyên — **có chủ đích** (BR-hrm-051) |
+| Mọi thao tác HRM chạm dữ liệu nhân sự công ty | `ADMIN` bị 403 | Giữ nguyên — **có chủ đích** (BR-hrm-051), ngoại trừ các thiết lập chuẩn chung hệ thống |
 
 Ba điểm phải đọc kỹ:
 
 1. **Quyền xem dữ liệu lương nằm BÊN TRONG phạm vi `OWNER_EMPLOYEE`, không đụng tới `ADMIN`.** Đây là quyền nghiệp vụ cấp thêm cho người đã vào được công ty, không phải một vai trò hệ thống mới ngang hàng `OWNER`/`OWNER_EMPLOYEE`/`ADMIN`. Cách hiện thực (cột phân quyền, bảng quyền riêng, hay cờ trên bản ghi cấp quyền vào công ty) là việc của Architect.
-2. **`ADMIN` không có phạm vi tenant là quyết định có chủ đích.** `accessibleDonViWhere` trả `null` cho mọi vai trò khác `OWNER`/`OWNER_EMPLOYEE` (`helpers/access.ts:17-24`), nên `resolveTenantInfo` ném 403 và `canAccessDonVi` trả `false`. Đội vận hành MAXV **không** xem được dữ liệu nhân sự của khách qua giao diện, và đó là điều mong muốn: hồ sơ nhân sự chứa CCCD, mã số thuế cá nhân và lương. Hỗ trợ khách phải đi đường khác (khách chia sẻ màn hình, hoặc khách tự cấp quyền vào công ty). Không được nới quy tắc này vì lý do "cho tiện hỗ trợ".
-3. **Siết quyền Drive phải sửa giao diện cùng lúc với máy chủ.** Người không phải chủ tài khoản không được thấy nút "Kết nối Google Drive" rồi bấm vào và nhận 403; giao diện phải hiện thẳng thông báo nhờ chủ tài khoản liên kết Drive (BR-hrm-045).
+2. **`ADMIN` không có phạm vi tenant là quyết định có chủ đích với dữ liệu cá nhân nhân viên.** `accessibleDonViWhere` trả `null` cho mọi vai trò khác `OWNER`/`OWNER_EMPLOYEE` (`helpers/access.ts:17-24`), nên `resolveTenantInfo` ném 403 và `canAccessDonVi` trả `false`. Đội vận hành MAXV **không** xem được dữ liệu nhân sự nhạy cảm của khách qua giao diện (CCCD, mã số thuế cá nhân, lương). Tuy nhiên, đối với Cấu hình mặc định toàn công ty, `ADMIN` và `OWNER` có thẩm quyền kiểm soát các tham số chính sách và khôi phục cài đặt gốc theo chuẩn pháp luật.
+
+### 3.3 User Stories (Câu chuyện người dùng)
+
+Phần này mô tả các câu chuyện người dùng chuẩn hóa (User Stories) đại diện cho các nghiệp vụ chính của phân hệ HRM, liên kết trực tiếp mục tiêu kinh doanh (Mục 1) với Yêu cầu chức năng (Mục 6), Quy tắc nghiệp vụ (Mục 5), và Tiêu chí nghiệm thu (Mục 10).
+
+#### Nhóm 1: Cơ cấu tổ chức & Hồ sơ nhân sự cốt lõi (Core HRM)
+
+- **US-hrm-01: Thiết lập cơ cấu tổ chức và cây phòng ban nhiều cấp**
+  - *User Story*: Là **Chuyên viên nhân sự (HR) / Quản trị viên (ADMIN)**, tôi muốn xây dựng cây phòng ban đa cấp và quản lý trạng thái hoạt động của phòng ban, để phản ánh đúng sơ đồ tổ chức doanh nghiệp và phân bổ nhân sự chính xác.
+  - *Acceptance Criteria*: AC-hrm-03, AC-hrm-04, AC-hrm-05, AC-hrm-06, AC-hrm-49, AC-hrm-50.
+  - *Truy vết*: FR-hrm-001…005, FR-hrm-037; BR-hrm-001…009, BR-hrm-060, BR-hrm-061; UC-hrm-01, UC-hrm-02.
+
+- **US-hrm-02: Quản lý hồ sơ nhân viên và mã định danh tự sinh**
+  - *User Story*: Là **Chuyên viên nhân sự (HR)**, tôi muốn tạo mới và cập nhật hồ sơ nhân viên với cơ chế tự sinh mã `NVxxxx`, để quản lý tập trung thông tin nhân sự và chuẩn bị dữ liệu cho chấm công, tính lương.
+  - *Acceptance Criteria*: AC-hrm-01, AC-hrm-02.
+  - *Truy vết*: FR-hrm-006…012; BR-hrm-003, BR-hrm-004, BR-hrm-010, BR-hrm-011, BR-hrm-016; UC-hrm-03, UC-hrm-04, UC-hrm-14.
+
+- **US-hrm-03: Quản lý lịch sử hợp đồng lao động và phụ lục tiền lương**
+  - *User Story*: Là **Chuyên viên nhân sự (HR) / Kế toán có thẩm quyền xem lương**, tôi muốn lưu trữ lịch sử hợp đồng lao động qua từng thời kỳ và đổi loại hợp đồng khi chuyển chính thức, để bảo đảm tính liên tục và toàn vẹn của dữ liệu thỏa thuận lao động.
+  - *Acceptance Criteria*: AC-hrm-07…AC-hrm-18, AC-hrm-36…AC-hrm-38, AC-hrm-42…AC-hrm-46.
+  - *Truy vết*: FR-hrm-013…020, FR-hrm-042; BR-hrm-018…029, BR-hrm-052, BR-hrm-053, BR-hrm-056…059; UC-hrm-06…UC-hrm-09.
+
+- **US-hrm-04: Ghi nhận nhân viên nghỉ việc và tự động chốt hợp đồng**
+  - *User Story*: Là **Chuyên viên nhân sự (HR)**, tôi muốn ghi nhận nhân viên nghỉ việc kèm ngày nghỉ để hệ thống tự động chốt các hợp đồng đang mở trong một giao dịch nguyên tử, giúp phân hệ lương cắt kỳ đúng thời điểm mà vẫn lưu hồ sơ phục vụ quyết toán.
+  - *Acceptance Criteria*: AC-hrm-39, AC-hrm-40, AC-hrm-41.
+  - *Truy vết*: FR-hrm-036; BR-hrm-054, BR-hrm-055; UC-hrm-05; E-hrm-052, E-hrm-053, E-hrm-054.
+
+- **US-hrm-05: Quản lý người phụ thuộc và chống trùng giảm trừ gia cảnh**
+  - *User Story*: Là **Chuyên viên nhân sự (HR) / Kế toán thuế**, tôi muốn đăng ký hồ sơ người phụ thuộc giảm trừ gia cảnh thuế TNCN cho nhân viên và ngăn chặn trùng lặp mã số thuế giao thời gian trong toàn doanh nghiệp, để tuân thủ pháp luật thuế TNCN.
+  - *Acceptance Criteria*: AC-hrm-20…AC-hrm-22, AC-hrm-51.
+  - *Truy vết*: FR-hrm-021…024; BR-hrm-030…033; UC-hrm-10; E-hrm-025…030.
+
+- **US-hrm-06: Số hóa tài liệu nhân sự đa tệp scan qua Google Drive doanh nghiệp**
+  - *User Story*: Là **Chủ tài khoản (OWNER) & Chuyên viên nhân sự (HR)**, tôi muốn liên kết Google Drive của công ty và lưu trữ nhiều tệp scan (ảnh, PDF) cho một bản ghi giấy tờ, để số hóa hồ sơ an toàn mà không đưa dữ liệu file vào hạ tầng máy chủ MAXV.
+  - *Acceptance Criteria*: AC-hrm-23…AC-hrm-33, AC-hrm-47, AC-hrm-48.
+  - *Truy vết*: FR-hrm-025…035; BR-hrm-034…048; UC-hrm-11…UC-hrm-13, UC-hrm-15.
+
+- **US-hrm-07: Khai báo danh mục giấy tờ bắt buộc và theo dõi hạn hồ sơ**
+  - *User Story*: Là **Chuyên viên nhân sự (HR)**, tôi muốn thiết lập bộ giấy tờ bắt buộc theo loại hợp đồng và nhận cảnh báo khi giấy tờ hết hạn, để chủ động rà soát tính tuân thủ hồ sơ của người lao động.
+  - *Acceptance Criteria*: AC-hrm-52…AC-hrm-55.
+  - *Truy vết*: FR-hrm-038…041; BR-hrm-062…065; UC-hrm-16, UC-hrm-17; E-hrm-060, E-hrm-061.
+
+#### Nhóm 2: Cụm tính năng nền tảng — Cấu hình mặc định, Ca làm việc & Lịch ngày lễ
+
+- **US-hrm-08: Xem và cập nhật tham số Ngày công & Giờ công chuẩn (General Setting)**
+  - *User Story*: Là **Chủ doanh nghiệp (OWNER) / Quản trị viên (ADMIN)**, tôi muốn cấu hình phương pháp tính ngày công chuẩn (`FIXED_26`, `FIXED_24`, `ACTUAL_MONTH`), chính sách làm việc Thứ 7 / Chủ Nhật và giờ công chuẩn/ngày (1.0–24.0h), để thiết lập chuẩn mực quy đổi lương tháng ra lương ngày/lương giờ cho toàn công ty.
+  - *Acceptance Criteria*: AC-hrm-58, AC-hrm-62.
+  - *Truy vết*: FR-hrm-045, FR-hrm-046; BR-hrm-070, BR-hrm-071; UC-hrm-18; E-hrm-067, E-hrm-077.
+
+- **US-hrm-09: Cấu hình tỷ lệ và trần giờ làm thêm (Overtime - OT)**
+  - *User Story*: Là **Chủ doanh nghiệp (OWNER) / Quản trị viên (ADMIN)**, tôi muốn cấu hình các hệ số trả lương làm thêm ngày thường, cuối tuần, ngày lễ (ban ngày và ban đêm) cùng các mốc trần giờ OT tháng (40h) và năm (200h/300h), để bảo đảm chi trả đúng Điều 98 và kiểm soát trần thời gian làm thêm theo Điều 107 Bộ luật Lao động 2019.
+  - *Acceptance Criteria*: AC-hrm-58, AC-hrm-62.
+  - *Truy vết*: FR-hrm-045, FR-hrm-046; BR-hrm-070; UC-hrm-18.
+
+- **US-hrm-10: Cấu hình Lương cơ sở, Lương tối thiểu vùng, Bảo hiểm & Công đoàn phí**
+  - *User Story*: Là **Chủ doanh nghiệp (OWNER) / Quản trị viên (ADMIN)**, tôi muốn thiết lập mức Lương cơ sở (NĐ 73/2024/NĐ-CP: 2.340.000đ), Lương tối thiểu Vùng (NĐ 74/2024/NĐ-CP), tỷ lệ đóng BHXH/BHYT/BHTN (doanh nghiệp và người lao động) cùng trần đoàn phí công đoàn (QĐ 1908/QĐ-TLĐ), để làm căn cứ áp trần đóng bảo hiểm và trích nộp nghĩa vụ pháp lý chính xác.
+  - *Acceptance Criteria*: AC-hrm-58, AC-hrm-62.
+  - *Truy vết*: FR-hrm-045, FR-hrm-046; BR-hrm-070, BR-hrm-072; UC-hrm-18; E-hrm-068, E-hrm-077.
+
+- **US-hrm-11: Cấu hình Giảm trừ gia cảnh và Biểu thuế TNCN lũy tiến từng phần**
+  - *User Story*: Là **Chủ doanh nghiệp (OWNER) / Quản trị viên (ADMIN)**, tôi muốn thiết lập mức giảm trừ gia cảnh cho bản thân (11.000.000đ), người phụ thuộc (4.400.000đ) theo NQ 954/2020 và biểu thuế TNCN lũy tiến từng phần chuẩn 7 bậc theo Điều 22 Luật Thuế TNCN (hỗ trợ lưu động JSONB), để hệ thống tự động tính số thuế TNCN khấu trừ hàng tháng một cách minh bạch, chính xác.
+  - *Acceptance Criteria*: AC-hrm-57, AC-hrm-62, AC-hrm-67, AC-hrm-68, AC-hrm-69, AC-hrm-70, AC-hrm-72.
+  - *Truy vết*: FR-hrm-045, FR-hrm-046; BR-hrm-070, BR-hrm-073, BR-hrm-080…083; UC-hrm-18; E-hrm-069, E-hrm-077, E-hrm-080…082.
+
+- **US-hrm-12: Khôi phục Cấu hình mặc định gốc theo chuẩn pháp luật Việt Nam**
+  - *User Story*: Là **Chủ doanh nghiệp (OWNER) / Quản trị viên (ADMIN)**, tôi muốn có nút "Khôi phục mặc định" để đưa toàn bộ hơn 30 tham số cấu hình về giá trị mẫu chuẩn theo quy định hiện hành của pháp luật Việt Nam chỉ bằng một cú nhấp chuột, giúp khắc phục nhanh khi nhập sai cấu hình.
+  - *Acceptance Criteria*: AC-hrm-62, AC-hrm-67.
+  - *Truy vết*: FR-hrm-047; BR-hrm-070, BR-hrm-066, BR-hrm-081; UC-hrm-19; E-hrm-077.
+
+- **US-hrm-13: Khai báo và Quản lý danh mục Ca làm việc (Work Shifts)**
+  - *User Story*: Là **Chuyên viên nhân sự (HR) / Quản trị viên (ADMIN)**, tôi muốn khai báo danh mục ca làm việc với cơ chế tự sinh mã `CA01`–`CA99` (quét gap trống) hoặc tự nhập mã tùy chỉnh, thiết lập giờ vào/ra, nghỉ giữa ca và quản lý trạng thái Đang dùng/Ngừng dùng, để chuẩn bị dữ liệu phân ca và chấm công.
+  - *Acceptance Criteria*: AC-hrm-59, AC-hrm-64.
+  - *Truy vết*: FR-hrm-048…050; BR-hrm-074…076; UC-hrm-20; E-hrm-070…073, E-hrm-078.
+
+- **US-hrm-14: Tự động nhận diện Ca qua đêm và cảnh báo tuân thủ trần giờ làm việc**
+  - *User Story*: Là **Chuyên viên nhân sự (HR)**, tôi muốn hệ thống tự động phát hiện ca qua đêm khi giờ ra nhỏ hơn hoặc bằng giờ vào (`isOvernight = true`), tính đúng tổng giờ làm việc thực tế ròng (`workingHours > 0`), đồng thời cảnh báo khi ca làm việc vượt trần 12 giờ/ngày theo Điều 105 & 107 BLLĐ 2019, để đảm bảo an toàn lao động và tuân thủ luật định.
+  - *Acceptance Criteria*: AC-hrm-59, AC-hrm-63.
+  - *Truy vết*: FR-hrm-048; BR-hrm-075, BR-hrm-076; UC-hrm-20; E-hrm-071, E-hrm-072.
+
+- **US-hrm-15: Quản lý Lịch ngày lễ và Phân loại chu kỳ lặp (Dương / Âm / Nghỉ bù)**
+  - *User Story*: Là **Chuyên viên nhân sự (HR) / Kế toán**, tôi muốn thiết lập lịch nghỉ lễ trong năm, phân loại rõ ngày lễ quốc gia (`NATIONAL`), ngày lễ âm lịch (`LUNAR`), ngày lễ công ty (`COMPANY`), và ngày nghỉ bù (`COMPENSATORY`), khóa lặp hàng năm đối với ngày âm lịch và ngày nghỉ bù, đồng thời xác định cờ hưởng nguyên lương theo Điều 112 BLLĐ 2019, để phục vụ việc tính công và tính lương lễ chính xác.
+  - *Acceptance Criteria*: AC-hrm-60, AC-hrm-65.
+  - *Truy vết*: FR-hrm-051…053; BR-hrm-077, BR-hrm-078; UC-hrm-21; E-hrm-074…076.
+
+- **US-hrm-16: Tạo nhanh 11 ngày nghỉ lễ chuẩn Việt Nam theo Điều 112 BLLĐ 2019**
+  - *User Story*: Là **Chuyên viên nhân sự (HR)**, tôi muốn có chức năng "Tạo nhanh" chọn một năm trong dải cố định từ **2024 đến 2030** (BR-hrm-079) để hệ thống tự động sinh 11 ngày nghỉ lễ chuẩn Việt Nam (tự tính lịch âm cho Tết Nguyên đán và Giỗ Tổ Hùng Vương) theo cơ chế idempotent lọc trùng thông minh, giúp tiết kiệm thời gian nhập liệu hàng năm.
+  - *Acceptance Criteria*: AC-hrm-61, AC-hrm-66.
+  - *Truy vết*: FR-hrm-054; BR-hrm-079; UC-hrm-22; E-hrm-079.
 
 ---
 
@@ -253,6 +352,137 @@ Bảng con của `hrm_tai_lieu`. Một dòng giấy tờ có **nhiều** file; m
 | `thu_tu` | Hệ thống | Số | Tăng dần theo lúc tải lên | Giữ thứ tự hiển thị ổn định: mặt trước tải trước thì luôn hiện trước |
 
 **Bốn cột con trỏ file cũ trên `hrm_tai_lieu`** (`drive_file_id`, `ten_file`, `mime_type`, `kich_thuoc`) **bị bỏ** — dữ liệu chuyển sang bảng này. Xem `data-model.md` M-14.
+
+---
+
+### 4.8 Cấu hình mặc định (General Setting) — `hrm_general_settings` `[THỰC THỂ MỚI]`
+
+Bảng lưu trữ cấu hình tham số nền tảng dùng chung toàn công ty (Singleton per tenant). Áp dụng mô hình khóa chính định danh cố định `id = "DEFAULT"`. Lưu trữ hơn 30 tham số chia thành 5 nhóm chính:
+
+#### 1. Ngày công & Giờ công
+| Trường | B/T | Kiểu | Mặc định | Ý nghĩa nghiệp vụ & Ràng buộc |
+|---|---|---|---|---|
+| `id` | Hệ thống | Chuỗi = `"DEFAULT"` | `"DEFAULT"` | Khóa chính cố định (Singleton pattern) |
+| `standardWorkingDaysMethod` | **B** | Enum: `FIXED_26`, `FIXED_24`, `ACTUAL_MONTH` | `FIXED_26` | Phương pháp tính ngày công chuẩn: `FIXED_26` (cố định 26 ngày công/tháng), `FIXED_24` (cố định 24 ngày công/tháng), hoặc `ACTUAL_MONTH` (theo số ngày làm việc thực tế trong tháng loại trừ ngày nghỉ tuần). Mẫu số quy đổi lương tháng ra lương ngày. |
+| `saturdayPolicy` | **B** | Enum: `FULL_DAY`, `HALF_DAY`, `OFF` | `HALF_DAY` | Chính sách làm việc Thứ 7: làm cả ngày, làm nửa ngày (sáng), hoặc nghỉ. |
+| `sundayPolicy` | **B** | Enum: `FULL_DAY`, `HALF_DAY`, `OFF` | `OFF` | Chính sách làm việc Chủ nhật: làm cả ngày, làm nửa ngày, hoặc nghỉ tuần. |
+| `standardHoursPerDay` | **B** | Số thực (Float) | `8.0` | Giờ công chuẩn/ngày: trong khoảng từ 1.0 đến 24.0 giờ, bước 0.5 (BR-hrm-071). Mẫu số quy đổi lương ngày ra lương giờ. |
+
+#### 2. Nghỉ phép có lương
+| Trường | B/T | Kiểu | Mặc định | Ý nghĩa nghiệp vụ & Ràng buộc |
+|---|---|---|---|---|
+| `baseAnnualLeaveDays` | **B** | Số nguyên | `12` | Số ngày phép năm cơ bản của người lao động làm đủ 12 tháng (Điều 113 BLLĐ 2019). |
+| `seniorityYearsForExtraDay` | **B** | Số nguyên | `5` | Cứ đủ số năm thâm niên làm việc tại công ty thì được cộng thêm 1 ngày phép (Điều 114 BLLĐ 2019). |
+
+#### 3. Tăng ca (Overtime - OT)
+| Trường | B/T | Kiểu | Mặc định | Ý nghĩa nghiệp vụ & Ràng buộc |
+|---|---|---|---|---|
+| `otRateWeekdayDay` | **B** | Số thực (%) | `150` | Tỷ lệ trả lương làm thêm ngày thường ban ngày (Điều 98 BLLĐ 2019). |
+| `otRateWeekdayNight` | **B** | Số thực (%) | `200` | Tỷ lệ làm thêm ngày thường ban đêm (150% + 30% đêm + 20% phụ trội làm thêm ban đêm). |
+| `otRateWeekendDay` | **B** | Số thực (%) | `200` | Tỷ lệ làm thêm ngày nghỉ hàng tuần ban ngày (Điều 98 BLLĐ 2019). |
+| `otRateWeekendNight` | **B** | Số thực (%) | `270` | Tỷ lệ làm thêm ngày nghỉ hàng tuần ban đêm (200% + 30% đêm + 20% phụ trội). |
+| `otRateHolidayDay` | **B** | Số thực (%) | `300` | Tỷ lệ làm thêm ngày lễ/tết ban ngày, chưa kể tiền lương ngày nghỉ lễ hưởng nguyên lương (Điều 98 BLLĐ 2019). |
+| `otRateHolidayNight` | **B** | Số thực (%) | `390` | Tỷ lệ làm thêm ngày lễ/tết ban đêm (300% + 30% đêm + 20% phụ trội). |
+| `maxOtHoursPerMonth` | **B** | Số nguyên (giờ) | `40` | Mốc trần giờ làm thêm tối đa trong tháng theo quy định pháp luật (Điều 107 BLLĐ 2019). |
+| `warningOtHoursPerYear` | **B** | Số nguyên (giờ) | `200` | Mốc cảnh báo tổng giờ làm thêm trong năm theo luật định (Điều 107 BLLĐ 2019). |
+| `maxOtHoursPerYear` | **B** | Số nguyên (giờ) | `300` | Mốc trần làm thêm tối đa trong năm cho các ngành nghề/công việc đặc thù được phép (Điều 107 BLLĐ 2019). |
+
+#### 4. Lương nền, Bảo hiểm & Công đoàn
+| Trường | B/T | Kiểu | Mặc định | Ý nghĩa nghiệp vụ & Ràng buộc |
+|---|---|---|---|---|
+| `baseSalary` | **B** | Số tiền (VND) | `2.340.000` | Mức lương cơ sở làm căn cứ đóng BHXH/BHYT tối đa (trần 20 lần) và đoàn phí (NĐ 73/2024/NĐ-CP). Bắt buộc > 0 (BR-hrm-072). |
+| `regionMinSalary` | **B** | Số tiền (VND) | `4.960.000` | Sàn lương tối thiểu Vùng I (NĐ 74/2024/NĐ-CP), trần BHTN tối đa 20 lần. Bắt buộc > 0 (BR-hrm-072). |
+| `insuranceEmployeeSocial` | **B** | Số thực (%) | `8.0` | Tỷ lệ BHXH trừ vào lương nhân viên. |
+| `insuranceEmployeeHealth` | **B** | Số thực (%) | `1.5` | Tỷ lệ BHYT trừ vào lương nhân viên. |
+| `insuranceEmployeeUnemployment` | **B** | Số thực (%) | `1.0` | Tỷ lệ BHTN trừ vào lương nhân viên. |
+| `insuranceCompanySocial` | **B** | Số thực (%) | `17.5` | Công ty nộp quỹ BHXH (Hưu trí - tử tuất 14%, Ốm đau - thai sản 3%, TNLĐ - BNN 0.5%). |
+| `insuranceCompanyHealth` | **B** | Số thực (%) | `3.0` | Công ty nộp quỹ BHYT. |
+| `insuranceCompanyUnemployment` | **B** | Số thực (%) | `1.0` | Công ty nộp quỹ BHTN. |
+| `unionFeeEmployeeRate` | **B** | Số thực (%) | `1.0` | Tỷ lệ đoàn phí trích từ lương đoàn viên (tối đa bằng trần cơ sở). |
+| `unionFeeMaxAmount` | **B** | Số tiền (VND) | `234.000` | Mức trần đoàn phí tối đa = 10% mức lương cơ sở (QĐ 1908/QĐ-TLĐ). |
+| `unionFeeCompanyRate` | **B** | Số thực (%) | `2.0` | Kinh phí công đoàn công ty đóng trên quỹ tiền lương làm căn cứ đóng BHXH (Luật Công đoàn). |
+
+#### 5. Thuế Thu nhập cá nhân (TNCN)
+| Trường | B/T | Kiểu | Mặc định | Ý nghĩa nghiệp vụ & Ràng buộc |
+|---|---|---|---|---|
+| `personalDeduction` | **B** | Số tiền (VND) | `11.000.000` | Mức giảm trừ gia cảnh cho bản thân người nộp thuế/tháng (NQ 954/2020/UBTVQH14). |
+| `dependentDeduction` | **B** | Số tiền (VND) | `4.400.000` | Mức giảm trừ cho mỗi người phụ thuộc hợp lệ/tháng (NQ 954/2020/UBTVQH14). |
+| `taxBrackets` | **B** | Json (`@db.JsonB`) | Biểu chuẩn 7 bậc (bảng ngay dưới) | Biểu thuế TNCN lũy tiến từng phần, lưu dạng mảng đối tượng `{"khoang": <ngưỡng trên lũy kế>, "thueSuat": <%>}` xếp theo bậc tăng dần. **`khoang` là ngưỡng trên lũy kế của thu nhập tính thuế/tháng, KHÔNG phải độ rộng bậc** (BR-hrm-080). Giá trị khởi tạo tự động và giá trị của thao tác Khôi phục mặc định bắt buộc là **biểu 7 bậc theo Điều 22 Luật Thuế thu nhập cá nhân** (BR-hrm-081). Ràng buộc toàn vẹn khi lưu: tối thiểu 2 bậc (E-hrm-081), ngưỡng lũy kế tăng nghiêm ngặt (BR-hrm-082, E-hrm-080), thuế suất tăng nghiêm ngặt (BR-hrm-073, E-hrm-069), bậc cuối là bậc mở (E-hrm-082). Cấu trúc JSONB cho phép đổi số bậc khi pháp luật thay đổi mà không đổi lược đồ; biểu khác biểu chuẩn vẫn lưu được nhưng bắt buộc kèm cảnh báo (BR-hrm-083). |
+
+**Biểu thuế TNCN lũy tiến từng phần — biểu chuẩn hiện hành** (BR-hrm-081)
+
+Căn cứ: Điều 22 Luật Thuế thu nhập cá nhân số 04/2007/QH12, sửa đổi bổ sung bởi Luật số 26/2012/QH13. Biểu áp cho **thu nhập tính thuế** (thu nhập chịu thuế sau khi trừ giảm trừ gia cảnh và các khoản được trừ) theo tháng.
+
+| Bậc | Thu nhập tính thuế/tháng | `khoang` — ngưỡng trên lũy kế (VNĐ) | `thueSuat` (%) | Đối chiếu theo năm |
+|:--:|:---|---:|:--:|:---|
+| 1 | Đến 5 triệu | 5.000.000 | 5 | Đến 60 triệu |
+| 2 | Trên 5 đến 10 triệu | 10.000.000 | 10 | Trên 60 đến 120 triệu |
+| 3 | Trên 10 đến 18 triệu | 18.000.000 | 15 | Trên 120 đến 216 triệu |
+| 4 | Trên 18 đến 32 triệu | 32.000.000 | 20 | Trên 216 đến 384 triệu |
+| 5 | Trên 32 đến 52 triệu | 52.000.000 | 25 | Trên 384 đến 624 triệu |
+| 6 | Trên 52 đến 80 triệu | 80.000.000 | 30 | Trên 624 đến 960 triệu |
+| 7 | Trên 80 triệu | *bậc mở — không có ngưỡng trên* | 35 | Trên 960 triệu |
+
+Cột đối chiếu theo năm bằng đúng 12 lần ngưỡng tháng, chỉ dùng để kiểm tra chéo lúc quyết toán năm; hệ thống **chỉ lưu ngưỡng tháng**.
+
+**Bậc mở (bậc cuối):** không có ngưỡng trên, áp cho toàn bộ phần thu nhập vượt ngưỡng của bậc liền trước. Cách mã hóa kỹ thuật của "không có ngưỡng trên" (một giá trị mốc rất lớn, `null`, hay một cờ riêng) là **quyết định của Architect**, phải ghi rõ đúng một lần trong `architecture/api-contract.md`; đặc tả nghiệp vụ chỉ yêu cầu ngữ nghĩa này thống nhất trên toàn tuyến lưu trữ — API — giao diện.
+
+
+---
+
+### 4.9 Ca làm việc (Work Shift) — `hrm_work_shifts` `[THỰC THỂ MỚI]`
+
+Bảng lưu trữ danh mục ca làm việc của doanh nghiệp:
+
+| Trường | B/T | Kiểu | Ràng buộc thật | Ý nghĩa nghiệp vụ |
+|---|---|---|---|---|
+| `id` | Hệ thống | Chuỗi ≤ 64 | Sinh tự động (CUID/UUID) | Định danh kỹ thuật |
+| `code` | T khi tạo | Chuỗi ≤ 20 | Tự sinh `CA01`–`CA99` (quét gap trống) nếu để trống (BR-hrm-074). **Duy nhất toàn tenant** (E-hrm-073). Không sửa được sau khi tạo | Mã ca làm việc dùng trong phân ca và chấm công |
+| `name` | **B** | Chuỗi 1–100 | Bắt buộc, không được rỗng (E-hrm-070) | Tên ca làm việc (vd: "Ca hành chính", "Ca sáng", "Ca đêm 3") |
+| `startTime` | **B** | Chuỗi `HH:mm` | Định dạng 24h từ `00:00` đến `23:59` (BR-hrm-075) | Giờ bắt đầu ca |
+| `endTime` | **B** | Chuỗi `HH:mm` | Định dạng 24h từ `00:00` đến `23:59` (BR-hrm-075) | Giờ kết thúc ca |
+| `breakMinutes` | **B** | Số nguyên | Không âm ($\ge 0$), bước nhảy 15 phút, mặc định 0 (BR-hrm-076) | Thời gian nghỉ giữa ca (phút), được khấu trừ khỏi thời gian làm việc |
+| `status` | **B** | Enum: `ACTIVE`, `INACTIVE` | Mặc định `ACTIVE` | Trạng thái ca: `ACTIVE` (Đang dùng), `INACTIVE` (Ngừng dùng) |
+| `createdAt` | Hệ thống | DateTime | Tự động | Thời điểm tạo |
+| `updatedAt` | Hệ thống | DateTime | Tự động | Thời điểm sửa gần nhất |
+
+**Các thuộc tính suy ra lúc đọc (Computed Properties — tính động trong API DTO):**
+- `isOvernight` (Đúng/Sai): Tự động xác định `true` khi `endTime <= startTime` (ví dụ: vào `22:00`, ra `06:00`). Khi đó giờ ra thuộc ngày hôm sau.
+- `workingHours` (Số thực - giờ): Tổng giờ làm việc thực tế của ca sau khi trừ thời gian nghỉ giữa ca:
+  - Ca ngày (`startTime < endTime`): `((endTime - startTime in phút) - breakMinutes) / 60`
+  - Ca qua đêm (`endTime <= startTime`): `((endTime + 24h - startTime in phút) - breakMinutes) / 60`
+  - Ràng buộc: `workingHours` bắt buộc phải lớn hơn 0 giờ (BR-hrm-076, E-hrm-072).
+  - Cảnh báo tuân thủ: Nếu `workingHours > 12.0h`, hệ thống cảnh báo vượt trần theo Điều 105 & 107 BLLĐ 2019 (BR-hrm-076, AC-hrm-63).
+
+---
+
+### 4.10 Lịch ngày lễ (Holiday) — `hrm_holidays` `[THỰC THỂ MỚI]`
+
+Bảng lưu trữ lịch nghỉ lễ của doanh nghiệp trong năm:
+
+| Trường | B/T | Kiểu | Ràng buộc thật | Ý nghĩa nghiệp vụ |
+|---|---|---|---|---|
+| `id` | Hệ thống | Chuỗi ≤ 64 | Sinh tự động | Định danh kỹ thuật |
+| `date` | **B** | Ngày `@db.Date` | Kiểu ngày `YYYY-MM-DD` (E-hrm-074) | Ngày diễn ra ngày nghỉ lễ |
+| `name` | **B** | Chuỗi 1–150 | Bắt buộc, không được rỗng (E-hrm-074) | Tên ngày lễ (vd: "Tết Dương lịch", "Quốc khánh", "Giỗ Tổ Hùng Vương") |
+| `type` | **B** | Enum: `NATIONAL`, `LUNAR`, `COMPANY`, `COMPENSATORY` | Chỉ nhận 4 giá trị chuẩn | Phân loại ngày lễ: `NATIONAL` (Lễ quốc gia dương lịch theo BLLĐ), `LUNAR` (Lễ tính theo âm lịch: Tết Nguyên đán, Giỗ Tổ), `COMPANY` (Ngày kỷ niệm riêng của công ty), `COMPENSATORY` (Ngày nghỉ bù khi ngày lễ trùng ngày nghỉ hàng tuần theo Điều 111 khoản 3 BLLĐ 2019) |
+| `isAnnual` | **B** | Đúng/Sai | Mặc định `true`. **Ràng buộc: Nếu `type = LUNAR` hoặc `type = COMPENSATORY` thì BẮT BUỘC `isAnnual = false`** (BR-hrm-077, E-hrm-075) | Chu kỳ lặp: `true` = lặp lại hàng năm theo ngày dương lịch; `false` = chỉ áp dụng riêng cho năm chỉ định |
+| `isPaid` | **B** | Đúng/Sai | Mặc định `true` | Cờ hưởng lương: `true` = Nghỉ có hưởng nguyên lương (Điều 112 BLLĐ 2019); `false` = Nghỉ không hưởng lương |
+| `note` | T | Chuỗi ≤ 500 | Tùy chọn | Ghi chú thêm |
+| `createdAt` | Hệ thống | DateTime | Tự động | Thời điểm tạo |
+| `updatedAt` | Hệ thống | DateTime | Tự động | Thời điểm sửa gần nhất |
+
+**Ràng buộc duy nhất cơ sở dữ liệu:** `@@unique([date, name])` — trong cùng một tenant, không được tồn tại hai bản ghi trùng cả ngày diễn ra (`date`) và tên ngày lễ (`name`) (BR-hrm-078, E-hrm-076).
+
+**Chức năng Tạo nhanh (Quick Generate) 11 ngày nghỉ lễ chuẩn Việt Nam:**
+Hệ thống tính ngày âm lịch bằng **thuật toán quy chiếu giờ Việt Nam (UTC+7)** thay cho bảng tra chép tay (A-hrm-14), cho phép tạo nhanh 11 ngày lễ chuẩn Việt Nam theo Điều 112 Bộ luật Lao động 2019 cho mọi năm nằm trong dải nghiệp vụ **2024–2030** của BR-hrm-079:
+1. Tết Dương lịch: 1 ngày (ngày 01/01 dương lịch).
+2. Tết Âm lịch: 5 ngày (từ ngày 29 hoặc 30 tháng Chạp năm cũ đến hết mùng 3 hoặc mùng 4 tháng Giêng năm mới).
+3. Ngày Giỗ Tổ Hùng Vương: 1 ngày (ngày 10 tháng 3 âm lịch).
+4. Ngày Chiến thắng: 1 ngày (ngày 30/04 dương lịch).
+5. Ngày Quốc tế Lao động: 1 ngày (ngày 01/05 dương lịch).
+6. Quốc khánh: 2 ngày (ngày 02/09 dương lịch và 01 ngày liền kề trước 01/09 hoặc sau 03/09).
+- **Nguyên tắc Idempotent**: Khi chạy "Tạo nhanh", hệ thống tự động lọc trùng và bỏ qua các ngày lễ đã có sẵn (trùng ngày và tên), chỉ bổ sung các ngày còn thiếu, không báo lỗi đè (BR-hrm-079).
 
 ---
 
@@ -505,7 +735,7 @@ Phương án siết tất rồi cấp lại từ đầu đã bị loại: nó l�
 
 **BR-hrm-068** `[MỚI — QĐ #8, vòng phản biện 2026-09-07]` — Quyền xem dữ liệu lương phải được **tra lại từ cơ sở dữ liệu ở mỗi lượt gọi**, cùng cách và cùng lúc với việc tra quyền vào công ty (BR-hrm-050). **Không** được lưu quyền này vào vé đăng nhập: vé sống 15 phút và cố ý không đối chiếu dữ liệu mỗi lượt, nên thu hồi quyền sẽ trễ tới 15 phút mà không có gì báo. Không phải đánh đổi hiệu năng: mỗi lượt gọi HRM vốn đã tra bảng phân quyền công ty, chỉ cần lấy thêm cờ này trong cùng truy vấn đó.
 
-**BR-hrm-066** `[MỚI — QĐ #15]` — Hệ thống ghi nhật ký **người thao tác** cho đúng **năm** nhóm thao tác sau, và chỉ năm nhóm này:
+**BR-hrm-066** `[MỚI — QĐ #15, cập nhật 2026-09-08 BUG-HRM-44]` — Hệ thống ghi nhật ký **người thao tác** cho đúng **sáu** nhóm thao tác sau, và chỉ sáu nhóm này:
 
 | # | Thao tác | Vì sao phải ghi |
 |---|---|---|
@@ -514,12 +744,88 @@ Phương án siết tất rồi cấp lại từ đầu đã bị loại: nó l�
 | 3 | Xóa người phụ thuộc | Ảnh hưởng giảm trừ gia cảnh, tức là ảnh hưởng thuế TNCN |
 | 4 | Xóa dòng tài liệu | Kéo theo xóa file scan trên Drive, không hoàn tác (BR-hrm-039) |
 | 5 | Ngắt kết nối Google Drive của công ty | Cắt kho tài liệu của cả công ty |
+| 6 | Cập nhật hoặc Khôi phục Cấu hình mặc định toàn công ty (`hrm_general_settings`) | Ảnh hưởng toàn bộ tham số lương cơ sở, trần bảo hiểm, thuế TNCN của cả công ty (BUG-HRM-44) |
 
-Mỗi bản ghi nhật ký lưu tối thiểu: thời điểm, người thao tác, công ty, loại thao tác, và khóa nghiệp vụ đủ để lần lại đối tượng (`ma_nv`, `so_hd`, định danh người phụ thuộc hoặc tài liệu, email Drive).
+Mỗi bản ghi nhật ký lưu tối thiểu: thời điểm, người thao tác, công ty, loại thao tác, và khóa nghiệp vụ đủ để lần lại đối tượng (`ma_nv`, `so_hd`, định danh người phụ thuộc hoặc tài liệu, email Drive, hoặc `khoa_nghiep_vu = "DEFAULT"` cho cấu hình mặc định).
 
 **Không lưu giá trị trước và sau.** Ảnh chụp bản ghi làm nhật ký phình theo dữ liệu và tự nó trở thành một bản sao dữ liệu cá nhân phải bảo vệ. Mức đã chốt là biết **ai đã làm gì lúc nào**, không phải dựng lại được giá trị cũ. Không phát sinh bảng mới — dùng cơ chế ghi nhật ký sẵn có của hệ thống.
 
 Nhật ký là **ghi kèm, không chặn**: ghi nhật ký hỏng thì thao tác nghiệp vụ vẫn thành công và lỗi ghi nhật ký vào nhật ký máy chủ. Ghi nhật ký không được làm chậm đường phản hồi tới mức người dùng cảm nhận được.
+
+### 5.10 Cấu hình mặc định, Ca làm việc & Lịch ngày lễ
+
+**BR-hrm-070** `[MỚI, cập nhật 2026-09-08 BUG-HRM-44, BUG-HRM-46]` — **Cấu hình mặc định là bản ghi duy nhất toàn hệ thống (Singleton per tenant)** với khóa chính cố định `id = "DEFAULT"`. Khởi tạo mặc định theo quy định hiện hành của pháp luật Việt Nam (BLLĐ 2019, NĐ 73/2024/NĐ-CP, NĐ 74/2024/NĐ-CP, NQ 954/2020/UBTVQH14). Chỉ `ADMIN` hoặc `OWNER` của doanh nghiệp mới có quyền chỉnh sửa hoặc bấm "Khôi phục mặc định" để đưa toàn bộ tham số về bộ chuẩn gốc ban đầu (E-hrm-077); người dùng `OWNER_EMPLOYEE` có quyền xem (Read) để đối soát. Khi chỉnh sửa trên giao diện, thay đổi được gom lại thành một lần lưu (batch update) sau khi sửa đổi nhiều ô tham số liên quan. Nếu tenant DB mới chưa có bản ghi cấu hình, hệ thống tự động khởi tạo bộ giá trị chuẩn (Self-healing pattern). Thao tác cập nhật hoặc khôi phục cấu hình bắt buộc ghi nhật ký kiểm toán (BR-hrm-066).
+- **Nguyên tắc Snapshot tham số pháp lý vào kỳ lương chốt (`hrm_payrolls` / `hrm_payroll_periods`)**: Khi kỳ lương được chốt (Finalized), toàn bộ thông số cấu hình tại thời điểm chốt (lương cơ sở, lương tối thiểu vùng, trần BHXH/BHTN, giảm trừ gia cảnh, biểu thuế TNCN) bắt buộc phải được lưu ảnh chụp (Snapshot) trực tiếp vào bản ghi kỳ lương đó. Bảng lương đã chốt không truy vấn động ngược lại bảng `hrm_general_settings` để bảo đảm tính bất biến của lịch sử trả lương và tránh hồi tố sai lệch khi pháp luật hoặc cấu hình công ty thay đổi (BUG-HRM-46).
+
+**BR-hrm-071** `[MỚI]` — **Giờ công chuẩn/ngày trên Cấu hình mặc định** phải là số thực dương nằm trong khoảng từ 1.0 đến 24.0 giờ, bước nhảy 0.5 giờ (mặc định 8.0 giờ). Vi phạm trả lỗi 400 E-hrm-067.
+
+**BR-hrm-072** `[MỚI]` — **Lương cơ sở và Lương tối thiểu vùng trên Cấu hình mặc định** phải là số nguyên dương (> 0). Vi phạm trả lỗi 400 E-hrm-068.
+
+**BR-hrm-073** `[MỚI, cập nhật 2026-09-08 — đợt thẩm định lại]` — **Biểu thuế lũy tiến TNCN — thuế suất tăng dần**: Thuế suất của bậc thuế sau phải **lớn hơn nghiêm ngặt** thuế suất của bậc liền trước (`thueSuat[i] > thueSuat[i-1]`). Vi phạm trả lỗi 400 E-hrm-069. Quy tắc này **chỉ kiểm cột thuế suất**; ràng buộc về ngưỡng lũy kế, số bậc tối thiểu và bậc mở nằm ở BR-hrm-082. Trước đợt thẩm định 2026-09-08 đây là quy tắc **duy nhất** áp cho biểu thuế, nên một biểu có ngưỡng lộn xộn (ví dụ 5tr — 3tr — 18tr) vẫn lọt qua chừng nào thuế suất còn tăng dần.
+
+**BR-hrm-074** `[MỚI, cập nhật 2026-09-08 BUG-HRM-45]` — **Mã ca làm việc bắt buộc duy nhất toàn tenant (`code` unique)**. Người dùng có thể tự nhập hoặc để hệ thống tự sinh theo quy ước `CA` + 2 chữ số (từ `CA01` đến `CA99`). Khi tự sinh, hệ thống quét các mã đã dùng trong bảng `hrm_work_shifts` để tìm số nhỏ nhất còn trống (first available gap).
+- **Hành vi khi đạt trần 99 ca**: Nếu toàn bộ 99 mã ca từ `CA01` đến `CA99` đã được sử dụng hết, hệ thống từ chối tự sinh và trả lỗi 400 kèm mã lỗi `E-hrm-078: "Đã đạt giới hạn 99 ca làm việc tự sinh. Vui lòng tự nhập mã ca hoặc giải phóng ca không sử dụng."`.
+- **Mở rộng mã ca tùy chỉnh**: Người dùng có nhu cầu mở rộng ca kíp được phép tự nhập thủ công mã ca tùy chỉnh hoặc mở rộng dạng `CA100`, `CA101`... (độ dài tối đa 20 ký tự theo schema `code String @db.VarChar(20)`), miễn là không trùng với các mã ca đang tồn tại trong tenant. Trùng mã ca trả lỗi 409 E-hrm-073. Mã ca không được sửa sau khi tạo.
+
+**BR-hrm-075** `[MỚI]` — **Giờ vào và Giờ ra của Ca làm việc là bắt buộc**, đúng định dạng 24h `HH:mm` (từ `00:00` đến `23:59`). Nếu `endTime <= startTime` (ví dụ: vào 22:00, ra 06:00), hệ thống tự động xác định là **ca qua đêm** (`isOvernight = true`, giờ ra thuộc ngày hôm sau). Thiếu giờ vào/ra trả lỗi 400 E-hrm-071.
+
+**BR-hrm-076** `[MỚI, cập nhật 2026-09-08 BUG-HRM-47]` — **Thời gian nghỉ giữa ca** phải là số nguyên không âm ($\ge 0$ phút). Tổng thời gian làm việc thực tế của ca sau khi trừ thời gian nghỉ giữa ca (`workingHours`) **bắt buộc phải lớn hơn 0 giờ**. Vi phạm trả lỗi 400 E-hrm-072.
+- **Ràng buộc thời giờ làm việc theo Bộ luật Lao động 2019 (Điều 105 & Điều 107)**: Thời giờ làm việc bình thường không quá 08 giờ/ngày; tổng thời giờ làm việc bình thường và làm thêm không quá 12 giờ/ngày. Hệ thống cho phép thiết lập các ca trực đặc thù (> 12h hoặc 24h) phục vụ các lĩnh vực chuyên biệt (y tế, an ninh, cứu hộ), nhưng khi `workingHours > 12.0h`, hệ thống bắt buộc trả kèm cảnh báo `warning: "CANH_BAO_GIO_LAM_VUOT_TRAN_BLLD"` trong payload phản hồi để giao diện hiển thị banner cảnh báo nghiệp vụ cho người quản trị ca kíp (BUG-HRM-47).
+
+**BR-hrm-077** `[MỚI]` — **Ngày lễ loại âm lịch (`type = LUNAR`) và Ngày nghỉ bù (`type = COMPENSATORY`) KHÔNG ĐƯỢC PHÉP bật cờ lặp lại hàng năm** (`isAnnual = false`), vì ngày dương của Tết Nguyên đán, Giỗ Tổ Hùng Vương cũng như các ngày nghỉ bù (Điều 111 khoản 3 BLLĐ 2019) dịch chuyển phụ thuộc vào từng năm cụ thể. Hệ thống tự động khóa hoặc từ chối lưu nếu loại lễ là âm lịch hoặc nghỉ bù mà bật cờ lặp lại hàng năm (trả lỗi 400 E-hrm-075).
+
+**BR-hrm-078** `[MỚI, cập nhật 2026-09-08 BUG-HRM-49]` — **Chuẩn hóa chuỗi và ràng buộc duy nhất ngày lễ**: Trường tên ngày lễ (`name`) bắt buộc phải được cắt bỏ toàn bộ khoảng trắng thừa ở đầu và cuối chuỗi (`.trim()`) tại tầng validation và service trước khi kiểm tra trùng lặp và ghi vào cơ sở dữ liệu. Ràng buộc `@@unique([date, name])` từ chối tạo mới hoặc sửa ngày lễ nếu trùng cả ngày dương lịch (`date`) và tên lễ (`name`) sau khi đã trim (trả lỗi 409 E-hrm-076), ngăn ngừa triệt để việc lách ràng buộc duy nhất bằng khoảng trắng.
+
+**BR-hrm-079** `[MỚI; HOÀN NGUYÊN 2026-09-08 — giữ dải cố định 2024–2030]` — **Tính năng "Tạo nhanh" ngày lễ (Quick Generate)**: Khi sinh lịch nghỉ lễ chuẩn Việt Nam cho một năm chỉ định theo Điều 112 BLLĐ 2019, hệ thống áp dụng nguyên tắc **Idempotent** (`skipDuplicates: true`): tự động bỏ qua những ngày lễ đã có sẵn (trùng ngày và tên sau khi trim) và chỉ bổ sung những ngày còn thiếu, không báo lỗi đè.
+
+- **Dải năm hợp lệ là dải CỐ ĐỊNH từ 2024 đến 2030**, bao gồm cả hai đầu mút. Năm nhỏ hơn 2024 hoặc lớn hơn 2030 bị từ chối với lỗi 400 `E-hrm-079`.
+- **Thông điệp lỗi nêu thẳng hai con số:** *"Năm khởi tạo ngày lễ phải nằm trong khoảng từ 2024 đến 2030."* Người dùng phải đọc được đúng dải hệ thống đang áp, không phải một mô tả chung chung.
+- **Đây là giới hạn NGHIỆP VỤ có chủ ý, KHÔNG phải giới hạn kỹ thuật.** Bộ tính ngày lễ hiện dùng **thuật toán âm lịch quy chiếu giờ Việt Nam (UTC+7)** và **tính được các năm nằm ngoài dải này** — đã chạy thật ngày 2026-09-08 cho 2023, 2031, 2035, 2040, 2050 và 2099, mỗi năm đều ra **đủ 11 ngày lễ**. Nghiệp vụ **chọn** chưa mở dải, chứ không phải không mở được.
+- **Lý do cũ đã hết hiệu lực, không được dùng lại làm căn cứ.** Bản trước của quy tắc này giải thích trần 2030 bằng **bảng tra âm lịch chép tay 7 năm**. Bảng tra đó **đã bị gỡ** ở đợt sửa `B2` ngày 2026-09-08 và thay bằng thuật toán. Ai viết lại hoặc rà lại quy tắc này về sau **không được** khôi phục lý do "bảng tra chỉ có 7 năm" — nó không còn đúng với hệ thống thật.
+- **Rủi ro đã biết, ghi ra chứ không giấu:** vì dải là cố định, **kể từ 01/01/2031 hệ thống sẽ từ chối mọi lần bấm "Tạo nhanh"** nếu từ nay đến đó không ai mở dải. Đây là rủi ro có thật và có thời hạn; phải có người quyết mở hay không **trước 31/12/2030**.
+- **Vì sao vẫn phải có giới hạn, không bỏ hẳn.** Ô nhập không chặn gì sẽ nhận cả `year = 9999`. Đây là ứng dụng tính công và tính lương: một năm cách hôm nay hàng nghìn năm không mang nghĩa nghiệp vụ nào, chỉ mở đường cho lỗi gõ nhầm và cho dữ liệu rác trong danh mục ngày lễ của khách. Các phương án nới dải và lý do **hoãn** trình bày ở **Mục 11.6**.
+- **Dải nghiệp vụ phải luôn nằm gọn trong dải kỹ thuật `[1900, 2199]`** của bộ tính âm lịch. **Đã đo thật ngày 2026-09-08**: gọi bộ tính với năm 1899 hoặc 2200 trả **danh sách rỗng**, nghĩa là Tạo nhanh sẽ báo thành công mà **không tạo dòng nào** — hỏng im lặng, tệ hơn báo lỗi. Dải 2024–2030 nằm sâu bên trong, điều kiện này luôn thỏa; ghi ra để lần sau ai nới dải thì biết trần cứng nằm ở đâu.
+- **Điều quy tắc này KHÔNG bảo đảm.** Quy tắc chỉ nói **năm nào được phép bấm Tạo nhanh**; nó **không** khẳng định các ngày lễ sinh ra cho năm đó trùng khớp với lịch nghỉ Nhà nước sẽ công bố cho năm đó. Xem **A-hrm-15**.
+- **Nợ `TD-HRM-01` — ghi lại cho đúng thực tế, vẫn MỞ.** Nội dung cũ của nợ này là *"tích hợp thư viện thuật toán thiên văn âm dương trước năm 2031"* — nội dung đó **đã lỗi thời**: thuật toán đã có và đang chạy từ đợt sửa `B2`. Phần còn nợ **không phải kỹ thuật** mà là **một quyết định nghiệp vụ chưa ai chốt: có mở dải năm hay không, và mở đến đâu**. Hạn quyết: **trước 31/12/2030**. Đợt 2026-09-08 từng đóng nợ này kèm quyết định chuyển sang dải trượt; quyết định đó **đã bị thu hồi**, nên nợ **mở lại** với nội dung mới nêu trên.
+
+**BR-hrm-080** `[MỚI — đợt thẩm định lại 2026-09-08]` — **Ngữ nghĩa duy nhất của `khoang` trong biểu thuế TNCN**: `khoang` là **ngưỡng trên lũy kế của thu nhập tính thuế trong tháng** — mốc thu nhập mà bậc đó áp đến — **không phải độ rộng của bậc**. Ngữ nghĩa này là **một chiều và duy nhất** trên toàn tuyến: chỗ lưu trữ, nội dung trao đổi qua API, và ô người dùng nhập trên giao diện đều mang cùng một nghĩa. **Cấm mọi hình thức quy đổi ngầm giữa hai cách hiểu.**
+- **Căn cứ chọn ngưỡng lũy kế**: văn bản Điều 22 Luật Thuế TNCN diễn đạt theo ngưỡng ("Đến 5 triệu", "Trên 5 đến 10 triệu"); kế toán và cơ quan thuế đối chiếu theo ngưỡng, không theo độ rộng. Giữ hai cách hiểu ở hai đầu rồi quy đổi qua lại là nguồn sinh lỗi thường trực — và đã xảy ra thật (xem `agents-business-analyst/ba-reconciliation-report-2026-09-08.md`, Phát hiện 3).
+- **Được phép hiển thị độ rộng bậc như một cột phái sinh chỉ-đọc** (hiệu hai ngưỡng liền kề) để người dùng dễ đọc. Cột phái sinh này **không được là ô nhập liệu** và **không được xuất hiện trong nội dung gửi lên máy chủ**.
+- Giá trị `0` **không** mang nghĩa "bậc cuối" hay "vô hạn" ở bất kỳ đâu. Bậc cuối được diễn đạt bằng khái niệm **bậc mở** của BR-hrm-082.
+
+**BR-hrm-081** `[MỚI — đợt thẩm định lại 2026-09-08]` — **Biểu thuế TNCN chuẩn là biểu 7 bậc**: Giá trị khởi tạo tự động cho công ty mới (Self-healing, BR-hrm-070) và giá trị của thao tác "Khôi phục mặc định" (FR-hrm-047) **bắt buộc** là biểu 7 bậc theo Điều 22 Luật Thuế thu nhập cá nhân số 04/2007/QH12 (sửa đổi bổ sung bởi Luật số 26/2012/QH13), đúng như bảng ở Mục 4.8: `5tr–5%` · `10tr–10%` · `18tr–15%` · `32tr–20%` · `52tr–25%` · `80tr–30%` · `bậc mở–35%`.
+- **Cấm dùng biểu rút gọn dừng ở 25% làm mặc định.** Biểu 5 bậc `5tr–5% · 10tr–10% · 18tr–15% · 32tr–20% · bậc mở–25%` từng được nạp làm mặc định **không tương ứng với bất kỳ biểu thuế nào của pháp luật Việt Nam** — nó là biểu chuẩn bị cắt cụt ba bậc trên. Hệ quả nghiệp vụ: người lao động có thu nhập tính thuế **trên 52.000.000đ/tháng** bị khấu trừ thiếu thuế; doanh nghiệp chi trả là bên chịu truy thu và tiền chậm nộp.
+- **Ngưỡng phân kỳ đo được**: hai biểu cho kết quả **giống hệt nhau** với thu nhập tính thuế từ 52.000.000đ/tháng trở xuống; chênh lệch chỉ phát sinh từ trên mốc đó. Ví dụ thu nhập tính thuế 100.000.000đ/tháng: đúng luật 25.150.000đ, biểu cắt cụt 21.750.000đ — **thiếu 3.400.000đ mỗi tháng cho một người** (13,5%). Ví dụ 60.000.000đ/tháng: đúng luật 12.150.000đ, biểu cắt cụt 11.750.000đ — thiếu 400.000đ.
+- **Công ty đã lỡ lưu biểu cũ**: xử lý theo FR-hrm-055, không tự ghi đè cấu hình người dùng đã sửa tay.
+
+**BR-hrm-082** `[MỚI — đợt thẩm định lại 2026-09-08]` — **Toàn vẹn cấu trúc biểu thuế TNCN**: mọi biểu thuế được lưu — biểu chuẩn hay biểu công ty tự đặt — phải đồng thời thỏa **bốn** điều kiện, kiểm ngay tại thời điểm lưu:
+
+| # | Điều kiện | Vi phạm trả |
+|:--:|:---|:---|
+| 1 | Có **tối thiểu 2 bậc**. Biểu rỗng hoặc chỉ 1 bậc bị từ chối — một bậc duy nhất là thuế suất phẳng, không phải thuế lũy tiến từng phần | 400 E-hrm-081 |
+| 2 | **Ngưỡng lũy kế tăng nghiêm ngặt**: `khoang[i] > khoang[i-1]` với mọi bậc không phải bậc cuối | 400 E-hrm-080 |
+| 3 | **Thuế suất tăng nghiêm ngặt** (BR-hrm-073) | 400 E-hrm-069 |
+| 4 | **Bậc cuối là bậc mở** — phủ toàn bộ phần thu nhập vượt ngưỡng của bậc liền trước, không để hở khoảng thu nhập nào không có thuế suất | 400 E-hrm-082 |
+
+Bốn điều kiện là **ràng buộc cứng** và áp cả khi cập nhật một phần (batch/partial update): hễ nội dung gửi lên **có chứa** biểu thuế thì biểu đó được kiểm trọn vẹn như một khối, không kiểm từng bậc rời rạc. Không gửi biểu thuế thì không kiểm.
+
+**BR-hrm-083** `[MỚI — đợt thẩm định lại 2026-09-08]` — **Cho lưu biểu lệch chuẩn nhưng bắt buộc cảnh báo và ghi nhật ký**: Công ty được phép lưu biểu thuế khác biểu chuẩn của BR-hrm-081, miễn là thỏa toàn vẹn cấu trúc BR-hrm-082. Lý do giữ cửa này: khi pháp luật thay đổi biểu thuế, công ty phải chỉnh được ngay mà không phải chờ một bản phát hành mới.
+- Khi biểu được lưu **khác biểu chuẩn** ở bất kỳ cặp ngưỡng — thuế suất nào, hoặc khác về số bậc, hệ thống **vẫn lưu thành công** nhưng **bắt buộc** trả kèm cảnh báo `warning: "CANH_BAO_BIEU_THUE_LECH_CHUAN"` trong nội dung phản hồi để giao diện hiển thị dải cảnh báo cho người quản trị.
+- Thao tác này **bắt buộc ghi nhật ký kiểm toán** theo BR-hrm-066 nhóm 6.
+- Cảnh báo là **thông tin bổ sung, không phải lỗi**: không đổi mã HTTP, không chặn lưu. Cùng khuôn mẫu "cho phép nhưng cảnh báo" đã dùng cho ca làm việc vượt 12 giờ (BR-hrm-076) — không chặn nghiệp vụ hợp lệ, nhưng không để một thay đổi ảnh hưởng số thuế đi qua âm thầm.
+
+**BR-hrm-084** `[MỚI 2026-09-08 — đóng OQ-ARCH-16 do Architect chuyển sang]` — **Tên ngày lễ là nhãn hiển thị, không phải định danh nghiệp vụ.** Trong cùng một công ty, **được phép** tồn tại hai hoặc nhiều dòng ngày lễ **cùng tên**, **cùng bật cờ lặp hàng năm**, nhưng **ở hai ngày khác nhau**. Ba trường hợp hợp lệ có thật:
+
+1. Kỳ nghỉ Tết Dương lịch hai ngày `31/12` và `01/01`, cả hai đặt tên `"Nghỉ Tết Dương lịch"`.
+2. Quốc khánh nghỉ hai ngày `01/09` và `02/09`, công ty đặt cùng một tên `"Nghỉ Quốc khánh"` thay vì tách thành "Nghỉ liền kề Quốc khánh".
+3. Kỷ niệm thành lập công ty nghỉ hai ngày liền nhau, mang cùng một tên.
+
+Ép mỗi ngày một tên riêng sẽ buộc người dùng bịa ra tên nhân tạo ("… ngày 1", "… ngày 2") — thêm nhiễu vào danh mục, không thêm giá trị nghiệp vụ nào.
+
+- **Cái thực sự phải duy nhất là NGÀY, không phải TÊN.** Ràng buộc duy nhất theo cặp (ngày, tên) của BR-hrm-078 giữ đúng phần đó ở mức dòng và giữ nguyên hiệu lực.
+- **Ràng buộc mà phân hệ Lương bắt buộc phải tự giữ**: khi đếm số ngày nghỉ lễ của một kỳ, đếm theo **ngày dương lịch duy nhất**, **không đếm theo số dòng**. Đây mới là hàng rào thật cho rủi ro "một ngày lễ bị tính tiền nhiều lần". Một ràng buộc chống trùng tên ở tầng cơ sở dữ liệu **không** chặn được rủi ro đó, vì hai dòng **cùng ngày khác tên** (ví dụ `02/09` "Quốc khánh" và `02/09` "Nghỉ bù dịp Quốc khánh") vẫn lọt qua nó.
+- **Hệ quả cho thiết kế kỹ thuật**: quy tắc này trả lời `OQ-ARCH-16` là **"được phép"**, tức điều kiện (a) trong phần "điều kiện xem lại" của `ADR-011` Mục Alternatives (C) **không xảy ra**. **Không** thêm ràng buộc duy nhất trên (tên, tháng, ngày) khi bật cờ lặp hàng năm. Hai điều kiện còn lại của ADR-011 giữ nguyên hiệu lực; riêng điều kiện (b) — phân hệ Lương chốt đếm ngày nghỉ theo dòng — nay đã bị chặn trước bằng chính luật đếm theo ngày ở gạch đầu dòng trên.
+- **Điều quy tắc này KHÔNG cho phép**: hai dòng **trùng cả ngày lẫn tên** vẫn bị từ chối (BR-hrm-078, E-hrm-076). Quy tắc này chỉ mở cho trường hợp **khác ngày**.
 
 ---
 
@@ -623,7 +929,44 @@ Nhật ký là **ghi kèm, không chặn**: ghi nhật ký hỏng thì thao tác
 
 **FR-hrm-044** `[MỚI — QĐ #8, vòng phản biện 2026-09-07]` — Hệ thống cho phép **chủ tài khoản cấp và thu hồi quyền xem dữ liệu lương** cho từng người dùng, **theo từng công ty**. Không có chức năng này thì BR-hrm-059 chỉ chặn được chứ không cấp được cho ai, và mọi người dùng không phải chủ tài khoản sẽ mất hoàn toàn màn hợp đồng. Quyền được cấp ở phạm vi cặp người dùng và công ty, vì một kế toán dịch vụ có thể được xem lương ở công ty này mà không ở công ty kia.
 
-**FR-hrm-043** `[MỚI — QĐ #15]` — Hệ thống ghi nhật ký người thao tác cho đúng năm nhóm thao tác liệt kê ở BR-hrm-066, không ghi giá trị trước và sau. Ghi nhật ký thất bại không làm hỏng thao tác nghiệp vụ.
+**FR-hrm-043** `[MỚI — QĐ #15, cập nhật 2026-09-08 BUG-HRM-44]` — Hệ thống ghi nhật ký người thao tác cho đúng sáu nhóm thao tác liệt kê ở BR-hrm-066, không ghi giá trị trước và sau. Ghi nhật ký thất bại không làm hỏng thao tác nghiệp vụ.
+
+### Cấu hình mặc định
+
+**FR-hrm-045** `[MỚI, cập nhật 2026-09-08 — đợt thẩm định lại]` — Hệ thống cho phép người dùng có quyền truy cập phân hệ HRM (`ADMIN`, `OWNER`, `OWNER_EMPLOYEE`) xem toàn bộ thông tin Cấu hình mặc định hiện tại của công ty (`GET /settings/general`) gồm 5 nhóm tham số: ngày công/giờ công (hỗ trợ `FIXED_26`, `FIXED_24`, `ACTUAL_MONTH`), nghỉ phép năm, hệ số OT, lương cơ sở/vùng, tỷ lệ bảo hiểm/công đoàn và biểu thuế TNCN lũy tiến. Biểu thuế trả về theo ngữ nghĩa **ngưỡng trên lũy kế** (BR-hrm-080) và mặc định là **biểu 7 bậc chuẩn Điều 22 Luật Thuế TNCN** (BR-hrm-081, bảng đầy đủ ở Mục 4.8). Trường hợp công ty chưa có bản ghi cấu hình, hệ thống tự khởi tạo bộ giá trị chuẩn theo quy định pháp luật (Self-healing pattern).
+
+**FR-hrm-046** `[MỚI, cập nhật 2026-09-08 BUG-HRM-44 và đợt thẩm định lại]` — Hệ thống cho phép `ADMIN` hoặc `OWNER` cập nhật Cấu hình mặc định (`PUT /settings/general`); cho phép cập nhật nhiều tham số cùng một lần lưu (batch update). Trước khi lưu, hệ thống thẩm định: giờ công chuẩn 1.0–24.0h (BR-hrm-071, E-hrm-067); lương cơ sở và lương tối thiểu vùng > 0 (BR-hrm-072, E-hrm-068); và — khi nội dung gửi lên có chứa biểu thuế TNCN — **toàn vẹn cấu trúc biểu thuế theo BR-hrm-082**: tối thiểu 2 bậc (E-hrm-081), ngưỡng lũy kế tăng nghiêm ngặt (E-hrm-080), thuế suất tăng nghiêm ngặt (BR-hrm-073, E-hrm-069), bậc cuối là bậc mở (E-hrm-082). Biểu hợp lệ về cấu trúc nhưng **khác biểu chuẩn** vẫn được lưu, kèm cảnh báo `CANH_BAO_BIEU_THUE_LECH_CHUAN` (BR-hrm-083). Yêu cầu từ vai trò không có thẩm quyền bị từ chối với lỗi 403 E-hrm-077. Thao tác cập nhật thành công bắt buộc ghi nhật ký kiểm toán người thao tác (BR-hrm-066 nhóm 6).
+
+**FR-hrm-047** `[MỚI, cập nhật 2026-09-08 BUG-HRM-44 và đợt thẩm định lại]` — Hệ thống cho phép `ADMIN` hoặc `OWNER` thực hiện chức năng "Khôi phục mặc định" (`POST /settings/general/restore-default`), đưa toàn bộ tham số cấu hình về bộ giá trị chuẩn theo pháp luật Việt Nam (BLLĐ 2019, NĐ 73/2024/NĐ-CP, NĐ 74/2024/NĐ-CP, NQ 954/2020/UBTVQH14) — trong đó biểu thuế TNCN **bắt buộc là biểu 7 bậc** của BR-hrm-081, không phải biểu rút gọn nào khác. Thao tác này ghi đè cả biểu thuế công ty đã tự đặt, nên giao diện phải hỏi xác nhận nêu rõ điều đó trước khi gọi. Thao tác khôi phục thành công bắt buộc ghi nhật ký kiểm toán người thao tác (BR-hrm-066 nhóm 6).
+
+### Ca làm việc
+
+**FR-hrm-048** `[MỚI, cập nhật 2026-09-08 BUG-HRM-45, BUG-HRM-47]` — Hệ thống cho phép `ADMIN`, `OWNER` hoặc `OWNER_EMPLOYEE` tạo mới Ca làm việc (`POST /work-shifts`); người dùng có thể nhập Mã ca tùy chỉnh hoặc để hệ thống tự sinh mã theo dạng `CA01`–`CA99` (BR-hrm-074, đạt trần 99 ca tự sinh trả lỗi 400 E-hrm-078); validate bắt buộc Tên ca (E-hrm-070), Giờ vào, Giờ ra đúng định dạng 24h (BR-hrm-075, E-hrm-071), Nghỉ giữa ca $\ge 0$ phút và tổng giờ công thực tế ròng `workingHours > 0` (BR-hrm-076, E-hrm-072). Trường hợp ca có `workingHours > 12.0h`, hệ thống trả kèm cờ cảnh báo `warning: "CANH_BAO_GIO_LAM_VUOT_TRAN_BLLD"` theo Điều 105 & 107 BLLĐ (BR-hrm-076).
+
+**FR-hrm-049** `[MỚI]` — Hệ thống cho phép xem danh sách Ca làm việc (`GET /work-shifts`), hỗ trợ phân trang (`page`, `pageSize`), tìm kiếm theo tên hoặc mã ca (`search`), lọc theo trạng thái (`status`), sắp xếp theo tiêu chí (`sortBy`, `sortOrder`); phản hồi tính động và trả kèm cờ ca qua đêm (`isOvernight`) và số giờ công thực tế ròng (`workingHours`).
+
+**FR-hrm-050** `[MỚI]` — Hệ thống cho phép xem chi tiết một Ca làm việc (`GET /work-shifts/:id`), cập nhật thông tin Ca làm việc (`PATCH /work-shifts/:id` — cho phép sửa Tên ca, Giờ vào, Giờ ra, Nghỉ giữa ca, Trạng thái `ACTIVE`/`INACTIVE`; cấm sửa Mã ca), và xóa ca làm việc (`DELETE /work-shifts/:id`) khi chưa có ràng buộc phân ca / chấm công.
+
+### Lịch ngày lễ
+
+**FR-hrm-051** `[MỚI, cập nhật 2026-09-08 BUG-HRM-49]` — Hệ thống cho phép `ADMIN`, `OWNER` hoặc `OWNER_EMPLOYEE` tạo mới (`POST /holidays`) và cập nhật (`PATCH /holidays/:id`) từng ngày lễ; validate bắt buộc Ngày, Tên ngày lễ, Loại lễ (`NATIONAL`, `LUNAR`, `COMPANY`, `COMPENSATORY`) (E-hrm-074); tự động cắt khoảng trắng thừa ở đầu/cuối của Tên ngày lễ (`.trim()`) trước khi kiểm tra trùng lặp và lưu trữ (BR-hrm-078); tự động khóa hoặc từ chối cờ lặp lại hàng năm nếu Loại lễ là âm lịch hoặc nghỉ bù (BR-hrm-077, E-hrm-075); kiểm tra chống trùng lặp ngày + tên đã trim (BR-hrm-078, E-hrm-076).
+
+**FR-hrm-052** `[MỚI]` — Hệ thống cho phép xem danh sách Lịch ngày lễ (`GET /holidays`) với các bộ lọc: theo năm (`year`), theo chu kỳ lặp (`filter`: `THIS_YEAR` / `ANNUAL` / `ALL`), theo loại lễ (`type`), theo cờ có lương (`isPaid`), hỗ trợ phân trang; xem chi tiết ngày lễ (`GET /holidays/:id`); hiển thị kèm cờ có hưởng lương và thứ trong tuần.
+
+**FR-hrm-053** `[MỚI]` — Hệ thống cho phép xóa một ngày lễ khỏi lịch nghỉ lễ của công ty (`DELETE /holidays/:id`).
+
+**FR-hrm-054** `[MỚI; HOÀN NGUYÊN DẢI NĂM 2026-09-08]` — Hệ thống cung cấp chức năng "Tạo nhanh" (`POST /holidays/quick-generate` — **chỉ một đường dẫn duy nhất**; bản trước của yêu cầu này còn nêu thêm `POST /holidays/init-standard/:year`, đường dẫn đó **không tồn tại**), cho phép chọn một năm nằm trong **dải cố định từ 2024 đến 2030** (năm ngoài dải trả lỗi 400 E-hrm-079) và tự động tạo 11 ngày nghỉ lễ chuẩn Việt Nam theo Điều 112 BLLĐ 2019, trong đó phần âm lịch **tính bằng thuật toán quy chiếu UTC+7** chứ không tra bảng chép sẵn; hệ thống tự động bỏ qua những ngày đã tồn tại và chỉ bổ sung các ngày còn thiếu theo nguyên tắc Idempotent (BR-hrm-079).
+
+### Cấu hình mặc định — bổ sung sau đợt thẩm định lại 2026-09-08
+
+**FR-hrm-055** `[MỚI — đợt thẩm định lại 2026-09-08]` — Hệ thống cung cấp thao tác **rà soát và chuẩn hóa biểu thuế TNCN** cho các công ty đã lưu biểu 5 bậc cắt cụt trước ngày 2026-09-08, chạy được trên toàn bộ công ty trong một lượt và chạy lại được nhiều lần cho cùng kết quả:
+1. **Chế độ rà soát (không ghi)** — liệt kê từng công ty kèm kết luận một trong ba: *đúng biểu chuẩn* · *đang giữ nguyên biểu 5 bậc cắt cụt* · *đã tự đặt biểu khác*.
+2. **Chế độ chuẩn hóa (có ghi)** — **chỉ ghi đè** khi biểu đang lưu **trùng khớp nguyên văn** biểu 5 bậc cắt cụt cũ (đủ 5 bậc, đúng từng cặp ngưỡng — thuế suất). Trùng khớp nghĩa là công ty **chưa hề chỉnh tay**, giá trị đó do hệ thống tự nạp sai.
+3. **Không được ghi đè** biểu mà công ty đã tự chỉnh, kể cả khi biểu đó lệch chuẩn — thay vào đó liệt kê ra để chủ tài khoản tự quyết, vì đó là cấu hình có chủ đích của họ (BR-hrm-083).
+4. Kết thúc phải in **đối soát**: số công ty đã chuẩn hóa, số giữ nguyên, số cần người xem lại; và mỗi lần ghi đều ghi nhật ký kiểm toán theo BR-hrm-066 nhóm 6.
+
+Hình thức kỹ thuật của thao tác này (kịch bản vận hành, endpoint quản trị hay bước trong quy trình nâng cấp) do Architect quyết định; đặc tả chỉ ràng buộc hành vi nghiệp vụ ở bốn điểm trên.
+
 
 ---
 
@@ -656,8 +999,8 @@ Nhật ký là **ghi kèm, không chặn**: ghi nhật ký hỏng thì thao tác
 
 **NFR-hrm-010** — **Khả năng mở rộng danh mục**: các trường dạng chữ tự do có gợi ý (ngân hàng, quan hệ người phụ thuộc, loại giấy tờ, loại hợp đồng, chức vụ, cấp bậc) cho phép thêm giá trị mới mà không phải đổi cấu trúc dữ liệu.
 
-**NFR-hrm-011** `[SỬA THEO QĐ #15]` — **Truy vết thao tác**, mức đã chốt:
-- **Có ghi**: người thao tác, thời điểm, công ty, loại thao tác và khóa nghiệp vụ của đối tượng, cho đúng **năm** nhóm thao tác ở BR-hrm-066 (xóa hợp đồng · sửa lương · xóa người phụ thuộc · xóa dòng tài liệu · ngắt kết nối Drive).
+**NFR-hrm-011** `[SỬA THEO QĐ #15, cập nhật 2026-09-08 BUG-HRM-44]` — **Truy vết thao tác**, mức đã chốt:
+- **Có ghi**: người thao tác, thời điểm, công ty, loại thao tác và khóa nghiệp vụ của đối tượng, cho đúng **sáu** nhóm thao tác ở BR-hrm-066 (xóa hợp đồng · sửa lương · xóa người phụ thuộc · xóa dòng tài liệu · ngắt kết nối Drive · cập nhật/khôi phục Cấu hình mặc định toàn công ty).
 - **Không ghi**: giá trị trước và sau mỗi lần sửa; không lưu ảnh chụp bản ghi; không thêm bảng mới.
 - **Không chặn**: ghi nhật ký hỏng thì thao tác nghiệp vụ vẫn thành công.
 
@@ -787,6 +1130,27 @@ Ba nhánh này do bộ xử lý lỗi chung trả cho **mọi** endpoint HRM, kh
 
 > **Ghi chú đổi số (2026-09-07).** `api-contract.md` bản trước đề xuất ba mã này là `E-hrm-052/053/054`, trùng với ba mã mà đợt chốt nghiệp vụ 16/16 đã cấp cho nhóm lỗi ghi nhận nghỉ việc (QĐ #3). Xung đột được phát hiện ở bước BA đối soát chéo và xử lý bằng cách dời ba lỗi kỹ thuật xuống `E-hrm-062/063/064`. Tài liệu hoặc mã nguồn nào còn dùng `E-hrm-052/053/054` với nghĩa kỹ thuật đều **sai**.
 
+### 8.10 Cấu hình mặc định, Ca làm việc & Lịch ngày lễ
+
+| ID | HTTP | Tình huống | Wording tiếng Việt | Hệ quả |
+|---|---|---|---|---|
+| E-hrm-067 | 400 | Giờ công chuẩn/ngày không nằm trong khoảng 1.0–24.0 | "Giờ công chuẩn/ngày phải nằm trong khoảng từ 1.0 đến 24.0 giờ." | Từ chối lưu (BR-hrm-071) |
+| E-hrm-068 | 400 | Lương cơ sở hoặc Lương tối thiểu vùng $\le$ 0 | "Lương cơ sở và lương tối thiểu vùng phải là số nguyên lớn hơn 0." | Từ chối lưu (BR-hrm-072) |
+| E-hrm-069 | 400 | Biểu thuế TNCN vi phạm tính lũy tiến: thuế suất bậc sau $\le$ bậc trước | "Thuế suất của bậc thuế sau phải lớn hơn bậc liền trước." | Từ chối lưu (BR-hrm-073) |
+| E-hrm-070 | 400 | Tạo/sửa Ca làm việc thiếu Tên ca | "Tên ca làm việc không được để trống." | Từ chối lưu |
+| E-hrm-071 | 400 | Tạo/sửa Ca làm việc thiếu Giờ vào hoặc Giờ ra, hoặc sai định dạng 24h | "Ca làm việc bắt buộc phải có giờ vào và giờ ra hợp lệ (định dạng HH:mm)." | Từ chối lưu (BR-hrm-075) |
+| E-hrm-072 | 400 | Nghỉ giữa ca là số âm hoặc giờ công thực tế ròng $\le$ 0 | "Thời gian nghỉ giữa ca không được âm và tổng giờ công thực tế phải lớn hơn 0." | Từ chối lưu (BR-hrm-076) |
+| E-hrm-073 | 409 | Mã ca làm việc bị trùng trong công ty | "Mã ca làm việc đã tồn tại trong công ty. Vui lòng chọn mã khác." | Từ chối lưu (BR-hrm-074) |
+| E-hrm-074 | 400 | Tạo/sửa Ngày lễ thiếu Tên ngày lễ hoặc Ngày diễn ra | "Tên ngày lễ và ngày diễn ra không được để trống." | Từ chối lưu |
+| E-hrm-075 | 400 | Ngày lễ loại âm lịch (`LUNAR`) nhưng bật cờ lặp lại hàng năm | "Ngày lễ âm lịch không thể lặp lại theo dương lịch. Vui lòng tắt cờ lặp hàng năm và tạo cho từng năm." | Từ chối lưu (BR-hrm-077) |
+| E-hrm-076 | 409 | Ngày lễ bị trùng cả ngày dương lịch và tên lễ (sau khi trim) trong công ty | "Ngày này đã có ngày lễ cùng tên trong hệ thống." | Từ chối lưu (BR-hrm-078, BUG-HRM-49) |
+| E-hrm-077 | 403 | Người dùng không phải `ADMIN` hoặc `OWNER` cố tình cập nhật hoặc khôi phục Cấu hình mặc định | "Chỉ Quản trị viên (ADMIN) hoặc Chủ doanh nghiệp (OWNER) mới có quyền cập nhật hoặc khôi phục Cấu hình mặc định." | Từ chối thao tác (BR-hrm-070) |
+| E-hrm-078 | 400 | Tự sinh mã ca khi đã đạt tối đa 99 ca làm việc (`CA01`–`CA99`) | "Đã đạt giới hạn 99 ca làm việc tự sinh. Vui lòng tự nhập mã ca hoặc giải phóng ca không sử dụng." | Từ chối tự sinh mã ca (BR-hrm-074, BUG-HRM-45) |
+| E-hrm-079 | 400 | Khởi tạo nhanh ngày lễ với năm nằm ngoài **dải cố định 2024–2030** (nhỏ hơn 2024 hoặc lớn hơn 2030) | "Năm khởi tạo ngày lễ phải nằm trong khoảng từ 2024 đến 2030." — câu thông báo **nêu thẳng hai con số** | Từ chối khởi tạo (BR-hrm-079) |
+| E-hrm-080 | 400 | Ngưỡng lũy kế của biểu thuế TNCN không tăng nghiêm ngặt (`khoang[i]` $\le$ `khoang[i-1]`) | "Ngưỡng thu nhập của bậc thuế sau phải lớn hơn bậc liền trước." | Từ chối lưu (BR-hrm-082 điều kiện 2) |
+| E-hrm-081 | 400 | Biểu thuế TNCN rỗng hoặc chỉ có 1 bậc | "Biểu thuế thu nhập cá nhân phải có ít nhất 2 bậc." | Từ chối lưu (BR-hrm-082 điều kiện 1) |
+| E-hrm-082 | 400 | Bậc cuối của biểu thuế TNCN không phải bậc mở, để hở khoảng thu nhập không có thuế suất | "Bậc thuế cuối cùng phải áp cho toàn bộ phần thu nhập vượt bậc liền trước." | Từ chối lưu (BR-hrm-082 điều kiện 4) |
+
 ---
 
 ## 9. Ca sử dụng
@@ -810,6 +1174,11 @@ Ba nhánh này do bộ xử lý lỗi chung trả cho **mọi** endpoint HRM, kh
 | UC-hrm-15 | Chủ tài khoản | Ngắt kết nối Drive khi đổi tài khoản công ty | Bấm ngắt kết nối và xác nhận; file đã tải vẫn nằm nguyên trong Drive cũ; hệ thống ghi nhật ký ai ngắt và ngắt khỏi email nào | FR-hrm-035, FR-hrm-043, BR-hrm-047, BR-hrm-066, E-hrm-042 |
 | UC-hrm-16 | Chủ tài khoản hoặc HR | Khai bộ giấy tờ bắt buộc của công ty | Mở danh mục giấy tờ bắt buộc, chọn loại hợp đồng và thêm các loại giấy tờ cần có, đánh dấu bắt buộc hay chỉ nhắc | FR-hrm-038, BR-hrm-063, E-hrm-061 |
 | UC-hrm-17 | HR | Rà hồ sơ thiếu và giấy tờ sắp hết hạn | Xem cột chỉ báo đủ/thiếu trên danh sách nhân viên để biết ai còn thiếu giấy tờ gì; mở danh sách cảnh báo hạn để biết giấy tờ nào đã hết hạn hoặc sắp hết hạn | FR-hrm-039, FR-hrm-040, FR-hrm-041, BR-hrm-062, BR-hrm-064, BR-hrm-065, E-hrm-060 |
+| UC-hrm-18 | ADMIN / OWNER | Xem và cập nhật Cấu hình mặc định | Mở tab Thiết lập chung → xem/sửa các tham số ngày công, bảo hiểm, công đoàn, biểu thuế TNCN (ngưỡng lũy kế) → hệ thống thẩm định (giờ công 1.0-24.0h, lương > 0, toàn vẹn biểu thuế: ≥ 2 bậc, ngưỡng tăng, thuế suất tăng, bậc cuối mở) → lưu batch update thành công, kèm cảnh báo nếu biểu lệch chuẩn | FR-hrm-045, FR-hrm-046, BR-hrm-070…073, BR-hrm-080…083, E-hrm-067…069, E-hrm-077, E-hrm-080…082 |
+| UC-hrm-19 | ADMIN / OWNER | Khôi phục cấu hình mặc định gốc | Bấm nút "Khôi phục mặc định" → hệ thống nạp lại bộ tham số chuẩn ban đầu theo quy định pháp luật Việt Nam (BLLĐ 2019, NĐ 73/2024, NĐ 74/2024, NQ 954/2020) → áp dụng thành công | FR-hrm-047, BR-hrm-070, E-hrm-077 |
+| UC-hrm-20 | ADMIN / OWNER / HR | Quản lý Ca làm việc (Thêm / Sửa / Xóa / Danh sách) | Mở danh mục Ca làm việc → bấm Thêm ca (để trống mã để tự sinh CA01..CA99 hoặc tự nhập) → nhập Tên, Giờ vào, Giờ ra, Nghỉ giữa ca → hệ thống tự nhận diện ca qua đêm và tính giờ công thực tế ròng → lưu thành công; sửa/xóa/đổi trạng thái ca | FR-hrm-048…050, BR-hrm-074…076, E-hrm-070…073 |
+| UC-hrm-21 | ADMIN / OWNER / HR | Quản lý Lịch ngày lễ (Thêm / Sửa / Xóa / Lọc) | Mở tab Lịch ngày lễ → lọc theo Năm nay/Hàng năm/Tất cả → thêm ngày lễ mới (chọn Loại lễ, Ngày, cờ lặp, cờ có lương) → hệ thống validate không trùng ngày+tên và chặn cờ lặp đối với lễ âm lịch → lưu thành công | FR-hrm-051…053, BR-hrm-077, BR-hrm-078, E-hrm-074…076 |
+| UC-hrm-22 | ADMIN / OWNER / HR | Tạo nhanh lịch nghỉ lễ chuẩn Việt Nam | Bấm nút "Tạo nhanh" → chọn Năm cần tạo trong dải cố định **2024–2030** → hệ thống tính 11 ngày nghỉ lễ chuẩn theo Điều 112 BLLĐ 2019 bằng thuật toán âm lịch quy chiếu UTC+7 → xem trước danh sách → tự động thêm các ngày còn thiếu, bỏ qua ngày đã có (idempotent) | FR-hrm-054, BR-hrm-079 |
 
 ---
 
@@ -1097,13 +1466,115 @@ Chỉ liệt kê các quy tắc có rẽ nhánh nghiệp vụ đáng chú ý. C�
 - **When** người đó xóa hợp đồng, rồi sửa lương của một hợp đồng khác, rồi xóa một người phụ thuộc, rồi xóa một dòng tài liệu, rồi ngắt kết nối Drive
 - **Then** nhật ký có đúng năm bản ghi, mỗi bản ghi có thời điểm, người thao tác, công ty, loại thao tác và khóa nghiệp vụ của đối tượng; **không** bản ghi nào chứa giá trị trước hoặc sau của các trường. Sửa một hợp đồng mà **không** đổi lương thì **không** sinh bản ghi nhật ký nào
 
+**AC-hrm-57** (FR-hrm-046, BR-hrm-073, E-hrm-069 — Biểu thuế lũy tiến TNCN tăng dần) `[MỚI]`
+- **Given** người dùng `ADMIN` hoặc `OWNER` đang cập nhật Cấu hình mặc định (`PUT /settings/general`)
+- **When** người dùng nhập thuế suất bậc sau nhỏ hơn hoặc bằng bậc liền trước (ví dụ: bậc 1 là 5%, bậc 2 nhập 5% hoặc 4%)
+- **Then** hệ thống từ chối lưu và hiển thị lỗi 400 E-hrm-069: "Thuế suất của bậc thuế sau phải lớn hơn bậc liền trước."
+
+**AC-hrm-58** (FR-hrm-046, BR-hrm-071, BR-hrm-072, E-hrm-067, E-hrm-068 — Validate giờ công chuẩn và lương cơ sở/vùng) `[MỚI]`
+- **Given** người dùng `ADMIN` hoặc `OWNER` đang cập nhật Cấu hình mặc định
+- **When** người dùng nhập `standardHoursPerDay = 0` (hoặc 25.0h), hoặc nhập `baseSalary <= 0`, hoặc `regionMinSalary <= 0`
+- **Then** hệ thống từ chối lưu và hiển thị lỗi tương ứng: 400 E-hrm-067 nếu vi phạm giờ công chuẩn (1.0–24.0h), hoặc 400 E-hrm-068 nếu vi phạm lương cơ sở / lương tối thiểu vùng
+
+**AC-hrm-59** (FR-hrm-048, BR-hrm-075, BR-hrm-076 — Ca làm việc qua đêm và tự tính giờ công thực tế ròng) `[MỚI]`
+- **Given** người dùng tạo mới ca làm việc với `startTime = "22:00"`, `endTime = "06:00"`, `breakMinutes = 30`
+- **When** người dùng lưu ca làm việc
+- **Then** hệ thống tự động xác định đây là ca qua đêm (`isOvernight = true`), tính số giờ công thực tế ròng là `((6 + 24 - 22) * 60 - 30) / 60 = 7.5` giờ (`workingHours = 7.5`), và lưu thành công
+
+**AC-hrm-60** (FR-hrm-051, BR-hrm-077, E-hrm-075 — Khóa lặp lại hàng năm cho ngày lễ âm lịch) `[MỚI]`
+- **Given** người dùng chọn Loại lễ `type = "LUNAR"` (Lễ âm lịch) khi tạo hoặc sửa ngày lễ
+- **When** người dùng bật cờ lặp lại hàng năm `isAnnual = true` và bấm lưu
+- **Then** hệ thống từ chối lưu với lỗi 400 E-hrm-075: "Ngày lễ âm lịch không thể lặp lại theo dương lịch. Vui lòng tắt cờ lặp hàng năm và tạo cho từng năm."
+
+**AC-hrm-61** (FR-hrm-054, BR-hrm-079 — Tạo nhanh lịch ngày lễ tự động lọc trùng) `[MỚI]`
+- **Given** trong danh mục ngày lễ của công ty đã có sẵn ngày "01/01/2026 - Tết Dương lịch"
+- **When** người dùng bấm "Tạo nhanh" lịch ngày lễ cho năm 2026 (`POST /holidays/quick-generate`)
+- **Then** hệ thống tự động sinh 11 ngày nghỉ lễ chuẩn theo Điều 112 BLLĐ (phần âm lịch tính bằng thuật toán quy chiếu UTC+7), bỏ qua ngày 01/01/2026 đã tồn tại, bổ sung 10 ngày lễ còn thiếu, trả về danh sách đầy đủ và không báo lỗi trùng lặp
+
+**AC-hrm-62** (FR-hrm-046, FR-hrm-047, BR-hrm-070, E-hrm-077 — Phân quyền cập nhật và khôi phục Cấu hình mặc định) `[MỚI]`
+- **Given** người dùng đăng nhập với vai trò `OWNER_EMPLOYEE` (không phải chủ tài khoản `OWNER` và không phải `ADMIN`)
+- **When** người đó gửi yêu cầu cập nhật (`PUT /settings/general`) hoặc khôi phục cấu hình mặc định (`POST /settings/general/restore-default`)
+- **Then** hệ thống từ chối với lỗi 403 E-hrm-077: "Chỉ Quản trị viên (ADMIN) hoặc Chủ doanh nghiệp (OWNER) mới có quyền cập nhật hoặc khôi phục Cấu hình mặc định."; yêu cầu xem (`GET /settings/general`) vẫn thành công
+
+**AC-hrm-63** (FR-hrm-048, BR-hrm-076 — Cảnh báo ca làm việc vượt 12 giờ theo Điều 105 & 107 BLLĐ) `[MỚI, BUG-HRM-47]`
+- **Given** người dùng tạo mới hoặc cập nhật Ca làm việc
+- **When** người dùng nhập ca có tổng giờ công thực tế ròng `workingHours = 14.0` giờ (ví dụ: vào 06:00, ra 21:00, nghỉ 60 phút)
+- **Then** hệ thống vẫn cho phép tạo/sửa thành công (201/200) nhằm phục vụ các ngành nghề đặc thù, nhưng payload phản hồi trả kèm `warning: "CANH_BAO_GIO_LAM_VUOT_TRAN_BLLD"` để giao diện hiển thị banner cảnh báo nghiệp vụ cho người quản trị
+
+**AC-hrm-64** (FR-hrm-048, BR-hrm-074, E-hrm-078 — Chặn vượt trần 99 ca tự sinh và cho phép mã ca tùy chỉnh) `[MỚI, BUG-HRM-45]`
+- **Given** trong danh mục ca làm việc của công ty đã sử dụng đủ 99 mã ca từ `CA01` đến `CA99`
+- **When** người dùng tạo mới ca làm việc và để trống ô Mã ca để hệ thống tự sinh
+- **Then** hệ thống từ chối và trả lỗi 400 E-hrm-078: "Đã đạt giới hạn 99 ca làm việc tự sinh. Vui lòng tự nhập mã ca hoặc giải phóng ca không sử dụng."
+- **When** người dùng tự nhập thủ công `code = "CA100"` (hoặc `code = "CA_DEM_01"`) chưa tồn tại trong tenant
+- **Then** hệ thống chấp nhận lưu ca mới thành công với mã đã nhập
+
+**AC-hrm-65** (FR-hrm-051, BR-hrm-078, E-hrm-076 — Cắt khoảng trắng thừa tên ngày lễ chống lách unique constraint) `[MỚI, BUG-HRM-49]`
+- **Given** trong hệ thống đã có ngày lễ ngày 01/01/2026 với tên `"Tết Dương lịch"`
+- **When** người dùng tạo mới hoặc cập nhật một ngày lễ khác vào ngày 01/01/2026 nhưng nhập tên có khoảng trắng thừa `"  Tết Dương lịch  "`
+- **Then** hệ thống tự động `.trim()` chuỗi và nhận diện trùng lặp, từ chối lưu với lỗi 409 E-hrm-076: "Ngày này đã có ngày lễ cùng tên trong hệ thống."
+
+**AC-hrm-66** (FR-hrm-054, BR-hrm-079, E-hrm-079 — Chặn năm nằm ngoài dải 2024–2030 của Tạo nhanh) `[HOÀN NGUYÊN 2026-09-08 — trở lại dải cố định 2024–2030]`
+- **Given** danh mục ngày lễ của công ty đang trống
+- **When** người dùng gửi yêu cầu Tạo nhanh với `year = 2023` (dưới dải), rồi với `year = 2031` (trên dải)
+- **Then** hệ thống từ chối **cả hai** với lỗi 400 E-hrm-079 kèm đúng câu: "Năm khởi tạo ngày lễ phải nằm trong khoảng từ 2024 đến 2030."
+- **And** không có dòng ngày lễ nào được tạo trong cả hai trường hợp
+- **Ghi chú cho người viết ca kiểm thử:** hệ thống từ chối `year = 2031` là do **quy tắc nghiệp vụ**, **không** phải do bộ tính không tính được năm đó — chạy thật ngày 2026-09-08 cho thấy 2031 vẫn ra đủ 11 ngày lễ. Ca kiểm thử **không được** ghi lý do là "thuật toán không hỗ trợ năm ngoài 2024–2030".
+
+**AC-hrm-67** (FR-hrm-045, FR-hrm-047, BR-hrm-081 — Biểu thuế mặc định là biểu 7 bậc chuẩn) `[MỚI — đợt thẩm định lại 2026-09-08]`
+- **Given** một công ty vừa được tạo, chưa từng có bản ghi Cấu hình mặc định
+- **When** người dùng mở màn hình Thiết lập chung lần đầu (`GET /settings/general`), hoặc `ADMIN`/`OWNER` bấm "Khôi phục mặc định" (`POST /settings/general/restore-default`)
+- **Then** biểu thuế TNCN trả về có **đúng 7 bậc**, theo thứ tự các cặp (ngưỡng trên lũy kế — thuế suất): (5.000.000 — 5%), (10.000.000 — 10%), (18.000.000 — 15%), (32.000.000 — 20%), (52.000.000 — 25%), (80.000.000 — 30%), (bậc mở — 35%). Biểu có thuế suất cao nhất là 25% hoặc chỉ có 5 bậc là **trượt**
+
+**AC-hrm-68** (FR-hrm-046, BR-hrm-082 điều kiện 2, E-hrm-080 — Ngưỡng lũy kế phải tăng nghiêm ngặt) `[MỚI — đợt thẩm định lại 2026-09-08]`
+- **Given** `ADMIN` hoặc `OWNER` đang cập nhật Cấu hình mặc định
+- **When** gửi biểu thuế có ngưỡng lũy kế **không** tăng dần — ví dụ bậc 2 là 10.000.000 còn bậc 3 là 8.000.000 — trong khi thuế suất vẫn tăng đều 5% → 10% → 15%
+- **Then** hệ thống từ chối lưu với lỗi 400 E-hrm-080: "Ngưỡng thu nhập của bậc thuế sau phải lớn hơn bậc liền trước." *(Trước quyết định này, đúng nội dung đó được chấp nhận vì chỉ cột thuế suất được kiểm.)*
+
+**AC-hrm-69** (FR-hrm-046, BR-hrm-082 điều kiện 1 và 4, E-hrm-081, E-hrm-082 — Số bậc tối thiểu và bậc mở) `[MỚI — đợt thẩm định lại 2026-09-08]`
+- **Given** `ADMIN` hoặc `OWNER` đang cập nhật Cấu hình mặc định
+- **When** gửi biểu thuế **rỗng** hoặc chỉ có **1 bậc**
+- **Then** từ chối lưu với lỗi 400 E-hrm-081: "Biểu thuế thu nhập cá nhân phải có ít nhất 2 bậc."
+- **When** gửi biểu 7 bậc nhưng bậc cuối có ngưỡng trên **hữu hạn** 100.000.000 thay vì là bậc mở
+- **Then** từ chối lưu với lỗi 400 E-hrm-082, vì phần thu nhập trên 100.000.000đ không còn bậc nào áp thuế
+
+**AC-hrm-70** (FR-hrm-046, BR-hrm-083, BR-hrm-066 nhóm 6 — Cho lưu biểu lệch chuẩn kèm cảnh báo) `[MỚI — đợt thẩm định lại 2026-09-08]`
+- **Given** `ADMIN` hoặc `OWNER` đang cập nhật Cấu hình mặc định
+- **When** lưu một biểu thuế **hợp lệ về cấu trúc nhưng khác biểu chuẩn** (ví dụ 5 bậc: 5% · 15% · 25% · 30% · 35%)
+- **Then** hệ thống lưu thành công (200), phản hồi trả kèm `warning: "CANH_BAO_BIEU_THUE_LECH_CHUAN"`, giao diện hiển thị dải cảnh báo lệch biểu chuẩn, và sinh **đúng một** bản ghi nhật ký kiểm toán với khóa nghiệp vụ `"DEFAULT"`
+
+**AC-hrm-71** (FR-hrm-055, BR-hrm-081 — Chuẩn hóa dữ liệu công ty đang giữ biểu cũ) `[MỚI — đợt thẩm định lại 2026-09-08]`
+- **Given** công ty A giữ **nguyên văn** biểu 5 bậc cắt cụt do hệ thống tự nạp; công ty B đã tự sửa biểu thành 6 bậc; công ty C đã có biểu 7 bậc chuẩn
+- **When** chạy thao tác chuẩn hóa biểu thuế ở chế độ có ghi, rồi chạy lại lần thứ hai
+- **Then** công ty A được ghi thành biểu 7 bậc chuẩn; công ty B **giữ nguyên** và được liệt kê ra để chủ tài khoản tự quyết; công ty C không bị đụng tới; lần chạy thứ hai **không ghi thêm gì** và cho cùng số liệu đối soát (số đã chuẩn hóa · số giữ nguyên · số cần người xem lại)
+
+**AC-hrm-72** (BR-hrm-080 — Ngữ nghĩa `khoang` một chiều, không quy đổi ngầm) `[MỚI — đợt thẩm định lại 2026-09-08]`
+- **Given** màn hình Thiết lập chung đang hiển thị biểu 7 bậc chuẩn
+- **When** người dùng sửa ngưỡng của bậc 3 từ 18.000.000 thành 20.000.000, bấm lưu, rồi tải lại trang
+- **Then** ô bậc 3 hiện lại đúng **20.000.000** — là ngưỡng trên lũy kế; **không** phải 2.000.000, không phải 10.000.000, không phải bất kỳ giá trị nào sinh ra do quy đổi sang độ rộng bậc. Nếu giao diện có hiển thị cột độ rộng bậc thì cột đó ở dạng **chỉ-đọc** và bằng 2.000.000
+
+**AC-hrm-73** (FR-hrm-054, BR-hrm-079 — Hai biên của dải đều sinh đủ 11 ngày lễ) `[HOÀN NGUYÊN 2026-09-08 — hai biên là 2024 và 2030]`
+- **Given** danh mục ngày lễ của công ty đang trống
+- **When** người dùng lần lượt Tạo nhanh cho `year = 2024` rồi cho `year = 2030`
+- **Then** cả hai lần đều thành công (200) và **mỗi lần sinh đúng 11 ngày lễ**, trong đó 6 ngày âm lịch (5 ngày Tết và Giỗ Tổ Hùng Vương) đều ra ngày dương lịch cụ thể, không dòng nào bị bỏ trống
+- **And** hệ thống **không được** trả 200 kèm danh sách rỗng ở bất kỳ năm nào trong dải — 200-mà-rỗng là hỏng im lặng, phải coi là **trượt**
+- **Bằng chứng chạy thật 2026-09-08:** gọi bộ tính ngày lễ cho hai biên — `2024` cho Mùng 1 Tết `2024-02-10`, `2030` cho `2030-02-02`; cả hai đủ 11 ngày.
+
+**AC-hrm-74** — **ĐÃ THU HỒI ngày 2026-09-08.** Tiêu chí này mô tả mốc đổi dải lúc 00:00 giờ Việt Nam ngày 01/01, **chỉ có nghĩa với dải trượt**. Dải trượt đã bị thu hồi, dải hiện hành là cố định 2024–2030 nên không có mốc đổi dải nào. Mã `AC-hrm-74` **không được dùng lại** cho tiêu chí khác.
+
+**AC-hrm-75** (FR-hrm-051, BR-hrm-084 — Hai ngày lễ trùng tên, cùng lặp hàng năm, khác ngày là hợp lệ) `[MỚI 2026-09-08 — đóng OQ-ARCH-16]`
+- **Given** công ty đã có ngày lễ `31/12/2026` tên `"Nghỉ Tết Dương lịch"` với cờ lặp hàng năm **bật**
+- **When** người dùng tạo thêm ngày lễ `01/01/2027` cũng mang tên `"Nghỉ Tết Dương lịch"`, cũng bật cờ lặp hàng năm
+- **Then** hệ thống **lưu thành công**, **không** trả E-hrm-076 và không trả bất kỳ lỗi nào khác — đây là một kỳ nghỉ hai ngày mang một tên, là nghiệp vụ thật
+- **And** khi phân hệ Lương đếm số ngày nghỉ lễ của kỳ, hai dòng trên phải cho ra **2 ngày nghỉ** (31/12 và 01/01) vì đếm theo ngày dương lịch duy nhất, **không** phải 2 lần cùng một ngày (BR-hrm-084)
+- **And** ngược lại, tạo dòng thứ hai **trùng cả ngày lẫn tên** với một dòng đã có vẫn bị từ chối 409 E-hrm-076 — quy tắc BR-hrm-084 chỉ mở cho trường hợp khác ngày
+
 ---
 
 ## 11. Các điểm nghiệp vụ còn tranh cãi — phương án và khuyến nghị
 
-Năm điểm dưới đây là chỗ mã hiện tại và mong đợi nghiệp vụ chưa khớp. Mỗi điểm nêu 2–3 phương án kèm bảng so sánh và khuyến nghị.
+Sáu điểm dưới đây là chỗ mã hiện tại và mong đợi nghiệp vụ chưa khớp. Mỗi điểm nêu 2–3 phương án kèm bảng so sánh và khuyến nghị.
 
-> **Cả năm điểm đã được chốt ngày 2026-09-07.** Phần phân tích phương án được giữ nguyên làm hồ sơ quyết định — đọc để biết vì sao chọn như vậy, đừng đọc như câu hỏi còn mở. Kết quả chốt ghi ở đầu mỗi mục và đã được đưa thành quy tắc ở Mục 5.
+> **Năm điểm đầu (11.1–11.5) đã được chốt ngày 2026-09-07; điểm 11.6 chốt ngày 2026-09-08.** Phần phân tích phương án được giữ nguyên làm hồ sơ quyết định — đọc để biết vì sao chọn như vậy, đừng đọc như câu hỏi còn mở. Kết quả chốt ghi ở đầu mỗi mục và đã được đưa thành quy tắc ở Mục 5.
 
 ### 11.1 Chống chồng lấn thời gian hợp đồng (BR-hrm-022, E-hrm-024)
 
@@ -1187,6 +1658,34 @@ Năm điểm dưới đây là chỗ mã hiện tại và mong đợi nghiệp v
 | **Rủi ro mất dữ liệu** | Trung bình | Thấp | Thấp (nhưng đổi lấy rác) |
 
 **Khuyến nghị: P2.** Giao diện đã có hộp xác nhận riêng cho thao tác gỡ file với đúng câu cảnh báo "File sẽ bị xóa khỏi Google Drive và không lấy lại được"; ép đi qua bước đó là dùng lại đúng lớp bảo vệ đã có, thay vì nhân đôi rủi ro xóa nhầm ở đường xóa dòng. Nếu nghiệp vụ thấy hai bước quá phiền thì chọn P1 **kèm** yêu cầu hộp xác nhận của thao tác xóa dòng phải nói rõ file scan sẽ bị xóa theo. **Không** chọn P3 nếu không có kế hoạch dọn rác.
+
+---
+
+### 11.6 Dải năm được phép "Tạo nhanh" lịch ngày lễ (BR-hrm-079, E-hrm-079)
+
+> **CÒN MỞ — quyết định đã bị thu hồi (2026-09-08).** Đợt 2026-09-08 từng chốt **P2 — dải trượt `[năm nay − 5, năm nay + 10]`**, nhưng **chủ dự án đã quyết lùi lại**: giữ **dải cố định 2024–2030** như cũ và để việc mở dải cho lần sau. Trạng thái hiện hành **không phải P1/P2/P3** mà là **giữ nguyên hiện trạng** — tức hoãn quyết định, không phải chọn phương án. Biên bản chốt dải trượt đã được đánh dấu **ĐÃ THU HỒI**, giữ lại làm lưu vết: [`agents-business-analyst/ba-quyet-dinh-dai-nam-tao-nhanh-2026-09-08.md`](../agents-business-analyst/ba-quyet-dinh-dai-nam-tao-nhanh-2026-09-08.md). Câu hỏi mở tương ứng: `OQ-hrm-37`.
+
+**Hiện trạng đang áp dụng**: dải cố định **2024–2030**, ngoài dải trả 400 `E-hrm-079` — khớp với mã nguồn, hợp đồng API và ca kiểm thử. **Lưu ý về lý do:** trần 2030 ban đầu sinh ra từ một **bảng tra âm lịch chép tay 7 năm**; bảng đó **đã bị gỡ** và thay bằng thuật toán quy chiếu UTC+7 tính được mọi năm trong dải kỹ thuật `[1900, 2199]`. Nên từ nay giới hạn 2024–2030 phải được hiểu là **một lựa chọn nghiệp vụ**, không phải một ràng buộc kỹ thuật — và **hệ quả vẫn còn nguyên**: nếu không ai mở dải, hệ thống sẽ từ chối Tạo nhanh kể từ 01/01/2031, người phát hiện sẽ là khách hàng chứ không phải đội phát triển.
+
+| | P1. Giữ dải cứng, nới rộng hơn (ví dụ 2024–2050) | P2. Dải trượt `[N − 5, N + 10]` | P3. Bỏ hẳn giới hạn |
+|---|---|---|---|
+| **Cách làm** | Vẫn hai con số cố định, chỉ đổi con số | Tính từ năm hiện tại theo giờ Việt Nam ở mỗi lần gọi | Nhận mọi số nguyên |
+| **Ưu** | Sửa một chỗ, dễ hiểu nhất, không phải đổi cách viết ca kiểm thử | Không bao giờ hết hạn; luôn phủ đúng vùng năm người dùng thực sự cần | Rẻ nhất, không phải quyết định gì |
+| **Nhược** | **Vẫn hết hạn**, chỉ dời ngày hỏng đi xa hơn — mà lỗi hết hạn chỉ lộ ra đúng ngày nó xảy ra, khi không còn ai nhớ vì sao có con số đó | Mô tả và ca kiểm thử phải viết bằng biểu thức thay vì con số; câu thông báo lỗi phải sinh động theo dải | Nhận cả `year = 9999`: mời gọi lỗi gõ nhầm và rác trong danh mục ngày lễ của khách; ngoài `[1900, 2199]` còn **hỏng im lặng** — báo thành công mà tạo 0 dòng |
+| **Độ phức tạp** | Rất thấp | Thấp — mốc "năm hiện tại theo giờ Việt Nam" đã có sẵn trong hệ thống, không phải dựng mới | Rất thấp |
+| **Rủi ro tồn dư** | Cao — chắc chắn tái diễn, chỉ là khi nào | Thấp | Trung bình |
+
+**Khuyến nghị của BA vẫn là P2**, nhưng **chưa được chấp thuận** — chủ dự án chọn hoãn. Lập luận giữ nguyên để lần xét lại khỏi phải dựng lại từ đầu: mọi dải cứng đều hết hạn, P1 chỉ mua thời gian và trả giá bằng việc quên mất lý do; P3 vứt bỏ lớp bảo vệ mà một ứng dụng tính lương cần giữ. Chừng nào chưa ai quyết, dải **2024–2030 vẫn là quy tắc có hiệu lực** và mọi tài liệu, mã nguồn, ca kiểm thử phải bám theo nó.
+
+**Nếu sau này chọn dải trượt thì biên độ nào** — phần phân tích để dành, chưa có hiệu lực:
+
+| Biên độ | Lập luận ủng hộ | Kết luận |
+|---|---|---|
+| `−3 / +5` | Sát nhu cầu thật nhất (năm nay và năm sau là chính), chặn lỗi gõ nhầm tốt hơn vì dải hẹp | **Bác — quá sát.** Người dùng lập kế hoạch nghỉ lễ dài hạn hoặc bổ sung lịch vài năm cũ để đối chiếu sẽ chạm trần, mà phần thắng về chống gõ nhầm thì nhỏ: chế độ **xem trước** của Tạo nhanh (`ADR-010`) đã cho người dùng nhìn đúng danh sách ngày sắp tạo **trước khi ghi**, nên năm gõ nhầm lộ ra ngay ở bước đó |
+| `−10 / +20` | Lùi 10 năm khớp thời hạn lưu trữ chứng từ kế toán (Luật Kế toán 2015, Điều 41) | **Bác — mua một thứ giả định.** Hệ thống chưa có đường nhập lịch sử bảng lương (`CONTEXT_SUMMARY.md` Mục 16.6 nợ số 1: số liệu bảng lương vẫn là dữ liệu giả), nên lịch ngày lễ năm 2016 hiện không phục vụ ai. Còn tiến tới 2046 thì càng xa càng không có gì để đối chiếu — xem A-hrm-15 |
+| **`−5 / +10`** | Lùi 5 năm đủ để bổ sung và đối chiếu lịch các năm gần; tiến 10 năm đủ cho mọi kế hoạch nghỉ lễ dài hạn thực tế | **Ưu tiên nếu mở dải** — cân bằng hai phía, và cả hai biên đều nằm sâu trong dải kỹ thuật `[1900, 2199]`. **Chưa áp dụng** |
+
+Cả ba biên độ trên đều thuộc phương án dải trượt và **hiện chưa áp dụng**. Ghi lại để lần xét sau khỏi phân tích lại. Một điểm đã rõ và không đổi: từ khi bảng tra chép tay bị gỡ, việc nới dải chỉ là **sửa một quy tắc** ở vài chỗ đã biết, **không** còn phải chờ ai chép thêm bảng tra.
 
 ---
 
@@ -1288,8 +1787,11 @@ Năm điểm dưới đây là chỗ mã hiện tại và mong đợi nghiệp v
 | G4 | BR-hrm-030…033 | FR-hrm-021…024 | E-hrm-025…030 | UC-hrm-10 | AC-hrm-20…AC-hrm-22, AC-hrm-51 | `hrm-erd.md` |
 | G5 | BR-hrm-034…048, BR-hrm-062 | FR-hrm-025…035, FR-hrm-039 | E-hrm-031…051, E-hrm-059, E-hrm-060 | UC-hrm-11…UC-hrm-13, UC-hrm-15 | AC-hrm-23…AC-hrm-33, AC-hrm-47, AC-hrm-48, AC-hrm-52 | `hrm-states.md` mục LienKetDrive, `hrm-flows.md` luồng 3, 4, 5 |
 | G6 | BR-hrm-062, BR-hrm-063, BR-hrm-064, BR-hrm-065 | FR-hrm-038…FR-hrm-041 | E-hrm-060, E-hrm-061 | UC-hrm-16, UC-hrm-17 | AC-hrm-52…AC-hrm-55 | `hrm-erd.md` mục `hrm_giay_to_bat_buoc` |
+| Cấu hình mặc định (MỚI) | BR-hrm-070…073, BR-hrm-080…083 | FR-hrm-045…047, FR-hrm-055 | E-hrm-067…069, E-hrm-077, E-hrm-080…082 | UC-hrm-18, UC-hrm-19 | AC-hrm-57, AC-hrm-58, AC-hrm-62, AC-hrm-67…72 | `hrm-erd.md` mục `hrm_general_settings`, `hrm-flows.md`, `hrm-states.md` |
+| Ca làm việc (MỚI) | BR-hrm-074…076 | FR-hrm-048…050 | E-hrm-070…073, E-hrm-078 | UC-hrm-20 | AC-hrm-59, AC-hrm-63, AC-hrm-64 | `hrm-erd.md` mục `hrm_work_shifts`, `hrm-flows.md`, `hrm-states.md` |
+| Lịch ngày lễ (MỚI) | BR-hrm-077…079, BR-hrm-084 | FR-hrm-051…054 | E-hrm-074…076, E-hrm-079 | UC-hrm-21, UC-hrm-22 | AC-hrm-60, AC-hrm-61, AC-hrm-65, AC-hrm-66, AC-hrm-73, AC-hrm-75 (AC-hrm-74 **đã thu hồi 2026-09-08**) | `hrm-erd.md` mục `hrm_holidays`, `hrm-flows.md` |
 | Xuyên suốt | BR-hrm-049…051, BR-hrm-059 | Áp cho mọi FR, FR-hrm-042 | E-hrm-001…005, E-hrm-058 | Mọi UC | AC-hrm-34, AC-hrm-35, AC-hrm-45, AC-hrm-46 | `hrm-flows.md` luồng 1 |
-| Xuyên suốt | BR-hrm-066 | FR-hrm-020, FR-hrm-024, FR-hrm-034, FR-hrm-035, FR-hrm-043 | — | UC-hrm-15 | AC-hrm-56 | — |
+| Xuyên suốt | BR-hrm-066 | FR-hrm-020, FR-hrm-024, FR-hrm-034, FR-hrm-035, FR-hrm-043, FR-hrm-046, FR-hrm-047 | — | UC-hrm-15, UC-hrm-18, UC-hrm-19 | AC-hrm-56 | — |
 
 ### 13.1 Truy vết theo quyết định nghiệp vụ (chốt 2026-09-07)
 
@@ -1344,6 +1846,24 @@ Hai điều phân hệ Lương **bắt buộc** phải biết, ghi ở đây vì
 
 Kèm theo giả định này là hai khoảng trống **đã biết và cố ý chưa xử lý** trong đợt này: hệ thống chưa có chính sách **xóa cứng** hồ sơ nhân sự, và chưa đặt **thời hạn lưu trữ** file scan sau khi nhân viên nghỉ việc. Cả hai thuộc nghĩa vụ bảo vệ dữ liệu cá nhân (Nghị định 13/2023/NĐ-CP) và phải mở một vòng quyết định riêng khi có yêu cầu tuân thủ cụ thể — xem NFR-hrm-005.
 
+**A-hrm-11** `[MỚI]` — Cấu hình mặc định áp dụng phạm vi toàn doanh nghiệp (Singleton per tenant). Khi một tham số cấu hình thay đổi (ví dụ: lương cơ sở, tỷ lệ bảo hiểm, giờ công chuẩn), các kỳ tính công/lương trong tương lai sẽ áp dụng giá trị mới, không tự động hồi tố sửa đổi các bảng lương của kỳ đã chốt trong quá khứ.
+
+**A-hrm-12** `[SỬA THEO đợt thẩm định lại 2026-09-08]` — Biểu thuế TNCN trên cấu hình mặc định lưu dạng JSONB (`taxBrackets`) và **luôn khởi tạo bằng biểu 7 bậc chuẩn Điều 22 Luật Thuế TNCN** (BR-hrm-081). Cấu trúc động chỉ phục vụ một mục đích: đổi được **số bậc** khi pháp luật thay đổi mà không phải đổi lược đồ cơ sở dữ liệu — **không** phải để nạp mặc định một biểu rút gọn.
+
+> **Bản trước của giả định này ghi "ban đầu nạp biểu 5 bậc rút gọn theo dữ liệu mẫu" — SAI và đã bị bãi bỏ.** Biểu 5 bậc từng được nạp (dừng ở thuế suất 25%) không tương ứng với bất kỳ biểu thuế nào của pháp luật Việt Nam. Chi tiết ở `docs/hrm/agents-business-analyst/ba-reconciliation-report-2026-09-08.md`.
+
+**A-hrm-13** `[MỚI]` — Mã ca làm việc tự sinh theo dãy `CA01`–`CA99` (tối đa 99 ca), đảm bảo đủ đáp ứng quy mô hoạt động ca kíp của doanh nghiệp vừa và nhỏ; thuật toán quét tìm khoảng trống nhỏ nhất chưa dùng (gap finding).
+
+**A-hrm-14** `[VIẾT LẠI 2026-09-08 — bản cũ nói về bảng tra 2024–2030 đã bị bãi bỏ]` — Ngày âm lịch phục vụ tính năng "Tạo nhanh" ngày lễ được **tính bằng thuật toán** quy chiếu giờ Việt Nam (UTC+7), **không** tra từ bảng chép sẵn. Thuật toán chỉ có nghĩa trong dải năm `[1900, 2199]`; ngoài dải đó nó trả danh sách rỗng, nên **dải nghiệp vụ của BR-hrm-079 phải luôn nằm gọn bên trong dải này**.
+
+> **Bản trước của giả định này ghi "bảng tra lịch âm bao gồm các năm hỗ trợ từ 2024 đến 2030" — đã BÃI BỎ.** Bảng tra đó sai 17/42 ô (11 sai ngày, 6 sai tên) và đã bị gỡ ngày 2026-09-08; xem `CONTEXT_SUMMARY.md` Mục 16.2 và 16.3.
+
+**A-hrm-15** `[MỚI 2026-09-08]` — **Điều tính năng "Tạo nhanh" KHÔNG bảo đảm.** Lịch sinh ra là một **bản nháp tiết kiệm công nhập liệu**, không phải bản sao lịch nghỉ do Nhà nước công bố. Cụ thể ba điều:
+
+1. **Ngày âm lịch ở các năm xa chưa được đối chiếu với nguồn chính thức.** Nhà nước công bố lịch nghỉ **theo từng năm**, thường chỉ trước năm áp dụng vài tháng. Với một năm cách hôm nay nhiều năm thì **không tồn tại nguồn chính thức nào để đối chiếu** — con số hệ thống đưa ra là kết quả tính toán chưa được xác nhận. Trường hợp đã gặp: mốc Mùng 1 Tết 2030 có thời điểm sóc rơi cách nửa đêm giờ Việt Nam khoảng 45 phút, mức tin cậy chỉ ở mức **trung bình** (`CONTEXT_SUMMARY.md` Mục 16.3). Với dải cố định 2024–2030, các năm cuối dải (2029, 2030) nằm đúng trong nhóm "tính được nhưng chưa đối chiếu được" — người dùng phải tự đối chiếu khi Nhà nước công bố lịch nghỉ của năm đó.
+2. **Cách chia 5 ngày Tết là quyết định chính sách, không phải phép tính.** Nghỉ mấy ngày trước Tết và mấy ngày sau Tết do Chính phủ công bố hằng năm, và có năm khác quy ước hệ thống đang dùng (2 ngày cuối tháng Chạp cộng Mùng 1, 2, 3). Ngày nghỉ bù khi ngày lễ trùng ngày nghỉ hàng tuần (Điều 111 khoản 3 BLLĐ 2019) cũng vậy — thuật toán âm lịch không suy ra được.
+3. **Hệ quả bắt buộc**: người dùng phải **đối chiếu lại với thông báo chính thức của năm đó rồi sửa** trước khi dùng lịch để tính công và tính lương. Mọi dòng do Tạo nhanh sinh ra đều sửa và xóa được — chính điều này làm cho một dải năm rộng trở thành chấp nhận được.
+
 ---
 
 ## 15. Câu hỏi mở
@@ -1380,6 +1900,15 @@ Kèm theo giả định này là hai khoảng trống **đã biết và cố ý 
 | OQ-hrm-31 | Ký hợp đồng đầu tiên qua đường **đổi hợp đồng** (nhân viên chưa có hợp đồng nào): có bắt buộc gửi loại hợp đồng cần chốt không, khi không có gì để chốt? | Người dùng nghiệp vụ | Hiện trường này bắt buộc vô điều kiện nên nhánh đó bị từ chối vì thiếu một thông tin mô tả thứ không tồn tại |
 | OQ-hrm-32 | Ký hợp đồng khoán **song song** cho người đang có hợp đồng lao động chính thì có tự tắt cờ đoàn viên công đoàn của họ không? | Kế toán trưởng, công đoàn | Luật tắt cờ một chiều (BR-hrm-025) viết trên giả định "mỗi lúc một hợp đồng" — QĐ #1 vừa xóa giả định đó. Người lao động vẫn là đoàn viên theo hợp đồng chính nhưng hệ thống âm thầm gỡ, và **không tự bật lại được** theo đúng thiết kế. Ảnh hưởng trích nộp phí công đoàn |
 
+### 15.1c Phát sinh từ đợt thẩm định lại 2026-09-08
+
+> Hai câu dưới đây nảy ra khi chốt lại biểu thuế TNCN. Cả hai **không chặn** cụm Cấu hình mặc định / Ca làm việc / Lịch ngày lễ — chúng thuộc phần Lương sẽ làm sau. Ghi ra đây để khi dựng phân hệ Lương không phải phát hiện lại từ đầu.
+
+| ID | Câu hỏi | Ai trả lời | Chặn việc gì |
+|---|---|---|---|
+| OQ-hrm-34 | Khi quyết toán thuế TNCN **theo năm**, hệ thống suy ngưỡng năm bằng cách nhân 12 lần ngưỡng tháng, hay công ty phải khai riêng một biểu năm? | Kế toán trưởng | Cách phân hệ Lương tính số thuế cả năm và số quyết toán thừa/thiếu. Đợt này cấu hình **chỉ lưu ngưỡng tháng**, bảng đối chiếu theo năm ở Mục 4.8 là thông tin tham khảo chứ không phải dữ liệu lưu |
+| OQ-hrm-35 | Biểu thuế có cần trường "áp dụng từ ngày" để **chạy lại** một kỳ lương đã chốt bằng đúng biểu của kỳ đó không? | Kế toán trưởng | Hiện BR-hrm-070 chỉ chụp tham số vào kỳ lương tại thời điểm chốt, và kỳ đã chốt không có đường chạy lại. Nếu sau này cần mở kỳ để tính lại (thanh tra thuế, sửa sai), phải quyết định lấy biểu ở đâu |
+
 ### 15.2 Đã đóng ngày 2026-09-07
 
 | ID | Câu hỏi | Đóng bằng | Kết quả chốt |
@@ -1397,3 +1926,17 @@ Kèm theo giả định này là hai khoảng trống **đã biết và cố ý 
 | OQ-hrm-07 | Lương chính có bắt buộc lớn hơn 0? Lương BHXH có bắt buộc khi bật trích BHXH? | QĐ #5 | **Cả hai đều bắt buộc** (BR-hrm-057, BR-hrm-058) |
 | OQ-hrm-08 | Có cho phép hợp đồng bắt đầu trùng ngày kết thúc không? | QĐ #6 | **Cho phép** (BR-hrm-026); kéo theo khoảng ngày chống chồng lấn phải đóng hai đầu |
 | OQ-hrm-10 | Ngưỡng hiệu năng cụ thể cho danh sách nhân viên và danh sách hợp đồng là bao nhiêu? | QĐ #16 | **Chưa đặt số, đo thực tế trước.** NFR-hrm-004 giữ dạng định tính; đợt này thêm chỉ mục rồi đo trên tenant lớn nhất và báo cáo số đo |
+
+### 15.3 Đã đóng ngày 2026-09-08 — câu hỏi do Architect chuyển sang
+
+| ID | Câu hỏi | Đóng bằng | Kết quả chốt |
+|---|---|---|---|
+| OQ-ARCH-16 | Một công ty có được phép có **hai ngày lễ cùng tên, cùng bật cờ lặp hàng năm, ở hai ngày khác nhau** không? Ví dụ hai dòng `"Nghỉ Tết Dương lịch"` đặt ở 31/12 và 01/01, cả hai lặp hàng năm | BR-hrm-084, AC-hrm-75 | **ĐƯỢC PHÉP** — tên ngày lễ là nhãn hiển thị, không phải định danh nghiệp vụ; kỳ nghỉ nhiều ngày mang một tên là nghiệp vụ thật. Trùng cả ngày lẫn tên thì vẫn cấm (BR-hrm-078). **Hệ quả cho Architect:** điều kiện (a) trong "điều kiện xem lại" của `ADR-011` Mục Alternatives (C) **không xảy ra** — không thêm ràng buộc duy nhất trên (tên, tháng, ngày) ở tầng cơ sở dữ liệu. Rủi ro "một ngày lễ bị tính tiền nhiều lần" được chặn bằng **luật đếm theo ngày dương lịch duy nhất** của BR-hrm-084, không bằng ràng buộc chống trùng tên — vì ràng buộc đó vốn không chặn được trường hợp hai dòng cùng ngày khác tên |
+
+### 15.4 Câu hỏi mở liên quan tới dải năm "Tạo nhanh"
+
+| ID | Câu hỏi | Ai trả lời | Chặn việc gì |
+|---|---|---|---|
+| OQ-hrm-37 | **Có mở dải năm "Tạo nhanh" ra ngoài 2024–2030 hay không, và mở đến đâu?** Phương án và đánh đổi đã phân tích sẵn ở Mục 11.6; đợt 2026-09-08 từng chốt dải trượt rồi **bị thu hồi**, nên câu hỏi trở lại trạng thái mở | Chủ dự án | **Không chặn đợt triển khai hiện tại** — mã, hợp đồng API và ca kiểm thử đều đang chạy dải 2024–2030 và khớp nhau. Nhưng **phải trả lời trước 31/12/2030**, nếu không hệ thống sẽ từ chối "Tạo nhanh" kể từ 01/01/2031 (BR-hrm-079, nợ `TD-HRM-01`) |
+| OQ-hrm-36 | Giao diện có cần **cảnh báo riêng** khi người dùng Tạo nhanh cho một năm mà Nhà nước **chưa công bố** lịch nghỉ (thực tế là mọi năm từ năm sau trở đi) không? Nếu có thì cảnh báo dạng gì — dòng chữ tĩnh trong hộp thoại, hay dải cảnh báo động theo năm được chọn? | Người dùng nghiệp vụ, chủ dự án | Câu chữ trên hộp thoại Tạo nhanh. **Không chặn** BR-hrm-079: hạn chế đã được ghi thành A-hrm-15, và giới hạn "phải tự đối chiếu rồi sửa" đúng cho mọi năm chứ không riêng năm xa. Dòng chữ "Hệ thống nhận các năm 2024–2030" trên giao diện **vẫn đúng** và giữ nguyên |
+

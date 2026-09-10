@@ -10,7 +10,11 @@
   * Backend: Node.js (Fastify) + Prisma ORM.
   * Cơ sở dữ liệu: Multi-tenant (DB `maxv2_sys` cho control plane + DB riêng `db_<MST>` cho từng công ty).
   * Frontend: React / TypeScript (`fe_maxv` và `hdđt_maxv`).
-* **Trạng thái phân hệ:** `Ready for Implementation` cho **toàn bộ đợt P0 và P1** (Mục 9.3b). Chốt 20/20 quyết định nghiệp vụ. **Chỉ còn đợt P2** (bộ giấy tờ bắt buộc) đóng, chờ OQ-hrm-13 và OQ-hrm-14.
+* **Trạng thái phân hệ (cập nhật 2026-09-08 sau Quality Gate và vòng sửa lỗi chặn — xem Mục 16):**
+  * **Đợt P0 và P1:** `Ready for Implementation`, giữ nguyên (Mục 9.3b).
+  * **Cụm nền tảng Cấu hình mặc định / Ca làm việc / Lịch ngày lễ:** **ĐẠT CÓ ĐIỀU KIỆN, sau khi đóng 2 lỗi chặn của Quality Gate (2026-09-08) — xem Mục 16.** Đợt đổi dải năm "Tạo nhanh" sang dải trượt **đã bị thu hồi**, mọi tầng đã hoàn nguyên về **2024–2030** — xem Mục 17. Cơ sở dữ liệu đã di trú **10/10 tenant**; giao diện đã nối API thật; hai lỗi chặn `B1` (phân trang) và `B2` (bảng âm lịch sai 17/42 ô) đã đóng. Còn **4 ca đỏ cố ý không nới lỏng** (`TC-hrm-301` tìm kiếm không bỏ dấu · `TC-hrm-316` mâu thuẫn giữa bộ ca và hợp đồng) và 7 khoản nợ ở Mục 16.6 — đáng chú ý nhất: **số liệu bảng lương vẫn là dữ liệu giả**, đợt này chỉ đổi nguồn cấu hình. Ghi chép Phase B đợt 2 (giữ nguyên làm lưu vết): ĐẠT CÓ ĐIỀU KIỆN sau Phase B đợt 2 — xem Mục 15.** Máy chủ đã được **gọi thật qua HTTP**: 54/55 ca chạy thật, **52 PASS · 2 FAIL (đều do câu chữ tài liệu lệch hợp đồng) · 1 KHÔNG CHẠY ĐƯỢC**, **0 lỗi sản phẩm mới**. Được merge phần máy chủ; **chưa** được ghi "nghiệm thu hoàn tất" cho tới khi BA chốt `BUG-HRM-50` và có thực thể `hrm_work_schedules`. Ghi chép lịch sử của trạng thái trước đó: Trạng thái đúng với thực tế: đặc tả đã chốt (24/24 quyết định, gồm 4 quyết định mới `QĐ #22`…`#25`) · **thiết kế kỹ thuật đã cập nhật xong 2026-09-08** — `api-contract.md` + `data-model.md` đã đối soát với mã nguồn thật cho đủ 14 endpoint, `ADR-009` chốt 4 quyết định kỹ thuật (xem Mục 14) · **máy chủ đã viết xong nhưng còn sai biểu thuế TNCN, thiếu ba phép kiểm toàn vẹn, thiếu hai cảnh báo và thiếu nhật ký kiểm toán** (11 việc `BE-01`…`BE-11`) · **giao diện chưa nối API, và lớp gọi API hiện có sai 3 chỗ chặn** (`FE-01`, `FE-02`, `FE-05`) · **kiểm thử chưa gọi thật một endpoint nào**.
+  * **Đợt P2** (bộ giấy tờ bắt buộc) vẫn đóng, chờ OQ-hrm-13 và OQ-hrm-14.
+  * Đã chốt 20/20 quyết định nghiệp vụ đợt cũ, 6/6 phát hiện phản biện QA đợt nền tảng (`BUG-HRM-44`…`BUG-HRM-49`) và 4/4 phát hiện của đợt thẩm định lại 2026-09-08.
   * Đợt 1 đã triển khai xong (CRUD 5 thực thể + tích hợp Drive + đồng bộ frontend).
   * Vòng rà soát 3 Amigos (BA ∥ Architect ∥ QA) hoàn tất ngày 2026-09-07 — xem Mục 5.
   * Chốt đủ **16/16** quyết định nghiệp vụ ngày 2026-09-07 (Mục 6.1 — 4 quyết định đợt 1, 12 quyết định đợt 2).
@@ -18,6 +22,10 @@
   * **Vòng phản biện độc lập Architect ∥ Tester-QA hoàn tất 2026-09-07** — xem Mục 9. Vòng này tìm ra 7 bug mới và 18 nhánh nghiệp vụ mà cả đặc tả lẫn bộ ca kiểm thử đều bỏ sót.
   * **Cổng BA Final Sign-off MỞ cho P0 và P1** sau khi chốt nốt 4 quyết định đợt 3 (QĐ #17…#20). Xem Mục 9.3b. **Đợt P2 vẫn đóng.**
   * **Sáu việc chặn** phải xong trước khi mở lại phần còn lại — xem `qa/issues-and-bugs.md` Mục 5, Sprint 0b.
+  * **Đặc tả SRS cụm nền tảng mới (2026-09-08):** Hoàn thành đặc tả nghiệp vụ SRS cho 3 thực thể nền tảng Cấu hình mặc định (`hrm_general_settings`), Ca làm việc (`hrm_work_shifts`) và Lịch ngày lễ (`hrm_holidays`). Bổ sung 10 BR (`BR-hrm-070`..`079`), 10 FR (`FR-hrm-045`..`054`), 13 mã lỗi (`E-hrm-067`..`079`), 5 UC (`UC-hrm-18`..`22`), 10 AC (`AC-hrm-57`..`66`), 3 luồng quy trình Mermaid (`hrm-flows.md`), 2 vòng đời trạng thái (`hrm-states.md`) và 14 endpoint API.
+  * **Biên bản chốt BA Final Sign-off Cụm nền tảng (2026-09-08):** Hoàn thành rà soát chéo 3 Amigos (BA ↔ Architect ↔ QA), tiếp thu và xử lý dứt điểm 6 phát hiện phản biện QA (`BUG-HRM-44`…`BUG-HRM-49`) theo `docs/hrm-ba-signoff-2026-09-08.md`. ⚠️ **Phần kết luận nghiệm thu của biên bản đó đã bị thay thế** — xem Mục 13.
+  * **Đợt thẩm định lại và chốt nghiệp vụ (2026-09-08, cùng ngày):** Phát hiện biểu thuế TNCN mặc định **sai luật** (5 bậc dừng ở 25% thay vì 7 bậc theo Điều 22 Luật Thuế TNCN) và ngữ nghĩa trường `khoang` không thống nhất giữa máy chủ với giao diện. Chốt 4 quyết định `QĐ #22`…`#25`, bổ sung `BR-hrm-080`…`083`, `FR-hrm-055`, `E-hrm-080`…`082`, `AC-hrm-67`…`72`, và **hạ trạng thái cụm tính năng khỏi mức đã nghiệm thu**. Biên bản: `docs/hrm/agents-business-analyst/ba-reconciliation-report-2026-09-08.md` — xem Mục 13.
+  * **Phân hệ Dữ liệu tính lương (2026-09-09 → cập nhật 2026-09-10) — cụm "8 phân hệ nhập liệu + vòng đời kỳ lương" đã ỔN ĐỊNH, cụm "Bảng lương tổng hợp hiển thị" (`bang_luong`) VẪN CHƯA Ready:** đợt kiểm định 2026-09-09 (BA độc lập → Architect ∥ Tester-QA Phase A → Code Reviewer, xem Mục 19.9) phát hiện 9 lỗi 🔴; backend-engineer đã **FIXED 8/9** và frontend-engineer đã **nối API thật cho toàn bộ 23 file còn mock của 8 phân hệ nhập liệu** (work-log 2026-09-09 17:55) — cụm này coi như đạt yêu cầu triển khai. **Đợt kiểm định mới 2026-09-10** (BA, xem Mục 19.10) chuyển sang nhiệm vụ khác: dựng chức năng **Bảng lương tổng hợp** (`GET /payroll/calculate` → UI `bang_luong` 18 cột + tab "Lương hỗ trợ") — UI này **100% còn mock, chưa từng đấu nối**. Phát hiện: đã tự chốt xong 7/10 OQ cũ, phát hiện thêm **4 lỗ hổng thuế/bảo hiểm mới** so với luật VN (2 trần bảo hiểm độc lập, miễn thuế OT vượt chuẩn, khấu trừ 10% HĐ thử việc/thời vụ, trần miễn thuế ăn trưa 730k — `BR-dltl-024…027`), và **1 xung đột nguồn sự thật** cho cột "Lương" (Hợp đồng `luong_chinh` và cột "Lương" trong "Cài đặt lương" — `EmployeeSalaryItem` — đang được 2 cụm code giả định khác nhau) — đánh dấu `OQ-dltl-011 (mới)`. **Cập nhật cùng ngày (Mục 19.11):** chủ dự án đã trực tiếp xác nhận cả 2 quyết định nghiệp vụ còn treo (OQ-dltl-011 → 2 tầng dữ liệu cộng lại, không loại trừ nhau; biểu thuế TNCN → giữ nguyên luật hiện hành 7 bậc/11tr/4.4tr). BA đã viết đầy đủ công thức + Acceptance Criteria cho 4 BR mới (`srs-du-lieu-tinh-luong.md` Mục 15.3.1). **Status: Đặc tả đã chốt đủ — sẵn sàng cho Phase 2 Architect ∥ Tester-QA** (chưa phải Ready for Implementation, còn chờ Phase 2 phản biện + BA Final Sign-off). Xem Mục 19, đặc biệt 19.10–19.12. **Cập nhật 2026-09-10 (Tester-QA):** Phase A đã hoàn tất song song với Architect — 44 test case (8 nhóm, `docs/hrm/du_lieu_tinh_luong/test-matrix-bang-luong-tong-hop.md`), đối chiếu chéo phát hiện thêm 8 gap đặc tả (`GAP-QA-01…08`, 3 mức 🔴 chặn một phần: category phụ cấp cố định, cách quy đổi công, tương tác miễn thuế OT với khấu trừ 10%). Xem Mục 19.11. Vẫn CHƯA Ready cho tới khi 3 gap 🔴 + OQ-dltl-011 được chốt. **Cập nhật 2026-09-10 (Architect — Phase 2 xong, Mục 19.13):** đã xuất `data-model` Mục 11 (18 cột schema tenant), `api-contract` Mục 8 (DTO 43 trường + endpoint mới `GET /payroll/support-allowances`) và `ADR-010` (pipeline 10 bước). Đã chốt cả 2 gap kỹ thuật BA để mở (cờ `SalaryItem.isMealAllowance`; tách `contractBaseSalary`/`fixedAllowanceTotal`/`allowanceInPeriodTotal` + đơn giá giờ OT dùng `isOvertimeBase`). Phát sinh **1 câu hỏi 🔴 mới cho BA/kế toán trưởng (Q-1)**: công thức SRS Mục 15.3.1 bỏ qua `SalaryItem.isTaxable`/`SalaryStructureItem.taxTreatment` ⇒ ô tick "chịu thuế TNCN" hiện không tác dụng tới bảng lương. **Cập nhật 2026-09-10 (Architect, `ADR-010` chốt Q-1/Q-2 bằng văn bản — Mục 19.15):** pipeline 10 bước hoàn chỉnh, `GAP-QA-09` đóng, 19 cột schema (không phải 18), 44 trường response. **Cập nhật 2026-09-10 (BA — Final Sign-off, Mục 19.16):** đã bổ sung `AC-dltl-24…28` vào SRS Mục 15.3.1 khớp `ADR-010` bước [5a], đối soát chéo SRS ↔ Architecture ↔ Test Matrix PASS (không mâu thuẫn nghiệp vụ chặn tiến độ). **Status: Ready for Implementation — Backend Engineer đã được kích hoạt.** Xem Mục 19.16 cho phạm vi triển khai đầy đủ.
 
 ---
 
@@ -30,7 +38,25 @@
 | **Nhân viên** | `hrm_nhan_vien` | `db_<MST>` | Hồ sơ nhân viên, ngày vào làm, thông tin ngân hàng, chế độ công đoàn/chấm công, xóa mềm (`da_xoa`). Không lưu bản sao tĩnh của hợp đồng. |
 | **Hợp đồng** | `hrm_hop_dong` | `db_<MST>` | Lịch sử hợp đồng lao động (1 nhân viên - N hợp đồng), lương chính, lương BHXH, ngày bắt đầu/kết thúc. Nguồn sự thật cho Hợp đồng hiện hành. |
 | **Người phụ thuộc** | `hrm_nguoi_phu_thuoc` | `db_<MST>` | Danh sách người phụ thuộc đăng ký giảm trừ gia cảnh TNCN, chặn trùng MST cho cùng 1 nhân viên (`@@unique([ma_nv, mst])`). |
-| **Tài liệu & Hồ sơ** | `hrm_tai_lieu` | `db_<MST>` | Thông tin giấy tờ (CCCD, bằng cấp, chứng chỉ...) và con trỏ file scan trên Google Drive (`drive_file_id`, `ten_file`, `mime_type`, `kich_thuoc`). |
+| **Tài liệu & Hồ sơ** | `hrm_tai_lieu` | `db_<MST>` | Thông tin giấy tờ (CCCD, bằng cấp, chứng chỉ...) và liên kết 1-N tới bảng con `hrm_tai_lieu_file` lưu file scan trên Google Drive. |
+| **File đính kèm** | `hrm_tai_lieu_file` | `db_<MST>` | Bảng con lưu nhiều file scan cho một giấy tờ (QĐ #21, tối đa 20 file/giấy tờ, mỗi file <= 10MB). |
+| **Cấu hình mặc định** | `hrm_general_settings` | `db_<MST>` | Thiết lập tham số công chuẩn (FIXED_24, FIXED_26, ACTUAL_MONTH), tỷ lệ BHXH (32%), lương cơ sở (NĐ 73/2024: 2.34tr), trần BHXH, giảm trừ gia cảnh (NQ 954/2020: 11tr/4.4tr), **biểu thuế TNCN 7 bậc** JSONB (Điều 22 Luật Thuế TNCN — `khoang` là **ngưỡng trên lũy kế**, bậc cuối là bậc mở; BR-hrm-080, BR-hrm-081), hệ số tăng ca. Singleton `id = 'DEFAULT'`. ⚠️ Mã nguồn hiện còn nạp biểu 5 bậc sai luật — xem Mục 13. |
+| **Ca làm việc** | `hrm_work_shifts` | `db_<MST>` | Danh mục ca làm việc, tự cấp mã duy nhất `CA01`..`CA99` (quét gap) hoặc nhập tay, tính `isOvernight` và `workingHours` tự động, cảnh báo vượt 12h/ngày, quản lý trạng thái `status` (`ACTIVE`/`INACTIVE`). |
+| **Ngày lễ** | `hrm_holidays` | `db_<MST>` | Lịch ngày nghỉ lễ quốc gia, âm lịch, công ty & nghỉ bù (`NATIONAL`, `LUNAR`, `COMPANY`, `COMPENSATORY`), cờ lặp hàng năm `isAnnual` (khóa false cho âm lịch và nghỉ bù), nghỉ hưởng lương `isPaid`, chặn trùng ngày và tên sau khi trim `@@unique([date, name])`. Hỗ trợ tạo nhanh 11 ngày lễ chuẩn Điều 112 BLLĐ. |
+| **Kỳ tính lương** *(2026-09-09, xem Mục 19)* | `hrm_payroll_periods` | `db_<MST>` | Vòng đời 6 trạng thái (`DRAFT→PENDING_REVIEW→LOCKED→APPROVED→PAID→ARCHIVED`), mã `code` duy nhất `YYYY-MM`. Neo toàn bộ 8 bảng biến động + bảng snapshot lương vào 1 kỳ. |
+| **Chấm công theo kỳ** | `hrm_attendance_records` | `db_<MST>` | Mô hình "delta" — chỉ lưu ngày KHÁC lịch chuẩn (không có record = mặc định đủ công chuẩn). `@@unique([periodId, ma_nv, workDate])`. |
+| **Tăng ca theo kỳ** | `hrm_overtime_records` | `db_<MST>` | 6 loại OT (150%–390%), snapshot `ratePercent` từ `GeneralSetting` tại thời điểm áp dụng. `@@unique([periodId, ma_nv, otType])`. |
+| **Danh mục chỉ tiêu KPI** | `hrm_kpi_items` | `db_<MST>` | Mã tự sinh `KPI01`..`KPI99`, `defaultWeight`, `status` (RESTRICT xóa khi đã phát sinh dữ liệu). |
+| **Đánh giá KPI theo kỳ** | `hrm_kpi_records` | `db_<MST>` | `completionRate = actualValue/targetValue*100`, bình quân có trọng số. `@@unique([periodId, ma_nv, kpiItemId])`. |
+| **Thưởng theo kỳ** | `hrm_bonus_records` | `db_<MST>` | FK `salaryItemId` tái sử dụng `SalaryItem` loại `PERIODIC_BONUS` (không tạo danh mục riêng — ADR-001 Hybrid Catalog). `@@unique([periodId, ma_nv, salaryItemId])`. |
+| **Danh mục sản phẩm khoán** | `hrm_piecework_products` | `db_<MST>` | Mã tự sinh `SP01`..`SP99`, `unitPrice` mặc định, `status`. |
+| **Lương sản phẩm theo kỳ** | `hrm_piecework_records` | `db_<MST>` | `unitPrice` snapshot cố định theo kỳ (cho override thủ công), `totalAmount = round(unitPrice*quantity)`. `@@unique([periodId, ma_nv, productId])`. |
+| **Lương phần trăm/hoa hồng theo kỳ** | `hrm_commission_records` | `db_<MST>` | FK `salaryItemId` tái sử dụng `SalaryItem` loại `COMMISSION_PERCENTAGE`; `commissionRate` snapshot từ `defaultRate`. `@@unique([periodId, ma_nv, salaryItemId])`. |
+| **Danh mục lỗi chuyên cần** | `hrm_diligence_violation_types` | `db_<MST>` | Mã tự sinh `CC01`..`CC99`, 3 phương thức trừ (`theo_gio`/`theo_lan`/`mat_toan_bo`), `penaltyRate`. |
+| **Vi phạm chuyên cần theo kỳ** | `hrm_diligence_records` | `db_<MST>` | Chặn trùng (nhân viên, loại lỗi, ngày). `@@unique([periodId, ma_nv, violationTypeId, violationDate])`. Đơn giá chuyên cần tra từ `EmployeeSalary` khoản loại `ATTENDANCE_ALLOWANCE`. |
+| **Danh mục khoản ứng-bù trừ** | `hrm_salary_adjustment_items` | `db_<MST>` | Mã tự sinh `BT01`..`BT99`, chiều `tru`/`bu`. |
+| **Chi tiết ứng-bù trừ theo kỳ** | `hrm_salary_adjustment_records` | `db_<MST>` | `amount` luôn dương, chiều lấy từ danh mục. `@@unique([periodId, ma_nv, adjustmentItemId])`. |
+| **Bảng lương tổng hợp snapshot** | `hrm_payroll_sheet_lines` | `db_<MST>` | 18 cột đóng băng tại thời điểm `lock`, xóa-ghi-lại toàn bộ mỗi lần khóa sổ. `@@unique([periodId, ma_nv])`. |
 
 ---
 
@@ -69,9 +95,37 @@ Tất cả các route kế thừa kiểm tra đăng nhập (`authenticate`) và 
   * `GET /tai-lieu/drive/lien-ket`: Lấy URL đồng ý cấp quyền OAuth2 từ Google.
   * `GET /tai-lieu/drive/callback`: Callback OAuth từ Google (xác thực qua state ký HMAC).
   * `DELETE /tai-lieu/drive/ket-noi`: Ngắt liên kết Google Drive của công ty.
-  * `POST /tai-lieu/:id/file`: Tải file scan (ảnh/PDF <= 10MB) lên Google Drive của công ty.
-  * `GET /tai-lieu/:id/file`: Xem/tải file scan trực tiếp qua streaming backend.
-  * `DELETE /tai-lieu/:id/file`: Gỡ file scan trên Drive, giữ lại bản ghi giấy tờ.
+  * `POST /tai-lieu/:id/file`: Tải file scan (ảnh/PDF <= 10MB) lên Google Drive của công ty (QĐ #21: thêm file vào bảng con).
+  * `GET /tai-lieu/:id/file/:fileId`: Xem/tải file scan trực tiếp qua streaming backend.
+  * `DELETE /tai-lieu/:id/file/:fileId`: Gỡ file scan trên Drive và xóa bản ghi con.
+* **Cấu hình mặc định (`/settings/general`):**
+  * `GET /settings/general`: Lấy cấu hình mặc định (Self-healing tự tạo mẫu nếu chưa có, hỗ trợ `FIXED_26`, `FIXED_24`, `ACTUAL_MONTH`, **biểu thuế TNCN 7 bậc** JSONB theo ngữ nghĩa ngưỡng trên lũy kế).
+  * `PUT /settings/general`: Cập nhật cấu hình mặc định (chỉ `ADMIN`/`OWNER`; thẩm định giờ công 1.0–24.0h, lương cơ sở/vùng > 0, và **toàn vẹn biểu thuế**: tối thiểu 2 bậc `E-hrm-081` · ngưỡng lũy kế tăng nghiêm ngặt `E-hrm-080` · thuế suất tăng nghiêm ngặt `E-hrm-069` · bậc cuối là bậc mở `E-hrm-082`). Biểu lệch biểu chuẩn vẫn lưu được nhưng trả kèm `warning: "CANH_BAO_BIEU_THUE_LECH_CHUAN"` (BR-hrm-083). Ghi nhật ký kiểm toán (BR-hrm-066 nhóm 6).
+  * `POST /settings/general/restore-default`: Khôi phục toàn bộ cấu hình chuẩn pháp luật VN (BLLĐ 2019, NĐ 73/2024, NĐ 74/2024, NQ 954/2020) — biểu thuế về đúng **7 bậc** Điều 22 Luật Thuế TNCN (BR-hrm-081). Ghi đè cả biểu công ty đã tự đặt, hộp xác nhận phải nêu rõ.
+  * *Bổ sung của Architect 2026-09-08 (Mục 14, ADR-009):* mã thành công **200 cho cả ba** — `restore-default` **không** phải 201 · quyền **thực tế** là `OWNER`/`OWNER_EMPLOYEE` cho `GET` và **`OWNER` duy nhất** cho hai thao tác ghi (`ADMIN` bị `resolveTenantDb` chặn 403, xem ADR-007) · **20 cột `Decimal` đọc về là CHUỖI**, ghi lên là SỐ · **bậc mở của biểu thuế mã hóa `khoang: null`** · `GET` **ghi DB** ở lần gọi đầu đời tenant. Đặc tả đầy đủ: `architecture/api-contract.md` Mục 7D.0.
+* **Ca làm việc (`/work-shifts`):**
+  * `GET /work-shifts`: Danh sách ca làm việc (lọc theo `status`, tìm kiếm mã/tên ca, trả kèm `isOvernight` và `workingHours`).
+  * `GET /work-shifts/:id`: Chi tiết một ca làm việc.
+  * `POST /work-shifts`: Tạo ca làm việc mới (tự động cấp mã `CA01`-`CA99` quét gap trống hoặc nhập mã tùy chỉnh, tính `isOvernight` và `workingHours`, cảnh báo ca > 12h theo Điều 105 & 107 BLLĐ).
+  * `PATCH /work-shifts/:id`: Cập nhật ca làm việc / đổi trạng thái `ACTIVE`/`INACTIVE` (bảo vệ không cho sửa `code`).
+  * `DELETE /work-shifts/:id`: Xóa cứng ca làm việc (chặn nếu đã dùng trong phân ca hoặc chấm công).
+  * *Bổ sung của Architect 2026-09-08 (Mục 14):* danh sách **có phân trang** — `data` là `{items,total,page,pageSize,totalPages}`, **không** phải mảng trần (khác 5 nhóm endpoint cũ) · cảnh báo ca > 12h là trường **`warning: "CANH_BAO_GIO_LAM_VUOT_TRAN_BLLD"`** ở cấp đối tượng ca, có ở cả 4 đường đọc, **chưa có trong mã** (`BE-02`) · `PATCH` gửi kèm `code` thì bị **bỏ qua im lặng**, trả 200 · nhánh chặn xóa 409 **chưa kích hoạt được** — hai bảng `hrm_work_schedules`/`hrm_attendances` chưa tồn tại, không FK nào trỏ tới `WorkShift`.
+* **Lịch ngày lễ (`/holidays`):**
+  * `GET /holidays`: Danh sách ngày lễ (lọc theo `year`, `filter`: `THIS_YEAR`/`ANNUAL`/`ALL`, `type`: `NATIONAL`/`LUNAR`/`COMPANY`/`COMPENSATORY`).
+  * `GET /holidays/:id`: Chi tiết một ngày lễ.
+  * `POST /holidays`: Tạo ngày lễ thủ công (cắt khoảng trắng thừa `.trim()`, khóa `isAnnual = false` cho `LUNAR` và `COMPENSATORY`, chống trùng ngày và tên).
+  * `PATCH /holidays/:id`: Cập nhật thông tin ngày lễ.
+  * `DELETE /holidays/:id`: Xóa ngày lễ.
+  * `POST /holidays/quick-generate`: Tạo nhanh 11 ngày lễ chuẩn Việt Nam theo Điều 112 BLLĐ cho năm chỉ định từ 2024 đến 2030 (tra cứu âm lịch tĩnh, cơ chế idempotent `skipDuplicates`).
+  * *Bổ sung của Architect 2026-09-08 (Mục 14):* **không có** route `POST /holidays/init-standard/:year` — chỉ `quick-generate`; mô tả cũ nêu hai tên là sai · `quick-generate` trả **200**, không phải 201 (ADR-009 QĐ 2) · danh sách **có phân trang** như `/work-shifts` · `date` đọc về là **chuỗi ISO đầy đủ** `"2026-01-01T00:00:00.000Z"`, **trừ** `items[].date` của `quick-generate` là `"2026-01-01"` · `type` **không bắt buộc**, mặc định `NATIONAL` · `isAnnual` với `LUNAR`/`COMPENSATORY` là **chặn 400**, không phải tự ép về `false` · 🔴 **`?isPaid=false` đang lọc ra đúng nhóm NGƯỢC LẠI** (`z.coerce.boolean` — `Boolean("false") === true`), giao diện **chưa được dựng bộ lọc này** cho tới khi xong `BE-03`.
+* **Kỳ tính lương (`/payroll-periods`)** *(2026-09-09, xem Mục 19 — mã nguồn đã viết nhưng CHƯA qua Architect/QA/Code Review độc lập)*:
+  * `GET /payroll-periods`, `POST /payroll-periods`, `GET /payroll-periods/:id`, `PATCH /payroll-periods/:id`, `DELETE /payroll-periods/:id` (chỉ khi `DRAFT`).
+  * `POST .../submit` (`DRAFT→PENDING_REVIEW`) · `.../reject` (`→DRAFT`) · `.../lock` (`DRAFT` hoặc `PENDING_REVIEW→LOCKED`, chốt snapshot 18 cột) · `.../reopen` (`LOCKED→DRAFT`, lý do ≥20 ký tự) · `.../approve` (`→APPROVED`) · `.../mark-paid` (`→PAID`) · `.../archive` (`→ARCHIVED`).
+  * 🔴 `reopen` **không có** role-guard ADMIN-only và **không** ghi audit log dù tài liệu đặc tả khẳng định có cả hai — xem `srs-du-lieu-tinh-luong.md` BR-dltl-002.
+* **Danh mục chuyên biệt (`/payroll-catalogs`)**: 4 nhóm × CRUD (`kpi-items`, `products`, `diligence-types`, `adjustment-items`), mã tự sinh quét gap, RESTRICT xóa khi đã phát sinh dữ liệu.
+* **8 phân hệ nhập liệu (`/payroll-data`)**: `attendance/matrix` (GET) + `attendance/cell` (PUT) · `overtime` (GET/apply/DELETE theo `ma_nv`) · `kpi` (GET/apply) · `bonus` (GET/apply) · `piecework` (GET/apply) · `commission` (GET/apply) · `diligence` (GET/record/DELETE theo `id`) · `adjustments` (GET/apply). Guard chung `assertPayrollPeriodWritable` chặn ghi khi kỳ ∈ {`LOCKED`,`APPROVED`,`PAID`,`ARCHIVED`} (`E-dltl-001`). 🟠 Thiếu `POST .../attendance/batch-override` mà đặc tả gốc có mô tả.
+* **Bảng lương (`/payroll`)**: `GET /payroll/calculate` (preview thời gian thực) · `GET /payroll/sheet-lines` (DRAFT/PENDING_REVIEW trả preview động, LOCKED+ trả snapshot đóng băng). 🔴 **Không có** `GET /payroll/payslips/my` (phiếu lương cá nhân) dù đặc tả gốc liệt kê.
+  * 🔴 **Frontend (`hdđt_maxv`) chưa nối API thật cho phần lõi**: cả 8 file `*Panel.tsx` (màn hình chính mỗi phân hệ) vẫn import từ `mock/hooks/*`, kể cả thanh lọc dùng chung `ThanhLocKyLuong.tsx`. Chỉ `KyLuongSelector`, `PayrollPeriodContext`, và dialog "Quản lý danh mục"/"Tái sử dụng" của 6/8 module đã nối thật. Chi tiết: `srs-du-lieu-tinh-luong.md` Mục 11.
 
 ---
 
@@ -82,9 +136,14 @@ Tất cả các route kế thừa kiểm tra đăng nhập (`authenticate`) và 
 4. `architecture/api-contract.md`: Đặc tả chi tiết các request/response schema.
 5. `architecture/data-model.md`: Cấu trúc bảng và chỉ mục cơ sở dữ liệu.
 6. `architecture/dev-notes.md`: Hướng dẫn kỹ thuật và luồng xử lý mã nguồn.
-7. `architecture/adr/`: Các quyết định kiến trúc cốt lõi (ADR-001, ADR-002, ADR-003).
+7. `architecture/adr/`: Các quyết định kiến trúc cốt lõi (ADR-001…ADR-010). **ADR-010 (2026-09-10)**: thứ tự pipeline 10 bước tính thuế/bảo hiểm của Bảng lương tổng hợp — 8 quyết định kỹ thuật cho `BR-dltl-024…027`, kèm 3 câu hỏi còn mở (Q-1 🔴). **ADR-009 (2026-09-08)**: mã hóa bậc mở của biểu thuế bằng `khoang: null` · mã HTTP của thao tác ghi đè · kiểu `Decimal` trên đường truyền · trường `warning` của ca làm việc.
+7b. `agents-architect/architect-contract-audit-2026-09-08.md`: Báo cáo đối soát hợp đồng ↔ mã nguồn ↔ client FE cho 14 endpoint cụm nền tảng, kèm danh sách giao việc `BE-01…11` và `FE-01…05`.
 8. `qa/test-matrix.md` & `qa/test-cases.md`: Kịch bản và ca kiểm thử.
 9. `qa/issues-and-bugs.md`: Danh mục phát hiện từ đợt đối soát 3 Amigos và các đầu việc cần cải tiến.
+10. `agents-business-analyst/`: Biên bản thẩm định lại và chốt nghiệp vụ của Business Analyst (căn cứ, ma trận đánh đổi, đối soát chéo bốn tầng).
+11. `backend-agents/`: Báo cáo triển khai mã nguồn của Backend Engineer.
+12. `agents-tester-qa/`: Báo cáo thẩm định độc lập của Lead Tester-QA.
+13. `du_lieu_tinh_luong/srs-du-lieu-tinh-luong.md`: SRS chính thức phân hệ Dữ liệu tính lương (BR-dltl-001…023, Error Matrix E-dltl-001…026, AC-dltl-01…11, OQ-dltl-001…010) — xem Mục 19. `du_lieu_tinh_luong/BA_ANALYSIS_SPEC.md` là biên bản gap-analysis gốc (giữ làm vết lịch sử, không còn là SRS canonical).
 
 ---
 
@@ -474,3 +533,696 @@ Ba ca đảo ngược kỳ vọng cũ, đáng chú ý vì chạy nguyên bản c
 Câu hỏi treo từ BUG-HRM-30 — *"chưa ai đo xem `prisma db push` có xóa ràng buộc tạo tay không"* — nay đã có câu trả lời từ chính đợt bỏ cột này. Sau `sync:tenants`, **cả hai ràng buộc loại trừ còn nguyên trên 10/10 tenant**. Lý do: Prisma không mô tả được `EXCLUDE` nên không quản lý, và không drop thứ nó không biết.
 
 ⚠️ **Chỉ đúng cho `EXCLUDE`.** Index và unique constraint thì Prisma **có** quản lý theo schema — vẫn phải chạy lại `npm run hrm:constraints` sau mỗi `sync:tenants` như runbook đã ghi.
+
+---
+
+## 12. Đặc tả nghiệp vụ cụm tính năng nền tảng: Cấu hình mặc định, Ca làm việc, Lịch ngày lễ (2026-09-08)
+
+### 12.1. Bối cảnh & Mục tiêu
+Để hoàn thiện nền tảng tính công và tính lương tự động cho phân hệ HRM (chuẩn bị cho các module chấm công và bảng lương), ba thực thể nền tảng quản trị đã được phân tích và đặc tả nghiệp vụ chi tiết (tham chiếu `docs/nestjs/hr/` và kế hoạch chuyển đổi `implementation_plan.md`):
+1. **Cấu hình mặc định (`hrm_general_settings`)**: Lưu trữ Singleton `DEFAULT` với 30+ tham số công chuẩn, lương cơ sở 2.340.000đ (NĐ 73/2024), lương tối thiểu Vùng 1 4.960.000đ (NĐ 74/2024), mức trần đóng BHXH/BHTN, giảm trừ gia cảnh thuế TNCN 11tr / 4.4tr (NQ 954/2020), biểu thuế lũy tiến từng phần 7 bậc (JSONB), tỷ lệ đóng BHXH 32% (DN 21.5% - NLĐ 10.5%), hệ số tăng ca và phụ cấp làm đêm. Có cơ chế tự sinh mẫu (Self-healing) và khôi phục mặc định.
+2. **Ca làm việc (`hrm_work_shifts`)**: Danh mục ca làm việc, tự cấp mã duy nhất `CA01`-`CA99` (quét lỗ trống gap scanning), tự động nhận diện ca qua đêm `isOvernight` (`endTime < startTime`) và tính giờ công chuẩn `workingHours` = `(endTime - startTime) - breakMinutes`. Quản lý trạng thái `isActive` (ACTIVE / INACTIVE).
+3. **Lịch ngày lễ (`hrm_holidays`)**: Quản trị ngày nghỉ lễ tết quốc gia và nội bộ, cờ lặp hàng năm `isAnnual`, nghỉ hưởng nguyên lương `isPaid` (Điều 112 BLLĐ 2019), ràng buộc chống trùng `@@unique([date, name])`. Hỗ trợ tiện ích "Tạo nhanh 11 ngày lễ chuẩn Việt Nam" (`init-standard`) với thuật toán tra cứu âm lịch cho các năm từ 2024 đến 2030, hỗ trợ cơ chế idempotent `skipDuplicates`.
+
+### 12.2. Chi tiết kết quả đặc tả của Business Analyst (BA)
+Toàn bộ tài liệu SRS đã được cập nhật đồng bộ, liên tục chuỗi ID không xung đột:
+
+| Tài liệu | Các hạng mục bổ sung / cập nhật |
+|---|---|
+| `docs/hrm/srs/hrm-spec.md` | • RBAC Matrix mở rộng cho 3 thực thể (siết `PUT/restore` của GeneralSetting cho `ADMIN`/`OWNER`).<br>• Đặc tả 3 thực thể & thuộc tính (Mục 4.8, 4.9, 4.10).<br>• 10 Quy tắc nghiệp vụ mới: `BR-hrm-070` đến `BR-hrm-079` (tổng 79 BR).<br>• Mở rộng `BR-hrm-066` nhóm 6 (Audit logging cho Cấu hình).<br>• 10 Yêu cầu chức năng mới: `FR-hrm-045` đến `FR-hrm-054` (tổng 54 FR).<br>• 13 Mã lỗi nghiệp vụ chuẩn hóa: `E-hrm-067` đến `E-hrm-079` (tổng 79 mã lỗi).<br>• 5 Use Cases: `UC-hrm-18` đến `UC-hrm-22` (tổng 22 UC).<br>• 10 Tiêu chí nghiệm thu (Given/When/Then): `AC-hrm-57` đến `AC-hrm-66` (tổng 66 AC).<br>• 4 Giả định mới: `A-hrm-11` đến `A-hrm-14`.<br>• Cập nhật Ma trận truy vết nghiệp vụ (Mục 13). |
+| `docs/hrm/srs/hrm-flows.md` | • Sơ đồ tuần tự: Xem, Cập nhật Thiết lập chung & Khôi phục cấu hình chuẩn (Self-healing, Draft mode, Batch validation, RBAC guard).<br>• Sơ đồ luồng: Quản lý Ca làm việc (Gap scanning mã `CA01`-`CA99`, tính `isOvernight` và `workingHours`).<br>• Sơ đồ luồng: Quản lý Lịch ngày lễ & Tạo nhanh 11 ngày lễ chuẩn VN theo Điều 112 BLLĐ (Tra cứu âm lịch 2024-2030, idempotent `skipDuplicates`). |
+| `docs/hrm/srs/hrm-states.md` | • Vòng đời Ca làm việc `WorkShift`: Khởi tạo -> `ACTIVE` ↔ `INACTIVE` -> Xóa cứng `Deleted` (kèm chặn xóa `E-hrm-073`).<br>• Vòng đời Cấu hình `GeneralSetting`: `Saved` (Persisted) ↔ `Draft` (Form UI nháp) -> `Saved` / `Restored` (Khôi phục chuẩn).<br>• Bổ sung dòng thực thể `Ngày lễ (Holiday)` vào danh mục vòng đời tồn tại/xóa cứng. |
+| `docs/hrm/srs/hrm-erd.md` | • Cập nhật bảng không gian lưu trữ: Bổ sung 3 bảng nền tảng vào DB tenant.<br>• Mermaid `erDiagram`: Thêm 3 entities `HRM_GENERAL_SETTINGS`, `HRM_WORK_SHIFTS`, `HRM_HOLIDAYS` và bảng con `HRM_TAI_LIEU_FILE` kèm thuộc tính và kiểu dữ liệu.<br>• Ràng buộc toàn vẹn schema: Singleton `id = 'DEFAULT'`, unique `code`, unique `[date, name]`.<br>• 3 ghi chú thiết kế kỹ thuật mới (Singleton, tính toán giờ công động, lịch âm/dương). |
+| `docs/hrm/CONTEXT_SUMMARY.md` | • Cập nhật Mục 1 (tiến độ phân hệ).<br>• Cập nhật Mục 2 (Bounded Context: 3 thực thể mới + `hrm_tai_lieu_file`).<br>• Cập nhật Mục 3 (Danh mục 14 Endpoints API mới).<br>• Bổ sung Mục 12 (Tổng kết đợt đặc tả nghiệp vụ nền tảng, thiết kế kiểm thử Phase A & BA Sign-off). |
+| `docs/hrm/qa/test-matrix.md` | • Cập nhật ma trận bao phủ kiểm thử cho 3 thực thể mới (nâng tổng số ca thiết kế từ 185 lên 298).<br>• Ánh xạ toàn diện ma trận truy vết: `BR-hrm-070…079`, `FR-hrm-045…054`, `AC-hrm-57…66`, `E-hrm-067…079`.<br>• Bổ sung 14 endpoints mới (#30 đến #43) vào Ma trận Endpoint × Loại kiểm thử.<br>• Cập nhật ma trận rủi ro với 6 rủi ro nền tảng mới. |
+| `docs/hrm/qa/test-cases.md` | • Bổ sung trọn vẹn Mục 7 gồm **55 ca kiểm thử chi tiết (`TC-hrm-273` đến `TC-hrm-327`)**.<br>• Phủ 100% Happy path cho 14 API endpoints mới.<br>• Kiểm thử giá trị biên: giờ công chuẩn (1.0h, 24.0h pass; 0.9h, 24.1h fail `E-hrm-067`), lương cơ sở $\le 0$ (`E-hrm-068`), biểu thuế TNCN không tăng dần (`E-hrm-069`).<br>• Ca làm việc đặc thù: ca qua đêm (`endTime <= startTime`), ca trực 24h, ca qua mốc 00:00, giờ công sau trừ nghỉ $\le 0$ (`E-hrm-072`), mã ca bất biến, gap scanning tự sinh mã.<br>• Lịch ngày lễ: chặn trùng ngày + tên (`E-hrm-076`), chặn lễ âm lịch lặp hàng năm (`E-hrm-075`), tạo nhanh 11 ngày lễ chuẩn VN 2024-2030, tính idempotent (`skipDuplicates`).<br>• Bảo mật & RBAC: chặn `OWNER_EMPLOYEE` gọi `PUT /settings/general` và `POST /restore-default` (`E-hrm-077` 403 Forbidden). |
+| `docs/hrm/qa/issues-and-bugs.md` | • Bổ sung Mục 10 gồm **6 phát hiện phản biện sâu** (`BUG-HRM-44`…`BUG-HRM-49` / `ISSUE-HRM-08`…`ISSUE-HRM-13`) từ vòng rà soát Shift-Left Phase A: thiếu audit logging cấu hình mặc định, khoảng trống vượt trần 99 ca làm việc, rủi ro hồi tố bảng lương do thiếu versioning, trần 12h ca làm việc theo BLLĐ, hạn bảng tra âm lịch 2030 và khoảng trắng tên ngày lễ. |
+
+### 12.3. Biên bản chốt BA Final Sign-off & Đóng 6 phát hiện phản biện QA (2026-09-08)
+
+Ngày 2026-09-08, Senior Business Analyst (`phamvinh203`) đã chính thức phê duyệt Biên bản chốt [BA Final Sign-off](file:///c:/Users/Admin/Desktop/maxv_v2/docs/hrm-ba-signoff-2026-09-08.md) cho toàn bộ Cụm tính năng nền tảng (Cấu hình mặc định, Ca làm việc, Lịch ngày lễ), mở cổng **Phase 2.5 (`Ready for Implementation`)**.
+
+**Tóm tắt kết quả xử lý 6 phát hiện phản biện từ Lead Tester-QA:**
+1. **BUG-HRM-44 (Audit Logging)**: Thêm nhóm 6 vào `BR-hrm-066`, `FR-hrm-043/046/047` và `NFR-hrm-011` bắt buộc ghi nhật ký kiểm toán cho thao tác cập nhật cấu hình và khôi phục cấu hình mặc định toàn công ty.
+2. **BUG-HRM-45 (Trần 99 ca làm việc)**: `BR-hrm-074`, `FR-hrm-048`, `E-hrm-078`, `AC-hrm-64` quy định thuật toán gap scanning tự sinh `CA01`–`CA99`; khi hết dải sẽ trả lỗi 400 `E-hrm-078`, đồng thời cho phép người dùng tự nhập mã tùy ý (`CA100`, `CA_VIP`).
+3. **BUG-HRM-46 (Rủi ro hồi tố bảng lương)**: `BR-hrm-070` và `FR-hrm-046` xác lập nguyên tắc Payroll Snapshot Principle — bảng lương khi chốt kỳ bắt buộc lưu bản sao tĩnh toàn bộ tham số pháp lý và tỷ lệ bảo hiểm tại thời điểm chốt, cấm truy vấn động ngược lại `hrm_general_settings`.
+4. **BUG-HRM-47 (Cảnh báo ca làm việc > 12h)**: `BR-hrm-076`, `FR-hrm-048`, `AC-hrm-63` cho phép tạo ca làm việc đặc thù (y tế, bảo vệ, cứu hỏa trực 24h) nhưng trả kèm cảnh báo `warning: "CANH_BAO_GIO_LAM_VUOT_TRAN_BLLD"` để giao diện hiển thị cảnh báo vi phạm trần giờ làm việc theo Điều 105 & 107 BLLĐ 2019.
+5. **BUG-HRM-48 (Hạn bảng tra âm lịch 2030)**: `BR-hrm-079`, `FR-hrm-054`, `E-hrm-079`, `AC-hrm-66` xác thực năm tạo nhanh nằm trong dải 2024–2030 (ngoài dải trả 400 `E-hrm-079`); đồng thời ghi nhận Nợ kỹ thuật `TD-HRM-01`. ⚠️ **Nội dung nợ này đã đổi (2026-09-08):** bảng tra chép tay đã được thay bằng thuật toán âm lịch nên phần *"tích hợp thư viện thiên văn"* **không còn nghĩa**; nợ nay là ***quyết định có mở dải năm 2024–2030 hay không***, hạn chót **31/12/2030**. Xem `hrm-spec.md` `BR-hrm-079` và `OQ-hrm-37`.
+6. **BUG-HRM-49 (Khoảng trắng tên ngày lễ)**: `BR-hrm-078`, `FR-hrm-051`, `AC-hrm-65` bắt buộc `.trim()` tên ngày lễ ở Zod validator và service trước khi kiểm tra unique `[date, name]`.
+
+**Trạng thái triển khai:**
+- **Backend & Frontend**: Được phép khởi chạy lập trình ngay lập tức dựa trên đặc tả SRS `hrm-spec.md`, hợp đồng API `api-contract.md` và migration `data-model.md` M-15.
+- **QA**: 55 ca kiểm thử (`TC-hrm-273`…`327`) sẵn sàng thực thi nghiệm thu Phase B ngay khi có bản build mã nguồn đầu tiên.
+
+
+> ⚠️ **Mục 12.3 đã bị thay thế một phần bởi Mục 13.** Phần xử lý 6 phát hiện `BUG-HRM-44`…`BUG-HRM-49` vẫn đúng và giữ hiệu lực. Phần tuyên bố `Ready for Implementation` và phần "55 ca sẵn sàng nghiệm thu" thì không còn phản ánh đúng thực tế — đọc Mục 13 trước khi dùng.
+
+---
+
+## 13. Đợt thẩm định lại cụm nền tảng: biểu thuế TNCN sai luật (2026-09-08)
+
+**Biên bản đầy đủ:** `docs/hrm/agents-business-analyst/ba-reconciliation-report-2026-09-08.md`
+**Thay thế:** phần liên quan của `docs/hrm-ba-signoff-2026-09-08.md` và kết luận "PASSED 55/55" của `docs/hrm/agents-tester-qa/qa-verification-report-2026-09-08.md`.
+
+### 13.1. Vì sao phải chạy lại
+
+Đợt trước đi đủ chuỗi BA → Architect ∥ QA → BA sign-off → Backend → QA và kết thúc bằng hai văn bản tuyên bố hoàn tất. Nhưng khi đọc **song song bốn nguồn** — đặc tả, hợp đồng API, mã máy chủ, mã giao diện — thì bốn nguồn nói bốn chuyện khác nhau về cùng một trường dữ liệu. **Một quy trình chạy đủ bước vẫn ra kết quả sai nếu không ai đối chiếu số liệu cụ thể giữa các tầng.**
+
+| Nguồn | Nói gì về biểu thuế TNCN |
+|:---|:---|
+| `srs/hrm-spec.md` Mục 4.8 | **7 bậc**, viện dẫn Điều 22 Luật Thuế TNCN |
+| `srs/hrm-spec.md` Mục 14, giả định `A-hrm-12` | "nạp **biểu 5 bậc rút gọn**" — **tự mâu thuẫn với Mục 4.8 của chính nó** |
+| `architecture/api-contract.md` (3 chỗ) | **5 bậc**, cao nhất 25% |
+| `be_maxv/.../generalSettings.service.ts` | **5 bậc**, cao nhất 25% |
+| `hdđt_maxv/.../cauHinhQueries.ts` | **5 bậc**, nhưng con số mang **nghĩa khác hẳn** máy chủ |
+
+### 13.2. Bốn quyết định đã chốt
+
+| # | Quyết định | Chốt | Hệ quả |
+|:--:|:---|:---|:---|
+| **22** | Biểu thuế TNCN mặc định: giữ 5 bậc hay sửa thành 7 bậc? | **7 bậc theo Điều 22 Luật Thuế TNCN**, vẫn cho công ty tự chỉnh nhưng có hàng rào toàn vẹn và cảnh báo khi lệch chuẩn | `BR-hrm-081`, `BR-hrm-083`, `FR-hrm-055`. **Không cần di trú lược đồ** (`taxBrackets` là JSONB) |
+| **23** | Ngưỡng lũy kế của bậc 5 và bậc 6 trong đặc tả có đúng không? | **Đúng** — `52.000.000` và `80.000.000` giữ nguyên. Đã kiểm chéo với biểu năm (624tr và 960tr = 12 lần ngưỡng tháng) | Bổ sung bảng 7 bậc đầy đủ kèm cột đối chiếu theo năm vào `hrm-spec.md` Mục 4.8 |
+| **24** | `khoang` mang nghĩa ngưỡng lũy kế hay độ rộng bậc? | **Ngưỡng trên lũy kế — một nghĩa duy nhất trên toàn tuyến** (lưu trữ · API · ô nhập). Cấm quy đổi ngầm; hai hàm quy đổi ở giao diện bị bãi bỏ | `BR-hrm-080`. Độ rộng bậc chỉ được hiện dạng **cột phái sinh chỉ-đọc** |
+| **25** | Hàng rào toàn vẹn biểu thuế (phát sinh khi thẩm định) | **Bốn điều kiện cứng**: ≥ 2 bậc · ngưỡng lũy kế tăng nghiêm ngặt · thuế suất tăng nghiêm ngặt · bậc cuối là bậc mở | `BR-hrm-082`, 3 mã lỗi mới `E-hrm-080/081/082` |
+
+### 13.3. Hậu quả nghiệp vụ đo được của biểu 5 bậc
+
+**Ngưỡng phân kỳ: 52.000.000đ thu nhập tính thuế/tháng.** Từ mốc đó trở xuống hai biểu cho kết quả **giống hệt nhau**; chênh lệch chỉ phát sinh phía trên.
+
+| Thu nhập tính thuế/tháng | Đúng luật (7 bậc) | Biểu trong mã (5 bậc) | Chênh |
+|---:|---:|---:|---:|
+| 52.000.000 | 9.750.000 | 9.750.000 | 0 |
+| 60.000.000 | 12.150.000 | 11.750.000 | thiếu 400.000 |
+| 100.000.000 | 25.150.000 | 21.750.000 | **thiếu 3.400.000 (13,5%)** |
+
+Doanh nghiệp chi trả là bên có nghĩa vụ khấu trừ, nên **doanh nghiệp** chịu truy thu và tiền chậm nộp — không phải người lao động. Sai này **không lộ ra khi dùng**: mọi con số vẫn hiện đẹp, chỉ số thuế là thấp hơn mức phải nộp.
+
+> Bản 5 bậc trong mã **không phải** "biểu rút gọn theo dự thảo". Các phương án rút gọn số bậc từng được bàn đều **giữ trần 35%**; bản trong mã hạ trần xuống 25% nên không tương ứng với bất kỳ biểu thuế nào — đang có hiệu lực hay đang được bàn.
+
+### 13.4. Nợ kiểm thử — nghiệm thu đợt trước không có bằng chứng chạy thật
+
+Báo cáo QA tuyên bố **PASS 55/55**, nhưng phần bằng chứng chỉ có **12 ca kiểm thử đơn vị thuần logic** (hàm thẩm định · hàm tính giờ công · hàm tra ngày lễ). **Chưa một endpoint HTTP nào của cụm này được gọi thật.** 55 dòng "kết quả thực tế" là đọc mã tĩnh rồi suy luận.
+
+Đây không phải chuyện hình thức: `BUG-HRM-42` ở đợt P0 (kịch bản vận hành không chạy lại được lần hai) **chỉ lộ ra khi chạy thật** — đọc mã tĩnh thấy phần bắt lỗi hoàn toàn hợp lý. Nợ dựng khung kiểm thử tích hợp đã ghi từ Mục 10.6 và vẫn còn nguyên.
+
+### 13.5. Việc phải làm, theo vai
+
+| Vai | Việc |
+|:---|:---|
+| **Architect** | Sửa 3 chỗ ví dụ biểu thuế trong `api-contract.md` sang 7 bậc · **chốt và ghi đúng một lần cách mã hóa "bậc mở"** (điểm mà bốn tầng đang tự đoán mỗi tầng một kiểu) · ghi rõ ngữ nghĩa `khoang` tại mô tả trường · thêm `E-hrm-080/081/082` và trường `warning` vào phản hồi `PUT` · thiết kế hình thức kỹ thuật cho `FR-hrm-055` · ghi ADR cho quyết định "cho chỉnh nhưng có hàng rào và cảnh báo" |
+| **Backend** | Đổi bộ mặc định sang **7 bậc** (kể cả docblock đang ghi sai) · thêm **ba phép kiểm** ngưỡng/số bậc/bậc mở · thêm cảnh báo `CANH_BAO_BIEU_THUE_LECH_CHUAN` · ghi nhật ký kiểm toán cho cập nhật và khôi phục · dựng thao tác chuẩn hóa `FR-hrm-055` (chỉ ghi đè khi trùng khớp nguyên văn biểu cũ) · bỏ mọi giả định "biểu luôn có 5 bậc" |
+| **Frontend** | **Xóa hai hàm quy đổi** ngưỡng ↔ độ rộng · ô nhập mang nghĩa **ngưỡng lũy kế** · **nới màn hình từ 5 bậc cứng lên N bậc** (mảng nhãn hiện có đúng 5 phần tử và được dùng làm khóa danh sách) · sửa giá trị hiển thị tạm sang 7 bậc · hiện dải cảnh báo lệch chuẩn · hộp xác nhận khôi phục nêu rõ ghi đè cả biểu công ty tự đặt |
+| **Tester-QA** | Thu hồi nhãn "PASSED 55/55", ghi lại đúng mức bằng chứng · thêm ca cho `AC-hrm-67`…`72` (`AC-hrm-67` và `AC-hrm-68` **sẽ FAIL trên mã hiện tại** — đó là mục đích) · rà lại ca cũ nêu đích danh biểu 5 bậc · dựng khung kiểm thử tích hợp gọi endpoint thật |
+
+> **Thứ tự bắt buộc cho mục tiêu "màn `cau_hinh_mac_dinh` chạy thật":** nối API mà giữ nguyên quy ước độ rộng bậc thì số hiện trên màn hình sẽ sai ngay lần tải đầu tiên. Bốn việc đầu của Frontend là điều kiện cần, không phải việc dọn dẹp làm sau.
+
+### 13.6. Câu hỏi mở phát sinh — không chặn cụm tính năng này
+
+| ID | Câu hỏi | Ai trả lời |
+|:---|:---|:---|
+| `OQ-hrm-34` | Quyết toán thuế TNCN theo năm: suy ngưỡng năm bằng 12 lần ngưỡng tháng, hay khai riêng một biểu năm? | Kế toán trưởng |
+| `OQ-hrm-35` | Biểu thuế có cần trường "áp dụng từ ngày" để chạy lại một kỳ lương đã chốt bằng đúng biểu của kỳ đó không? | Kế toán trưởng |
+
+### 13.7. Phạm vi bằng chứng của chính đợt này
+
+**Đã kiểm trực tiếp:** bốn nguồn ở Mục 13.1 đều được mở và đọc, không dựa vào mô tả của tài liệu khác · mọi con số thuế ở Mục 13.3 tính tay theo phương pháp lũy tiến từng phần · phép kiểm chéo tháng — năm khớp cả bảy bậc · khoảng trống của tầng thẩm định dữ liệu xác định bằng đọc trực tiếp mã · ràng buộc "màn hình cứng 5 bậc" xác định bằng đọc mảng nhãn và cách nó được dùng làm khóa danh sách.
+
+**Chưa kiểm, và không tuyên bố:** chưa gọi bất kỳ endpoint nào (nên đợt này **không phải** một lần nghiệm thu) · chưa truy vấn cơ sở dữ liệu để đếm bao nhiêu công ty đang giữ biểu 5 bậc — con số thật là đầu ra của chế độ rà soát ở `FR-hrm-055` · chưa đánh giá tác động ngoài HRM, vì phân hệ Lương chưa tồn tại nên hiện chưa có nơi nào tiêu thụ biểu thuế này để tính tiền. Đó vừa là lý do đợt sửa còn rẻ, vừa là lý do phải sửa ngay bây giờ.
+
+---
+
+## 14. Đối soát hợp đồng API ↔ mã nguồn — cụm nền tảng (Architect, 2026-09-08)
+
+**Báo cáo đầy đủ:** `docs/hrm/agents-architect/architect-contract-audit-2026-09-08.md`
+**Quyết định kiến trúc:** `docs/hrm/architecture/adr/ADR-009-doi-soat-hop-dong-va-lop-chuyen-doi-fe.md`
+
+### 14.1. Vì sao chạy
+
+Backend đã code xong ba thực thể nền tảng, Frontend đã dựng lớp gọi API nhưng **chưa nối vào
+component nào**. Nghĩa là hợp đồng API **chưa từng được kiểm chứng bằng một lời gọi thật**. Đợt
+này soi ba tầng cùng lúc — `api-contract.md` ↔ `be_maxv/src/**` ↔ `hdđt_maxv/src/features/hrm/api/**`
+— cho đủ 14 endpoint, trên 8 tiêu chí mỗi endpoint (method · path · query · body · mã thành công ·
+hình dạng phản hồi kể cả envelope · danh mục mã lỗi · phân trang/lọc/sắp xếp).
+
+**Kết quả: 14/14 endpoint đều có ít nhất một điểm hợp đồng ghi sai.** Hợp đồng đã được sửa cho
+khớp mã nguồn ở những chỗ mã nguồn đúng, và ghi rõ "mã nguồn phải sửa" ở những chỗ hợp đồng đúng
+hơn.
+
+### 14.2. Bốn quyết định kiến trúc (ADR-009)
+
+| # | Quyết định | Thay cho |
+|:--:|:---|:---|
+| 1 | **Bậc mở của biểu thuế mã hóa bằng `khoang: null`**, chỉ ở phần tử cuối và bắt buộc ở phần tử cuối. Kèm cửa sổ tương thích có hạn: chiều ghi nhận cả mốc `999999999999` rồi chuẩn hóa về `null`; đóng cửa sổ khi `FR-hrm-055` chạy xong | `srs/hrm-spec.md` Mục 4.8 giao lại nguyên văn cho Architect. Mốc `999999999999` làm điều kiện 4 của `BR-hrm-082` thành phép so với hằng số ma thuật, và bản thân mốc là số hữu hạn nên vẫn để hở khoảng thu nhập |
+| 2 | **`POST /settings/general/restore-default` và `POST /holidays/quick-generate` trả 200**, không phải 201. Luật mới: *201 chỉ khi thân phản hồi CHÍNH LÀ tài nguyên vừa tạo* | Luật cũ "mọi POST là 201". Hai thao tác này ghi đè / idempotent, có thể tạo 0 bản ghi. QA đã viết 200 sẵn — **không phải sửa ca kiểm thử nào**. Frontend không bị ảnh hưởng (`http.ts` chỉ xét `res.ok`) |
+| 3 | **20 cột `Decimal` đọc về là CHUỖI, ghi lên là SỐ.** Bất đối xứng có chủ ý, bám khuôn mẫu `hopDongApi.ts` đã có | Giữ chính xác trên dữ liệu tiền. Ép về `number` ở Backend là đưa tiền qua dấu phẩy động và dựng khuôn mẫu thứ hai trong cùng module |
+| 4 | **`warning` ca > 12h do Backend sinh** trong hàm dùng chung `ganThuocTinhSuyRa` ⇒ có mặt ở cả 4 đường đọc. Là mã máy đọc được; `<= 12h` thì bỏ hẳn trường; không đổi mã HTTP | Đặc tả BA yêu cầu (`BUG-HRM-47`), Frontend đã khai đúng, chỉ hợp đồng và mã nguồn thiếu |
+
+### 14.3. Quan hệ với đợt thẩm định của BA (Mục 13)
+
+Hai đợt chạy **song song trong cùng ngày**. Bản nháp đầu của Architect chốt "lớp quy đổi biểu
+thuế nằm ở Frontend" — **sai thẩm quyền và đã được rút lại** sau khi đọc Mục 13: BA đã chốt QĐ
+#24 (`BR-hrm-080`) bãi bỏ lớp quy đổi đó. Ranh giới cuối cùng:
+
+* **BA chốt (Architect thi hành, không diễn giải lại):** 7 bậc (`BR-hrm-081`) · `khoang` là
+  ngưỡng trên lũy kế, một nghĩa duy nhất toàn tuyến (`BR-hrm-080`) · 4 điều kiện toàn vẹn + 3 mã
+  lỗi `E-hrm-080/081/082` (`BR-hrm-082`) · cảnh báo `CANH_BAO_BIEU_THUE_LECH_CHUAN` (`BR-hrm-083`)
+  · thao tác chuẩn hóa dữ liệu cũ (`FR-hrm-055`).
+* **BA giao lại cho Architect:** cách mã hóa "không có ngưỡng trên" → trả lời ở ADR-009 QĐ 1,
+  ghi **đúng một lần** ở `api-contract.md` Mục 7D.0 (b).
+
+**Biểu thuế nay chỉ còn MỘT chỗ định nghĩa** trong toàn bộ tài liệu kiến trúc:
+`api-contract.md` Mục 7D.0 (c). Ba chỗ chép lại trong hợp đồng và một chỗ trong `data-model.md`
+đã được thay bằng con trỏ.
+
+### 14.4. Sai lệch phải sửa ở mã nguồn
+
+| Bên | Mã | Mức | Một dòng |
+|:---|:---|:---:|:---|
+| FE | `FE-01` | 🔴 | `updateWorkShift` gọi `api.put`, route là `PATCH` ⇒ **404 mọi lần sửa ca** |
+| FE | `FE-02` | 🔴 | `cauHinhApi` khai 20 trường `Decimal` là `number`; thực tế là chuỗi ⇒ vòng lặp `GET`→`PUT` trả **400**, màn Cấu hình không lưu được |
+| FE | `FE-05` | 🔴 | Bãi bỏ hai hàm quy đổi biểu thuế · ô nhập mang nghĩa ngưỡng lũy kế · nới từ 5 bậc cứng lên N bậc · sửa giá trị tạm sang 7 bậc · hiện cảnh báo lệch chuẩn |
+| FE | `FE-03` · `FE-04` | 🔵 | Thiếu `getHolidayDetail`; thiếu `sortBy: "startTime"` |
+| BE | `BE-09` | 🔴 | Biểu mặc định đang là **5 bậc cắt cụt ở 25% — sai luật** |
+| BE | `BE-05` | 🔴 | Chỉ cài **1/4** điều kiện toàn vẹn biểu thuế; thiếu `E-hrm-080/081/082` và mã hóa bậc mở |
+| BE | `BE-02` · `BE-10` · `BE-11` | 🟠 | Thiếu `warning` ca >12h · thiếu nhật ký kiểm toán cấu hình · thiếu `warning` biểu lệch chuẩn |
+| BE | `BE-03` | 🟠 | `isPaid` dùng `z.coerce.boolean()` ⇒ `?isPaid=false` lọc ra đúng nhóm **ngược lại**, im lặng |
+| BE | `BE-01` | 🔵 | Hai endpoint trả 201 thay vì 200 |
+| BE | `BE-04` · `BE-06` · `BE-07` · `BE-08` | 🔵 | Sinh mã ca ngoài transaction · `GET` self-healing dùng `create` thay vì `upsert` · dùng `new Date()` thay vì `homNayVN()` · thống kê `quick-generate` ngoài transaction |
+
+### 14.5. Việc cần DevOps xác nhận — ❓ không đoán
+
+Ba bảng + bốn enum đã có trong `prisma/tenant/schema.prisma`, nhưng tenant dùng
+`prisma db push` (không để lại bảng lịch sử di trú) nên **không xác định được từ trong repo** là
+`npm run sync:tenants` đã chạy lên DB công ty thật hay chưa. Phải kiểm bốn điểm ở
+`data-model.md` M-15 mục 3 — đặc biệt là enum `"HolidayType"` có đủ **4** giá trị và
+`"WorkDayMethod"` đủ **3** giá trị, vì bản `data-model.md` trước đợt này ghi DDL **thiếu**
+`FIXED_24` và `COMPENSATORY`. Chưa xác nhận xong thì mọi lời gọi sẽ chết bằng P2021/P2022 → 500.
+
+### 14.6. Phạm vi bằng chứng của chính đợt này — nói thẳng
+
+**Đã chạy thật:** `npx tsx --test src/__tests__/hrmSettingsShiftsHolidays.test.ts` (12/12 pass) ·
+serialize `Prisma.Decimal` qua `JSON.stringify` (ra **chuỗi** `"8"`) · 9 phép thử hành vi Zod trên
+chính validator của repo (`isPaid='false'` ⇒ `true` · `code` bị loại im lặng · `khoang: 0` bị
+chặn · `khoang` giảm dần **được chấp nhận** · chuỗi `'8'` bị `z.number()` từ chối ·
+`standardHoursPerDay: 8.3` được chấp nhận).
+
+**Chưa chạy, và không tuyên bố:** **không một lời gọi HTTP nào** — chưa có tenant để gọi, và
+không tự khởi động máy chủ phát triển của người dùng. Mọi kết luận về mã trạng thái, envelope và
+phân giải tenant là **suy luận từ mã nguồn đã đọc trực tiếp**, cần Phase B của QA xác nhận. Cũng
+chưa chạy `typecheck` và `lint` (không sửa mã nguồn nào nên không phát sinh).
+
+**Lưu ý cho QA:** bộ 12 ca hiện có là kiểm thử **hàm thuần và Zod schema** — không ca nào dựng
+Fastify, chạm DB, hay kiểm mã HTTP. Nó **không thể** bắt được bất kỳ sai lệch nào trong Mục 14.4.
+Nợ dựng khung kiểm thử tích hợp (ghi từ Mục 10.6 và 13.4) vẫn còn nguyên.
+
+---
+
+## 15. Phase B đợt 2 — nghiệm thu THẬT cụm nền tảng (Tester-QA, 2026-09-08)
+
+### 15.1. Món nợ ở Mục 10.6 điểm 2 và Mục 13.4 — ĐÃ TRẢ
+
+> *"Dựng khung test tích hợp có `app.inject()` — 12 ca endpoint vẫn chưa chạy được, và **chưa một endpoint HRM nào được gọi thật**."*
+
+Nay đã có: `be_maxv/src/__tests__/hrmSettingsShiftsHolidaysApi.test.ts` — **121 lượt gọi HTTP thật** mỗi lượt chạy, đi trọn chuỗi `hook auth → requireModule('hrm') → resolveTenantDb → controller → validator → service → PostgreSQL → errorHandler`.
+
+**Rào cản đã gỡ.** `adminOwner.test.ts` hỏng 5/5 với 401 vì `POST /auth/login` **không còn** trả `accessToken` trong thân phản hồi — `issueTokens()` đặt vé vào **cookie httpOnly**. Bản test cũ đọc `data.accessToken` ⇒ `undefined` ⇒ gửi `Bearer undefined`, mà `@fastify/jwt` ưu tiên header khi header có mặt nên lấy đúng chuỗi `"undefined"` làm token. **Lỗi của TEST, không phải lỗi sản phẩm.** Đã sửa (chỉ trong thư mục test) ⇒ 5/5 PASS.
+
+**Cách khung mới xác thực** — đi đúng đường của sản phẩm, không tự ký JWT tay:
+`POST /auth/login` (lấy cookie) → `POST /companies/:id/switch` (nhúng `donViId`) → mọi lượt gọi HRM dùng `app.inject({ cookies: { accessToken } })`.
+
+**Cách cô lập dữ liệu:** bộ test **tự cấp 2 DB tenant** `maxv_9970000001_app` và `maxv_9970000002_app` bằng `provisionTenant()`, chạy xong `dropTenant()` cả hai. Tài khoản / gói / công ty / dòng `syslog` của bộ test đều bị xóa ở `cleanup()` (chạy cả trước lẫn sau). **Không chạm một dòng nào của tenant thật; không khởi động hay tắt máy chủ dev; không chạy `sync:tenants`.**
+
+Đối chứng sau lượt chạy cuối: `{"userTest":0,"donViTest":0,"planTest":0,"syslogHRM":0,"tongDonVi":10,"tongUser":10}` · `DB test con lai: []` — control plane y hệt trước khi chạy.
+
+### 15.2. Kết quả
+
+| Nhóm | Số ca | Chạy thật | PASS | FAIL | KHÔNG CHẠY ĐƯỢC |
+|:---|:--:|:--:|:--:|:--:|:--:|
+| Cấu hình mặc định (`TC-hrm-273…287`) | 15 | 15 | **15** | 0 | 0 |
+| Ca làm việc (`TC-hrm-288…309`) | 22 | 21 | **20** | 1 | 1 |
+| Lịch ngày lễ (`TC-hrm-310…327`) | 18 | 18 | **17** | 1 | 0 |
+| **Cộng** | **55** | **54** | **52** | **2** | **1** |
+
+Thêm **9 phép kiểm riêng `KR-01…KR-09`** cho những điểm bộ ca tài liệu chưa chạm hoặc báo cáo đợt 1 chấm sai — **9/9 PASS**.
+
+| Lệnh | Kết quả |
+|:---|:---|
+| `be_maxv` typecheck / lint | exit 0 / exit 0 (`183 problems, 0 errors`) |
+| `be_maxv npm test` | **577 tests · 573 pass · 4 fail** (4 con số fail chỉ là 2 ca lá `TC-hrm-301`, `TC-hrm-316` và 2 khối cha). Trước đợt này có 5 ca đỏ thường trực — nay hết |
+| `hdđt_maxv` tsc / lint / build | exit 0 / exit 0 / OK (`built in 3.19s`) |
+
+### 15.3. Sáu mục đóng bằng bằng chứng runtime
+
+| Mục | Bằng chứng chạy thật |
+|:---|:---|
+| `BUG-HRM-44` — thiếu nhật ký kiểm toán | Truy vấn thẳng bảng `syslog` sau khi gọi API: đúng 2 dòng `HRM_UPDATE_GENERAL_SETTINGS` + `HRM_RESTORE_GENERAL_SETTINGS`, đúng `userId`, đúng `donViId`, `chiTiet:{"khoaNghiepVu":"DEFAULT"}`. **Test đơn vị không bắt được điều này** vì `writeLog()` tự nuốt mọi lỗi |
+| `BUG-HRM-45` — trần 99 mã ca | Nạp đủ `CA01…CA99` rồi `POST` bỏ trống mã ⇒ **400** `E-hrm-078`; tự nhập `CA100` ⇒ **201** |
+| `BUG-HRM-47` — cảnh báo ca > 12h | Ca 22h trả `warning: CANH_BAO_GIO_LAM_VUOT_TRAN_BLLD` ở **cả 4 đường đọc** (sau tạo · danh sách · chi tiết · sau sửa); ca 8h vắng hẳn trường này |
+| `BUG-HRM-49` — khoảng trắng lách `@@unique` | `"  Tết Dương lịch  "` cùng ngày ⇒ **409**, DB chỉ còn 1 bản ghi |
+| `BE-03` — `?isPaid=false` lọc ngược | Lọc **đúng** nhóm không hưởng lương; `?isPaid=abc` ⇒ **400**. Giao diện được phép dựng bộ lọc "nghỉ không lương" |
+| Biểu thuế mặc định | `GET` trên tenant trắng trả đúng **7 bậc**, bậc cuối `khoang: null`, trần **35%**. Bốn điều kiện toàn vẹn `BR-hrm-082` chạy đủ; mốc cũ `999999999999` được chuẩn hóa về `null` |
+
+Ngoài ra: `restore-default` và `quick-generate` đều trả **200** (không phải 201, đúng ADR-009); Decimal đọc ra **chuỗi** `"8"` đúng hợp đồng 7D.0 (a); cô lập tenant (`NFR-hrm-003`) được chứng minh trên **hai DB vật lý** cho cả 3 thực thể.
+
+### 15.4. Ba điểm còn treo — không điểm nào là lỗi mã
+
+| Ca | Trạng thái | Nguyên nhân | Việc kế tiếp |
+|:---|:--:|:---|:---|
+| `TC-hrm-301` | ❌ FAIL | `?search=chinh` trả `total = 0`; `?search=chính` trả 1. Hợp đồng 7E.2 **chỉ hứa** `contains` không phân biệt hoa thường, **không** bỏ dấu ⇒ mã đúng hợp đồng, ca kiểm thử kỳ vọng vượt hợp đồng. Nhưng gõ không dấu là thói quen thật ⇒ **`BUG-HRM-50`** | **BA chốt**: có làm tìm kiếm bỏ dấu cho danh mục HRM không |
+| `TC-hrm-316` | ❌ FAIL | Phản hồi có `isPaid` nhưng không có "thứ trong tuần"; hợp đồng 7F.2 cũng không hứa. Giao diện đã tự tính (`LichNgayLePanel.tsx:46-48`) ⇒ nhu cầu nghiệp vụ **được đáp ứng** | QA sửa câu chữ ca kiểm thử — ✅ đã làm |
+| `TC-hrm-308` | ⏸ HOÃN | Bảng `hrm_work_schedules` chưa tồn tại (`information_schema` = 0), schema không có model nào tham chiếu `WorkShift` ⇒ không dựng được tiền điều kiện | Mở lại khi có thực thể phân lịch |
+
+Cũng đã sửa `test-cases.md` TC-hrm-273: bản cũ ghi *"taxBrackets gồm 5 bậc"* — câu chữ có từ trước QĐ #24 / ADR-009. Biểu 5 bậc cắt cụt ở 25% **không đúng luật Việt Nam** nên để nguyên trong tài liệu kiểm thử là mời gọi ai đó "sửa code cho khớp tài liệu".
+
+### 15.5. Nợ còn lại sau đợt này
+
+1. **BA chốt `BUG-HRM-50`** — chặn việc ghi "nghiệm thu hoàn tất" cho cụm này.
+2. **`BUG-HRM-46` vẫn mở** (🟠 High) — cấu hình không có hiệu lực thời gian. Chưa có `hrm_payroll_periods` nên chưa kiểm được. Yêu cầu giữ nguyên: **bảng lương khi chốt kỳ phải chụp ảnh tham số**, không truy vấn động ngược lại `hrm_general_settings`.
+3. **`BUG-HRM-48` vẫn mở** (🔵 Low) — bảng tra âm lịch dừng ở 2030; `TC-hrm-326` xác nhận 2031 trả 400.
+4. **Mở rộng khung `app.inject()`** sang phòng ban / nhân viên / hợp đồng / người phụ thuộc / tài liệu — mở khóa **12 ca endpoint** còn kẹt từ đợt P0. Khung mẫu đã có, chỉ cần chép cách dựng tenant + lấy vé.
+5. **Ca đồng thời** (hai người cùng bấm Lưu) — `createWorkShift` thử lại 5 lượt và `quickGenerate` bọc giao dịch mới chỉ được **đọc mã**, chưa dựng được va chạm thật.
+6. **Chưa có bộ chạy test giao diện** ở `maxv/`, `hdđt_maxv/`, `fe_maxv/`. Phần giao diện của cụm này mới chỉ bảo đảm ở mức `tsc` + `lint` + `build` sạch.
+
+### 15.6. Báo cáo nghiệm thu đợt 1 đã bị THAY THẾ
+
+`docs/hrm/agents-tester-qa/qa-verification-report-2026-09-08.md` kết luận **"55/55 PASS · PASSED · đủ điều kiện triển khai production"** — **không có căn cứ**, ba điểm sai đã kiểm chứng: (1) bằng chứng duy nhất là 12 test đơn vị logic thuần, **không một lời gọi HTTP nào**; (2) chấm `BUG-HRM-47` là "đã phòng ngừa hợp lý" trong khi chỗ đó là **khối `if` rỗng chỉ có 2 dòng chú thích**; (3) `TC-hrm-273` ghi "khởi tạo thành công 30+ tham số" khi **0/10 tenant có bảng `hrm_general_settings`**.
+
+Báo cáo có hiệu lực: **`docs/hrm/agents-tester-qa/qa-verification-report-2026-09-08-dot-2.md`**.
+
+### 15.7. Phạm vi bằng chứng của chính đợt này
+
+**Đã chạy thật:** 121 lượt gọi HTTP qua `app.inject()` trên 2 DB tenant do bộ test tự cấp · truy vấn trực tiếp bảng `syslog`, `hrm_general_settings`, `hrm_work_shifts`, `hrm_holidays` và `information_schema` · `npm run typecheck`, `npm run lint`, `npm test` ở `be_maxv` · `tsc`, `lint`, `build` ở `hdđt_maxv`. Mỗi ca PASS đều kèm **mã trạng thái HTTP thật** và **thân phản hồi nguyên văn**, chép trong `qa/test-report.md` Mục 13–14.
+
+**Chưa chạy, và không tuyên bố:** chưa kiểm hành vi màn hình nào (không có bộ chạy test giao diện) · chưa dựng được ca đồng thời thật · chưa đo hiệu năng trên tenant dữ liệu lớn · chưa chạm tenant thật của chủ dự án, nên không có kết luận nào về dữ liệu sản xuất.
+
+**Tài liệu đã cập nhật ở đợt này:** `qa/test-report.md` (Phần II) · `qa/issues-and-bugs.md` (Mục 12) · `qa/test-matrix.md` (Mục 3.2 + tiêu chí ra) · `qa/test-cases.md` (TC-273, 301, 308, 316 + ghi chú Mục 8) · `agents-tester-qa/qa-verification-report-2026-09-08-dot-2.md` (mới) · `agents-tester-qa/README.md`.
+
+**Mã đã đụng tới — chỉ trong thư mục test:** `be_maxv/src/__tests__/hrmSettingsShiftsHolidaysApi.test.ts` (mới) và `be_maxv/src/__tests__/adminOwner.test.ts` (đổi cách gắn vé). **Không sửa một dòng mã sản phẩm nào.**
+
+---
+
+## 16. Quality Gate và vòng sửa lỗi chặn — cụm nền tảng (Code Reviewer + Dev, 2026-09-08)
+
+### 16.1. Vì sao có vòng này
+
+Sau khi Phase B đợt 2 kết luận "0 lỗi sản phẩm mới" (Mục 15), vòng **Phase 5 — Quality Gate** vẫn tìm được **2 lỗi chặn**. Không mâu thuẫn: mỗi bên đúng trong phạm vi của mình.
+
+* QA kiểm **máy chủ** qua `app.inject()` với bộ tham số do chính QA dựng, nên không bao giờ chạm vào con số `pageSize: 500` mà giao diện gán cứng.
+* Ca kiểm thử ngày lễ **neo vào chính bảng tra đang sai**, nên test và mã cùng sai một chỗ thì test luôn xanh.
+
+Bài học ghi lại: **một tầng kiểm thử không thay được tầng kia**, và **ca kiểm thử neo vào dữ liệu chưa đối chiếu nguồn ngoài thì không phải kiểm chứng**.
+
+### 16.2. Hai lỗi chặn và cách xử lý
+
+| Mã | Nội dung | Xử lý |
+|:---|:---|:---|
+| **B1** | Giao diện xin `pageSize: 500`, máy chủ chặn `max(100)`, nên màn Lịch ngày lễ trả **400 mọi lần mở** | Frontend: kéo theo trang (`api/taiHetTrang.ts` dùng chung), cảnh báo khi thiếu dòng. Áp cho cả danh mục ca làm việc — cùng lớp lỗi |
+| **B2** | Bảng tra âm lịch chép tay **sai 17/42 ô** (11 sai ngày, 6 sai tên) | Backend: bỏ hẳn bảng, thay bằng **thuật toán Hồ Ngọc Đức** quy chiếu **UTC+7** (`services/client/hrm/amLich.util.ts`), neo vào 11 mốc lịch sử 2018–2025 trước khi tin |
+
+### 16.3. Ba phát hiện về ngày lễ mà đối chiếu BE với FE không thể tìm ra
+
+1. **Mùng 1 Tết 2026** — bảng máy chủ ghi `18/02`, đúng là `17/02`. Cả khối 2026 trượt một ngày.
+2. **Giỗ Tổ 2028** — máy chủ ghi `05/04`, đúng là `04/04`.
+3. **Mùng 1 Tết 2030** — **cả hai bảng cùng ghi `03/02`, đúng là `02/02`.** Sóc rơi 02/02/2030 lúc khoảng 23 giờ theo giờ Việt Nam (UTC+7); quy sang UTC+8 thì đã sang 03/02, nên con số cũ là **ngày Tết của lịch Trung Quốc**. Điểm này **không lộ ra khi đối chiếu bảng máy chủ với bảng giao diện** vì hai bảng chép tay khớp nhau — chỉ lộ khi so với một nguồn tính độc lập.
+
+Nguyên nhân gốc của cả ba giống nhau: **múi giờ**. Lịch âm Việt Nam tính theo UTC+7, lịch Trung Quốc theo UTC+8; lệch một giờ đủ đẩy ngày sang hôm sau khi thời điểm sóc rơi gần nửa đêm.
+
+Ngoài ra, tên ngày sai ở 4 năm: bảng cũ gọi "30 Tết" cho mọi năm, nhưng chỉ 2024 có tháng Chạp đủ 30 ngày — 2027 đến 2030 đang gán nhãn "30 Tết" cho một ngày **không tồn tại** trong năm đó.
+
+**Đối soát cuối:** thuật toán máy chủ và bảng xem trước của giao diện nay **khớp 14/14 mốc trên cả 7 năm**. Bảng giao diện đã sửa `2030-02-02` và ghi rõ nó **không phải nguồn sự thật**.
+
+> **Mức tin cậy — nói rõ để người sau không hiểu nhầm.** Mốc 2026 và 2028: **cao** (biên độ xa ranh giới; hai bản cài thuật toán độc lập cùng kết quả; suy luận số học riêng cũng khớp). Mốc **2030: trung bình** — sóc chỉ cách nửa đêm khoảng 45 phút, mà thuật toán dùng chuỗi rút gọn nên sai số vài phút là có thể. Nhà nước chưa công bố lịch nghỉ 2030, nên **chưa có nguồn chính thức để đối chiếu**. Cần kiểm lại khi có công bố.
+
+### 16.4. Lỗi không chặn đã sửa cùng đợt
+
+**Máy chủ:** chuẩn hóa bậc mở ở chiều đọc cho khớp hợp đồng (N1) · `addedCount` dùng `createMany().count` thay 2 lần `count()` bọc giao dịch, 3 truy vấn còn 1, và sửa chú thích sai về mức cô lập READ COMMITTED (N2) · chặn dải `year` để đầu vào xấu trả 400 thay vì 500 (N3).
+
+**Giao diện:** bảng lương, chấm công và tăng ca **đổi nguồn đọc cấu hình** từ kho giả sang API thật (N5 — trước đó người dùng sửa biểu thuế, bấm Lưu, mà bảng lương không đổi con số nào) · `thueLuyTien` **ném lỗi** thay vì trả 0 khi biểu thuế dưới 2 bậc (N6 — trả 0 nghĩa là khấu trừ 0 đồng, im lặng, hướng nguy hiểm nhất cho một hàm tính thuế) · siết kiểm giờ công chuẩn cho khớp máy chủ · sửa năm mặc định của hộp thoại Tạo nhanh.
+
+### 16.5. Trạng thái sau vòng này
+
+Hai lỗi chặn đã đóng. Kiểm chứng: máy chủ `typecheck` sạch và bộ ca cụm này **44/44 đạt**; giao diện `tsc`, `lint`, `build` đều sạch.
+
+**Vẫn còn 4 ca đỏ trong bộ tích hợp, và chúng KHÔNG được nới lỏng để né:**
+
+* `TC-hrm-301` — tìm kiếm không bỏ dấu (`?search=chinh` không ra `Ca chính`). Cần bật `unaccent` hoặc thêm cột chuẩn hóa; chờ ADR của Architect và quyết định của BA (`BUG-HRM-50`).
+* `TC-hrm-316` — **mâu thuẫn giữa hai tài liệu đã ký**: `qa/test-cases.md` đòi trường "thứ trong tuần", `architecture/api-contract.md` Mục 7F.2 không có trường đó. Phải bỏ yêu cầu khỏi bộ ca, **hoặc** bổ sung vào hợp đồng rồi giao lại cả hai phía.
+
+### 16.6. Nợ còn lại — đọc trước khi tuyên bố tính năng đã xong
+
+1. **Số liệu bảng lương, chấm công và tăng ca vẫn là dữ liệu giả.** Đợt này chỉ đổi *nguồn cấu hình*. **Đừng truyền thông là "bảng lương đã chạy thật".**
+2. Bảng chấm công vẫn dựng lịch nghỉ từ kho giả dù đã có hook đọc ngày lễ thật.
+3. Hộp thoại quản lý tăng ca gửi `PUT` **toàn bộ** cấu hình dù chỉ sửa hệ số — hợp đồng chưa có `PATCH` từng phần; công ty có biểu thuế riêng sẽ nhận cảnh báo lệch chuẩn mà hộp thoại đang bỏ qua.
+4. Bảng tra âm lịch phía giao diện **nên bỏ hẳn**, cho bản xem trước đọc thẳng `items[]` của máy chủ — khi đó chỉ còn một nguồn, không thể lệch nữa.
+5. Dải năm 2024–2030 nay chỉ còn là **giới hạn nghiệp vụ**, không còn là giới hạn kỹ thuật (thuật toán tính được mọi năm). BA cần quyết có nới không — hệ thống từ chối "Tạo nhanh" từ 01/01/2031 là rủi ro thật.
+6. Năm nhóm còn lại của `BR-hrm-066` (xóa hợp đồng · sửa lương · xóa người phụ thuộc · xóa tài liệu · ngắt Drive) **vẫn chưa ghi nhật ký**. Đợt này chỉ làm nhóm 6.
+7. Nhật ký ghi vào `sys_log` ở **control plane**, không phải cơ sở dữ liệu của công ty — nếu nghiệp vụ muốn chủ công ty tự tra nhật ký của mình thì cần quyết định kiến trúc riêng.
+
+### 16.7. Di trú cơ sở dữ liệu — đã chạy
+
+| Bước | Kết quả |
+|:---|:---|
+| `npm run sync:tenants` | **10/10 tenant**, 0 lỗi |
+| `npm run hrm:constraints` | **10/10 tenant** — áp lại 8 ràng buộc, 2 ràng buộc loại trừ sẵn có |
+| Đối soát bảng | **10/10 tenant đủ 3 bảng**; 4 kiểu liệt kê đúng giá trị (gồm `FIXED_24` và `COMPENSATORY`) |
+| Đối soát dữ liệu | Bản ghi `DEFAULT` tự sinh trên tenant thật: **đúng 7 bậc**, bậc cuối `khoang: null` |
+
+Xác nhận thêm bằng đo thật: kiểu `Decimal` của Prisma **JSON hóa ra chuỗi** (`"8"`, không phải `8`) — đúng như `ADR-009` quyết định 3, và đây chính là căn nguyên của lỗi `FE-02`.
+
+Ghi chú vận hành: `sync:tenants` chạy `prisma db push --accept-data-loss`, nhưng với riêng thay đổi này `prisma migrate diff` cho thấy SQL sinh ra **thuần cộng thêm** — 4 `CREATE TYPE`, 3 `CREATE TABLE`, 5 index, **0 lệnh `DROP`**. `db push` **có** xóa 8 index và ràng buộc duy nhất do Prisma quản lý, nên chạy lại `hrm:constraints` sau đó là **bắt buộc**, không phải thừa.
+
+**Chưa chạy:** `npm run hrm:chuan-hoa-thue` (kể cả chế độ chạy thử `-- --thu`). Không cấp bách vì mọi tenant hiện đều tự sinh biểu 7 bậc đúng ngay từ đầu; script chỉ cần khi có tenant còn giữ biểu 5 bậc cũ.
+
+---
+
+## 17. Đợt đổi dải năm "Tạo nhanh" — ĐÃ THU HỒI (2026-09-08)
+
+### 17.1. Chuyện gì đã xảy ra
+
+Sau khi sửa xong `BUG-HRM-51`, chủ dự án nêu: ô chọn năm của hộp thoại "Tạo nhanh" chặn cứng tới 2030 và *"trông không ổn"*, muốn thay bằng **nút tăng/giảm** và cho vượt quá 2030.
+
+Một đợt ba việc đã chạy: BA đổi `BR-hrm-079` sang **dải trượt** `[năm nay − 5, năm nay + 10]`, Backend đổi validator và service, Frontend dựng nút tăng/giảm thay ô chọn danh sách.
+
+**Chủ dự án dừng cả ba agent giữa chừng** và quyết: *"thôi cứ để tới năm 2030 như cũ đi, việc làm kiểu này để sau đi."* Khi được hỏi rõ phạm vi, chọn **lùi hết** — về cả ô chọn danh sách lẫn giới hạn 2030.
+
+### 17.2. Đã hoàn nguyên những gì
+
+| Tầng | Trạng thái sau khi lùi |
+|:---|:---|
+| Máy chủ — validator | `.min(2024).max(2030)` trở lại; gỡ `.superRefine()` và `errorMap` |
+| Máy chủ — service | Lớp chặn thứ hai về so sánh cố định `< 2024 \|\| > 2030` |
+| Máy chủ — thông điệp lỗi | `NAM_KHOI_TAO_LE_INVALID` từ hàm về lại chuỗi cố định nêu rõ *"từ 2024 đến 2030"* |
+| Máy chủ — file mới | `holidayYearRange.ts` **đã xóa**; `namHienTaiVN()` chuyển ngược về `holidays.service.ts` |
+| Giao diện | Nút tăng/giảm gỡ bỏ; `TextField select` + 7 `MenuItem` (2024–2030) trở lại; gỡ cơ chế chống-gọi-dồn |
+| Giao diện — hằng số | `NAM_TAO_NHANH_MIN/MAX` từ hàm về lại hằng số cố định |
+| Đặc tả | `BR-hrm-079` · `FR-hrm-054` · `E-hrm-079` · `UC-hrm-22` · `US-hrm-16` · Mục 2.1 · Mục 4.10 · `AC-hrm-66` · `AC-hrm-73` về dải 2024–2030; `AC-hrm-74` **thu hồi tại chỗ** (chỉ có nghĩa với dải trượt) |
+| Biên bản BA | `ba-quyet-dinh-dai-nam-tao-nhanh-2026-09-08.md` giữ lại làm lưu vết, `status: approved` → **`revoked`**, có banner phân tách phần còn dùng được với phần hết hiệu lực |
+
+### 17.3. Đã kiểm chứng bằng thao tác thật
+
+| Phép thử | Kết quả |
+|:---|:---|
+| `POST /holidays/quick-generate` năm **2031** | **400** — *"Năm khởi tạo ngày lễ phải nằm trong khoảng từ 2024 đến 2030."* |
+| Năm **2030** và **2027** | **200** |
+| Ô chọn năm trên giao diện | **7 lựa chọn**, 2024 → 2030, **không có 2031**; là danh sách thả xuống, không còn nút tăng/giảm |
+| Dòng phụ dưới ô | *"Hệ thống nhận các năm 2024–2030."* |
+| Bộ ca máy chủ | **60/60 đạt** (đúng mốc trước đợt này); tích hợp 73/77 với đúng 4 ca đỏ có sẵn |
+| Giao diện | `tsc -p tsconfig.app.json` · `lint` · `build` đều sạch |
+| Dữ liệu tenant `0111142786` | **17 dòng nguyên vẹn**, không thêm không xóa |
+
+### 17.4. Những gì KHÔNG bị lùi nhầm — đã kiểm trực tiếp trên giao diện
+
+Bản xem trước vẫn hiện **11 dòng với 11 chip "Đã có trong lịch"** và câu tổng kết đầy đủ, nghĩa là hai đợt trước còn nguyên vẹn:
+
+* `dryRun` — bản xem trước đọc từ máy chủ (`ADR-010`), không quay lại tự tính bằng bảng tra
+* `alreadyCovered` — quy tắc bỏ qua ngày lễ đã được cờ lặp-hàng-năm phủ (`BUG-HRM-51`, `ADR-011`)
+* Thuật toán âm lịch `amLich.util.ts` — **không đụng một dòng**
+* Phân trang `taiHetTrang` (bản vá `B1`), Tết 2030 = `2030-02-02` ở bảng giao diện
+
+### 17.5. `TD-HRM-01` — nợ đổi nội dung, KHÔNG phải đã đóng
+
+Nợ này từng được ghi là *"tích hợp thư viện thiên văn âm dương trước năm 2031"*. Nội dung đó **đã lỗi thời**: thuật toán âm lịch có rồi, và đo thật cho thấy nó tính được 2023, 2031, 2035, 2040, 2050, 2099 — mỗi năm đủ 11 ngày.
+
+Đợt vừa rồi từng đánh dấu nợ này **ĐÓNG**, dựa trên việc chuyển sang dải trượt. Dải trượt nay đã bị thu hồi, nên **nợ mở lại với nội dung mới**:
+
+> **Quyết định có mở dải năm 2024–2030 hay không, và mở tới đâu.** Hạn chót **31/12/2030** — qua mốc đó mà không mở, mọi lần bấm "Tạo nhanh" sẽ trả 400.
+
+Giới hạn 2030 nay là **lựa chọn nghiệp vụ có chủ ý**, không còn là giới hạn kỹ thuật. Đặc tả đã ghi rõ điều này kèm một gạch đầu dòng **cấm khôi phục lý do cũ** ("bảng tra chỉ có 7 năm") cho người rà soát về sau. Câu hỏi mở: `OQ-hrm-37`.
+
+### 17.6. Còn lệch câu chữ — nhỏ, để sau
+
+Bốn chỗ còn giải thích dải 2024–2030 bằng **lý do cũ đã sai** (nói hoặc hàm ý "bảng tra âm lịch tĩnh / tra cứu sẵn"), trong khi dải năm ghi trong đó thì **đúng**:
+
+`srs/hrm-erd.md` (~dòng 279) · `srs/hrm-states.md` (~dòng 392) · `qa/test-cases.md` (cột kết quả mong đợi của `TC-hrm-325`/`326`) · `srs/hrm-spec.md` `AC-hrm-61`.
+
+Không sai dữ liệu, không chặn gì — chỉ là lời giải thích lỗi thời. Dọn khi tiện.
+
+### 17.7. Bài học
+
+Ba agent bị dừng giữa chừng nhưng **đã kịp sửa mã**, nên "dừng" không đồng nghĩa với "chưa có gì xảy ra". Việc hoàn nguyên phải làm thủ công theo từng phần, **không dùng được `git checkout`** vì các file đó còn chứa công sức của sáu vòng trước phải giữ.
+
+Cũng vì chạy song song, **báo cáo của agent có thể lỗi thời ngay khi viết xong**: một agent cảnh báo `api-contract.md`, `qa/*` và `ADR-008` cũng mô tả dải trượt và cần lùi — kiểm lại thì `ADR-008` và `qa/*` **không có chỗ nào**, còn `api-contract.md` chỉ khớp ở cụm *"Lỗi khi trượt"* trong một bảng, không liên quan. Tin luôn cảnh báo đó sẽ tốn thêm một vòng sửa ba tài liệu vốn không sai.
+
+---
+
+## 18. Đợt phát triển Phân hệ Cài đặt lương (Salary Settings) — ĐÃ HOÀN THÀNH (2026-09-09)
+
+### 18.1. Phạm vi & Mục tiêu
+Triển khai hoàn chỉnh toàn bộ tính năng backend cho giao diện Cài đặt lương (`hdđt_maxv/src/features/hrm/components/cai_dat_luong`) theo chuẩn BA và pháp lý lao động - BHXH - thuế Việt Nam (Thông tư 10/2020/TT-BLĐTBXH, Thông tư 111/2013/TT-BTC, BLLĐ 2019):
+1. **Danh mục khoản lương & phụ cấp** (`danh-muc-khoan`): 7 nhóm chuẩn, sinh mã `KL01`..`KL99`, chống trùng tên `E-sal-002`, bảo vệ xóa khi đang dùng trong cấu trúc `E-sal-003`, thống kê theo nhóm.
+2. **Cấu trúc lương khung** (`set-luong` - Salary Structure): Quản lý thời kỳ hiệu lực, chọn khoản đưa vào khung chuẩn, xác định phân loại thuế (`TAXABLE`/`NON_TAXABLE`), cờ tính tăng ca (`isOvertimeBase`), tiêu thức tính (`CalculationMethod`), số tiền mặc định.
+3. **Thiết lập lương nhân viên & Phê duyệt** (`set-luong` - Employee Salary Assignment): Danh sách kèm trạng thái `daSet`, lọc theo phòng ban/hợp đồng/đã set lương, form gán mức tiền (hỗ trợ cả định dạng mảng `items` và map `khoan`), ràng buộc hợp đồng còn hiệu lực `E-sal-009`, khoản gán phải thuộc cấu trúc active `E-sal-010`, tổng lương > 0 `E-sal-008`, cơ chế phiên bản (`setupVersion` tăng 1 và reset về `PENDING_APPROVAL` khi sửa), phê duyệt đơn lẻ và duyệt hàng loạt (`approve`).
+
+### 18.2. Các thành phần đã triển khai trong mã nguồn (`be_maxv`)
+- **Database & Schema**:
+  - `prisma/tenant/schema.prisma`: Thêm 5 enum (`SalaryItemCategory`, `SalaryItemStatus`, `TaxTreatment`, `CalculationMethod`, `SalaryApprovalStatus`), 5 models (`SalaryItem`, `SalaryStructure`, `SalaryStructureItem`, `EmployeeSalary`, `EmployeeSalaryItem`), liên kết 1-1 với `hrm_nhan_vien` qua `ma_nv`.
+  - Đã biên dịch Prisma Client thành công: `npx prisma generate --schema=prisma/tenant/schema.prisma`.
+- **Hằng số thông điệp**: `src/constants/messages.ts` bổ sung `MESSAGES.HRM.SALARY_*` (mã lỗi `E-sal-001` đến `E-sal-011`).
+- **Validators (Zod)**:
+  - `src/validators/hrm/cai_dat_luong/salaryItems.validator.ts`
+  - `src/validators/hrm/cai_dat_luong/salaryStructures.validator.ts`
+  - `src/validators/hrm/cai_dat_luong/employeeSalaries.validator.ts` (hỗ trợ linh hoạt cả `items` và `khoan`)
+- **Services**:
+  - `src/services/client/hrm/cai_dat_luong/salaryItems.service.ts`
+  - `src/services/client/hrm/cai_dat_luong/salaryStructures.service.ts`
+  - `src/services/client/hrm/cai_dat_luong/employeeSalaries.service.ts`
+- **Controllers & Routes**:
+  - `src/controllers/client/hrm/cai_dat_luong/` (`salaryItems`, `salaryStructures`, `employeeSalaries`)
+  - `src/routes/hrm/cai_dat_luong/` (`salaryItems.route.ts`, `salaryStructures.route.ts`, `employeeSalaries.route.ts`)
+  - Đăng ký plugin hoàn tất trong `src/routes/hrm/hrm.route.ts`.
+
+### 18.3. Kết quả Kiểm thử & Đảm bảo chất lượng
+- **TypeScript**: `tsc --noEmit` hoàn thành sạch với mã thoát 0 (không có bất kỳ lỗi biên dịch nào).
+- **Unit Tests (`src/__tests__/hrmSalarySettings.test.ts`)**: 13/13 ca đạt 100% (kiểm tra đầy đủ mọi ràng buộc `BR-sal-001`..`BR-sal-010`).
+- **Fastify HTTP API Tests (`src/__tests__/hrmSalarySettingsApi.test.ts`)**: 10/10 ca đạt 100% (bao gồm cả kiểm thử tương thích payload UI mock).
+- **Tài liệu lưu vết tại `docs/hrm/cai_dat_luong/`**:
+  - `srs-cai-dat-luong.md`: Đặc tả yêu cầu nghiệp vụ theo góc nhìn BA.
+  - `api-contract-cai-dat-luong.md`: Hợp đồng toàn diện cho các REST endpoints.
+  - `data-model-cai-dat-luong.md`: Thiết kế mô hình dữ liệu ERD và Prisma Schema.
+  - `qa-report-cai-dat-luong.md`: Báo cáo kết quả kiểm thử QA chi tiết.
+
+---
+
+## 19. Phân hệ Dữ liệu tính lương (Payroll Input Data) — Kiểm định độc lập & Hình thức hóa SRS (Business Analyst, 2026-09-09)
+
+### 19.1. Vì sao phải kiểm định lại
+
+Cùng ngày 2026-09-09, một phiên làm việc tự nhận vai **"ba-engineer"** (14:26) rồi ngay sau đó **"fullstack-engineer"** (14:48) — cả hai đều **không phải agent chuẩn của dự án** (chuẩn là `business-analyst`/`architect`/`backend-engineer`/`tester-qa`/`code-reviewer`) — đã viết đặc tả (`BA_ANALYSIS_SPEC.md`) **rồi tự mình triển khai toàn bộ backend + một phần frontend trong đúng hai lượt kế tiếp**, tự viết `walkthrough.md` tự chấm đạt. **Không qua** Architect review độc lập, **không qua** Tester-QA Phase A, **không qua** Code Reviewer, **không có** BA Sign-off Gate độc lập. Đây đúng là lỗi Mục 9.1 của file này đã cảnh báo cho đợt trước: *"không gộp ba vai vào một lượt viết. Cổng Phase A tồn tại chính vì lý do này."*
+
+Đợt này (Business Analyst, chạy độc lập, không tin suông `walkthrough.md`/`BA_ANALYSIS_SPEC.md`) đọc trực tiếp toàn bộ mã nguồn thật đã tồn tại — 14 model + 6 enum trong `schema.prisma`, 4 service, 4 controller, 4 route, 3 validator, 1 file test, `errorHandler.plugin.ts`, và 8 file `*Panel.tsx` + `KyLuongSelector`/`PayrollPeriodContext`/`ThanhLocKyLuong` ở `hdđt_maxv` — đối chiếu từng Business Rule/mã lỗi/entity, rồi hình thức hóa thành SRS chính thức.
+
+### 19.2. Thực thể mới (14 model, 6 enum) — đã đối soát 100% khớp `schema.prisma`
+
+Xem bảng đầy đủ ở Mục 2 (đã bổ sung 14 dòng: `hrm_payroll_periods`, `hrm_attendance_records`, `hrm_overtime_records`, `hrm_kpi_items`, `hrm_kpi_records`, `hrm_bonus_records`, `hrm_piecework_products`, `hrm_piecework_records`, `hrm_commission_records`, `hrm_diligence_violation_types`, `hrm_diligence_records`, `hrm_salary_adjustment_items`, `hrm_salary_adjustment_records`, `hrm_payroll_sheet_lines`). Đã `git diff` dòng-by-dòng xác nhận khớp 100% với những gì `BA_ANALYSIS_SPEC.md` mô tả — không có sai lệch schema.
+
+### 19.3. API map — đã đối soát API thật, xem Mục 3
+
+4 nhóm route (`payroll-periods` 11 endpoint, `payroll-catalogs` 16 endpoint, `payroll-data` 16 endpoint, `payroll` 2 endpoint) đã được đọc trực tiếp từ route file, KHÔNG suy từ tài liệu. Hai lệch quan trọng so với `BA_ANALYSIS_SPEC.md`: thiếu `POST /payroll-data/attendance/batch-override` và thiếu toàn bộ `GET /payroll/payslips/my`.
+
+### 19.4. Bốn phát hiện mức 🔴 — quan trọng nhất
+
+| # | Phát hiện | Bằng chứng |
+|:---:|---|---|
+| 1 | **8/8 file `*Panel.tsx`** (màn hình chính của cả 8 phân hệ: Chấm công, Tăng ca, KPI, Thưởng, Lương sản phẩm, Lương phần trăm, Chuyên cần, Ứng-bù trừ) **vẫn import hook nghiệp vụ từ `mock/hooks/*`**, chưa nối API thật. `walkthrough.md` tuyên bố "100% việc nối frontend" — **sai** cho đúng phần lõi nghiệp vụ. Chỉ `KyLuongSelector`, `PayrollPeriodContext`, `DuLieuLuongPage`, và dialog "Quản lý danh mục"/"Tái sử dụng" của 6/8 module (không có Chấm công, Tăng ca) đã nối thật | `hdđt_maxv/src/features/hrm/components/du_lieu_tinh_luong/{cham_cong/ChamCongPanel.tsx:24, tang_ca/TangCaPanel.tsx:30, kpi/KpiPanel.tsx:29, thuong/ThuongPanel.tsx:30, bu_tru/BuTruPanel.tsx:30, chuyen_can/ChuyenCanPanel.tsx:29, luong_san_pham/LuongSanPhamPanel.tsx:30, luong_phan_tram/LuongPhanTramPanel.tsx:30}` |
+| 2 | **Động cơ tính lương chỉ đọc 2/~15 tham số** đã cấu hình sẵn ở `hrm_general_settings` (`personalDeduction`, `dependentDeduction`) — còn lại **hardcode**: ngày công chuẩn (26), giờ chuẩn/ngày (8.0), tỷ lệ bảo hiểm (10.5%/21.5%), đoàn phí (1%/234k/2%), biểu thuế TNCN 7 bậc. Đổi cấu hình ở "Cấu hình mặc định" **không ảnh hưởng** số liệu lương tính ra | `be_maxv/src/services/client/hrm/du_lieu_tinh_luong/payrollCalculation.service.ts:7-28,136,163,244-250` |
+| 3 | **Reopen kỳ lương thiếu 2/3 kiểm soát** mà chính đặc tả khẳng định: không có role-guard ADMIN-only (route chỉ qua guard chung `requireModule('hrm')`), không ghi Audit Log (tham số lý do + userId bị cố ý bỏ qua, prefix `_`; **schema tenant hiện không có bảng audit log nào** để ghi vào) | `be_maxv/src/services/client/hrm/du_lieu_tinh_luong/payrollPeriods.service.ts:181-201`, `src/routes/hrm/du_lieu_tinh_luong/payrollPeriods.route.ts:15` |
+| 4 | **`createPayrollPeriod` không tự sinh lịch công chuẩn** từ `GeneralSetting`/`Holiday` như `BA_ANALYSIS_SPEC.md` Mục 4.1 khẳng định — hàm chỉ tạo record kỳ lương trơn | `payrollPeriods.service.ts:71-96` |
+
+6 phát hiện 🟠 và 3 phát hiện 🟡 khác — xem đầy đủ tại `du_lieu_tinh_luong/srs-du-lieu-tinh-luong.md` Mục 11.
+
+### 19.5. Kết luận tích cực (đã kiểm, không phải giả định)
+
+- Bất biến chặn sàn chuyên cần (BR-dltl-018) và bất biến công nợ thực lĩnh âm (BR-dltl-021) cài đúng, có unit test, khớp giữa 2 nơi tính độc lập (preview và tính lương thật).
+- 4 category `SalaryItem` (`ATTENDANCE_ALLOWANCE`, `KPI_PERFORMANCE`, `PERIODIC_BONUS`, `COMMISSION_PERCENTAGE`) dùng đúng, khớp enum thật đã có sẵn từ "Cài đặt lương" — không có category bịa ra.
+- Toàn vẹn giao dịch: mọi `apply` hàng loạt và `lock` đều bọc `db.$transaction`.
+- Đa tenant: 4 controller đều gọi `resolveTenantDb(req)` đúng quy ước.
+- Phần "Quản lý danh mục" (CRUD KPI/Sản phẩm/Chuyên cần/Bù trừ) và dialog "Tái sử dụng" của 6/8 module: nối API thật đúng như `walkthrough.md` liệt kê — walkthrough không sai toàn bộ, chỉ sai ở tuyên bố "100%" bao trùm cả phần Panel chính.
+
+### 19.6. Mười câu hỏi mở (`OQ-dltl-001`…`010`) — chưa bịa câu trả lời
+
+Đầy đủ ở `srs-du-lieu-tinh-luong.md` Mục 8. Đáng chú ý nhất: cấu hình `GeneralSetting` nên đọc động hay cố ý hardcode có ADR (`OQ-dltl-001`, `002`); "ADMIN" của Reopen map role nào thật (`OQ-dltl-004`); bảng audit log dùng chung hay tạo riêng (`OQ-dltl-003`); `PENDING_REVIEW` có thật sự nên "vẫn sửa được" hay cố ý đóng băng ở FE (`OQ-dltl-010`, xem lệch 3 tầng ở Mục 6.2 của SRS).
+
+### 19.7. Phạm vi bằng chứng của chính đợt này — nói thẳng
+
+Đợt này **chỉ đọc mã tĩnh** (schema, service, controller, route, validator, 1 file test, các file FE liệt kê ở 19.4). **Không tự chạy lại** `npm test`/`npm run typecheck`/`npm run lint`/`npm run build`, **không** gọi thử API bằng trình duyệt/Postman. Mọi con số "634 tests pass", "3/3 pass", "Build thành công" trong `walkthrough.md` **chưa được đợt này xác minh runtime** — chỉ được đánh giá là hợp lý về logic qua đọc tĩnh. Tester-QA Phase A/B phải tự chạy lại toàn bộ, không kế thừa số liệu cũ.
+
+### 19.8. Trạng thái & Bước tiếp theo
+
+**Status: CHƯA Ready for Implementation.** Tài liệu SRS chính thức: `docs/hrm/du_lieu_tinh_luong/srs-du-lieu-tinh-luong.md` (thay thế `BA_ANALYSIS_SPEC.md` trong vai trò nguồn chuẩn; `BA_ANALYSIS_SPEC.md` giữ làm vết lịch sử gap-analysis). Trình tự bắt buộc tiếp theo đúng `CLAUDE.md`: (1) Architect đọc SRS Mục 4–7, viết `api-contract-du-lieu-tinh-luong.md` + `data-model-du-lieu-tinh-luong.md`, ra ADR cho các OQ ảnh hưởng kiến trúc; (2) Tester-QA Phase A viết `test-matrix`/`test-cases` ưu tiên phủ 4 phát hiện 🔴; (3) chỉ sau khi Architect + QA phản biện xong, Business Analyst mới quay lại chốt Final Sign-off và đổi `Status` — **không kích hoạt Backend Engineer sửa lỗi trước khi có bước (1) và (2).**
+
+### 19.9. Bước (1)+(2)+Code Review hoàn tất cùng ngày (2026-09-09, 17:10–17:40) — kết quả: KHÔNG đạt
+
+Architect và Tester-QA chạy **song song, độc lập, không đọc chéo nhau** (đúng mô hình 3 Amigos đã chứng minh hiệu quả ở Mục 9), sau đó Code Reviewer chạy Quality Gate đọc cả 3 báo cáo trước để không trùng lặp. Cả 3 đều **xác nhận** 4 phát hiện 🔴 gốc của BA (Mục 19.4) là có thật, đồng thời **mỗi bên tự tìm thêm phát hiện 🔴 mới mà 2 bên kia không thấy** — đúng giá trị của việc không gộp vai:
+
+| Nguồn | Phát hiện 🔴 mới (ngoài 4 cái gốc của BA) |
+|---|---|
+| Architect (`data-model-du-lieu-tinh-luong.md`, `api-contract-du-lieu-tinh-luong.md`) | **A-01**: 4 controller thiếu `assertXemLuong` — `OWNER_EMPLOYEE` có `xemLuong=false` vẫn đọc được lương/TNCN toàn công ty qua `GET /payroll/calculate` (lặp lại đúng lớp lỗi BUG-HRM-25/28 đã từng xảy ra ở phân hệ Hợp đồng, Mục 5.1). **A-02**: chọn hợp đồng tính lương bằng `orderBy ngay_bat_dau desc take 1`, không lọc theo kỳ — hợp đồng tương lai/đã hết hạn vẫn được dùng. **A-03**: `attendanceType` không bao giờ được đọc trong engine — nghỉ không lương vẫn trả đủ công. |
+| Tester-QA (`qa-report-du-lieu-tinh-luong.md`) | Chỉ ~16% (12/76) kịch bản tự thiết kế từ SRS có test thật che phủ; phát hiện **1 test giả** (`hrmPayrollInputData.test.ts:417-425` tự assert với chính công thức của nó, không gọi code production — xóa `Math.max(0,...)` thật thì test vẫn PASS). Bug mới: `workDayValue` không chặn trần 1.0/ngày (`actualHours=24` → `workDayValue=3.0`, tràn dữ liệu công cụ thể). |
+| Code Reviewer (`docs/hrm/review-findings.md` — review-findings **đầu tiên** của cả phân hệ HRM) | **RVW-001** (nghiêm trọng nhất toàn đợt): mô hình chấm công delta bị hiện thực SAI — engine coi `AttendanceRecord` (chỉ ghi qua `PUT /attendance/cell` khi có ngoại lệ) là lịch công CẢ THÁNG, nên chấm 1 NGÀY nghỉ không lương duy nhất → lương cơ bản tính ra = **0đ** thay vì gần đủ (thay vì ~25/26 công), và `lock` đóng băng số sai này vĩnh viễn. **RVW-002**: `(req.user as any)?.sub` — JWT payload dự án không có claim `sub` (đúng ra là `userId`) → `lockedByUserId`/`approvedByUserId` luôn `null`, mất dấu vết ai khóa sổ/duyệt. |
+
+**Verdict cuối cùng: ❌ Request changes / FAILED — chưa Ready for Production.** Tổng cộng qua 4 lượt kiểm định độc lập: **~9 phát hiện 🔴 Blocking**, ~16 phát hiện 🟠, ~12 phát hiện 🟡/🟢 xuyên suốt 4 file (`srs-du-lieu-tinh-luong.md`, `data-model-du-lieu-tinh-luong.md`, `api-contract-du-lieu-tinh-luong.md`, `qa-report-du-lieu-tinh-luong.md`, `review-findings.md`). Đây là bằng chứng cụ thể tại sao Gate BA Sign-off + review độc lập không phải thủ tục hình thức: **9 lỗi 🔴 thật đã lọt qua đúng vì phiên trước gộp 3 vai vào 1 lượt viết** như chính Mục 9.1 cảnh báo trước đó. Ngoài lề: `docs/hrm/cai_dat_luong/data-model-cai-dat-luong.md` (status `approved`) cũng bị phát hiện lệch schema thật ở 5 mục — cần một phiên riêng cập nhật, ngoài phạm vi feature này.
+
+**Chưa kích hoạt Backend Engineer sửa lỗi** — đang chờ quyết định của người dùng về việc có tiến hành sửa ngay hay không (khối lượng sửa lớn: engine tính lương, quyền xem lương, JWT claim, 22+ file FE cần đấu nối, ~64 kịch bản test còn thiếu).
+
+*(Cập nhật thực tế, không phải BA ghi lúc đó): 2 phiên kế tiếp trong cùng ngày (`work-log.md` 18:30 backend-engineer, 17:55 frontend-engineer — do user kích hoạt tường minh) đã sửa 8/9 lỗi 🔴 và nối API thật cho 23/23 file FE còn mock của 8 phân hệ nhập liệu. Xem Mục 19.10 cho đợt kiểm định tiếp theo (2026-09-10, nhiệm vụ khác: Bảng lương tổng hợp).*
+
+### 19.10. Đợt kiểm định mới — Bảng lương tổng hợp (`bang_luong`) & đối chiếu thuế/bảo hiểm VN (Business Analyst, 2026-09-10)
+
+**Nhiệm vụ khác với 19.1–19.9**: 19.1–19.9 kiểm định cụm "8 phân hệ nhập liệu + vòng đời kỳ lương" (nay ổn định). Đợt này phục vụ yêu cầu mới của user: dựng chức năng **Bảng lương tổng hợp** trong `be_maxv` rồi gán API thay thế mock tại `hdđt_maxv/src/features/hrm/components/bang_luong` (18 cột + tab "Lương hỗ trợ") — UI này **chưa từng được đấu nối**, 100% còn đọc `mock/hooks/bangLuong.ts` + kho giả `useHrmStore()`.
+
+**Đã làm**: đọc `payrollCalculation.service.ts` thật (bản đã FIXED 2026-09-09, không phải bản mô tả cũ ở Mục 19.4), `review-findings.md` (đối chiếu FIXED/OPEN thật), schema `GeneralSetting`/`SalaryItem`/`SalaryStructureItem`/`EmployeeSalaryItem`/`OvertimeRecord`, `mock/hooks/bangLuong.ts` + `calculations/bang_luong/bangLuong.ts` (công thức FE mẫu), `docs/nestjs/payroll/CONTEXT_SUMMARY.md` (chỉ lấy business rule luật định tham khảo, không lấy schema/code).
+
+**Kết quả** — đầy đủ tại `du_lieu_tinh_luong/srs-du-lieu-tinh-luong.md` Mục 15:
+- **7/10 OQ cũ đã có hướng giải quyết** (OQ-dltl-001/003/004/006/007/009 chốt xong; OQ-dltl-002 chốt một nửa — bảo hiểm/đoàn phí đã đọc cấu hình, biểu thuế TNCN khuyến nghị nối `GeneralSetting.taxBrackets` nhưng để Architect ra ADR; OQ-dltl-005 chốt hướng "cảnh báo, không chặn cứng", thiết kế cộng dồn năm để Architect; OQ-dltl-008 gộp vào OQ-dltl-010; OQ-dltl-010 chốt 1 chuẩn "PENDING_REVIEW đóng băng ghi dữ liệu cả 3 tầng" — phát sinh 1 gap kỹ thuật cụ thể cho Architect ở `payrollPeriodLockGuard.ts`).
+- **4 Business Rule mới phát hiện thiếu, đối chiếu luật VN** (`BR-dltl-024…027`): 2 trần bảo hiểm độc lập BHXH+BHYT (46.8tr) vs BHTN (99.2tr) — hiện gộp 1 tỷ lệ không trần nào; miễn thuế phần tăng ca vượt chuẩn (Điều 3 TT111/2013) — hiện tính thuế 100% OT; khấu trừ 10% tại nguồn cho HĐ thử việc/thời vụ (Điều 25 TT111/2013) — hiện luôn áp biểu lũy tiến bất kể `loai_hd`; trần miễn thuế ăn trưa 730k/tháng (TT26/2016) — hệ quả của gap lớn hơn (engine chưa đọc nhóm `FIXED_ALLOWANCE`/`BENEFIT_ALLOWANCE`).
+- **1 xung đột nguồn sự thật nghiêm trọng, KHÔNG tự chốt được** (`OQ-dltl-011` mới): FE mock coi "Cài đặt lương" (`EmployeeSalaryItem` nhóm phụ cấp) là nguồn cột "Lương"; engine thật coi "Hợp đồng" (`luong_chinh`) là nguồn duy nhất, bỏ qua hoàn toàn nhóm phụ cấp. Đây là quyết định nghiệp vụ ảnh hưởng số tiền hiển thị của MỌI nhân viên — **cần user/kế toán trưởng xác nhận**.
+- **Gap API rõ ràng** (không tranh cãi, Architect làm được ngay): field `otRawHours` (giờ OT gốc chưa quy đổi — dữ liệu đã có trong `OvertimeRecord.hours`, chỉ cần cộng vào response `GET /payroll/calculate`); endpoint mới `GET /payroll/support-allowances?periodId=` cho tab "Lương hỗ trợ" (breakdown theo từng khoản `BENEFIT_ALLOWANCE`).
+- **Lưu ý pháp lý quan trọng, KHÔNG tự áp dụng**: tài liệu tham khảo `docs/nestjs/payroll` có nhắc biểu thuế TNCN 2026 mới (5 bậc) và giảm trừ gia cảnh mới (15,5tr/6,2tr) — CHƯA xác nhận hiệu lực, chính tài liệu đó cũng ghi "kế toán phải đối chiếu lại". BA không áp các con số này vào bất kỳ file nào.
+
+**Status: CHƯA Ready for Implementation** cho phần Bảng lương tổng hợp. Việc cần làm tiếp theo: (1) hỏi user OQ-dltl-011 (nguồn cột "Lương") + xác nhận có áp dụng bộ số liệu thuế 2026 mới hay giữ nguyên luật hiện hành; (2) sau khi có OQ-dltl-011, Architect thiết kế mở rộng `payrollCalculation.service.ts` + API contract theo Mục 15.3/15.5/15.6 của SRS; (3) Tester-QA Phase A viết test case cho `BR-dltl-024…027`; (4) BA quay lại Final Sign-off riêng cho cụm này.
+
+### 19.11. Tester-QA — Phase A hoàn tất: Test Matrix & Test Cases cho Bảng lương tổng hợp (2026-09-10)
+
+**Đã làm**: đối chiếu chéo `srs-du-lieu-tinh-luong.md` Mục 15 (BA cập nhật song song cùng ngày) với `payrollCalculation.service.ts` thật + schema `GeneralSetting`/`SalaryItem`/`EmployeeSalaryItem`/`SalaryStructureItem`/`OvertimeRecord`/`hrm_hop_dong`, dựa trên 2 quyết định đã chốt của chủ dự án (nguồn lương cơ bản hybrid `luong_chinh` + phụ cấp cố định `EmployeeSalaryItem`; giữ nguyên biểu thuế TNCN 7 bậc) và 4 Business Rule mới `BR-dltl-024…027`. Thiết kế xong **44 test case** (8 nhóm: nguồn lương cơ bản, biểu thuế 7 bậc, 2 trần bảo hiểm, miễn thuế OT, khấu trừ 10% HĐ thử việc/thời vụ, trần ăn trưa 730k, endpoint mới `GET /payroll/support-allowances`, regression 3 bất biến tài chính cũ) dạng Given/When/Then với số liệu tài chính cụ thể, đủ dùng làm TDD cho Backend Engineer. Xuất `docs/hrm/du_lieu_tinh_luong/test-matrix-bang-luong-tong-hop.md`.
+
+**Phát hiện đối chiếu chéo — 8 gap (GAP-QA-01…08), 3 mức 🔴 chặn một phần thiết kế test**:
+- 🔴 GAP-QA-01: quyết định "phụ cấp cố định" của chủ dự án chưa nói rõ gộp category `FIXED_ALLOWANCE` hay cả `BENEFIT_ALLOWANCE` — ảnh hưởng trực tiếp cách tách khoản ăn trưa (BR-dltl-027) ra khỏi cột "Lương".
+- 🔴 GAP-QA-02: chưa rõ phần phụ cấp cố định quy đổi theo công CHUNG 1 tỷ lệ với `luong_chinh` hay mỗi khoản tự quy đổi theo `SalaryStructureItem.calculationMethod` riêng.
+- 🔴 GAP-QA-05: BR-dltl-025 (miễn thuế OT) có áp dụng cho HĐ thử việc/thời vụ (BR-dltl-026, khấu trừ thẳng 10% trên gross, không qua `taxableIncome`) hay không — chưa có căn cứ để viết 1 test case cụ thể (`TC-blth-029` để trống, đánh Open).
+- 5 gap 🟡/🟢 khác (rounding 2 trần BH, ngưỡng 2tr tính trên gross hay lương cơ bản, response shape endpoint mới chưa có, xử lý nhân viên không có khoản `BENEFIT_ALLOWANCE`, hành vi `EmployeeSalary` không lọc `effectiveFrom`/`effectiveTo`) không chặn thiết kế nhưng cần chốt trước khi coi kết quả Phase B là đúng nghiệp vụ.
+
+**KHÔNG làm** (đúng phạm vi Phase A): không sửa production code, không chạy test thật (chưa có code Backend Engineer viết cho phần mở rộng), không tự đoán số liệu cho phần bị gap 🔴 chặn (để trống + đánh dấu Open thay vì bịa).
+
+**Khuyến nghị**: Architect có thể thiết kế/code song song ngay phần KHÔNG phụ thuộc gap 🔴 (2 trần bảo hiểm BR-dltl-024, miễn thuế OT BR-dltl-025 phần công thức chính, khấu trừ 10% BR-dltl-026, endpoint `support-allowances` ở mức hành vi). Phần đọc "Lương"/"phụ cấp ăn trưa" (Nhóm 1, Nhóm 6) nên khoan code tới khi GAP-QA-01/02 được chốt bằng văn bản. Đề nghị BA cập nhật ngược `srs-du-lieu-tinh-luong.md` Mục 8 để đánh dấu `OQ-dltl-011` đã RESOLVED (quyết định chủ dự án) và bổ sung chính thức `BR-dltl-028`/`BR-dltl-029` (hiện là ID QA tự đề xuất trong test matrix, chờ BA/Architect chính thức hóa).
+
+### 19.12. BA — Chốt công thức 4 BR mới + giải đáp trực tiếp GAP-QA-01/02/05 (Business Analyst, cùng ngày 2026-09-10, sau Mục 19.10/19.11)
+
+**Nhiệm vụ**: chủ dự án đã trực tiếp xác nhận 2 quyết định nghiệp vụ còn treo ở Mục 19.10 (KHÔNG phải BA tự suy đoán):
+1. **OQ-dltl-011 (nguồn cột "Lương"):** Hợp đồng (`luong_chinh`) **CỘNG THÊM** phụ cấp cố định từ Cài đặt lương (`EmployeeSalaryItem`) — 2 tầng dữ liệu bổ sung nhau, KHÔNG thay thế nhau.
+2. **Biểu thuế TNCN:** giữ nguyên luật hiện hành 7 bậc, giảm trừ gia cảnh 11tr/4.4tr — KHÔNG áp bộ số liệu 2026 mới (5 bậc, 15.5tr/6.2tr) mà `docs/nestjs/payroll` có nhắc tới.
+
+**Đã làm**: viết đầy đủ công thức + Acceptance Criteria (12 AC mới, `AC-dltl-12…23`) cho `BR-dltl-024…027` vào `srs-du-lieu-tinh-luong.md` Mục 15.3.1 (đủ chi tiết field-level theo đúng tên biến thật của `payrollCalculation.service.ts` để Architect thiết kế thẳng, Backend code thẳng); chốt field mapping cột "Lương" ở Mục 15.4 (`baseSalaryMonthly = luong_chinh + fixedAllowanceTotal`, có lưu ý kỹ thuật tách `contractBaseSalary` khỏi `fixedAllowanceTotal` cho `hourlyRate`/quy đổi công); cập nhật Mục 15.5/15.9 danh sách 8 field mới cần bổ sung vào response `GET /payroll/calculate`; ghi biên bản quyết định Mục 15.8; bổ sung 2 Edge Case mới `EC-dltl-06/07` (phạm vi chưa áp dụng của BR-dltl-026: `xac_dinh` ngắn hạn và `khoan`) và `NFR-dltl-007`.
+
+**Phát hiện quan trọng khi đối chiếu chéo với Tester-QA Phase A (Mục 19.11, chạy song song):** QA tự đặt giả định KHÁC cho `GAP-QA-01` trong `test-matrix-bang-luong-tong-hop.md` — QA giả định "phụ cấp cố định" chỉ gồm category `FIXED_ALLOWANCE`, loại trừ `BENEFIT_ALLOWANCE` (khoản ăn trưa). **Giả định này SAI** so với chỉ đạo gốc của chủ dự án (đã nêu ví dụ tường minh "ăn trưa, trách nhiệm" là phụ cấp cố định cần cộng thêm) — BA đã giải đáp dứt điểm cả 3 gap 🔴 của QA (`GAP-QA-01`, `GAP-QA-02`, `GAP-QA-05`) ngay trong `srs-du-lieu-tinh-luong.md` Mục 15.10, kèm sửa luôn 1 thiếu sót tự phát hiện trong chính công thức BA vừa viết (BR-dltl-026 thiếu gate `tinh_tncn` — đã bổ sung, trả lời luôn `TC-blth-029` QA để ngỏ). **Đề nghị QA cập nhật lại test matrix Nhóm 1/5/6 theo Mục 15.10** ở lượt làm việc kế tiếp — BA không tự sửa file của QA.
+
+**Trạng thái sau đợt này**: đặc tả nghiệp vụ cho "Bảng lương tổng hợp" đã **chốt đủ** — không còn quyết định nghiệp vụ nào bỏ ngỏ bắt buộc trước khi code (còn đúng 2 gap KỸ THUẬT, không phải nghiệp vụ, dành cho Architect quyết: cách nhận diện `isMealAllowance` trong `SalaryItem` cho BR-dltl-027, và thiết kế chi tiết tách `contractBaseSalary`/`fixedAllowanceTotal`). **Status: Đặc tả đã chốt đủ — sẵn sàng cho Phase 2 Architect ∥ Tester-QA** (Architect + Tester-QA đã và đang chạy song song ngay trong phiên này, không cần chờ BA). Chưa phải "Ready for Implementation" — còn chờ Phase 2 hoàn tất phản biện rồi BA quay lại Final Sign-off theo đúng quy trình 3 Amigos ở `CLAUDE.md`, cập nhật `Status` lần cuối trước khi kích hoạt Backend Engineer.
+
+**Không có câu hỏi mở mới cần user quyết thêm** — mọi gap còn lại (bao gồm GAP-QA-01/02/05 vừa đóng, và 2 gap kỹ thuật `isMealAllowance`/tách biến `baseSalaryMonthly`) đều thuộc thẩm quyền Architect, không cần quay lại hỏi chủ dự án.
+
+### 19.13. Architect — Phase 2 hoàn tất: Data Model + API Contract + ADR-010 cho Bảng lương tổng hợp (2026-09-10, sau Mục 19.10–19.12)
+
+> ⚠️ **Các con số trong mục này đã bị Mục 19.15 thay thế** (sau khi chủ dự án chốt `Q-1`): **19 cột** schema chứ không phải 18 (`PayrollSheetLine` 15 chứ không phải 14), **44 trường** response chứ không phải 43, **9 quyết định** `QĐ-1…QĐ-9` chứ không phải 8, **4 ràng buộc thứ tự** chứ không phải 3. Mục này giữ nguyên như biên bản của đợt làm việc đó — đọc **19.15** để lấy số hiện hành.
+
+**Đầu vào:** SRS Mục 15 (đầy đủ tới 15.10, gồm công thức `BR-dltl-024…027` + `AC-dltl-12…23` + giải đáp `GAP-QA-01/02/05`), 2 quyết định nghiệp vụ của chủ dự án (Mục 15.8), mã nguồn thật (`payrollCalculation.service.ts` bản 2026-09-09, `schema.prisma` tenant, `payrollAccessGuard`, module `cai_dat_luong`), và giao diện đích (`cotBangLuong.ts`, `types/index.ts`, `mock/hooks/bangLuong.ts`).
+
+**Sản phẩm (3 tài liệu):**
+- `du_lieu_tinh_luong/data-model-du-lieu-tinh-luong.md` **Mục 11** (mới) — 18 cột thêm vào `prisma/tenant/schema.prisma`: 3 cột `GeneralSetting` (`lunchAllowanceTaxFreeCap` 730.000 · `withholdingTaxRate` 10% · `withholdingTaxThreshold` 2.000.000), 1 cột `SalaryItem` (`isMealAllowance`), 14 cột `PayrollSheetLine`. Kèm chiến lược di trú qua `npm run sync:tenants` (thuần additive, mọi cột có `@default`), ranh giới giao dịch, chỉ mục (không thêm index mới).
+- `du_lieu_tinh_luong/api-contract-du-lieu-tinh-luong.md` **Mục 8** (mới) — DTO đầy đủ `GET /payroll/calculate` (43 trường, 14 trường mới, ví dụ số liệu nhất quán dùng làm dữ liệu mồi test), endpoint MỚI `GET /payroll/support-allowances?periodId=` cho tab "Lương hỗ trợ", bảng ánh xạ 18 cột UI ↔ trường API, 7 thay đổi hành vi (B-1…B-7), ảnh hưởng chéo sang `settings/general` + `salary-items`.
+- `architecture/adr/ADR-010-pipeline-thue-bao-hiem-bang-luong.md` (mới) — pipeline **10 bước** với 3 ràng buộc thứ tự bắt buộc, 8 quyết định (QĐ-1…QĐ-8), 9 phương án đã cân nhắc và bác, trade-off, hệ quả.
+
+**Các gap kỹ thuật mà BA để mở đã được chốt:** (a) nhận diện khoản ăn ca → cờ `SalaryItem.isMealAllowance` (đúng phương án (a) BA khuyến nghị, bác enum và bác quy ước theo `code`); (b) tách `contractBaseSalary` / `fixedAllowanceTotal` / `allowanceInPeriodTotal` khỏi `baseSalaryMonthly`, đơn giá giờ OT tính trên `contractBaseSalary` mở rộng bằng cột `SalaryStructureItem.isOvertimeBase` đang có sẵn mà chưa ai dùng; (c) ngưỡng 2.000.000đ + thuế suất 10% thành **cột cấu hình**, còn hệ số trần bảo hiểm `× 20` giữ làm **hằng số có trích dẫn luật** (khớp nhận định BA "không cần field DB mới").
+
+**Ba câu hỏi Architect KHÔNG tự chốt, cần BA/kế toán trưởng trả lời** (ghi ở cuối ADR-010) — **Q-1 và Q-2 nay đã đóng, xem Mục 19.14**:
+- **Q-1 🔴** ✅ *(đã chốt 2026-09-10 — xem 19.14)* — Công thức SRS Mục 15.3.1 **bỏ qua hoàn toàn** `SalaryItem.isTaxable` và `SalaryStructureItem.taxTreatment`: mọi phụ cấp đều vào thu nhập chịu thuế, chỉ ăn ca (tới trần) và phần OT vượt chuẩn được miễn. Nghĩa là ô tick "chịu thuế TNCN" ở màn Khoản lương **hiện không có tác dụng gì** với bảng lương. Bật hai cột đó lên là **mở rộng phạm vi miễn thuế** — quyết định nghiệp vụ, không phải kỹ thuật.
+- **Q-2 🟡** ✅ *(đã chốt 2026-09-10 — xem 19.14)* — Nếu Q-1 chốt "có miễn": ưu tiên `taxTreatment` (cấu trúc lương) hay `isTaxable` (danh mục) khi hai bên khai ngược nhau.
+- **Q-3 🟡** ⏳ *(còn mở)* — Cột UI "Lương theo ngày" chỉ hiện phần hợp đồng (đúng SRS 15.5) hay gồm cả phụ cấp đã quy đổi (đúng bản mock FE). API trả **cả hai trường** nên chốt sau cũng không phải đổi hợp đồng.
+
+**Hai điểm Architect chủ động khác với bản dựng hiện tại, đã ghi rõ để QA/BA soát:** (1) `contractType`/`salaryType` trả `null` khi nhân viên không có hợp đồng hiệu lực trong kỳ, thay cho `"khong_xac_dinh"`/`"GROSS"` bịa sẵn (giá trị `"GROSS"` chữ hoa còn không khớp `gross`/`net` lưu trong DB nên mọi bộ lọc theo kiểu lương đều trượt); (2) đoàn phí công đoàn **không** phải khoản giảm trừ thuế TNCN — bản mock Frontend đang trừ sai, engine giữ đúng, Frontend phải sửa mock.
+
+**Nợ ghi nhận, cố ý KHÔNG làm trong đợt này:** nối `GeneralSetting.taxBrackets` vào engine (hiện kế toán sửa biểu thuế thì bảng lương không đổi một đồng, im lặng — ADR-010 QĐ-6 giải thích vì sao hoãn) · `A-06` kiểu `Decimal` ra chuỗi ở nhánh snapshot · `unionFeeMaxAmount` lưu số tuyệt đối · `OQ-dltl-005`, `OQ-dltl-010`.
+
+**Trạng thái:** Phase 2 (Architect) **xong**. Chờ Tester-QA đối chiếu bộ 44 ca kiểm với hợp đồng vừa chốt (đặc biệt tên trường: bám đúng SRS 15.3.1, có bổ sung `allowanceInPeriodTotal`, `mealAllowanceAmount`, `lunchAllowanceExemptAmount`, `insuranceBaseBhxhByt/Bhtn`, `engineVersion`) rồi **BA Final Sign-off**. **Chưa `Ready for Implementation`** — Backend Engineer chưa được khởi chạy.
+
+### 19.14. Tester-QA — Rà soát lần 2: đóng GAP-QA-01/02/05, bổ sung Nhóm 9 cho quyết định Q-1 (2026-09-10, sau Mục 19.13)
+
+**Vì sao chạy lại:** chủ dự án ra quyết định mới giải quyết câu hỏi Q-1 mà Architect nêu ở cuối `ADR-010` (Mục 19.13): hệ thống phải **tôn trọng ô tick "chịu thuế TNCN"** có sẵn ở màn "Khoản lương" (`SalaryItem.isTaxable`) — khoản phụ cấp cố định nào được đánh dấu miễn thuế thì thực sự bị trừ khỏi thu nhập tính thuế, không còn giới hạn ở 2 ngoại lệ cứng (OT vượt chuẩn, ăn trưa trong trần 730k). Quyết định này được truyền đạt cho Tester-QA qua orchestrator, đồng thời là dịp rà lại toàn bộ 44 test case theo đúng `srs-du-lieu-tinh-luong.md` Mục 15.10 (giải đáp `GAP-QA-01/02/05`) và pipeline 10 bước của `ADR-010`.
+
+**Đã làm:** đọc lại `test-matrix-bang-luong-tong-hop.md` (bản lượt 1), `srs-du-lieu-tinh-luong.md` Mục 15.10, và `ADR-010-pipeline-thue-bao-hiem-bang-luong.md` đầy đủ. Cập nhật số liệu Nhóm 1 (nguồn "Lương" gồm cả `FIXED_ALLOWANCE` + `BENEFIT_ALLOWANCE`, tách rõ `baseSalaryMonthly` không quy đổi công khỏi `allowanceInPeriodTotal` có quy đổi công riêng từng khoản), Nhóm 4 (đổi cơ sở tính `otHourlyRate` từ `baseSalaryMonthly` sang `contractBaseSalary + isOvertimeBase`, thêm 2 test case chặn nguy cơ regression B-5), Nhóm 5 (đóng `TC-blth-029`, làm rõ ngưỡng khấu trừ dùng `thuNhapTruocGiamTru`), Nhóm 6 (ghi chú liên kết với `GAP-QA-01` đã đóng). Đóng `GAP-QA-01/02/05` trong Mục 0 kèm căn cứ trích dẫn. Bổ sung **Nhóm 9 (6 test case mới, `TC-blth-045…050`)** cho quyết định Q-1, kèm công thức giả định tường minh (QA tự đề xuất field `otherAllowanceTaxExemptAmount`, quy tắc chống trừ trùng khi 1 khoản vừa `isMealAllowance` vừa `isTaxable=false`). Tổng test case: **44 → 53** (9 nhóm).
+
+**Phát hiện quan trọng — mâu thuẫn giữa nguồn chỉ đạo và văn bản ADR-010:** khi đọc lại `ADR-010-pipeline-thue-bao-hiem-bang-luong.md` (bản `2026-09-10 10:59`) để đối chiếu quyết định Q-1, QA thấy file này **vẫn liệt Q-1 là câu hỏi mở** với hành vi mặc định đang thiết kế là "bỏ qua" `isTaxable`/`taxTreatment` — TRÁI với quyết định "tôn trọng tick" được truyền đạt cho QA qua orchestrator. Đây KHÔNG phải lỗi của QA hay của Architect — đơn thuần là 2 agent chạy song song, quyết định mới của chủ dự án đến với QA trước khi Architect kịp cập nhật ADR. Tester-QA đã đánh dấu rõ (`GAP-QA-09`) và dùng quyết định mới làm giả định thiết kế test (Nhóm 9), KHÔNG coi là final. **Đề nghị Architect cập nhật lại `ADR-010`** xác nhận bằng văn bản: (a) tên field trả về chính thức cho phần miễn thuế mới, (b) quy tắc chống trừ trùng khi 1 khoản phụ cấp vừa `isMealAllowance=true` vừa `isTaxable=false` (QA giả định: chỉ áp 1 lớp — trần luật định BR-dltl-027 thắng, không cộng thêm miễn toàn bộ theo `isTaxable`, tránh miễn vượt luật định 730k).
+
+**Trạng thái GAP-QA sau lượt này:** `GAP-QA-01`, `GAP-QA-02`, `GAP-QA-05` — **✅ ĐÃ ĐÓNG** (căn cứ SRS Mục 15.10 + `ADR-010`). `GAP-QA-03/04/06/07/08` — giữ nguyên mức độ như lượt trước (🟡/🟢, không chặn). `GAP-QA-09` (mới) — 🔴 chặn việc coi Nhóm 9 là final, không chặn việc viết test, không chặn tiến độ Nhóm 1–8.
+
+**Tài liệu đã cập nhật ở đợt này:** `du_lieu_tinh_luong/test-matrix-bang-luong-tong-hop.md` (viết lại toàn bộ, 44 → 53 test case) · `CONTEXT_SUMMARY.md` (mục này).
+
+**Trạng thái & bước tiếp theo:** Nhóm 1–8 (47 test case) đã sẵn sàng cho Backend code theo đúng `ADR-010` hiện hành, không còn gap 🔴 nào chặn. Nhóm 9 (6 test case, quyết định Q-1) **CHƯA sẵn sàng** — cần Architect cập nhật `ADR-010` chốt Q-1/Q-2 bằng văn bản trước. Đề nghị: (1) Architect cập nhật `ADR-010` theo quyết định Q-1 mới nhận được; (2) BA xác nhận lại `GAP-QA-06` (field `thuNhapTruocGiamTru` làm cơ sở ngưỡng khấu trừ 10%) bằng văn bản nếu có thời gian, không bắt buộc; (3) sau khi (1) xong, BA Final Sign-off có thể tiến hành cho Nhóm 1–8 độc lập với Nhóm 9, hoặc chờ gộp chung — tùy quyết định BA/chủ dự án về việc có tách đợt triển khai Q-1 riêng hay không.
+
+### 19.15. Architect — Chốt `Q-1`/`Q-2` bằng văn bản, đóng `GAP-QA-09` (2026-09-10, sau Mục 19.13–19.14)
+
+**Quyết định của chủ dự án (2026-09-10) — dữ kiện nghiệp vụ, Architect không được đổi:** `Q-1` chốt theo phương án **"Tôn trọng ô tick đã có"**. Khoản phụ cấp mà kế toán tick "chịu thuế TNCN" = false ở màn "Khoản lương" phải **thực sự** được trừ khỏi thu nhập tính thuế — **không** còn giới hạn ở hai ngoại lệ cứng (ăn ca trong trần 730k, OT vượt chuẩn) như bản nháp `ADR-010` đầu tiên. Đây là **quyết định nghiệp vụ thứ 3** của module này, đứng cạnh 2 quyết định đã có ở SRS Mục 15.8.
+
+**Công thức miễn thuế cuối cùng — 3 cấu phần, các giỏ LOẠI TRỪ NHAU** (`ADR-010` bước [5], QĐ-9):
+
+```
+5a. Duyệt TỪNG khoản phụ cấp đã cộng ở [2], mỗi khoản vào ĐÚNG MỘT giỏ (if / else if):
+      (i)   isMealAllowance = true                        → giỏ ĂN CA          (bỏ qua ô tick)
+      (ii)  taxTreatment = EXEMPT ∨ isTaxable = false      → giỏ MIỄN THEO KHAI BÁO
+      (iii) còn lại                                        → chịu thuế
+    mealAllowanceAmount           = Σ giỏ (i)   — số TRONG KỲ (đã quy đổi công)
+    otherAllowanceTaxExemptAmount = Σ giỏ (ii)  — số TRONG KỲ (đã quy đổi công)
+
+5c. lunchAllowanceExemptAmount = min(mealAllowanceAmount, round(730.000 × tyLeCong))
+    lunchAllowanceTaxableAmount = mealAllowanceAmount − lunchAllowanceExemptAmount
+
+5d. tongMienThue        = otTaxExemptAmount + lunchAllowanceExemptAmount + otherAllowanceTaxExemptAmount
+    thuNhapTruocGiamTru = grossIncome − tongMienThue      (dùng cho CẢ 2 nhánh thuế ở [8])
+```
+
+**Bốn điểm Architect chốt kèm** (chi tiết + lý do ở `ADR-010` QĐ-9.1…9.4):
+- **QĐ-9.1 — phạm vi có giới hạn:** chỉ áp cho **phụ cấp cố định** (`FIXED_ALLOWANCE` / `BENEFIT_ALLOWANCE` đi vào `allowanceInPeriodTotal`). Thưởng / hoa hồng / KPI / lương sản phẩm / chuyên cần **giữ nguyên là chịu thuế**, dù `BonusRecord`/`CommissionRecord` cũng trỏ `SalaryItem` có `isTaxable` — luật chỉ miễn thưởng kèm danh hiệu Nhà nước, và giữ phạm vi hẹp thì các cấu phần đó **không đổi một đồng** so với hôm nay.
+- **QĐ-9.2 — chốt `Q-2` bằng phép OR** (`EXEMPT` **hoặc** `isTaxable = false` là đủ), **đảo ngược** mặc định "cấu trúc lương thắng" ghi ở bản nháp trước. Lý do: `taxTreatment` có `@default(TAXABLE)` ở cả schema (`1261`) lẫn validator (`salaryStructures.validator.ts:17`) ⇒ cho `TAXABLE` quyền phủ quyết thì ô tick tiếp tục vô hiệu đúng trong ca phổ biến nhất, tức chốt `Q-1` trên giấy mà không có tác dụng thật. `EXEMPT`/`false` là khai báo có chủ đích; `TAXABLE`/`true` có thể chỉ là giá trị mặc định chưa ai đụng.
+- **QĐ-9.3 — khoản ăn ca chỉ áp MỘT lớp, trần thắng ô tick.** Đây là **ca phổ biến chứ không phải ca biên** (`KL08` "Phụ cấp tiền cơm" trong dữ liệu mẫu của dự án đang để `chiu_thue_tncn: false`). Cộng dồn hai lớp = miễn 1.573.846 trên khoản chỉ có 900.000 tiền thật ⇒ khai thiếu thuế. Cho tick thắng thì `BR-dltl-027` chết ngay khi ra đời. Ràng buộc bắt buộc: hiện thực bằng `if/else if` trên **cùng một vòng lặp**, và `mealAllowanceAmount + otherAllowanceTaxExemptAmount ≤ allowanceInPeriodTotal`.
+- **QĐ-9.4 — tên trường:** **`otherAllowanceTaxExemptAmount`**, lấy đúng tên Tester-QA đã đặt ở Nhóm 9. **Không** đổi tên `lunchAllowanceTaxableAmount` (nghĩa ngược nhau — một bên là phần **vượt trần chịu thuế**, một bên là phần **miễn**).
+
+**`GAP-QA-09` — ✅ ĐÃ ĐÓNG.** Hai câu QA hỏi đều được trả lời bằng văn bản: (a) tên trường = `otherAllowanceTaxExemptAmount` (đúng tên QA đề xuất); (b) quy tắc chống trừ trùng — **giả định của QA đúng**, nay là QĐ-9.3 chính thức. **Nhóm 9 (`TC-blth-045…050`) chuyển sang "final", không phải sửa số liệu ca nào**, chỉ gỡ nhãn "CHƯA final" + trỏ căn cứ về QĐ-9. Ba ca nên **thêm** cho nhánh chưa phủ: `EXEMPT` + `isTaxable=true` ⇒ vẫn miễn · `isMealAllowance=true` + `isTaxable=true` ⇒ vẫn miễn tới trần · thưởng/hoa hồng `isTaxable=false` ⇒ vẫn chịu thuế.
+
+**Hai vấn đề 🟠 nêu ở lượt trước — đối chiếu lại, KẾT LUẬN GIỮ NGUYÊN:** (1) **đoàn phí công đoàn** bị mock FE trừ sai vào thu nhập tính thuế — `Q-1` mở rộng phạm vi *miễn thuế của phụ cấp*, không đụng *danh sách khoản giảm trừ* của Điều 9 TT 111/2013, nên **QĐ-5 nguyên vẹn**: engine không trừ, Frontend sửa mock; (2) **`AC-dltl-19` gộp 2 tình huống `withholdingTaxApplied = false`** — `Q-1` đổi *gốc tính thuế*, không đổi *cách rẽ nhánh phương pháp* ở bước [8], nên giữ nguyên giá trị cờ (QA đã bám vào), giao diện muốn hiện phương pháp phải xét thêm `contractType`.
+
+**Thay đổi tài liệu:** `ADR-010` (bước [5] viết lại, ràng buộc thứ tự thứ 4, QĐ-9 mới, 5 phương án bác bổ sung, Q-1/Q-2/Q-1b/`GAP-QA-09` chuyển sang mục "Đã chốt") · `data-model` Mục 11 (**+1 cột snapshot** `otherAllowanceTaxExemptAmount` ⇒ `PayrollSheetLine` **14→15 cột**, tổng **18→19 cột**; Mục **11.3.1** mới về quy tắc đọc 2 cột nguồn; thêm bước rà soát dữ liệu tick trước khi bật trên production) · `api-contract` Mục 8 (**43→44 trường**, ví dụ số liệu tính lại nhất quán, `thu_nhap_chiu_thue` nay **4 số hạng**, thêm thay đổi hành vi **B-8**). **Không** thêm cột nguồn, **không** thêm enum, **không** thêm mã lỗi — hai cột `isTaxable`/`taxTreatment` đã tồn tại và CRUD đã chạy đủ từ lâu; đợt này chỉ là engine bắt đầu **đọc** chúng.
+
+**Cảnh báo triển khai (dành cho Backend + người bàn giao):** đây là lần đầu ô tick có hiệu lực ⇒ **thuế TNCN sẽ giảm ngay** ở mọi công ty đang để `isTaxable = false` cho phụ cấp, xuất hiện **cùng lúc** với thay đổi cột "Lương" (B-1). Phải chạy thống kê rà soát trước khi bật production (`data-model` Mục 11.7 bước 6) và báo trước cho người dùng. Công ty chưa từng đổi 2 cột đó ⇒ `otherAllowanceTaxExemptAmount = 0` ⇒ **số y hệt cũ**.
+
+**Trạng thái:** câu hỏi mở của Architect còn đúng **`Q-3`** (cột UI "Lương theo ngày" — thuần hiển thị, API đã trả cả 2 trường nên không chặn Backend). **Chưa `Ready for Implementation`** — chờ BA Final Sign-off, kèm việc BA bổ sung `AC` cho `otherAllowanceTaxExemptAmount` vào SRS Mục 15.3.1 (công thức BA viết hiện chưa có bước [5a] phân giỏ).
+
+### 19.16. Biên bản chốt BA Final Sign-off — Bảng lương tổng hợp (Business Analyst, 2026-09-10, sau Mục 19.13–19.15)
+
+**Việc Architect bàn giao (`api-contract-du-lieu-tinh-luong.md` Mục 8.7):** bổ sung Acceptance Criteria cho field `otherAllowanceTaxExemptAmount` vào `srs-du-lieu-tinh-luong.md` Mục 15.3.1 — công thức BA viết lần đầu chưa có bước tương đương [5a] của `ADR-010` (duyệt từng khoản phụ cấp vào 3 giỏ theo QĐ-9). **Đã làm:** thêm mục "Quyết định nghiệp vụ 3 (`Q-1`)" ngay sau `AC-dltl-23`, gồm công thức phân giỏ khớp nguyên văn `ADR-010` bước [5a] (thứ tự `isMealAllowance` → `taxTreatment=EXEMPT ∨ isTaxable=false` → chịu thuế) và **5 AC mới `AC-dltl-24…28`** (khoản khai miễn vẫn được trả đủ lương nhưng trừ khỏi thuế; phép OR khi `taxTreatment`/`isTaxable` khai ngược nhau; khoản vừa ăn ca vừa khai miễn chỉ áp 1 lớp — chống cộng đôi; phạm vi KHÔNG áp cho thưởng/hoa hồng; regression khi không khoản nào khai miễn). Đồng thời cập nhật Mục 15.5 (dòng `thue_tncn`) và Mục 15.9 (bảng field mới 8→9, thêm dòng `otherAllowanceTaxExemptAmount`) cho khớp; đóng dấu ✅ vào gap kỹ thuật `isMealAllowance` đã được Architect chốt (QĐ-4) trong Mục 15.3.1.
+
+**Đối soát chéo SRS ↔ `ADR-010` ↔ `data-model` Mục 11 ↔ `api-contract` Mục 8 ↔ `test-matrix-bang-luong-tong-hop.md`:** tên trường, công thức, thứ tự tính (pipeline 10 bước), phạm vi 44→53 test case — khớp nhau, **không phát hiện mâu thuẫn nghiệp vụ mới nào cần quyết định của chủ dự án**.
+
+**Một phát hiện kỹ thuật nhỏ, KHÔNG chặn Sign-off:** `test-matrix-bang-luong-tong-hop.md` (Mục 0, Mục 6, header Nhóm 9, `TC-blth-050`) vẫn còn nhãn vật lý "⚠️ GAP-QA-09, CHƯA final" và trích dẫn mặc định cũ "cấu trúc lương thắng" (đã bị `ADR-010` QĐ-9.2 đảo thành phép OR) — dù nội dung số liệu 6 ca `TC-blth-045…050` đã đúng và **không cần sửa số liệu nào** (xác nhận bởi chính `ADR-010` phần Consequences). Đây thuần là nhãn/trích dẫn chưa cập nhật, không phải sai số liệu, và không đổi kết quả PASS/FAIL của test. Việc gỡ nhãn thuộc quyền ghi của Tester-QA (không tự sửa file QA) — khuyến nghị Tester-QA cập nhật nhãn + bổ sung 3 ca theo `ADR-010` Consequences (mục QA) trước khi chạy Phase B, nhưng **không** chặn Backend Engineer bắt đầu code (Backend code theo `ADR-010`/`data-model`/`api-contract` — nguồn thật đã chốt đầy đủ, không đọc nhãn test-matrix).
+
+**Kết quả đối soát: ✅ PASS.** Mọi Acceptance Criteria (Given/When/Then) của Mục 15.3.1 đều có Test Case tương ứng trong `test-matrix-bang-luong-tong-hop.md` (`AC-dltl-12…28` ↔ `TC-blth-001…050`, 53 ca, 9 nhóm). API Contract, Data Model khớp đúng Business Rules và 3 quyết định nghiệp vụ của chủ dự án (Mục 15.8 + Quyết định nghiệp vụ 3).
+
+**BA CHÍNH THỨC CHỐT — `Status: Ready for Implementation`** cho cụm "Bảng lương tổng hợp" (`docs/hrm/du_lieu_tinh_luong/`). Phạm vi được duyệt để Backend Engineer triển khai:
+- **Schema `prisma/tenant/schema.prisma` — 19 cột mới**: 3 cột `GeneralSetting` (`lunchAllowanceTaxFreeCap`, `withholdingTaxRate`, `withholdingTaxThreshold`) + 1 cột `SalaryItem` (`isMealAllowance`) + 15 cột `PayrollSheetLine` (theo `data-model-du-lieu-tinh-luong.md` Mục 11.2/11.3/11.4), sau đó `npm run generate` + `npm run sync:tenants` (10/10 tenant).
+- **4 Business Rule mới** `BR-dltl-024…027` + **Quyết định nghiệp vụ 3** (`Q-1`/QĐ-9) — pipeline tính lương 10 bước theo đúng thứ tự `ADR-010` (không được đảo bước).
+- **Sửa `payrollCalculation.service.ts`**: hiện thực pipeline 10 bước, hàm `tinhKhoanPhuCapTheoKy()` (dùng chung 2 endpoint, trả kèm nhãn phân giỏ), `laHopDongKhauTruTaiNguon()`, `laKhoanMienThue()`, `getSupportAllowanceBreakdown()`.
+- **Endpoint mới**: `GET /payroll/support-allowances?periodId=` (`payrollCalculation.route.ts` + `.controller.ts`, bắt buộc `dbCoQuyenLuongPayroll`).
+- **Ảnh hưởng chéo module `cai_dat_luong`**: `GET/PUT /settings/general` + `restore-default` (3 trường mới) và `GET/POST/PATCH /salary-items` (`isMealAllowance`) — theo `api-contract-du-lieu-tinh-luong.md` Mục 8.4.
+- **Test bám theo**: `test-matrix-bang-luong-tong-hop.md` (53 ca, 9 nhóm — Nhóm 9 nội dung đã đúng dù nhãn file vật lý còn cũ, xem phát hiện kỹ thuật ở trên).
+
+## 20. Phase B — Kiểm định độc lập Bảng lương tổng hợp (Tester-QA, 2026-09-10)
+
+Kiểm định độc lập kết quả code của backend-engineer (phiên `2026-09-10 12:02`) sau khi triển khai `ADR-010`. Toàn bộ chi tiết ở `docs/hrm/du_lieu_tinh_luong/test-report-bang-luong-tong-hop.md` + `issues-and-bugs-bang-luong-tong-hop.md`.
+
+- **Xác minh số liệu Backend tự báo cáo — KHỚP 100%** (tự chạy lại, không tin suông): `npm run typecheck` exit 0 · `npm run lint` 0 error/359 warning · `npm test` 696/692/4 fail · `hrmPayrollCalculation.test.ts`+`hrmPayrollInputData.test.ts` 58/58 PASS (chạy đúng `--experimental-test-module-mocks`).
+- **4 fail cũ (`TC-hrm-301`/`TC-hrm-316`) xác nhận pre-existing** qua `git diff` — diff của phiên `12:02` chỉ thêm 27 dòng assertion cho 3 field mới ở khối `TC-hrm-273…287`, không đụng khối 301/316. Không phải regression.
+- **`TC-blth-032`/`033` — xác nhận là lỗi tài liệu của QA (phiên trước), KHÔNG phải bug Backend.** `AC-dltl-23` (đã Sign-off) + `ADR-010` bước [5c] đều yêu cầu prorate trần ăn trưa theo công; bảng Nhóm 6 của `test-matrix-bang-luong-tong-hop.md` viết TRƯỚC khi `AC-dltl-23` được bổ sung nên còn giữ trần cố định 730.000. Code + test Backend sửa (615.385/561.538/53.847 và 923.077/561.538/361.539) đã tự kiểm chứng khớp công thức đúng. Việc cập nhật lại bảng Nhóm 6 + gỡ nhãn "CHƯA final" ở Nhóm 9 thuộc quyền ghi Tester-QA, đợt sau, không chặn Code Reviewer.
+- **5 bất biến tài chính đọc trực tiếp code — ĐỀU ĐÚNG**: (1) miễn thuế trước thuế ở cả 2 nhánh (khấu trừ 10% và lũy tiến); (2) chống trừ trùng ăn ca+khai miễn dùng if/else if loại trừ nhau trong 1 vòng lặp (`tinhKhoanPhuCapTheoKy`), không phải OR cộng dồn; (3) 2 trần bảo hiểm tính độc lập, không kẹp chung; (4) `snapshotPayrollSheet()` 44 field khớp ĐÚNG schema `PayrollSheetLine` (đối soát tĩnh field-by-field, không thiếu/thừa cột); (5) bất biến `support-allowances.total` == phần `BENEFIT_ALLOWANCE` trong `allowanceInPeriodTotal` — cả 2 endpoint dùng chung `tinhKhoanPhuCapTheoKy()`, không chép công thức lần 2.
+- **0 Bug mới (Blocking/Critical/High).** 4 Issue non-blocking phát hiện: `ISSUE-blth-001` (🟢 tài liệu test-matrix Nhóm 6 chưa cập nhật số liệu prorate), `ISSUE-blth-002` (🟡 5/53 test case chưa có test riêng khớp đúng — đáng chú ý nhất: `TC-blth-042` chặn sàn chuyên cần TẠI ENGINE `payrollCalculation.service.ts` chưa được test nào bảo vệ, test hiện có chỉ phủ `payrollInputs.service.ts`), `ISSUE-blth-003` (🟡 `POST`/`PATCH /salary-items` không có RBAC ADMIN/OWNER dù `isMealAllowance`/`isTaxable` nay điều khiển trực tiếp số tiền thuế — pre-existing, cần BA/Architect quyết định có siết không), `ISSUE-blth-004` (🟢 `snapshotPayrollSheet()` 44-field `createMany` chưa được xác nhận chạy thật trên Postgres cho `PayrollSheetLine`, chỉ đối soát tĩnh — cần 1 lượt `lock` thật trước `npm run sync:tenants`).
+- **QA Recommendation: ✅ Sẵn sàng cho Code Reviewer** (conditional pass — không có Bug blocking, 4 issue non-blocking đã ghi rõ phụ trách/thời điểm xử lý).
+
+Đây là tín hiệu chính thức cho phép **Backend Engineer** khởi chạy, bám `docs/hrm/architecture/adr/ADR-010-pipeline-thue-bao-hiem-bang-luong.md` làm nguồn thật cho thứ tự tính toán.
+
+## 21. Phase B — Kiểm định độc lập Frontend khu "Bảng lương" (Tester-QA, 2026-09-10)
+
+Kiểm định độc lập 2 phiên `frontend-engineer` (`work-log.md` `17:30` + `18:15`, cùng ngày) — nối API thật (`GET /payroll/sheet-lines`, `GET /payroll/support-allowances`) thay mock cho `hdđt_maxv/src/features/hrm/components/bang_luong/*`. Chi tiết đầy đủ ở `docs/hrm/du_lieu_tinh_luong/test-report-bang-luong-tong-hop.md` Mục 9 + `issues-and-bugs-bang-luong-tong-hop.md` `ISSUE-blth-005`/`006`.
+
+- **Xác minh độc lập tsc/lint/build — KHỚP 100%** với báo cáo của frontend-engineer (`npx tsc -b` exit 0, `npm run lint` 0 lỗi/0 cảnh báo, `npm run build` thành công 12346 module, đúng 2 cảnh báo Rolldown pre-existing).
+- **Field mapping (api-contract Mục 8.1.1) — ĐÚNG**: `gio_tang_ca` ← `otRawHours`, `thu_nhap_chiu_thue` suy đúng 4 số hạng (không dùng thẳng `taxableIncome`), `luong_theo_ngay` cộng đúng `proratedWorkSalary + allowanceInPeriodTotal`.
+- **`normalizePayrollLine()` (A-06) — 34 trường ĐẦY ĐỦ**, đối chiếu thủ công từng cột `Decimal`/`Int` của `schema.prisma::PayrollSheetLine` (33 Decimal + 1 Int) khớp CHÍNH XÁC với `PAYROLL_LINE_NUMERIC_FIELDS` — không sót trường nào, kỳ khóa sổ sẽ không bị lỗi cộng chuỗi.
+- **UI Chip "Đã khóa sổ" + Alert cảnh báo — ĐÚNG điều kiện**: cả hai chỉ hiện khi `isLocked` (`LOCKED`/`APPROVED`/`PAID`/`ARCHIVED`), khớp đúng nhánh snapshot backend, không hiện sai cho `DRAFT`/`PENDING_REVIEW`.
+- **KHÔNG test được UI thật qua trình duyệt (báo cáo trung thực)**: kết nối trực tiếp Postgres dev xác nhận có 2 tenant đã bật module `hrm` nhưng **0 `PayrollPeriod`** và chỉ 1 nhân viên/tenant — không có dữ liệu payroll mẫu. Không có script seed (`be_maxv/prisma/tenant/` không có `seed.ts`, `src/scripts/hrm/` không có script tạo dữ liệu mẫu). Thử đặt lại mật khẩu 1 tài khoản test để tự đăng nhập — bị chặn ghi DB theo đúng nguyên tắc an toàn, không tìm cách vòng qua. Đây là giới hạn môi trường, không phải lỗi code.
+- **2 phát hiện mới (chưa có trong `dev-notes.md`)**: `ISSUE-blth-005` 🟡 Medium — `engineVersion` khai báo nhưng KHÔNG được dùng ở bất kỳ đâu trong FE để phân biệt kỳ khóa sổ `v1` (trước ADR-010); cột `thu_nhap_chiu_thue` sẽ hiển thị SAI cho các kỳ lịch sử đó (chỉ ảnh hưởng kỳ khóa TRƯỚC 2026-09-10, không ảnh hưởng kỳ mới) mà không có cảnh báo trên UI — cần BA/Architect quyết định UX. `ISSUE-blth-006` 🟢 Low — `Math.max(0, ...)` khi suy `thu_nhap_chiu_thue` không có trong api-contract, về lý thuyết vô hại nhưng có thể che dấu hiệu bất thường nếu backend tính sai.
+- **QA Recommendation: ✅ Sẵn sàng cho Code Reviewer** (conditional pass — 0 bug code, field mapping/schema đối chiếu đúng 100% qua đọc code, nhưng cần môi trường cấp tenant test có dữ liệu mẫu trước khi coi là "đã kiểm thử UI đầy đủ"; `ISSUE-blth-005` cần BA/Architect xác nhận độ ưu tiên).

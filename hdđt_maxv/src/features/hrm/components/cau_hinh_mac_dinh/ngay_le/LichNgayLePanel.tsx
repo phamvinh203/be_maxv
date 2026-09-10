@@ -14,6 +14,8 @@ import IconButton from "@mui/material/IconButton";
 import Tooltip from "@mui/material/Tooltip";
 import Chip from "@mui/material/Chip";
 import Typography from "@mui/material/Typography";
+import Alert from "@mui/material/Alert";
+import Skeleton from "@mui/material/Skeleton";
 import ToggleButton from "@mui/material/ToggleButton";
 import ToggleButtonGroup from "@mui/material/ToggleButtonGroup";
 import AddRounded from "@mui/icons-material/AddRounded";
@@ -23,9 +25,13 @@ import AutoAwesomeRounded from "@mui/icons-material/AutoAwesomeRounded";
 import CheckRounded from "@mui/icons-material/CheckRounded";
 import RemoveRounded from "@mui/icons-material/RemoveRounded";
 import { getErrorMessage } from "../../../../../lib/errors";
-import { LOAI_NGAY_LE } from "../../../constants";
-import { ngayVn, nhan } from "../../../format";
-import { useNgayLeRows, useXoaNgayLe } from "../../../mock/hooks/ngayLe";
+import { LOAI_NGAY_LE } from "../../../_shared/constants";
+import { ngayVn, nhan } from "../../../_shared/format";
+import {
+  useNgayLeRows,
+  useTrangThaiNgayLe,
+  useXoaNgayLe,
+} from "../../../api/cau_hinh_mac_dinh/holidaysQueries";
 import type { LocNgayLe, NgayLe } from "../../../types";
 import XacNhanXoaDialog from "../../XacNhanXoaDialog";
 import NgayLeFormDialog from "./NgayLeFormDialog";
@@ -49,6 +55,7 @@ function thuTrongTuan(iso: string): string {
 export default function LichNgayLePanel() {
   const [loc, setLoc] = useState<LocNgayLe>("nam_nay");
   const rows = useNgayLeRows(loc);
+  const { dangTai, loi, thieuDong } = useTrangThaiNgayLe();
   const xoaNgayLe = useXoaNgayLe();
 
   const [formOpen, setFormOpen] = useState(false);
@@ -187,7 +194,39 @@ export default function LichNgayLePanel() {
                 </TableCell>
               </TableRow>
             ))}
-            {rows.length === 0 && (
+            {/* Ba trạng thái rỗng khác nhau: đang tải / hỏng / thật sự chưa có. Gộp lại là
+                mời người dùng "Tạo nhanh" đè lên lịch họ đã có mà chỉ đang tải dở. */}
+            {dangTai && (
+              <TableRow>
+                <TableCell colSpan={7}>
+                  <Skeleton variant="rounded" height={32} sx={{ my: 1 }} />
+                  <Skeleton variant="rounded" height={32} sx={{ my: 1 }} />
+                  <Skeleton variant="rounded" height={32} sx={{ my: 1 }} />
+                </TableCell>
+              </TableRow>
+            )}
+            {!dangTai && loi && (
+              <TableRow>
+                <TableCell colSpan={7}>
+                  <Alert severity="error" sx={{ my: 1 }}>
+                    Không tải được lịch ngày lễ. Hãy tải lại trang trước khi thêm hoặc tạo nhanh.
+                  </Alert>
+                </TableCell>
+              </TableRow>
+            )}
+            {/* Lịch vượt trần tải (2.000 dòng): bảng đang thiếu ngày. Ngày lễ quyết định hệ số
+                tăng ca 300%/390% nên thiếu mà không nói là sai tiền, theo hướng khó thấy. */}
+            {!dangTai && !loi && thieuDong && (
+              <TableRow>
+                <TableCell colSpan={7}>
+                  <Alert severity="warning" sx={{ my: 1 }}>
+                    Lịch ngày lễ quá lớn nên bảng chỉ hiện phần đầu. Hãy báo quản trị rà lại lịch
+                    trước khi dùng cho chấm công và bảng lương.
+                  </Alert>
+                </TableCell>
+              </TableRow>
+            )}
+            {!dangTai && !loi && rows.length === 0 && (
               <TableRow>
                 <TableCell colSpan={7}>
                   <Typography

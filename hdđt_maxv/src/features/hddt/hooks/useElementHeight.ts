@@ -27,28 +27,44 @@ import { useCallback, useEffect, useLayoutEffect, useState } from "react";
  * không bao giờ gắn được, vì hàng tiêu đề chưa tồn tại ở lần effect chạy đầu tiên lúc còn `loading`).
  */
 export function useElementHeight<T extends HTMLElement>() {
+  return useKichThuocPhanTu<T>(docChieuCao);
+}
+
+/**
+ * Bề rộng PIXEL thật — CÙNG cơ chế đo hai lớp + ref callback như `useElementHeight` (doc ở trên).
+ * Dùng: biểu đồ SVG của Dashboard HRM, vẽ đúng số pixel khung chứa để chữ trên trục không co giãn.
+ */
+export function useElementWidth<T extends HTMLElement>() {
+  return useKichThuocPhanTu<T>(docChieuRong);
+}
+
+// Khai ở cấp module để hàm đo giữ nguyên danh tính giữa các lần render (là dependency của effect).
+const docChieuCao = (r: DOMRect) => r.height;
+const docChieuRong = (r: DOMRect) => r.width;
+
+function useKichThuocPhanTu<T extends HTMLElement>(doc: (r: DOMRect) => number) {
   const [node, setNode] = useState<T | null>(null);
   const ref = useCallback((el: T | null) => setNode(el), []);
-  const [height, setHeight] = useState(0);
+  const [kichThuoc, setKichThuoc] = useState(0);
 
   // Đo DOM (hệ thống NGOÀI React) rồi đồng bộ vào state — đúng pattern tài liệu React khuyến nghị
   // cho `useLayoutEffect`, không phải state đồng bộ state; 2 rule dưới false-positive với chính việc
   // đo kích thước phần tử. Mỗi rule bị báo Ở ĐÚNG DÒNG khác nhau (`exhaustive-deps` tại lời gọi
-  // `useLayoutEffect`, `set-state-in-effect` tại chính lời gọi `setHeight`) nên phải tắt riêng từng
-  // dòng — gộp chung 1 `eslint-disable-next-line` phía trên chỉ tắt được dòng ngay sát nó.
+  // `useLayoutEffect`, `set-state-in-effect` tại chính lời gọi `setKichThuoc`) nên phải tắt riêng
+  // từng dòng — gộp chung 1 `eslint-disable-next-line` phía trên chỉ tắt được dòng ngay sát nó.
   // eslint-disable-next-line react-hooks/exhaustive-deps -- cố ý chạy mỗi render, xem doc hàm ở trên
   useLayoutEffect(() => {
-    const measured = node?.getBoundingClientRect().height;
+    const measured = node ? doc(node.getBoundingClientRect()) : undefined;
     // eslint-disable-next-line react-hooks/set-state-in-effect -- xem giải thích ngay phía trên
-    if (measured !== undefined && measured !== height) setHeight(measured);
+    if (measured !== undefined && measured !== kichThuoc) setKichThuoc(measured);
   });
 
   useEffect(() => {
     if (!node) return;
-    const observer = new ResizeObserver(() => setHeight(node.getBoundingClientRect().height));
+    const observer = new ResizeObserver(() => setKichThuoc(doc(node.getBoundingClientRect())));
     observer.observe(node);
     return () => observer.disconnect();
-  }, [node]);
+  }, [node, doc]);
 
-  return [ref, height] as const;
+  return [ref, kichThuoc] as const;
 }

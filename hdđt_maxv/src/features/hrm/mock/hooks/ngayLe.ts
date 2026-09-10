@@ -1,7 +1,7 @@
 /** Hook nghiệp vụ lịch ngày lễ. Xem ghi chú về chữ ký ở `hooks/phongBan.ts`. */
 
 import { useCallback, useMemo } from "react";
-import { ngayLeChuanVN } from "../../ngayLeChuan";
+import { ngayLeChuanVN } from "../ngayLeChuan";
 import type { LocNgayLe, NgayLe, NgayLeFormValues } from "../../types";
 import { sinhId } from "../store";
 import { useHrmStore } from "../useHrmStore";

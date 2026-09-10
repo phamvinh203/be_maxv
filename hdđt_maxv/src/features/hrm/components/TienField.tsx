@@ -1,6 +1,6 @@
 import TextField from "@mui/material/TextField";
 import InputAdornment from "@mui/material/InputAdornment";
-import { chiSo, tienVn } from "../format";
+import { chiSo, tienVn } from "../_shared/format";
 
 interface Props {
   label: string;

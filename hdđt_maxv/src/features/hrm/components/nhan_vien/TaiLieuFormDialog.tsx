@@ -17,8 +17,8 @@ import AttachFileRounded from "@mui/icons-material/AttachFileRounded";
 import CloseRounded from "@mui/icons-material/CloseRounded";
 import CheckCircleRounded from "@mui/icons-material/CheckCircleRounded";
 import { getErrorMessage } from "../../../../lib/errors";
-import { LOAI_TAI_LIEU } from "../../constants";
-import { taiLieuRong } from "../../formDefaults";
+import { LOAI_TAI_LIEU } from "../../_shared/constants";
+import { taiLieuRong } from "../../_shared/formDefaults";
 import {
   GIOI_HAN_FILE_BYTE,
   GIOI_HAN_FILE_MB,
@@ -28,7 +28,7 @@ import {
   useLuuTaiLieu,
   useTaiNhieuFileLen,
   type DongTaiLieu,
-} from "../../api/taiLieuQueries";
+} from "../../api/du_lieu_nhan_vien/taiLieuQueries";
 import type { LoaiTaiLieu, TaiLieuFormValues } from "../../types";
 
 /** `284512` -> `278 KB`. Dưới 1MB hiện KB cho gọn, từ 1MB trở lên hiện MB một chữ số lẻ. */

@@ -18,8 +18,8 @@ import AddRounded from "@mui/icons-material/AddRounded";
 import EditRounded from "@mui/icons-material/EditRounded";
 import DeleteRounded from "@mui/icons-material/DeleteRounded";
 import { getErrorMessage } from "../../../../../lib/errors";
-import { LOAI_TAI_LIEU } from "../../../constants";
-import { ngayVn, nhan } from "../../../format";
+import { LOAI_TAI_LIEU } from "../../../_shared/constants";
+import { ngayVn, nhan } from "../../../_shared/format";
 import Dialog from "@mui/material/Dialog";
 import DialogTitle from "@mui/material/DialogTitle";
 import DialogContent from "@mui/material/DialogContent";
@@ -35,7 +35,7 @@ import {
   useXoaTaiLieu,
   type DongTaiLieu,
   type FileScanApi,
-} from "../../../api/taiLieuQueries";
+} from "../../../api/du_lieu_nhan_vien/taiLieuQueries";
 import XacNhanXoaDialog from "../../XacNhanXoaDialog";
 import DanhSachFileScan from "../DanhSachFileScan";
 import TaiLieuFormDialog from "../TaiLieuFormDialog";

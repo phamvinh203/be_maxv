@@ -13,9 +13,9 @@ import Typography from "@mui/material/Typography";
 import FormControlLabel from "@mui/material/FormControlLabel";
 import Checkbox from "@mui/material/Checkbox";
 import { getErrorMessage } from "../../../../../lib/errors";
-import { LOAI_NGAY_LE } from "../../../constants";
-import { ngayLeRong } from "../../../formDefaults";
-import { useLuuNgayLe } from "../../../mock/hooks/ngayLe";
+import { LOAI_NGAY_LE } from "../../../_shared/constants";
+import { ngayLeRong } from "../../../_shared/formDefaults";
+import { useLuuNgayLe } from "../../../api/cau_hinh_mac_dinh/holidaysQueries";
 import type { LoaiNgayLe, NgayLe, NgayLeFormValues } from "../../../types";
 
 interface Props {
@@ -24,6 +24,16 @@ interface Props {
   /** Có giá trị = sửa ngày lễ này. */
   ngayLe?: NgayLe;
 }
+
+/**
+ * Hai loại KHÔNG lặp lại theo dương lịch được: lễ âm lịch (ngày dương đổi mỗi năm) và nghỉ bù
+ * (gắn với một dịp cụ thể của đúng năm đó).
+ *
+ * Máy chủ **CHẶN** chứ không tự sửa: gửi `{ type: "LUNAR", isAnnual: true }` là 400
+ * `E-hrm-075`, nó không âm thầm đổi thành `false`. Nên giao diện phải tự tắt và khóa ô —
+ * bản trước chỉ xét lễ âm lịch, chọn "Nghỉ bù" rồi bấm lưu là dính 400 không rõ nguyên nhân.
+ */
+const LOAI_KHONG_LAP_LAI: LoaiNgayLe[] = ["le_am_lich", "nghi_bu"];
 
 export default function NgayLeFormDialog({ open, onClose, ngayLe }: Props) {
   const laSua = Boolean(ngayLe);
@@ -52,12 +62,14 @@ export default function NgayLeFormDialog({ open, onClose, ngayLe }: Props) {
   const dat = <K extends keyof NgayLeFormValues>(khoa: K, giaTri: NgayLeFormValues[K]) =>
     setValues((cu) => ({ ...cu, [khoa]: giaTri }));
 
-  // Đổi sang lễ âm lịch thì tắt luôn cờ lặp — ngày dương của nó đổi mỗi năm.
+  const khongLapLaiDuoc = LOAI_KHONG_LAP_LAI.includes(values.loai);
+
+  /** Đổi sang loại không lặp được thì tắt luôn cờ lặp, khỏi để người dùng gửi lên rồi bị chặn. */
   const doiLoai = (loai: LoaiNgayLe) =>
     setValues((cu) => ({
       ...cu,
       loai,
-      lap_lai_hang_nam: loai === "le_am_lich" ? false : cu.lap_lai_hang_nam,
+      lap_lai_hang_nam: LOAI_KHONG_LAP_LAI.includes(loai) ? false : cu.lap_lai_hang_nam,
     }));
 
   const handleSubmit = async () => {
@@ -124,7 +136,7 @@ export default function NgayLeFormDialog({ open, onClose, ngayLe }: Props) {
               control={
                 <Checkbox
                   checked={values.lap_lai_hang_nam}
-                  disabled={values.loai === "le_am_lich"}
+                  disabled={khongLapLaiDuoc}
                   onChange={(e) => dat("lap_lai_hang_nam", e.target.checked)}
                 />
               }
@@ -134,7 +146,9 @@ export default function NgayLeFormDialog({ open, onClose, ngayLe }: Props) {
                   <Typography variant="caption" color="text.secondary">
                     {values.loai === "le_am_lich"
                       ? "Lễ âm lịch có ngày dương đổi mỗi năm nên phải tạo lại từng năm."
-                      : "Ngày này tự áp cho mọi năm, không cần tạo lại."}
+                      : values.loai === "nghi_bu"
+                        ? "Nghỉ bù gắn với một dịp của đúng năm đó nên không lặp lại được."
+                        : "Ngày này tự áp cho mọi năm, không cần tạo lại."}
                   </Typography>
                 </Box>
               }

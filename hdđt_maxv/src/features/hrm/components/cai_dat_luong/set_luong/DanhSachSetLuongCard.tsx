@@ -24,15 +24,15 @@ import VisibilityRounded from "@mui/icons-material/VisibilityRounded";
 import EditRounded from "@mui/icons-material/EditRounded";
 import DeleteRounded from "@mui/icons-material/DeleteRounded";
 import { getErrorMessage } from "../../../../../lib/errors";
-import { sapXepCay } from "../../../cay";
-import { LOAI_HD, TRANG_THAI_SET_LUONG } from "../../../constants";
-import { ngayVn, nhan, tienVn } from "../../../format";
+import { sapXepCay } from "../../../_shared/cay";
+import { LOAI_HD, TRANG_THAI_SET_LUONG } from "../../../_shared/constants";
+import { ngayVn, nhan, tienVn } from "../../../_shared/format";
 import { usePhongBanList } from "../../../mock/hooks/phongBan";
 import {
   useDemSetLuong,
   useSetLuongRows,
   useXoaSetLuong,
-} from "../../../mock/hooks/setLuong";
+} from "../../../api/cai_dat_luong/employeeSalariesQueries";
 import type { LoaiHopDong, SetLuongFilters, SetLuongRow } from "../../../types";
 import XacNhanXoaDialog from "../../XacNhanXoaDialog";
 import SetLuongNhanVienDialog from "./SetLuongNhanVienDialog";

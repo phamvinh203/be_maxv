@@ -1,18 +1,23 @@
 # Quy ước dự án
 
-## Luồng làm việc chuẩn (Shift-Left 3 Amigos & BA Final Sign-off)
+## Luồng làm việc chuẩn (Shift-Left 3 Amigos, Backend-First & Lưu vết bắt buộc)
 
 business-analyst (Autonomous Research, Brainstorming & Đặc tả Markdown)
 → (architect ∥ tester-qa [Phase A: Spec Review & Test Design])
 → [GATE] BA Thẩm định & Chốt toàn bộ (Final Sign-off)
-→ (backend-engineer ∥ frontend-engineer)
-→ tester-qa [Phase B: Dynamic Test Execution]
-→ code-reviewer
+→ backend-engineer (code theo Contract đã chốt — lưu vết vào `work-log.md`)
+→ tester-qa [Phase B: Dynamic Test Execution] ← fail thì quay lại backend-engineer sửa + lưu vết, lặp tới khi pass
+→ code-reviewer (ghi findings rõ file:line vào `review-findings.md`)
+→ backend-engineer (sửa findings + lưu vết các phần đã sửa vào `review-findings.md` & `work-log.md`)
+→ ✅ Hoàn tất chu kỳ backend
+
+> **⏸️ TẠM NGỪNG (paused)**: `frontend-engineer` và `devops-engineer` hiện KHÔNG thuộc luồng hoạt động — chưa cần làm tới. Chỉ kích hoạt khi user yêu cầu rõ ràng. Khi kích hoạt lại: frontend-engineer làm SAU backend (code trên contract đã qua QA + review, ổn định) và tự chạy lại vòng `tester-qa` → `code-reviewer` cho phần FE.
 
 - **BA Autonomous Research & Đặc tả Markdown**: Tự khảo sát codebase/context (`be_maxv/`, `maxv/`, `hdđt_maxv/`, `fe_maxv/`), phân tích 2–3 phương án giải quyết (Options & Trade-offs Matrix), tập trung xuất các file tài liệu Markdown `.md` (Spec/Flows/States/ERD) vào `docs/<feature>/srs/`. Tạm bỏ việc sinh file sơ đồ rời dạng `.svg`, `.puml`, `.png`; các luồng và mô hình biểu diễn trực tiếp bằng bảng biểu hoặc Mermaid inline trong file `.md`.
 - **Shift-Left Testing (Song song & Cuốn chiếu)**: Architect thiết kế phần nào thì Tester-QA tiếp nhận ngay phần đó, đối chiếu chéo với Acceptance Criteria của BA để bẫy lỗi ngay từ khâu đặc tả.
-- **BA Final Sign-off Gate (Bắt buộc)**: Sau khi Architect và Tester-QA thảo luận phản biện, BA là người đứng ra tổng duyệt, chốt lại toàn bộ tài liệu (Spec, Contract, Test Matrix), cập nhật trạng thái `Status: Ready for Implementation` vào `docs/<feature>/CONTEXT_SUMMARY.md`. **CHỈ KHI ĐÓ** các kỹ sư triển khai mới được phép khởi chạy.
-- **Implementation & Dynamic QA**: Backend/Frontend Engineer triển khai code bám sát Contract và Test Cases. Sau đó Tester-QA chạy test thực tế và bắt buộc xuất `issues-and-bugs.md`.
+- **BA Final Sign-off Gate (Bắt buộc)**: Sau khi Architect và Tester-QA thảo luận phản biện, BA là người đứng ra tổng duyệt, chốt lại toàn bộ tài liệu (Spec, Contract, Test Matrix), cập nhật trạng thái `Status: Ready for Implementation` vào `docs/<feature>/CONTEXT_SUMMARY.md`. **CHỈ KHI ĐÓ** Backend Engineer mới được phép khởi chạy.
+- **Backend-First Implementation & Dynamic QA**: Backend Engineer triển khai code trong `be_maxv/` bám sát Contract và Test Cases. Sau đó Tester-QA chạy test thực tế, bắt buộc xuất `issues-and-bugs.md`; lỗi phát hiện → Backend Engineer sửa + lưu vết, lặp tới khi pass.
+- **Lưu vết bắt buộc (Mandatory Trace)**: sau MỖI phiên làm việc (code mới, fix bug QA, fix review), Backend Engineer append vào `docs/<feature>/work-log.md`; Code Reviewer ghi findings vào `docs/<feature>/review-findings.md`. Không phiên làm việc nào được để lại không dấu vết.
 
 ---
 
@@ -69,6 +74,8 @@ Cấu trúc chuẩn của một thư mục feature:
 ```
 docs/<feature>/
 ├── CONTEXT_SUMMARY.md           ← Bộ nhớ ngữ cảnh (entities, API routes, scope, tiến độ)
+├── work-log.md                  ← BẮT BUỘC: nhật ký lưu vết toàn bộ công việc đã làm (backend-engineer append sau mỗi phiên — format xem mục "Format work-log.md")
+├── review-findings.md           ← BẮT BUỘC: findings của code-reviewer (ID RVW-xxx, vị trí file:line) + trạng thái fix (code-reviewer ghi, backend-engineer cập nhật)
 ├── srs/                         ← Toàn bộ tài liệu đặc tả (.md) của Business Analyst (tập trung .md, không sinh .svg/.puml/.png)
 │   ├── <feature>-spec.md        ← Đặc tả: User Stories, Acceptance Criteria (Given/When/Then), Business Rules
 │   ├── <feature>-flows.md       ← BẮT BUỘC: Đặc tả luồng quy trình (mô tả step/bảng phân vai hoặc Mermaid inline trong .md)
@@ -110,10 +117,12 @@ docs/<feature>/
 - Ghi nhận quyết định kỹ thuật vào `architecture/adr/`.
 - Bàn giao cuốn chiếu từng mục cho Tester-QA.
 
-### Backend & Frontend Engineer
-- Thực thi code dựa trên API Contract và Test Spec có sẵn.
+### Backend Engineer
+> ⏸️ `frontend-engineer` TẠM NGỪNG — hiện không kích hoạt. Chu kỳ kết thúc ở code-reviewer pass.
+- Thực thi code dựa trên API Contract và Test Spec có sẵn (chỉ trong `be_maxv/`).
 - Tự chạy linter, typecheck, unit test cục bộ.
-- Sau khi code xong và pass kiểm tra nội bộ, viết/cập nhật `docs/<feature>/architecture/dev-notes.md` — hướng dẫn ngắn cho dev đọc sau: mô hình nghiệp vụ trước khi đọc code, bảng "thao tác → hàm/route/component" quan trọng, logic/công thức nghiệp vụ nằm ở đâu, chỗ nào TUYỆT ĐỐI không được nhân đôi logic. Backend ghi section `## Backend (be_maxv)`, Frontend ghi section `## Frontend ({app})` — cùng 1 file, mỗi bên chỉ sửa phần của mình.
+- Sau khi code xong và pass kiểm tra nội bộ, viết/cập nhật `docs/<feature>/architecture/dev-notes.md` — hướng dẫn ngắn cho dev đọc sau: mô hình nghiệp vụ trước khi đọc code, bảng "thao tác → hàm/route/component" quan trọng, logic/công thức nghiệp vụ nằm ở đâu, chỗ nào TUYỆT ĐỐI không được nhân đôi logic.
+- **LƯU VẾT BẮT BUỘC**: append vào `docs/<feature>/work-log.md` sau MỖI phiên làm việc (code mới, fix bug từ QA, fix findings từ review) — format xem mục **"Format work-log.md"** dưới đây.
 
 ### Tester QA
 - Tạo thư mục `docs/<feature>/qa/`.
@@ -126,6 +135,7 @@ docs/<feature>/
   - **BẮT BUỘC xuất file `docs/<feature>/qa/issues-and-bugs.md`**: Ghi rõ từng Bug ID, mức độ nghiêm trọng (Severity), các bước tái hiện (Steps to reproduce), và toàn bộ các Issues còn tồn đọng cần fix tiếp.
 
 ### Code Reviewer
+- **LƯU VẾT BẮT BUỘC**: review xong, ghi toàn bộ findings vào `docs/<feature>/review-findings.md` theo format **"Format review-findings.md"** dưới đây (ID RVW-xxx, severity, vị trí file:line, đề xuất fix, trạng thái OPEN/FIXED). Backend Engineer sửa xong sẽ cập nhật trạng thái ngay dưới từng finding. Đây là quyền ghi DUY NHẤT của reviewer — không sửa code.
 
 Output:
 
@@ -138,6 +148,7 @@ Output:
 - Final recommendation
 
 ### DevOps
+> ⏸️ **TẠM NGỪNG** — agent hiện không thuộc pipeline, chỉ kích hoạt khi user yêu cầu rõ ràng.
 
 Output:
 
@@ -150,6 +161,34 @@ Output:
 - Logging
 - Health check
 - Rollback procedure
+
+---
+
+### Format `work-log.md` (Backend Engineer append sau mỗi phiên)
+
+```markdown
+## [YYYY-MM-DD HH:mm] backend-engineer — {code mới | fix BUG-xxx | fix RVW-xxx}
+- Nhiệm vụ: {mô tả 1 dòng}
+- Đã sửa: `đường/dẫn/file.ts`:42 (liệt kê TỪNG file, kèm dòng)
+- Liên kết: REQ-xxx · TC-xxx · BUG-xxx · RVW-xxx
+- Kiểm chứng: {typecheck/lint/test — pass/fail, số test}
+- Commit: {hash} hoặc "chưa commit"
+```
+
+### Format `review-findings.md` (Code Reviewer ghi, Backend Engineer cập nhật trạng thái)
+
+```markdown
+## Review YYYY-MM-DD — Verdict: {✅ Approve | ⚠️ Approve with comments | ❌ Request changes}
+
+### RVW-001 🔴 BLOCKING — {tiêu đề ngắn}
+- Vị trí: `đường/dẫn/file.ts`:42
+- Vấn đề: {lỗi gì & vì sao nghiêm trọng}
+- Đề xuất fix: {sửa cụ thể}
+- Trạng thái: OPEN
+  → FIXED [YYYY-MM-DD] — đã sửa `đường/dẫn/file.ts`:42, commit `hash`, test pass (n/x) *(backend-engineer ghi dòng này)*
+```
+
+> Severity dùng đúng bộ 🔴 Blocking / 🟡 Non-blocking / 🟢 Suggestion. Finding nào backend sửa xong phải chuyển OPEN → FIXED kèm bằng chứng; KHÔNG được xóa finding cũ.
 
 ---
 
@@ -360,6 +399,46 @@ Các hành động có thể gây mất dữ liệu hoặc downtime phải đư�
 
 ---
 
+# Tổ chức file theo tính năng (Feature-scoped file organization)
+
+> Áp dụng cho `be_maxv` và mọi frontend app (`hdđt_maxv`, `maxv`, `fe_maxv`). Nguyên tắc: file nào chỉ phục vụ 1 feature/module nghiệp vụ thì nằm trong subfolder đặt tên theo feature đó, không nằm phẳng ở root của thư mục kỹ thuật (`api/`, `helpers/`, `constants/`, `utils/`, `scripts/`, `__tests__/`, `calculations/`...). Mục đích: thư mục kỹ thuật luôn dễ quét, không lẫn lộn file của nhiều feature khác nhau.
+
+## Quy tắc quyết định: 1 feature dùng hay nhiều feature dùng?
+
+Trước khi thêm file mới vào 1 thư mục kỹ thuật (không tính file dùng-1-lần như component/controller/service — những cái đó vốn đã nằm trong folder feature của nó):
+
+- **Chỉ 1 feature/module nghiệp vụ dùng** (vd chỉ HRM, chỉ `dich_vu_cong`) → đặt trong subfolder đặt tên đúng slug feature đó.
+- **≥ 2 feature không liên quan cùng dùng** (vd cả `accounting` lẫn `hrm` lẫn `to_khai`) → đây là hạ tầng dùng chung, để phẳng ở root của thư mục kỹ thuật — KHÔNG ép vào subfolder chỉ vì "trông gọn hơn". Ép vào 1 feature cụ thể là sai (file đó không thuộc riêng feature nào), tách mỗi file 1 folder riêng hoặc gom vào 1 bucket "misc" cũng sai (rối hơn, không rõ hơn).
+- Không chắc → grep tìm toàn bộ nơi import file đó rồi mới quyết, đừng đoán qua tên file (tên file gợi ý sai domain là chuyện thường xảy ra).
+
+## Cấu trúc mẫu đã áp dụng
+
+**Backend (`be_maxv/src/`)** — mỗi thư mục kỹ thuật có subfolder `<feature>/` cho phần riêng của feature đó, slug PHẢI khớp đúng slug đã dùng ở `controllers/client/<feature>/` + `services/client/<feature>/` + `routes/<feature>/` (vd `hrm`, `dich_vu_cong`, `hddt`, `to_khai`, `accounting`):
+- `helpers/<feature>/`, `constants/<feature>/`, `utils/<feature>/`, `scripts/<feature>/` — file chỉ 1 feature dùng.
+- `__tests__/<feature>/` — test file gom theo feature bị test (dò qua import TRONG file test, KHÔNG theo tên file — tên test hay đặt theo mã bug/mã nghiệp vụ chứ không theo feature). `package.json` script `test` PHẢI dùng glob đệ quy (`src/__tests__/**/*.test.ts`), không phẳng — nếu không test trong subfolder sẽ bị bỏ sót mà không báo lỗi.
+
+**Frontend (`hdđt_maxv/src/features/<feature>/`, tương tự cho `maxv/`, `fe_maxv/`)**:
+- `api/<module>/` — API hook/service chỉ 1 module con dùng, tên subfolder khớp `components/<module>/`.
+- `calculations/<module>/` — logic tính toán thuần (không phụ thuộc React) chỉ 1 module dùng.
+- `_shared/` — util/constants dùng chung TOÀN BỘ feature (≥ 2 module con cùng dùng) — theo đúng convention `_shared` đã có ở `features/_shared/` và `features/accounting/_shared/`.
+- `mock/` — file chỉ phục vụ mock data (không phải code thật), kể cả khi trùng tên với 1 file thật ở nơi khác.
+
+## Khi thêm file mới cho feature/module MỚI
+
+Tạo file mới thẳng vào subfolder feature ngay từ đầu (không tạo phẳng ở root rồi tính sau) — trừ khi ngay từ đầu đã rõ đây là hạ tầng dùng chung cho nhiều feature.
+
+## Gotcha khi refactor/di chuyển file cũ vào subfolder (rút từ kinh nghiệm thực tế)
+
+Sửa import KHÔNG chỉ dừng ở `import ... from "..."` tĩnh — dò thêm các dạng sau, dễ bị bỏ sót vì tsc không luôn bắt được:
+- `typeof import('...')` và `await import('...')` (dynamic import) — kể cả khi path nằm xuống dòng riêng (`import(\n  '...'\n)`), không nằm cùng dòng với từ khoá `import(`.
+- `mock.module('...')` (Node test runner mock) — path là string thuần trong lời gọi hàm, KHÔNG phải cú pháp import, tsc không bắt được — chỉ lộ ra khi chạy `npm test` thật.
+- Đường dẫn script trong `package.json` (vd `"hrm:xxx": "tsx src/scripts/..."`) và glob trong script `test`.
+- File TỰ DI CHUYỂN cũng phải tự sửa import của CHÍNH NÓ trỏ tới thứ KHÔNG di chuyển (vd `./types`, `./constants` ở nguyên chỗ cũ) — vì độ sâu thư mục của chính nó đã đổi, không phải chỉ sửa import trỏ tới file khác vừa di chuyển cùng đợt.
+
+Luôn verify sau khi gom file: `tsc`/`tsc -b` (hoặc `typecheck`), `lint`, và chạy lại **toàn bộ** test suite so khớp số lượng test + tên test fail với baseline TRƯỚC khi refactor — không chỉ tin exit code hay số lỗi tsc, vì lỗi loại `mock.module`/dynamic import chỉ hiện khi chạy test thật.
+
+---
+
 # Decision Making
 
 Khi có nhiều phương án:
@@ -429,11 +508,13 @@ Chịu trách nhiệm:
 Technical Design
 → Backend Implementation
 
-Không tự ý thay đổi contract.
+Không tự ý thay đổi contract. Mỗi phiên làm việc (code mới, fix bug, fix review) phải để lại dấu vết trong `docs/<feature>/work-log.md`.
 
 ---
 
 ## Frontend Engineer
+
+> ⏸️ **TẠM NGỪNG** — hiện không thuộc pipeline, chỉ kích hoạt khi user yêu cầu rõ ràng. Khi kích hoạt: làm SAU backend (trên contract đã qua QA + review, ổn định), chạy lại vòng QA + review cho phần FE.
 
 Chịu trách nhiệm:
 
@@ -462,11 +543,13 @@ Chịu trách nhiệm:
 Implementation
 → Quality Gate
 
-Chỉ review, không tự ý rewrite feature.
+Chỉ review, không tự ý rewrite feature. Quyền ghi duy nhất: `docs/<feature>/review-findings.md` (lưu vết findings + trạng thái fix) — không sửa code.
 
 ---
 
 ## DevOps Engineer
+
+> ⏸️ **TẠM NGỪNG** — hiện không thuộc pipeline, chỉ kích hoạt khi user yêu cầu rõ ràng.
 
 Chịu trách nhiệm:
 
@@ -517,14 +600,15 @@ business-analyst
 
 ---
 
-## Phase 3 — Implementation
+## Phase 3 — Implementation (Backend-First)
 
-backend-engineer ∥ frontend-engineer
+backend-engineer
 
 ↓
 
 - **Backend**: Triển khai code trong `be_maxv/` bám sát API Contract (`docs/<feature>/architecture/api-contract.md`) và Test Cases (`docs/<feature>/qa/test-cases.md`). Tự chạy `typecheck`, `lint` và unit test nội bộ.
-- **Frontend**: Triển khai code trong `maxv/` (Portal) hoặc `hdđt_maxv/` (Hóa đơn/Thuế). Tự chạy `npm run build` / `npm run lint`.
+- **Lưu vết**: kết thúc phiên, append `docs/<feature>/work-log.md` (từng file + dòng đã sửa, kết quả kiểm chứng, liên kết REQ/TC).
+- ⏸️ **Frontend TẠM NGỪNG**: frontend-engineer không chạy trong phase này. Khi được kích hoạt lại, FE code SAU khi backend pass review, trên contract đã ổn định.
 
 ---
 
@@ -540,7 +624,7 @@ tester-qa (Phase B)
 - **BẮT BUỘC xuất `docs/<feature>/qa/issues-and-bugs.md`**: Danh mục lỗi và issues cần xử lý tiếp theo
 
 Nếu fail:
-tester-qa → (backend-engineer / frontend-engineer) → tester-qa (lặp lại cho tới khi đạt yêu cầu).
+tester-qa → backend-engineer (sửa lỗi + append `work-log.md` cho từng lượt fix, tham chiếu BUG-xxx) → tester-qa (lặp lại cho tới khi đạt yêu cầu).
 
 ---
 
@@ -550,13 +634,16 @@ code-reviewer
 
 ↓
 
-- Soát code backend, frontend và test coverage
-- Nếu có 🔴 Blocking issue: code-reviewer → dev → code-reviewer
+- Soát code backend và test coverage
+- **Ghi findings vào `docs/<feature>/review-findings.md`** (ID RVW-xxx, vị trí file:line, đề xuất fix) — bằng chứng lưu vết của quality gate
+- Nếu có 🔴 Blocking issue: code-reviewer → backend-engineer (sửa + cập nhật FIXED trong `review-findings.md` + append `work-log.md`) → code-reviewer (review lại phần đã sửa)
 - Nếu đạt: Approve
 
 ---
 
 ## Phase 6 — Deployment & Operation
+
+> ⏸️ **TẠM NGỪNG** — devops-engineer hiện không thuộc pipeline; phase này chỉ chạy khi user yêu cầu rõ ràng.
 
 devops-engineer
 

@@ -12,9 +12,9 @@ import Tab from "@mui/material/Tab";
 import Tooltip from "@mui/material/Tooltip";
 import CloseRounded from "@mui/icons-material/CloseRounded";
 import { getErrorMessage } from "../../../../lib/errors";
-import { hopDongHienHanh } from "../../cay";
-import { homNay } from "../../format";
-import { hopDongRong, nhanVienRong } from "../../formDefaults";
+import { hopDongHienHanh } from "../../_shared/cay";
+import { homNay } from "../../_shared/format";
+import { hopDongRong, nhanVienRong } from "../../_shared/formDefaults";
 // Nhân viên đã chạy API thật; còn lịch sử hợp đồng (và các tab Hồ sơ / Người phụ thuộc bên
 // trong) vẫn là mock — khóa theo ma_nv nên nhân viên tạo mới sẽ thấy các tab đó trống.
 import {
@@ -22,12 +22,12 @@ import {
   useNhanVienDetail,
   useSuaNhanVien,
   useThemNhanVien,
-} from "../../api/nhanVienQueries";
-import { useHopDongList } from "../../api/hopDongQueries";
+} from "../../api/du_lieu_nhan_vien/nhanVienQueries";
+import { useHopDongList } from "../../api/du_lieu_nhan_vien/hopDongQueries";
 import {
   LOI_KHONG_CO_QUYEN_LUONG,
   useQuyenXemLuong,
-} from "../../api/quyenLuongQueries";
+} from "../../api/du_lieu_nhan_vien/quyenLuongQueries";
 import type { HopDongFormValues, NhanVien } from "../../types";
 import HopDongTab from "./tabs/HopDongTab";
 import HoSoTab from "./tabs/HoSoTab";

@@ -15,8 +15,8 @@ import Typography from "@mui/material/Typography";
 import LinearProgress from "@mui/material/LinearProgress";
 import DeleteRounded from "@mui/icons-material/DeleteRounded";
 import { getErrorMessage } from "../../../../../lib/errors";
-import { mauHieuSuat } from "../../../kpi";
-import { useXoaBanKpi } from "../../../mock/hooks/kpi";
+import { mauHieuSuat } from "../../../calculations/du_lieu_tinh_luong/kpi";
+import { useApplyKpi } from "../../../api/du_lieu_tinh_luong/payrollInputsQueries";
 import type { KpiNhanVienRow, LocNhanVienKyLuong, PhamViApDung } from "../../../types";
 import XacNhanXoaDialog from "../../XacNhanXoaDialog";
 import ThanhLocKyLuong from "../ThanhLocKyLuong";
@@ -28,29 +28,38 @@ interface Props {
   onFilters: (filters: LocNhanVienKyLuong) => void;
   /** Danh sách đã lọc theo phạm vi — cũng chính là danh sách "Áp dụng KPI" sẽ ghi. */
   rows: KpiNhanVienRow[];
-  coThayDoi: boolean;
-  dangLuu: boolean;
-  onLuu: () => void;
+  periodId: string;
+  isReadOnly: boolean;
 }
 
-/** Chọn phạm vi áp KPI và xem hiệu suất của từng nhân viên. */
+/**
+ * Chọn phạm vi áp KPI và xem hiệu suất của từng nhân viên.
+ *
+ * "Xóa KPI của nhân viên" gọi lại đúng API `apply` với `items: []` cho riêng người đó — máy chủ
+ * luôn xóa bản ghi cũ của kỳ trước khi ghi bản mới (xem `payrollInputs.service.ts::applyKpi`), nên
+ * gửi mảng rỗng tương đương "xóa sạch", KHÔNG có endpoint xóa riêng cho phân hệ này.
+ */
 export default function DanhSachKpiCard({
   phamVi,
   onPhamVi,
   filters,
   onFilters,
   rows,
-  coThayDoi,
-  dangLuu,
-  onLuu,
+  periodId,
+  isReadOnly,
 }: Props) {
-  const xoaBanKpi = useXoaBanKpi();
+  const applyMut = useApplyKpi(periodId);
   const [dangXoa, setDangXoa] = useState<KpiNhanVienRow | undefined>(undefined);
 
   const xacNhanXoa = async () => {
     if (!dangXoa) return;
     try {
-      await xoaBanKpi(dangXoa.ma_nv);
+      await applyMut.mutateAsync({
+        periodId,
+        scope: "nhan_vien",
+        employeeIds: [dangXoa.ma_nv],
+        items: [],
+      });
       toast.success(`Đã xóa KPI của ${dangXoa.ho_ten}.`);
     } catch (err) {
       toast.error(getErrorMessage(err, "Không xóa được KPI."));
@@ -67,9 +76,6 @@ export default function DanhSachKpiCard({
         filters={filters}
         onFilters={onFilters}
         soNhanVien={rows.length}
-        coThayDoi={coThayDoi}
-        dangLuu={dangLuu}
-        onLuu={onLuu}
       />
 
       <TableContainer sx={{ mt: 1 }}>
@@ -139,7 +145,7 @@ export default function DanhSachKpiCard({
                       <IconButton
                         size="small"
                         color="error"
-                        disabled={row.lan_luong === 0}
+                        disabled={isReadOnly || row.lan_luong === 0}
                         onClick={() => setDangXoa(row)}
                       >
                         <DeleteRounded fontSize="small" />

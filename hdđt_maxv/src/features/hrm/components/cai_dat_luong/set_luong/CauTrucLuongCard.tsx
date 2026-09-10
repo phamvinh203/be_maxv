@@ -19,9 +19,9 @@ import Chip from "@mui/material/Chip";
 import Switch from "@mui/material/Switch";
 import AddRounded from "@mui/icons-material/AddRounded";
 import DeleteRounded from "@mui/icons-material/DeleteRounded";
-import { PHAN_LOAI_THUE, TIEU_THUC_TINH, moTaLoaiKhoan } from "../../../constants";
-import { tienVn } from "../../../format";
-import { useKhoanLuongList } from "../../../mock/hooks/khoanLuong";
+import { PHAN_LOAI_THUE, TIEU_THUC_TINH, moTaLoaiKhoan } from "../../../_shared/constants";
+import { tienVn } from "../../../_shared/format";
+import { useKhoanLuongList } from "../../../api/cai_dat_luong/salaryItemsQueries";
 import type {
   CauTrucLuong,
   DongCauTrucLuong,

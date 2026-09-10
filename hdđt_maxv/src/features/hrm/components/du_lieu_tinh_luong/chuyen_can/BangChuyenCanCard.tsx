@@ -18,10 +18,10 @@ import Tooltip from "@mui/material/Tooltip";
 import Chip from "@mui/material/Chip";
 import AddRounded from "@mui/icons-material/AddRounded";
 import DeleteRounded from "@mui/icons-material/DeleteRounded";
-import { moTaCachTru } from "../../../constants";
-import { dongChuyenCanRong, tongGioChuyenCan } from "../../../chuyenCan";
-import { tienVn } from "../../../format";
-import { useLoaiChuyenCanList } from "../../../mock/hooks/chuyenCan";
+import { moTaCachTru } from "../../../_shared/constants";
+import { dongChuyenCanRong, tongGioChuyenCan } from "../../../calculations/du_lieu_tinh_luong/chuyenCan";
+import { tienVn } from "../../../_shared/format";
+import { useLoaiChuyenCanList } from "../../../api/du_lieu_tinh_luong/payrollCatalogsQueries";
 import type { DongChuyenCan } from "../../../types";
 
 interface Props {

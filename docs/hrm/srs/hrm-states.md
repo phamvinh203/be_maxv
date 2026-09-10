@@ -1,16 +1,16 @@
 ---
 type: srs-states
 feature: hrm
-updated: 2026-09-07
+updated: 2026-09-08
 ---
 
 # HRM — VÒNG ĐỜI TRẠNG THÁI CÁC THỰC THỂ
 
-Ba thực thể của phân hệ HRM có vòng đời trạng thái thật: **Nhân viên**, **Hợp đồng lao động** và **Liên kết Google Drive của công ty**. Phòng ban, Người phụ thuộc và Tài liệu chỉ có cặp trạng thái tồn tại/đã xóa nên không cần sơ đồ riêng — mô tả nằm trong bảng cuối trang.
+Các thực thể của phân hệ HRM có vòng đời trạng thái bao gồm: **Nhân viên**, **Hợp đồng lao động**, **Liên kết Google Drive của công ty**, **Ca làm việc (WorkShift)** và **Cấu hình mặc định (GeneralSetting)**. Phòng ban, Người phụ thuộc, Tài liệu và Ngày lễ chỉ có cặp trạng thái tồn tại/đã xóa nên không cần sơ đồ phức tạp — mô tả nằm trong bảng cuối trang.
 
-Mọi trạng thái dưới đây được suy ra từ mã nguồn thật, không phải từ mong muốn thiết kế.
+Mọi trạng thái dưới đây được đối chiếu chuẩn hóa từ mã nguồn và kế hoạch nâng cấp hạ tầng HRM (WorkShift, GeneralSetting, Holiday).
 
-**Cập nhật 2026-09-07 (đợt chốt nghiệp vụ 16/16).** Phần đánh `[MỚI — QĐ n]` hoặc `[SỬA THEO QĐ n]` là **vòng đời đã chốt nhưng chưa có trong mã** — đầu việc cho Architect và kỹ sư, không phải mô tả hiện trạng. Quyết định gốc ghi ở Mục 6.1 của `docs/hrm/CONTEXT_SUMMARY.md`. Chỗ nào hiện trạng và mức đã chốt khác nhau đều nói rõ cả hai.
+**Cập nhật 2026-09-08 (bổ sung cụm Cấu hình mặc định, Ca làm việc và Ngày lễ).** Phần đánh `[MỚI — QĐ n]`, `[SỬA THEO QĐ n]` hoặc `[MỚI — WorkShift/GeneralSetting]` là **vòng đời đã chốt trong tài liệu đặc tả nghiệp vụ SRS** — làm căn cứ hiện thực hóa cho Architect và Backend/Frontend. Quyết định gốc ghi ở Mục 6.1 của `docs/hrm/CONTEXT_SUMMARY.md`. Chỗ nào hiện trạng và mức đã chốt khác nhau đều nói rõ cả hai.
 
 ---
 
@@ -261,6 +261,127 @@ Nhân viên **chưa có hợp đồng nào** thì chỉ báo hồ sơ đủ/thi�
 
 ---
 
+## State: CaLamViec `[MỚI — WorkShift]`
+
+**Related entity**: CaLàmViệc (`hrm_work_shifts`)
+**Related BR**: BR-hrm-074, BR-hrm-075, BR-hrm-076
+**Related FR**: FR-hrm-048, FR-hrm-049, FR-hrm-050
+**Nguồn**: Thiết kế nền tảng lịch trình và ca làm việc (tham chiếu `docs/nestjs/hr` và `implementation_plan.md`).
+
+Ca làm việc có vòng đời quản lý tính khả dụng qua thuộc tính `status` (`ACTIVE`: Đang hoạt động / `INACTIVE`: Tạm ngưng) và xóa cứng (`DELETE`). Ca làm việc là đơn vị cơ sở cho việc xếp lịch làm việc (`hrm_work_schedules`) và chấm công (`hrm_attendances`) sau này.
+
+```mermaid
+stateDiagram-v2
+    state "Đang hoạt động (status = ACTIVE)" as Active
+    state "Tạm ngưng hoạt động (status = INACTIVE)" as Inactive
+    state "Đã xóa cứng khỏi hệ thống" as Deleted
+
+    [*] --> Active : POST /work-shifts (mặc định status = ACTIVE, tự cấp mã CA01..CA99)
+    [*] --> Inactive : POST /work-shifts (kèm status = INACTIVE nếu tạo ca dự phòng)
+
+    Active --> Inactive : PATCH /work-shifts/:id { status: INACTIVE } (tạm dừng áp dụng ca, không cho gán mới)
+    Inactive --> Active : PATCH /work-shifts/:id { status: ACTIVE } (tái kích hoạt ca)
+
+    Active --> Deleted : DELETE /work-shifts/:id (chỉ khi CHƯA có lịch phân công hoặc bảng chấm công liên kết)
+    Inactive --> Deleted : DELETE /work-shifts/:id (chỉ khi CHƯA có lịch phân công hoặc bảng chấm công liên kết)
+
+    Deleted --> [*]
+
+    note right of Active
+        Ca đang hoạt động sẵn sàng để phân công lịch làm việc
+        cho nhân viên hoặc phòng ban trong các kỳ kế hoạch.
+        Mã ca (CA01-CA99) là duy nhất trong toàn hệ thống.
+    end note
+
+    note right of Inactive
+        Ca tạm ngưng sẽ bị ẩn khỏi danh sách chọn khi xếp lịch mới,
+        nhưng các dữ liệu lịch làm việc và chấm công trong quá khứ
+        đã dùng ca này vẫn giữ nguyên vẹn tính toàn vẹn lịch sử.
+    end note
+
+    note right of Deleted
+        Xóa cứng xóa hoàn toàn bản ghi khỏi cơ sở dữ liệu.
+        Nếu ca đã từng được dùng trong lịch làm việc hoặc chấm công,
+        hệ thống chặn xóa (E-hrm-073) và yêu cầu chuyển sang INACTIVE.
+    end note
+```
+
+### Các chuyển đổi trạng thái của Ca làm việc
+
+| Từ trạng thái | Sang trạng thái | Thao tác / API | Điều kiện & Nghiệp vụ |
+|---|---|---|---|
+| Khởi tạo | Đang hoạt động (`ACTIVE`) | `POST /work-shifts` | Nhập đủ tên ca, giờ bắt đầu/kết thúc, nghỉ giữa ca. Hệ thống tự quét lỗ trống cấp mã `CA01`-`CA99` (BR-hrm-074, đạt trần 99 ca trả lỗi 400 E-hrm-078) và tính `isOvernight`, `workingHours` (BR-hrm-075, BR-hrm-076). Mặc định `status = "ACTIVE"`. |
+| Khởi tạo | Tạm ngưng (`INACTIVE`) | `POST /work-shifts` | Như trên, nhưng người dùng truyền tường minh `status = "INACTIVE"`. |
+| Đang hoạt động | Tạm ngưng (`INACTIVE`) | `PATCH /work-shifts/:id` | Body `{ status: "INACTIVE" }`. Không cho phép gán ca này vào các ca làm việc mới trong tương lai. |
+| Tạm ngưng | Đang hoạt động (`ACTIVE`) | `PATCH /work-shifts/:id` | Body `{ status: "ACTIVE" }`. Ca xuất hiện trở lại trong danh mục chọn ca làm việc. |
+| Bất kỳ | Đã xóa cứng | `DELETE /work-shifts/:id` | Chỉ cho phép xóa khi ca chưa có ràng buộc khóa ngoại tới lịch phân ca hoặc bảng chấm công. Nếu đã phát sinh dữ liệu, trả lỗi 409 `E-hrm-073`. |
+
+### Invalid transitions
+
+| Từ | Sang | Vì sao không được |
+|---|---|---|
+| Bất kỳ | Đổi `code` tại chỗ | Trường `code` được hệ thống bảo vệ, không cho phép cập nhật trong `workShiftUpdateSchema` (BR-hrm-074) nhằm tránh xung đột dữ liệu lịch sử. |
+| Đã xóa cứng | Bất kỳ | Đã xóa khỏi DB không thể phục hồi. Mã `CAxx` bị giải phóng có thể được cấp lại cho ca mới tạo sau này theo cơ chế gap scanning. |
+| Đang hoạt động / Tạm ngưng | Đã xóa cứng | Bị chặn nếu ca đã liên kết với phân công lịch làm việc hoặc bảng chấm công (E-hrm-073). Bắt buộc phải dùng `status = "INACTIVE"` để ẩn ca thay vì xóa. |
+
+---
+
+## State: CauHinhMacDinh `[MỚI — GeneralSetting]`
+
+**Related entity**: CauHinhMacDinh (`hrm_general_settings`, Singleton `id = "DEFAULT"`)
+**Related BR**: BR-hrm-070, BR-hrm-071, BR-hrm-072, BR-hrm-073, BR-hrm-080, BR-hrm-081, BR-hrm-082, BR-hrm-083
+**Related FR**: FR-hrm-045, FR-hrm-046, FR-hrm-047, FR-hrm-055
+**Nguồn**: Thiết kế cấu hình mặc định nền tảng HRM (tham chiếu `docs/nestjs/hr` và `implementation_plan.md`).
+
+Bảng `hrm_general_settings` tuân thủ mô hình **Singleton Record** với khóa chính duy nhất cố định `id = "DEFAULT"`. Bảng này luôn có đúng một bản ghi trong cơ sở dữ liệu tenant.
+Vòng đời trạng thái phản ánh sự phối hợp giữa Client UI Form State và Server Persisted State:
+
+```mermaid
+stateDiagram-v2
+    state "Đã lưu / Có hiệu lực (Saved / Persisted)" as Saved
+    state "Đang chỉnh sửa / Nháp Form UI (Draft)" as Draft
+    state "Khôi phục chuẩn mặc định (Default Reset)" as Restored
+
+    [*] --> Saved : Hệ thống tự khởi tạo dòng 'DEFAULT' nếu chưa có (Self-healing pattern)
+    
+    Saved --> Draft : Quản trị viên thay đổi bất kỳ giá trị nào trên Form cấu hình tại Client
+    Draft --> Draft : Quản trị viên tiếp tục điều chỉnh các thông số (giờ chuẩn, tỷ lệ BHXH, thuế TNCN...)
+    
+    Draft --> Saved : PUT /settings/general (Xác thực hợp lệ 100%, ghi đè DB tenant)
+    Draft --> Saved : Người dùng bấm "Hủy thay đổi" trên Client (Reload cấu hình từ Server)
+    
+    Draft --> Draft : PUT /settings/general thất bại (Lỗi thẩm định E-hrm-067/068/069/080/081/082, giữ nguyên Form nháp)
+    Saved --> Saved : Chuẩn hóa biểu thuế TNCN cho công ty còn giữ biểu 5 bậc cắt cụt (FR-hrm-055, chỉ khi biểu trùng khớp nguyên văn)
+
+    Saved --> Restored : POST /settings/general/restore-default (Chỉ OWNER/ADMIN, xác nhận hộp thoại)
+    Restored --> Saved : Nạp lại 30+ thông số chuẩn luật VN (NĐ 73/2024, NĐ 74/2024, NQ 954/2020) vào DB
+```
+
+### Các chuyển đổi trạng thái của Cấu hình mặc định
+
+| Từ trạng thái | Sang trạng thái | Thao tác / API | Điều kiện & Nghiệp vụ |
+|---|---|---|---|
+| Khởi tạo | Đã lưu (`SAVED`) | `GET /settings/general` | Nếu DB chưa có bản ghi `DEFAULT`, tự động tạo bản ghi mẫu chuẩn pháp luật Việt Nam (Self-healing pattern, BR-hrm-070). |
+| Đã lưu | Đang sửa (`DRAFT`) | Client UI event | Quản trị viên thay đổi các trường cấu hình trên màn hình quản trị (chưa gửi request lưu). |
+| Đang sửa | Đã lưu (`SAVED`) | `PUT /settings/general` | Gửi toàn bộ hoặc một phần các tham số cấu hình. Máy chủ thẩm định: giờ công 1.0–24.0h (BR-hrm-071), lương cơ sở/vùng > 0 (BR-hrm-072), và — nếu nội dung gửi lên có biểu thuế — toàn vẹn cấu trúc biểu thuế theo BR-hrm-082 (tối thiểu 2 bậc · ngưỡng lũy kế tăng nghiêm ngặt · thuế suất tăng nghiêm ngặt · bậc cuối là bậc mở). Lưu thành công chuyển về `SAVED` và ghi nhật ký kiểm toán (BR-hrm-066 nhóm 6). |
+| Đang sửa | Đã lưu (`SAVED`) **kèm cảnh báo** | `PUT /settings/general` | Biểu thuế hợp lệ về cấu trúc nhưng **khác biểu chuẩn 7 bậc**: vẫn lưu (200), phản hồi kèm `warning: "CANH_BAO_BIEU_THUE_LECH_CHUAN"`, giao diện hiện dải cảnh báo (BR-hrm-083). Cảnh báo **không** là một trạng thái riêng — bản ghi vẫn ở `SAVED`. |
+| Đang sửa | Đang sửa (`DRAFT`) | `PUT /settings/general` (Lỗi) | Thẩm định thất bại: `E-hrm-067` giờ công chuẩn sai dải · `E-hrm-068` lương cơ sở/vùng $\le 0$ · `E-hrm-069` thuế suất không tăng nghiêm ngặt · `E-hrm-080` ngưỡng lũy kế không tăng nghiêm ngặt · `E-hrm-081` biểu thuế dưới 2 bậc · `E-hrm-082` bậc cuối không phải bậc mở. Máy chủ từ chối, form giữ nguyên dữ liệu nháp và hiển thị lỗi tương ứng tại từng trường. |
+| Đang sửa | Đã lưu (`SAVED`) | Bấm nút "Hủy thay đổi" (Client) | Hủy bỏ toàn bộ dữ liệu đang sửa trên form, tải lại dữ liệu `SAVED` từ máy chủ. |
+| Đã lưu / Đang sửa | Khôi phục mặc định (`SAVED`) | `POST /settings/general/restore-default` | Hộp xác nhận phải nêu rõ thao tác **ghi đè cả biểu thuế công ty đã tự đặt**. Reset toàn bộ cấu hình về chuẩn: Lương cơ sở 2.340.000đ (NĐ 73/2024), Lương tối thiểu Vùng 1 4.960.000đ (NĐ 74/2024), Giảm trừ bản thân 11tr / NPT 4.4tr (NQ 954/2020), và **biểu thuế 7 bậc** chuẩn Điều 22 Luật Thuế TNCN — 5tr/5% · 10tr/10% · 18tr/15% · 32tr/20% · 52tr/25% · 80tr/30% · bậc mở/35% (BR-hrm-070, BR-hrm-081). Ghi nhật ký kiểm toán (BR-hrm-066 nhóm 6). |
+| Đã lưu | Đã lưu (`SAVED`) | Chuẩn hóa biểu thuế TNCN (FR-hrm-055) | Thao tác dọn dữ liệu một lượt cho các công ty còn giữ **nguyên văn** biểu 5 bậc cắt cụt do hệ thống tự nạp trước 2026-09-08. **Chỉ** ghi đè khi biểu trùng khớp nguyên văn; công ty đã tự chỉnh biểu thì giữ nguyên và chỉ được liệt kê ra. Chạy lại nhiều lần cho cùng kết quả. |
+
+### Invalid transitions
+
+| Từ | Sang | Vì sao không được |
+|---|---|---|
+| Bất kỳ | Tạo mới thêm bản ghi cấu hình khác | `POST /settings/general` không tồn tại. Bảng là Singleton chỉ chấp nhận duy nhất bản ghi có `id = "DEFAULT"`. |
+| Bất kỳ | Xóa bản ghi cấu hình (`DELETE`) | Không có API xóa cấu hình (`DELETE /settings/general`). Cấu hình là thực thể bắt buộc để mọi phân hệ lương và chấm công hoạt động; chỉ có thể Khôi phục mặc định chứ không được xóa. |
+| Bất kỳ | Cập nhật cấu hình bởi vai trò không phải `ADMIN`/`OWNER` | Người dùng vai trò `OWNER_EMPLOYEE` hoặc nhân viên thông thường chỉ có quyền ĐỌC (`GET`), cố tình gọi `PUT` hoặc `POST /restore-default` sẽ nhận lỗi 403 Forbidden (`E-hrm-077`). |
+| `SAVED` | `SAVED` với biểu thuế còn hở khoảng thu nhập | Bậc cuối phải là **bậc mở** phủ hết phần vượt (BR-hrm-082 điều kiện 4, `E-hrm-082`). Một biểu để hở khoảng trên cùng nghĩa là thu nhập cao không có thuế suất nào áp — sai bản chất thuế lũy tiến từng phần, không phải một cấu hình hợp lệ. |
+| `SAVED` | `SAVED` với biểu thuế do FR-hrm-055 ghi đè lên biểu công ty tự chỉnh | Thao tác chuẩn hóa **không được** ghi đè cấu hình có chủ đích của công ty; chỉ ghi đè biểu trùng khớp nguyên văn biểu cũ do hệ thống tự nạp. |
+
+---
+
 ## Các thực thể chỉ có vòng đời tồn tại/đã xóa
 
 | Thực thể | Vòng đời | Ghi chú |
@@ -268,3 +389,5 @@ Nhân viên **chưa có hợp đồng nào** thì chỉ báo hồ sơ đủ/thi�
 | Phòng ban | Đang hoạt động (`status = 1`) hoặc Ngừng hoạt động (`status = 0`), cả hai đều có thể chuyển sang Đã xóa mềm (`da_xoa = true`) | Xóa mềm bị chặn khi còn phòng ban con chưa xóa hoặc còn nhân viên chưa xóa (kể cả người đã nghỉ). Đổi `status` sang `0` **không** bị chặn dù phòng ban còn nhân viên — mức đã chốt giữ nguyên chỗ này, máy chủ vẫn không chặn, nhưng giao diện phải hỏi xác nhận nêu đích danh số người còn thuộc phòng ban (BR-hrm-060) `[MỚI — QĐ 11]`. **Hiện trạng sai cần sửa:** phòng ban `status = 0` vẫn hiện trong ô chọn của form nhân viên; mức đã chốt là **ẩn đi, trừ đúng phòng đang gán của chính nhân viên đang sửa** — thiếu vế trừ này thì sửa tên một người thuộc phòng đã ngừng hoạt động là âm thầm xóa mất phòng ban của họ (BR-hrm-061) `[MỚI — QĐ 11]`. |
 | Người phụ thuộc | Tồn tại hoặc đã xóa cứng | Xóa cứng vì khóa chính là định danh sinh tự động, không có chuyện cấp lại mã. Bị ẩn theo khi nhân viên bị xóa mềm. |
 | Tài liệu | Tồn tại chưa đính file (`drive_file_id` rỗng) hoặc Tồn tại đã đính file, cả hai đều có thể xóa cứng. Trục hạn giấy tờ là **độc lập** với trục này — xem `State: HanGiayTo` | Gỡ file đưa bản ghi về trạng thái chưa đính file và **có** xóa file trên Drive. **Hiện trạng sai:** xóa cả bản ghi thì **không** xóa file trên Drive, file thành mồ côi (BUG-HRM-10). **Mức đã chốt `[SỬA THEO QĐ 12]`:** xóa dòng thì xóa luôn file trên Drive theo kiểu cố hết sức, ghi log khi Drive báo lỗi nhưng **không** để lỗi Drive chặn việc xóa dòng; hộp xác nhận phải nêu đích danh tên file sắp mất (BR-hrm-039). |
+| Ngày lễ (`hrm_holidays`) | Tồn tại hoặc đã xóa cứng (`DELETE /holidays/:id`) | Quản trị ngày nghỉ lễ của công ty và quốc gia (hỗ trợ `NATIONAL`, `LUNAR`, `COMPANY`, `COMPENSATORY`). Có cờ `isAnnual`: nếu `true` (dương lịch) thì tự động lặp lại qua các năm; nếu `false` (âm lịch `LUNAR` hoặc ngày nghỉ bù `COMPENSATORY` theo Điều 111 khoản 3 BLLĐ) thì chỉ áp dụng cho năm cụ thể của `date` (BR-hrm-077). Ràng buộc duy nhất `@@unique([date, name])` chống trùng ngày và tên sau khi trim (BR-hrm-078). Thao tác "Tạo nhanh 11 ngày lễ chuẩn VN" (`POST /holidays/quick-generate`) tự động tính toán lịch âm cho các năm từ 2024 đến 2030 và bỏ qua các ngày đã tồn tại (`skipDuplicates`) (BR-hrm-079). |
+

@@ -1,5 +1,6 @@
-import { useEffect, useRef, useState, type ChangeEvent } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent } from "react";
 import { toast } from "react-toastify";
+import Alert from "@mui/material/Alert";
 import Box from "@mui/material/Box";
 import Paper from "@mui/material/Paper";
 import Stack from "@mui/material/Stack";
@@ -18,16 +19,17 @@ import ContentCopyRounded from "@mui/icons-material/ContentCopyRounded";
 import DeleteSweepRounded from "@mui/icons-material/DeleteSweepRounded";
 import TuneRounded from "@mui/icons-material/TuneRounded";
 import { getErrorMessage } from "../../../../../lib/errors";
-import { PHAM_VI_AP_DUNG } from "../../../constants";
-import { nhan } from "../../../format";
+import { PHAM_VI_AP_DUNG } from "../../../_shared/constants";
+import { nhan } from "../../../_shared/format";
+import { useLoaiChuyenCanIdByCode, useLoaiChuyenCanList } from "../../../api/du_lieu_tinh_luong/payrollCatalogsQueries";
 import {
-  useApDungChuyenCan,
-  useChuyenCanRows,
-  useLoaiChuyenCanList,
-  useLuuMauChuyenCan,
-  useMauChuyenCan,
-} from "../../../mock/hooks/chuyenCan";
-import type { DongChuyenCan, LocNhanVienKyLuong, PhamViApDung } from "../../../types";
+  useDeleteDiligenceRecord,
+  useDiligenceDataList,
+  useRecordDiligence,
+} from "../../../api/du_lieu_tinh_luong/payrollInputsQueries";
+import { useCurrentPayrollPeriod } from "../useCurrentPayrollPeriod";
+import { mergeNhanVienKyLuongWithData, useNhanVienKyLuong } from "../useNhanVienKyLuong";
+import type { ChuyenCanNhanVienRow, DongChuyenCan, LocNhanVienKyLuong, PhamViApDung } from "../../../types";
 import XacNhanXoaDialog from "../../XacNhanXoaDialog";
 import BangChuyenCanCard from "./BangChuyenCanCard";
 import DanhSachChuyenCanCard from "./DanhSachChuyenCanCard";
@@ -38,29 +40,34 @@ import { docFileChuyenCan, taiFileMauChuyenCan, xuatChuyenCanExcel } from "./chu
 /**
  * Màn hình Lương chuyên cần của khu "Dữ liệu tính lương".
  *
- * Cùng lối làm việc với các màn còn lại: bảng giữ ở **bản nháp** trong state màn
- * hình, chỉ ghi xuống kho khi bấm "Lưu thay đổi" hoặc "Áp dụng chuyên cần"; và
- * "Áp dụng chuyên cần" ghi cho **toàn bộ nhân viên đang hiện ở danh sách bên
- * dưới".
+ * Bảng là bản nháp cục bộ (xem ghi chú ở `KpiPanel`). KHÁC các màn còn lại: máy chủ KHÔNG có
+ * endpoint "áp dụng hàng loạt, thay thế toàn bộ" cho chuyên cần — mỗi lần vi phạm là MỘT bản ghi
+ * ghi riêng qua `POST /payroll-data/diligence/record`, không có khái niệm "mẫu" theo `scope`.
+ * "Áp dụng chuyên cần" ở đây mô phỏng lại đúng ngữ nghĩa "thay thế" của bản mock bằng cách, với
+ * từng nhân viên trong danh sách: xóa hết bản ghi cũ của kỳ này rồi ghi lại từng dòng trong bảng
+ * đang soạn, TUẦN TỰ — chạy tuần tự để nếu lỗi giữa chừng vẫn nói được đã xong tới đâu (cùng lối
+ * với `useGanNhanhPhongBan`).
  *
- * Khác các màn kia ở một chỗ: **bảng trống vẫn áp được** và mang nghĩa riêng —
- * chốt "kỳ này không vi phạm", nhân viên nhận đủ chuyên cần. Vì vậy nút "Áp
- * dụng" không bị khóa khi bảng rỗng.
+ * "Đơn giá"/"Tổng trừ"/"Thành tiền" đọc THẲNG từ máy chủ (`GET .../diligence`, đã áp dụng bất
+ * biến "chặn sàn chuyên cần" BR-dltl-016) — không tính lại ở trình duyệt như bản mock.
  */
 export default function ChuyenCanPanel() {
-  const daLuu = useMauChuyenCan();
-  const danhMuc = useLoaiChuyenCanList();
-  const luuMau = useLuuMauChuyenCan();
-  const apDung = useApDungChuyenCan();
+  const { selectedPeriodId, isReadOnly } = useCurrentPayrollPeriod();
+  const periodId = selectedPeriodId ?? "";
 
-  const [mau, setMau] = useState<DongChuyenCan[]>(daLuu);
+  const danhMuc = useLoaiChuyenCanList();
+  const idTheoMa = useLoaiChuyenCanIdByCode();
+  const recordMut = useRecordDiligence(periodId);
+  const deleteMut = useDeleteDiligenceRecord(periodId);
+
+  const [mau, setMau] = useState<DongChuyenCan[]>([]);
   const [phamVi, setPhamVi] = useState<PhamViApDung>("nhan_vien");
   const [filters, setFilters] = useState<LocNhanVienKyLuong>({
     q: "",
     ma_pb: "",
     loai_hd: "",
   });
-  const [dangLuu, setDangLuu] = useState(false);
+  const [dangApDung, setDangApDung] = useState(false);
 
   const [moQuanLy, setMoQuanLy] = useState(false);
   const [moTaiSuDung, setMoTaiSuDung] = useState(false);
@@ -68,38 +75,75 @@ export default function ChuyenCanPanel() {
   const [moApDung, setMoApDung] = useState(false);
 
   const inputFile = useRef<HTMLInputElement>(null);
-  const rows = useChuyenCanRows(phamVi, filters);
+  const nhanVien = useNhanVienKyLuong(phamVi, filters);
+  const { data: diligenceData } = useDiligenceDataList({ periodId });
 
   useEffect(() => {
-    // Bám theo bảng đã lưu — vừa lưu xong, hoặc rời màn hình rồi quay lại.
     // eslint-disable-next-line react-hooks/set-state-in-effect
-    setMau(daLuu);
-  }, [daLuu]);
+    setMau([]);
+  }, [periodId]);
 
-  const coThayDoi = JSON.stringify(mau) !== JSON.stringify(daLuu);
+  const rows: ChuyenCanNhanVienRow[] = useMemo(
+    () =>
+      mergeNhanVienKyLuongWithData(nhanVien, diligenceData, (row, ban) => ({
+        ...row,
+        don_gia: ban?.donGia ?? 0,
+        tong_tru: ban?.tongTru ?? 0,
+        thanh_tien: ban?.thanhTien ?? 0,
+        so_dong: ban?.records.length ?? 0,
+      })),
+    [nhanVien, diligenceData],
+  );
 
-  const handleLuu = async () => {
-    setDangLuu(true);
-    try {
-      await luuMau(mau);
-      toast.success("Đã lưu bảng chuyên cần.");
-    } catch (err) {
-      toast.error(getErrorMessage(err, "Không lưu được bảng chuyên cần."));
-    } finally {
-      setDangLuu(false);
-    }
-  };
+  const coThayDoi = mau.length > 0;
+
+  /** Xóa hết bản ghi hiện có của MỘT nhân viên trong kỳ này — dùng chung cho "Áp dụng" và "Xóa". */
+  const xoaChoMotNguoi = useCallback(
+    async (maNv: string) => {
+      const banHienTai = (diligenceData ?? []).find((r) => r.ma_nv === maNv);
+      for (const rec of banHienTai?.records ?? []) {
+        await deleteMut.mutateAsync(rec.id);
+      }
+    },
+    [diligenceData, deleteMut],
+  );
+
+  /** Xóa hết bản ghi hiện có của MỘT nhân viên trong kỳ này, rồi ghi lại theo bảng đang soạn. */
+  const apDungChoMotNguoi = useCallback(
+    async (maNv: string) => {
+      await xoaChoMotNguoi(maNv);
+      for (const d of mau) {
+        await recordMut.mutateAsync({
+          periodId,
+          ma_nv: maNv,
+          violationTypeId: idTheoMa.get(d.ma_cc) ?? d.ma_cc,
+          violationDate: d.ngay,
+          violationHours: d.so_gio,
+        });
+      }
+    },
+    [xoaChoMotNguoi, mau, recordMut, periodId, idTheoMa],
+  );
 
   const handleApDung = async () => {
     setMoApDung(false);
+    setDangApDung(true);
+    let xong = 0;
     try {
-      const so = await apDung(
-        rows.map((row) => row.ma_nv),
-        mau,
-      );
-      toast.success(`Đã áp bảng chuyên cần cho ${so} nhân viên.`);
+      for (const row of rows) {
+        await apDungChoMotNguoi(row.ma_nv);
+        xong += 1;
+      }
+      toast.success(`Đã áp bảng chuyên cần cho ${xong} nhân viên.`);
     } catch (err) {
-      toast.error(getErrorMessage(err, "Không áp được chuyên cần."));
+      toast.error(
+        getErrorMessage(
+          err,
+          `Đã áp ${xong}/${rows.length} nhân viên rồi dừng lại vì lỗi. Kiểm tra và áp lại cho những người còn thiếu.`,
+        ),
+      );
+    } finally {
+      setDangApDung(false);
     }
   };
 
@@ -122,21 +166,34 @@ export default function ChuyenCanPanel() {
 
   const handleNhap = async (e: ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
-    // Xóa giá trị input ngay: không xóa thì chọn lại đúng file vừa lỗi sẽ không
-    // bắn `change` lần nữa và nút trông như hỏng.
     e.target.value = "";
     if (!file) return;
     try {
       const dong = await docFileChuyenCan(file, danhMuc);
       setMau(dong);
-      toast.success(`Đã đọc ${dong.length} lần vi phạm từ file. Bấm "Lưu thay đổi" để ghi lại.`);
+      toast.success(`Đã đọc ${dong.length} lần vi phạm từ file. Bấm "Áp dụng chuyên cần" để ghi lại.`);
     } catch (err) {
       toast.error(getErrorMessage(err, "Không đọc được file Excel."));
     }
   };
 
+  if (!periodId) {
+    return (
+      <Alert severity="info">
+        Chưa có kỳ lương nào được chọn — tạo hoặc chọn một kỳ lương ở thanh phía trên trước khi
+        nhập chuyên cần.
+      </Alert>
+    );
+  }
+
   return (
     <Stack spacing={2.5}>
+      {isReadOnly && (
+        <Alert severity="warning">
+          Kỳ lương đang chọn đã khóa sổ/chờ duyệt — không thể sửa hoặc áp dụng chuyên cần mới.
+        </Alert>
+      )}
+
       <Paper variant="outlined" sx={{ p: 2 }}>
         <Stack
           direction={{ xs: "column", xl: "row" }}
@@ -154,6 +211,7 @@ export default function ChuyenCanPanel() {
             <Button
               startIcon={<UploadFileRounded />}
               onClick={() => inputFile.current?.click()}
+              disabled={isReadOnly}
               sx={{ textTransform: "none" }}
             >
               Nhập Excel
@@ -170,7 +228,7 @@ export default function ChuyenCanPanel() {
               startIcon={<PlaylistAddCheckRounded />}
               onClick={() => setMoApDung(true)}
               // Không khóa theo `mau.length`: áp bảng rỗng là chốt "không vi phạm".
-              disabled={rows.length === 0}
+              disabled={isReadOnly || dangApDung || rows.length === 0}
               sx={{ textTransform: "none" }}
             >
               Áp dụng chuyên cần ({rows.length})
@@ -178,6 +236,7 @@ export default function ChuyenCanPanel() {
             <Button
               startIcon={<ContentCopyRounded />}
               onClick={() => setMoTaiSuDung(true)}
+              disabled={isReadOnly}
               sx={{ textTransform: "none" }}
             >
               Tái sử dụng
@@ -206,7 +265,7 @@ export default function ChuyenCanPanel() {
               <Chip
                 size="small"
                 color="warning"
-                label="Bảng chuyên cần có thay đổi chưa lưu"
+                label="Bảng chuyên cần có nội dung chưa áp dụng"
                 sx={{ height: 22 }}
               />
             </Box>
@@ -224,9 +283,8 @@ export default function ChuyenCanPanel() {
         filters={filters}
         onFilters={setFilters}
         rows={rows}
-        coThayDoi={coThayDoi}
-        dangLuu={dangLuu}
-        onLuu={handleLuu}
+        isReadOnly={isReadOnly}
+        onXoaNhanVien={xoaChoMotNguoi}
       />
 
       <QuanLyChuyenCanDialog open={moQuanLy} onClose={() => setMoQuanLy(false)} />
@@ -274,7 +332,8 @@ export default function ChuyenCanPanel() {
             )}
             {rows.length > 1 && mau.length > 0 && (
               <Box component="span" sx={{ display: "block", mt: 1.5, color: "warning.main" }}>
-                Lưu ý: cả {rows.length} người sẽ bị ghi cùng danh sách vi phạm này.
+                Lưu ý: cả {rows.length} người sẽ bị ghi cùng danh sách vi phạm này — ghi tuần tự
+                từng người, có thể mất vài giây với danh sách dài.
               </Box>
             )}
           </DialogContentText>
@@ -283,7 +342,12 @@ export default function ChuyenCanPanel() {
           <Button onClick={() => setMoApDung(false)} sx={{ textTransform: "none" }}>
             Hủy
           </Button>
-          <Button variant="contained" onClick={handleApDung} sx={{ textTransform: "none" }}>
+          <Button
+            variant="contained"
+            onClick={handleApDung}
+            disabled={dangApDung}
+            sx={{ textTransform: "none" }}
+          >
             Áp dụng
           </Button>
         </DialogActions>

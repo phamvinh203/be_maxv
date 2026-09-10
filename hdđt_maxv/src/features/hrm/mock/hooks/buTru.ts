@@ -1,7 +1,7 @@
 /** Hook nghiệp vụ Các khoản ứng - bù trừ. Xem ghi chú về chữ ký ở `hooks/phongBan.ts`. */
 
 import { useCallback, useMemo } from "react";
-import { nhanBanDongBuTru, tongBiTru } from "../../buTru";
+import { nhanBanDongBuTru, tongBiTru } from "../../calculations/du_lieu_tinh_luong/buTru";
 import type {
   BanBuTruNhanVien,
   BuTruNhanVienRow,

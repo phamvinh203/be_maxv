@@ -14,13 +14,21 @@ import IconButton from "@mui/material/IconButton";
 import Tooltip from "@mui/material/Tooltip";
 import Chip from "@mui/material/Chip";
 import Typography from "@mui/material/Typography";
+import Alert from "@mui/material/Alert";
+import Skeleton from "@mui/material/Skeleton";
 import AddRounded from "@mui/icons-material/AddRounded";
 import EditRounded from "@mui/icons-material/EditRounded";
 import DeleteRounded from "@mui/icons-material/DeleteRounded";
 import ScheduleRounded from "@mui/icons-material/ScheduleRounded";
+import WarningAmberRounded from "@mui/icons-material/WarningAmberRounded";
 import { getErrorMessage } from "../../../../../lib/errors";
-import { soGioCa } from "../../../format";
-import { useCaLamViecList, useXoaCaLamViec } from "../../../mock/hooks/cauHinh";
+import { soGioCa } from "../../../_shared/format";
+import {
+  CANH_BAO_GIO_LAM_VUOT_TRAN_BLLD,
+  useCaLamViecList,
+  useTrangThaiCaLamViec,
+  useXoaCaLamViec,
+} from "../../../api/cau_hinh_mac_dinh/workShiftsQueries";
 import type { CaLamViec } from "../../../types";
 import XacNhanXoaDialog from "../../XacNhanXoaDialog";
 import CaLamViecFormDialog from "./CaLamViecFormDialog";
@@ -34,6 +42,7 @@ import CaLamViecFormDialog from "./CaLamViecFormDialog";
  */
 export default function CaLamViecSection() {
   const danhSach = useCaLamViecList();
+  const { dangTai, loi, thieuDong } = useTrangThaiCaLamViec();
   const xoaCa = useXoaCaLamViec();
 
   const [formOpen, setFormOpen] = useState(false);
@@ -119,8 +128,18 @@ export default function CaLamViecSection() {
                   <TableCell align="center">{ca.gio_vao}</TableCell>
                   <TableCell align="center">{ca.gio_ra}</TableCell>
                   <TableCell align="center">{ca.nghi_giua_ca} phút</TableCell>
-                  <TableCell align="center" sx={{ fontWeight: 600 }}>
-                    {soGioCa(ca.gio_vao, ca.gio_ra, ca.nghi_giua_ca)}
+                  <TableCell align="center" sx={{ fontWeight: 600, whiteSpace: "nowrap" }}>
+                    {/* Ưu tiên số của máy chủ; `soGioCa` chỉ là lối lùi khi bản ghi chưa có. */}
+                    {ca.so_gio_cong ?? soGioCa(ca.gio_vao, ca.gio_ra, ca.nghi_giua_ca)}
+                    {ca.canh_bao === CANH_BAO_GIO_LAM_VUOT_TRAN_BLLD && (
+                      <Tooltip title="Ca vượt trần 12 giờ/ngày của Điều 105 & 107 BLLĐ 2019. Vẫn lưu được (ca trực y tế, an ninh, cứu hộ) nhưng cần rà lại.">
+                        <WarningAmberRounded
+                          color="warning"
+                          fontSize="small"
+                          sx={{ ml: 0.5, verticalAlign: "text-bottom" }}
+                        />
+                      </Tooltip>
+                    )}
                   </TableCell>
                   <TableCell>
                     <Chip
@@ -152,7 +171,38 @@ export default function CaLamViecSection() {
                 </TableRow>
               );
             })}
-            {danhSach.length === 0 && (
+            {/* Ba trạng thái rỗng khác nhau, đừng gộp: "đang tải" và "hỏng" mà hiện "chưa có
+                ca nào" thì người dùng sẽ đi tạo lại những ca họ đã có. */}
+            {dangTai && (
+              <TableRow>
+                <TableCell colSpan={8}>
+                  <Skeleton variant="rounded" height={32} sx={{ my: 1 }} />
+                  <Skeleton variant="rounded" height={32} sx={{ my: 1 }} />
+                </TableCell>
+              </TableRow>
+            )}
+            {!dangTai && loi && (
+              <TableRow>
+                <TableCell colSpan={8}>
+                  <Alert severity="error" sx={{ my: 1 }}>
+                    Không tải được danh sách ca làm việc. Hãy tải lại trang.
+                  </Alert>
+                </TableCell>
+              </TableRow>
+            )}
+            {/* Danh mục vượt trần tải (2.000 dòng): bảng đang thiếu ca. Nói ra, vì lúc đó sửa
+                hoặc xóa một ca không nằm trong phần đã tải sẽ báo nhầm "không còn tồn tại". */}
+            {!dangTai && !loi && thieuDong && (
+              <TableRow>
+                <TableCell colSpan={8}>
+                  <Alert severity="warning" sx={{ my: 1 }}>
+                    Danh mục ca quá lớn nên bảng chỉ hiện phần đầu. Hãy báo quản trị để rà lại
+                    danh mục trước khi sửa hoặc xóa ca.
+                  </Alert>
+                </TableCell>
+              </TableRow>
+            )}
+            {!dangTai && !loi && danhSach.length === 0 && (
               <TableRow>
                 <TableCell colSpan={8}>
                   <Typography

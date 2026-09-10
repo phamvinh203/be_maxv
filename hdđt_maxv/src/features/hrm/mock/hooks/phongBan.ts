@@ -13,7 +13,7 @@
  */
 
 import { useCallback, useMemo } from "react";
-import { layConChau, sapXepCay, sinhMaPhongBan } from "../../cay";
+import { layConChau, sapXepCay, sinhMaPhongBan } from "../../_shared/cay";
 import type { PhongBan, PhongBanFormValues, PhongBanRow } from "../../types";
 import { useHrmStore } from "../useHrmStore";
 

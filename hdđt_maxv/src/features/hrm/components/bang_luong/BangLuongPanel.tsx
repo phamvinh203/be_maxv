@@ -7,20 +7,22 @@ import Typography from "@mui/material/Typography";
 import TextField from "@mui/material/TextField";
 import MenuItem from "@mui/material/MenuItem";
 import Button from "@mui/material/Button";
+import Alert from "@mui/material/Alert";
+import Chip from "@mui/material/Chip";
 import FileDownloadRounded from "@mui/icons-material/FileDownloadRounded";
 import CalculateRounded from "@mui/icons-material/CalculateRounded";
+import LockRounded from "@mui/icons-material/LockRounded";
+import RefreshRounded from "@mui/icons-material/RefreshRounded";
 import SavingsRounded from "@mui/icons-material/SavingsRounded";
 import PaymentsRounded from "@mui/icons-material/PaymentsRounded";
 import ReceiptLongRounded from "@mui/icons-material/ReceiptLongRounded";
 import { alpha } from "@mui/material/styles";
+import { getApiError } from "@/lib/apiClient";
 import { getErrorMessage } from "../../../../lib/errors";
-import { CHE_DO_HIEN_THI, tongBangLuong } from "../../bangLuong";
-import { tienVn } from "../../format";
-import {
-  useBangLuongRows,
-  useKyBangLuong,
-  useSoNhanVienDangLam,
-} from "../../mock/hooks/bangLuong";
+import { CHE_DO_HIEN_THI, tongBangLuong } from "../../calculations/bang_luong/bangLuong";
+import { tienVn } from "../../_shared/format";
+import { useCurrentPayrollPeriod } from "../du_lieu_tinh_luong/useCurrentPayrollPeriod";
+import { useBangLuongRows, useKyBangLuong, useSoNhanVienDangLam } from "../../api/bang_luong/bangLuongQueries";
 import type { BangLuongFilters, CheDoHienThi, MucChiTiet } from "../../types";
 import BangLuongTable from "./BangLuongTable";
 import ThanhLocBangLuong from "./ThanhLocBangLuong";
@@ -79,16 +81,22 @@ function TheThongKe({ nhan, gia_tri, mau, icon, moTa }: ThongKeProps) {
 }
 
 /**
- * Bảng lương của kỳ hiện tại.
+ * Bảng lương của kỳ đang chọn.
  *
- * Màn hình này **chỉ đọc**: mọi con số ráp từ Set lương, Chấm công và bảy màn
- * của khu Dữ liệu tính lương. Sai số ở đây thì phải sửa ở màn nguồn rồi bấm
- * "Tính lại lương", chứ không sửa tay trên bảng — sửa tay là bảng lương và dữ
- * liệu gốc nói hai chuyện khác nhau.
+ * Màn hình này **chỉ đọc**: mọi con số tính sẵn ở `be_maxv` (`payrollCalculation.service.ts`) từ
+ * Hợp đồng, Cài đặt lương, Chấm công và bảy phân hệ của khu Dữ liệu tính lương.
+ *
+ * Nguồn dữ liệu là `GET /payroll/sheet-lines` (`useBangLuongRows`), KHÔNG phải `/payroll/calculate`
+ * — kỳ **DRAFT/PENDING_REVIEW** tính live y hệt `/payroll/calculate`; kỳ **đã khóa sổ**
+ * (LOCKED/APPROVED/PAID/ARCHIVED) đọc snapshot đóng băng đúng lúc khóa, KHÔNG tính lại theo dữ
+ * liệu nguồn hiện tại dù nó có đổi sau đó (`docs/hrm/CONTEXT_SUMMARY.md` Mục 1 "Snapshot bất
+ * biến"). Sai số ở kỳ CHƯA khóa thì sửa ở màn nguồn rồi bấm nút tính lại; kỳ ĐÃ khóa muốn sửa số
+ * phải "Mở lại kỳ lương" trước (nghiệp vụ có chủ đích, không phải bug).
  */
 export default function BangLuongPanel() {
   const ky = useKyBangLuong();
   const soNhanVien = useSoNhanVienDangLam();
+  const { isLocked } = useCurrentPayrollPeriod();
 
   const [filters, setFilters] = useState<BangLuongFilters>({
     q: "",
@@ -98,17 +106,24 @@ export default function BangLuongPanel() {
   });
   const [cheDo, setCheDo] = useState<CheDoHienThi>("dong");
   const [mucChiTiet, setMucChiTiet] = useState<MucChiTiet>("day_du");
-  const [nonce, setNonce] = useState(0);
-  const [tinhLuc, setTinhLuc] = useState(gioHienTai);
+  const [tinhLuc, setTinhLuc] = useState<string | null>(null);
   const [dangXuat, setDangXuat] = useState(false);
 
-  const rows = useBangLuongRows(filters, nonce);
+  const { rows, isLoading, isFetching, isError, errorMessage, refetch } = useBangLuongRows(filters);
   const tong = useMemo(() => tongBangLuong(rows), [rows]);
 
-  const handleTinhLai = () => {
-    setNonce((cu) => cu + 1);
+  const handleTinhLai = async () => {
+    const ketQua = await refetch();
+    if (ketQua.isError) {
+      toast.error(getApiError(ketQua.error, "Không tải lại được bảng lương."));
+      return;
+    }
     setTinhLuc(gioHienTai());
-    toast.success(`Đã tính lại bảng lương cho ${rows.length} nhân viên.`);
+    toast.success(
+      isLocked
+        ? `Đã tải lại số liệu đã khóa sổ cho ${ketQua.data?.length ?? 0} nhân viên.`
+        : `Đã tính lại bảng lương cho ${ketQua.data?.length ?? 0} nhân viên.`,
+    );
   };
 
   const handleXuat = async () => {
@@ -187,25 +202,47 @@ export default function BangLuongPanel() {
             <Button
               startIcon={<FileDownloadRounded />}
               onClick={handleXuat}
-              disabled={dangXuat || rows.length === 0}
+              disabled={dangXuat || isLoading || rows.length === 0}
               sx={{ textTransform: "none", whiteSpace: "nowrap" }}
             >
               Xuất Excel
             </Button>
             <Button
               variant="contained"
-              startIcon={<CalculateRounded />}
+              startIcon={isLocked ? <RefreshRounded /> : <CalculateRounded />}
               onClick={handleTinhLai}
+              disabled={!ky.periodId || isFetching}
               sx={{ textTransform: "none", whiteSpace: "nowrap" }}
             >
-              Tính lại lương
+              {isLocked ? "Tải lại số liệu" : "Tính lại lương"}
             </Button>
           </Stack>
-          <Typography variant="caption" color="text.disabled">
-            {ky.nhan} · tính lúc {tinhLuc}
-          </Typography>
+          <Stack direction="row" spacing={1} sx={{ alignItems: "center", flexWrap: "wrap" }}>
+            <Typography variant="caption" color="text.disabled">
+              {ky.nhan}
+              {tinhLuc ? ` · tính lúc ${tinhLuc}` : ""}
+            </Typography>
+            {isLocked && (
+              <Chip
+                icon={<LockRounded sx={{ fontSize: 14 }} />}
+                label="Đã khóa sổ — số liệu đã chốt"
+                size="small"
+                color="warning"
+                variant="outlined"
+                sx={{ height: 20, "& .MuiChip-label": { px: 0.75, fontSize: 11 } }}
+              />
+            )}
+          </Stack>
         </Stack>
       </Stack>
+
+      {!ky.periodId && (
+        <Alert severity="info">
+          Chưa có kỳ lương nào được chọn. Hãy tạo hoặc chọn một kỳ lương ở thanh phía trên để xem
+          bảng lương.
+        </Alert>
+      )}
+      {isError && <Alert severity="error">{errorMessage}</Alert>}
 
       <ThanhLocBangLuong
         filters={filters}
@@ -214,12 +251,17 @@ export default function BangLuongPanel() {
         soTong={soNhanVien}
       />
 
-      <BangLuongTable rows={rows} cheDo={cheDo} rutGon={mucChiTiet === "rut_gon"} />
+      <BangLuongTable
+        rows={rows}
+        cheDo={cheDo}
+        rutGon={mucChiTiet === "rut_gon"}
+        isLoading={isLoading}
+      />
 
       <Typography variant="caption" color="text.secondary">
-        Số liệu ráp từ Set lương, Chấm công và các màn của khu Dữ liệu tính lương. Lương phần
-        trăm và Chuyên cần không có cột riêng — di chuột vào cột "Thu nhập" để xem đủ bảy khoản
-        cấu thành.
+        Số liệu tính sẵn ở máy chủ từ Hợp đồng, Cài đặt lương, Chấm công và các màn của khu Dữ
+        liệu tính lương. Lương phần trăm và Chuyên cần không có cột riêng — di chuột vào cột "Thu
+        nhập" để xem đủ bảy khoản cấu thành.
       </Typography>
     </Stack>
   );

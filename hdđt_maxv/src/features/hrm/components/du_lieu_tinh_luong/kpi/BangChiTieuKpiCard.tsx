@@ -18,8 +18,8 @@ import Tooltip from "@mui/material/Tooltip";
 import Chip from "@mui/material/Chip";
 import AddRounded from "@mui/icons-material/AddRounded";
 import DeleteRounded from "@mui/icons-material/DeleteRounded";
-import { dongKpiRong, hieuSuat, mauHieuSuat, tongTrongSo, tyLeHt } from "../../../kpi";
-import { useChiTieuKpiList } from "../../../mock/hooks/kpi";
+import { dongKpiRong, hieuSuat, mauHieuSuat, tongTrongSo, tyLeHt } from "../../../calculations/du_lieu_tinh_luong/kpi";
+import { useChiTieuKpiList } from "../../../api/du_lieu_tinh_luong/payrollCatalogsQueries";
 import type { DongKpi } from "../../../types";
 
 interface Props {

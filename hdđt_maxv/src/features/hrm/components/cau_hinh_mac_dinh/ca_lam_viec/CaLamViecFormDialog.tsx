@@ -11,10 +11,13 @@ import Box from "@mui/material/Box";
 import Alert from "@mui/material/Alert";
 import Stack from "@mui/material/Stack";
 import { getErrorMessage } from "../../../../../lib/errors";
-import { TRANG_THAI_PB } from "../../../constants";
-import { soGioCa } from "../../../format";
-import { caLamViecRong } from "../../../formDefaults";
-import { useLuuCaLamViec } from "../../../mock/hooks/cauHinh";
+import { TRANG_THAI_PB } from "../../../_shared/constants";
+import { soGioCa } from "../../../_shared/format";
+import { caLamViecRong } from "../../../_shared/formDefaults";
+import {
+  CANH_BAO_GIO_LAM_VUOT_TRAN_BLLD,
+  useLuuCaLamViec,
+} from "../../../api/cau_hinh_mac_dinh/workShiftsQueries";
 import type { CaLamViec, CaLamViecFormValues, TrangThai } from "../../../types";
 import SoField from "../SoField";
 
@@ -57,10 +60,19 @@ export default function CaLamViecFormDialog({ open, onClose, ca }: Props) {
   const quaDem = Boolean(values.gio_vao && values.gio_ra && values.gio_ra <= values.gio_vao);
 
   const handleSubmit = async () => {
+    // Khóa nút ngay: `POST /work-shifts` KHÔNG idempotent — bấm hai lần khi để trống mã ca
+    // tạo ra HAI ca (`CA01` và `CA02`).
     setDangLuu(true);
     try {
-      await luuCa(values, ca?.ma_ca);
+      const canhBao = await luuCa(values, ca?.ma_ca);
       toast.success(laSua ? "Đã cập nhật ca làm việc." : "Đã thêm ca làm việc.");
+      // Cảnh báo do máy chủ sinh (`workingHours > 12`), không tự tính lại ở đây. Vắng mặt là
+      // chuyện bình thường — mã cũ của máy chủ chưa trả trường này, giao diện vẫn phải chạy.
+      if (canhBao === CANH_BAO_GIO_LAM_VUOT_TRAN_BLLD) {
+        toast.warning(
+          "Ca này vượt trần 12 giờ/ngày theo Điều 105 & 107 BLLĐ 2019. Đã lưu, nhưng hãy rà lại nếu không phải ca trực đặc thù.",
+        );
+      }
       onClose();
     } catch (err) {
       toast.error(getErrorMessage(err, "Không lưu được ca làm việc."));

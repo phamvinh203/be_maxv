@@ -498,10 +498,95 @@
 
 ---
 
-## 7. Ghi chú thực thi cho Phase B
+## 7. Test Suite: Cụm Nền tảng HRM — Cấu hình mặc định, Ca làm việc & Lịch ngày lễ (TC-hrm-273 … TC-hrm-327)
+
+> **Giai đoạn**: Phase A — Shift-Left Spec Review & Test Design (2026-09-08).
+> **Phạm vi**: 3 thực thể nền tảng Cấu hình mặc định (`hrm_general_settings`), Ca làm việc (`hrm_work_shifts`), Lịch ngày lễ (`hrm_holidays`).
+> **Đặc tả tham chiếu**: `docs/hrm/srs/` (`hrm-spec.md`, `hrm-flows.md`, `hrm-states.md`, `hrm-erd.md`).
+> **Quy ước**: Base path `/api/v1/hrm`; POST thành công trả **201 Created**, GET/PUT/PATCH/DELETE trả **200 OK** bọc vỏ `{ "success": true, "data": ... }`. Lỗi validate trả **400**, lỗi quyền hạn trả **403**, lỗi xung đột trả **409**, lỗi không tìm thấy trả **404**.
+
+### 7.1 Cấu hình mặc định (GeneralSetting — Singleton `id = "DEFAULT"`) — TC-hrm-273 … TC-hrm-287
+
+| ID | Loại | AC / BR | Tiền điều kiện | Các bước & Dữ liệu vào | Kết quả mong đợi | Ưu tiên |
+|:---|:---|:---|:---|:---|:---|:--:|
+| TC-hrm-273 | Happy | BR-hrm-070, FR-hrm-045 | Tenant DB mới chưa từng có bản ghi cấu hình nào | `GET /settings/general` | **200 OK**; Hệ thống tự động khởi tạo bản ghi `id = "DEFAULT"` (Self-healing pattern) với hơn 30 tham số chuẩn luật Việt Nam: `baseSalary = 2340000`, `regionMinSalary = 4960000`, `personalDeduction = 11000000`, `dependentDeduction = 4400000`, `standardHoursPerDay = 8.0`, `taxBrackets` gồm **7 bậc** thuế lũy tiến TNCN chuẩn Điều 22 Luật Thuế TNCN (5/10/15/20/25/30/35%), bậc cuối là **bậc mở** `khoang: null` — BR-hrm-081, ADR-009. *(Sửa 2026-09-08: bản cũ ghi "5 bậc", đó là biểu cắt cụt ở 25% KHÔNG đúng luật — xem `ISSUE-HRM-16`)* | P0 |
+| TC-hrm-274 | Happy | FR-hrm-045 | Bản ghi `DEFAULT` đã có trong DB | `GET /settings/general` | **200 OK**; Trả về đầy đủ 5 nhóm tham số cấu hình hiện hành của công ty; dữ liệu khớp 100% với bản ghi đã lưu | P0 |
+| TC-hrm-275 | Happy | BR-hrm-070, FR-hrm-046 | Tài khoản đăng nhập là `OWNER` hoặc `ADMIN` | `PUT /settings/general` với body batch update: `{ "standardHoursPerDay": 7.5, "saturdayPolicy": "OFF", "unionFeeEmployeeRate": 0.8 }` | **200 OK**; Các trường được gửi cập nhật đúng giá trị mới; các trường không gửi vẫn giữ nguyên giá trị đã lưu | P0 |
+| TC-hrm-276 | Boundary | BR-hrm-071, AC-hrm-58 | Tài khoản `OWNER` | Lần lượt gửi `PUT /settings/general`: (1) `{ "standardHoursPerDay": 1.0 }`; (2) `{ "standardHoursPerDay": 24.0 }` | **200 OK** cho cả 2 lượt; 1.0h và 24.0h là hai giá trị biên cực trị hợp lệ theo quy định | P0 |
+| TC-hrm-277 | Boundary | BR-hrm-071, E-hrm-067, AC-hrm-58 | Tài khoản `OWNER` | Lần lượt gửi `PUT /settings/general`: (1) `{ "standardHoursPerDay": 0.9 }`; (2) `{ "standardHoursPerDay": 24.1 }`; (3) `{ "standardHoursPerDay": 0 }` | **400 Bad Request** kèm mã lỗi `E-hrm-067`: "Giờ công chuẩn/ngày phải nằm trong khoảng từ 1.0 đến 24.0 giờ."; từ chối lưu bản ghi | P0 |
+| TC-hrm-278 | Boundary | BR-hrm-072, E-hrm-068, AC-hrm-58 | Tài khoản `OWNER` | Lần lượt gửi `PUT /settings/general`: (1) `{ "baseSalary": 0 }`; (2) `{ "baseSalary": -500000 }`; (3) `{ "regionMinSalary": 0 }`; (4) `{ "regionMinSalary": -1000 }` | **400 Bad Request** kèm mã lỗi `E-hrm-068`: "Lương cơ sở và lương tối thiểu vùng phải là số nguyên lớn hơn 0."; từ chối lưu | P0 |
+| TC-hrm-279 | Boundary | BR-hrm-072 | Tài khoản `OWNER` | `PUT /settings/general` gửi `{ "baseSalary": 1, "regionMinSalary": 1 }` | **200 OK**; Số nguyên dương biên nhỏ nhất được chấp nhận | P1 |
+| TC-hrm-280 | Validation | BR-hrm-073, E-hrm-069, AC-hrm-57 | Tài khoản `OWNER` | `PUT /settings/general` gửi `taxBrackets`: (1) bậc 1: 5%, bậc 2: 5% (bằng nhau); hoặc (2) bậc 1: 5%, bậc 2: 4% (giảm dần) | **400 Bad Request** kèm mã lỗi `E-hrm-069`: "Thuế suất của bậc thuế sau phải lớn hơn bậc liền trước."; từ chối lưu | P0 |
+| TC-hrm-281 | Happy | BR-hrm-073, AC-hrm-57 | Tài khoản `OWNER` | `PUT /settings/general` gửi `taxBrackets` mảng 7 bậc chuẩn Điều 22 Luật Thuế TNCN: 5%, 10%, 15%, 20%, 25%, 30%, 35% | **200 OK**; Biểu thuế lũy tiến tăng dần hợp lệ được lưu trọn vẹn vào trường JSONB | P0 |
+| TC-hrm-282 | Security | BR-hrm-070, E-hrm-077, AC-hrm-62 | Tài khoản đăng nhập là `OWNER_EMPLOYEE` (nhân viên) | Gửi `PUT /settings/general` kèm payload cập nhật bất kỳ | **403 Forbidden** kèm mã lỗi `E-hrm-077`: "Chỉ Quản trị viên (ADMIN) hoặc Chủ doanh nghiệp (OWNER) mới có quyền cập nhật hoặc khôi phục Cấu hình mặc định." | P0 |
+| TC-hrm-283 | Happy | BR-hrm-070, FR-hrm-047 | Đã tùy biến thay đổi nhiều tham số cấu hình; tài khoản là `OWNER` | `POST /settings/general/restore-default` | **200 OK**; Toàn bộ hơn 30 tham số cấu hình được ghi đè trở lại đúng bộ giá trị chuẩn pháp luật Việt Nam (BLLĐ 2019, NĐ 73/2024, NĐ 74/2024, NQ 954/2020) | P0 |
+| TC-hrm-284 | Security | BR-hrm-070, E-hrm-077, AC-hrm-62 | Tài khoản đăng nhập là `OWNER_EMPLOYEE` | Gửi `POST /settings/general/restore-default` | **403 Forbidden** kèm mã lỗi `E-hrm-077`; từ chối khôi phục | P0 |
+| TC-hrm-285 | Happy | BR-hrm-070, FR-hrm-045 | Tài khoản đăng nhập là `OWNER_EMPLOYEE` | Gửi `GET /settings/general` | **200 OK**; Cho phép nhân viên xem cấu hình nền tảng để đối soát ngày công và tính lương | P1 |
+| TC-hrm-286 | Edge | BR-hrm-070 | Tài khoản `OWNER` | Thử gửi `POST /settings/general` (tạo bản ghi mới) hoặc `DELETE /settings/general` (xóa cấu hình) | **404 Not Found** hoặc **405 Method Not Allowed**; Không tồn tại endpoint tạo thêm hoặc xóa bản ghi singleton | P1 |
+| TC-hrm-287 | Isolation | NFR-hrm-003 | Có 2 tenant A và B; cả 2 đã có bản ghi `DEFAULT` | Tenant A gọi `PUT /settings/general` đổi `standardHoursPerDay = 7.0`; Tenant B gọi `GET /settings/general` | Tenant B vẫn nhận `standardHoursPerDay = 8.0` (giá trị riêng của B); cấu hình hoàn toàn độc lập giữa các doanh nghiệp | P0 |
+
+---
+
+### 7.2 Ca làm việc (WorkShift — `hrm_work_shifts`) — TC-hrm-288 … TC-hrm-309
+
+| ID | Loại | AC / BR | Tiền điều kiện | Các bước & Dữ liệu vào | Kết quả mong đợi | Ưu tiên |
+|:---|:---|:---|:---|:---|:---|:--:|
+| TC-hrm-288 | Happy | BR-hrm-074, FR-hrm-048 | Tenant chưa có ca làm việc nào | `POST /work-shifts` `{ "name": "Ca hành chính", "startTime": "08:00", "endTime": "17:00", "breakMinutes": 60 }` (để trống `code`) | **201 Created**; `data.code = "CA01"`, `data.isOvernight = false`, `data.workingHours = 8.0`, `data.status = "ACTIVE"` | P0 |
+| TC-hrm-289 | Happy | BR-hrm-074 | Đã có `CA01` | `POST /work-shifts` `{ "code": "CA02", "name": "Ca sáng", "startTime": "06:00", "endTime": "14:00", "breakMinutes": 30 }` | **201 Created**; `data.code = "CA02"`, `data.isOvernight = false`, `data.workingHours = 7.5` | P0 |
+| TC-hrm-290 | Happy | BR-hrm-075, BR-hrm-076, AC-hrm-59 | — | `POST /work-shifts` `{ "name": "Ca đêm 3", "startTime": "22:00", "endTime": "06:00", "breakMinutes": 30 }` (`endTime <= startTime`) | **201 Created**; Tự động nhận diện `data.isOvernight = true`; tự tính giờ công ròng `data.workingHours = 7.5` (`((6 + 24 - 22) * 60 - 30) / 60`) | P0 |
+| TC-hrm-291 | Edge | BR-hrm-075 | — | `POST /work-shifts` `{ "name": "Ca khuya qua ngày", "startTime": "20:00", "endTime": "04:00", "breakMinutes": 60 }` | **201 Created**; `data.isOvernight = true`, `data.workingHours = 7.0` | P1 |
+| TC-hrm-292 | Boundary | BR-hrm-075, BR-hrm-076 | — | `POST /work-shifts` `{ "name": "Ca trực 24h", "startTime": "08:00", "endTime": "08:00", "breakMinutes": 120 }` (`endTime == startTime`) | **201 Created**; `data.isOvernight = true`, `data.workingHours = 22.0` (`(24 * 60 - 120) / 60`) | P1 |
+| TC-hrm-293 | Boundary | BR-hrm-075 | — | `POST /work-shifts` `{ "name": "Ca rạng sáng", "startTime": "00:00", "endTime": "08:00", "breakMinutes": 0 }` | **201 Created**; `data.isOvernight = false`, `data.workingHours = 8.0` | P1 |
+| TC-hrm-294 | Validation | E-hrm-070, FR-hrm-048 | — | `POST /work-shifts` gửi `{ "startTime": "08:00", "endTime": "17:00" }` (thiếu `name`) hoặc `{ "name": "   ", "startTime": "08:00", "endTime": "17:00" }` | **400 Bad Request** kèm mã lỗi `E-hrm-070`: "Tên ca làm việc không được để trống." | P0 |
+| TC-hrm-295 | Validation | BR-hrm-075, E-hrm-071 | — | `POST /work-shifts` lần lượt gửi: (1) `{ "name": "A", "startTime": "8:00", "endTime": "17:00" }`; (2) `{ "name": "A", "startTime": "08:00", "endTime": "25:00" }`; (3) `{ "name": "A", "startTime": "08:00" }` (thiếu `endTime`) | **400 Bad Request** kèm mã lỗi `E-hrm-071`: "Ca làm việc bắt buộc phải có giờ vào và giờ ra hợp lệ (định dạng HH:mm)." | P0 |
+| TC-hrm-296 | Validation | BR-hrm-076, E-hrm-072 | — | `POST /work-shifts` `{ "name": "Ca lỗi", "startTime": "08:00", "endTime": "17:00", "breakMinutes": -15 }` | **400 Bad Request** kèm mã lỗi `E-hrm-072`: "Thời gian nghỉ giữa ca không được âm và tổng giờ công thực tế phải lớn hơn 0." | P0 |
+| TC-hrm-297 | Validation | BR-hrm-076, E-hrm-072 | — | `POST /work-shifts` ca 4 giờ: (1) `{ "name": "Ca 4h", "startTime": "08:00", "endTime": "12:00", "breakMinutes": 240 }` (ròng 0h); (2) `{ "name": "Ca 4h", "startTime": "08:00", "endTime": "12:00", "breakMinutes": 300 }` (nghỉ > giờ ca) | **400 Bad Request** kèm mã lỗi `E-hrm-072`; từ chối lưu vì `workingHours <= 0` | P0 |
+| TC-hrm-298 | Edge | BR-hrm-074, E-hrm-073 | Đã có ca mã `CA01` | `POST /work-shifts` `{ "code": "CA01", "name": "Ca trùng mã", "startTime": "08:00", "endTime": "17:00" }` | **409 Conflict** kèm mã lỗi `E-hrm-073`: "Mã ca làm việc đã tồn tại trong công ty. Vui lòng chọn mã khác." | P0 |
+| TC-hrm-299 | Edge | BR-hrm-074 | Tenant đã có `CA01` và `CA03` (đã xóa hoặc chưa tạo `CA02`) | `POST /work-shifts` `{ "name": "Ca lấp chỗ trống", "startTime": "08:00", "endTime": "17:00" }` (để trống `code`) | **201 Created**; Hệ thống tự quét lỗ trống và cấp đúng mã nhỏ nhất còn thiếu `data.code = "CA02"` (Gap scanning) | P1 |
+| TC-hrm-300 | Happy | FR-hrm-049 | Tenant có 5 ca làm việc | `GET /work-shifts?page=1&pageSize=10` | **200 OK**; Trả danh sách có phân trang (`data.items`, `total = 5`), mỗi phần tử được tính kèm `isOvernight` và `workingHours` chính xác | P0 |
+| TC-hrm-301 | Happy | FR-hrm-049 | Đã có ca "Ca hành chính" (`ACTIVE`) và "Ca đêm" (`INACTIVE`) | `GET /work-shifts?search=chinh&status=ACTIVE` | **200 OK**; Chỉ trả đúng 1 ca "Ca hành chính" khớp từ khóa tìm kiếm và có trạng thái hoạt động.<br>⚠️ **Phase B 2026-09-08 — FAIL, chờ BA chốt**: chạy thật trả `total = 0`. `api-contract.md` Mục 7E.2 chỉ hứa `contains` không phân biệt **hoa thường**, KHÔNG bỏ dấu; `?search=chính` (đúng dấu) trả đúng 1. Xem `BUG-HRM-50` + `ISSUE-HRM-14` | P1 |
+| TC-hrm-302 | Happy | FR-hrm-050 | Đã có ca với `id = "ws_01"` | `GET /work-shifts/ws_01` | **200 OK**; Trả đầy đủ thông tin chi tiết của ca làm việc kèm `isOvernight` và `workingHours` | P0 |
+| TC-hrm-303 | Edge | FR-hrm-050 | Không có ca nào mang id `ws_999` | `GET /work-shifts/ws_999` | **404 Not Found**; Báo lỗi không tìm thấy bản ghi | P1 |
+| TC-hrm-304 | Happy | FR-hrm-050 | Đã có ca `ws_01` (8.0h, break 60) | `PATCH /work-shifts/ws_01` `{ "name": "Ca HC sửa đổi", "breakMinutes": 30, "status": "INACTIVE" }` | **200 OK**; Cập nhật thành công; `workingHours` tự động tính lại thành 8.5h; mã ca `code` giữ nguyên | P0 |
+| TC-hrm-305 | Security | BR-hrm-074 | Đã có ca `ws_01` có `code = "CA01"` | `PATCH /work-shifts/ws_01` gửi `{ "code": "CA99", "name": "Đổi mã ca" }` | **200 OK** nhưng `code` vẫn giữ nguyên là `"CA01"` (trường `code` bị cấm cập nhật trong schema update); hoặc **400** nếu schema forbid `code` | P0 |
+| TC-hrm-306 | Edge | BR-hrm-076, E-hrm-072 | Đã có ca 4h (`08:00` đến `12:00`, break 30) | `PATCH /work-shifts/:id` `{ "breakMinutes": 250 }` | **400 Bad Request** kèm mã lỗi `E-hrm-072`; Merge dữ liệu cũ và mới phát hiện `workingHours <= 0` nên từ chối | P0 |
+| TC-hrm-307 | Happy | FR-hrm-050 | Ca mới tạo chưa từng được phân lịch làm việc hay chấm công | `DELETE /work-shifts/:id` | **200 OK**; Xóa cứng bản ghi khỏi cơ sở dữ liệu | P0 |
+| TC-hrm-308 | Edge | FR-hrm-050, E-hrm-073 | Ca làm việc đã được phân công trong lịch làm việc (`hrm_work_schedules`) | `DELETE /work-shifts/:id` | **409 Conflict** (hoặc 400 Bad Request) do vi phạm ràng buộc dữ liệu lịch sử; hệ thống từ chối xóa và hướng dẫn chuyển sang `status = INACTIVE`.<br>⏸️ **Phase B 2026-09-08 — HOÃN, KHÔNG CHẠY ĐƯỢC**: bảng `hrm_work_schedules` chưa tồn tại (dò `information_schema` = 0), `prisma/tenant/schema.prisma` không có model nào tham chiếu `WorkShift` ⇒ không dựng được tiền điều kiện. Mở lại khi có thực thể phân lịch. Xem `ISSUE-HRM-17` | P0 |
+| TC-hrm-309 | Isolation | NFR-hrm-003 | Có 2 tenant A và B | Tenant A tạo ca `code: "CA01"`; Tenant B tạo ca `code: "CA01"` | **201 Created** cho cả hai tenant; mã ca chỉ unique trong phạm vi tenant, không bị đụng độ chéo | P0 |
+
+---
+
+### 7.3 Lịch ngày lễ (Holiday — `hrm_holidays`) — TC-hrm-310 … TC-hrm-327
+
+| ID | Loại | AC / BR | Tiền điều kiện | Các bước & Dữ liệu vào | Kết quả mong đợi | Ưu tiên |
+|:---|:---|:---|:---|:---|:---|:--:|
+| TC-hrm-310 | Happy | BR-hrm-078, FR-hrm-051 | Chưa có ngày 30/04 trong DB | `POST /holidays` `{ "date": "2026-04-30", "name": "Ngày Chiến thắng", "type": "NATIONAL", "isAnnual": true, "isPaid": true }` | **201 Created**; Lưu thành công ngày lễ quốc gia lặp hàng năm | P0 |
+| TC-hrm-311 | Happy | BR-hrm-077, FR-hrm-051 | Chưa có mùng 1 Tết 2026 | `POST /holidays` `{ "date": "2026-02-17", "name": "Mùng 1 Tết Bính Ngọ", "type": "LUNAR", "isAnnual": false, "isPaid": true }` | **201 Created**; Ngày lễ âm lịch với `isAnnual = false` được lưu thành công | P0 |
+| TC-hrm-312 | Validation | BR-hrm-077, E-hrm-075, AC-hrm-60 | — | `POST /holidays` `{ "date": "2026-02-17", "name": "Tết Âm lịch", "type": "LUNAR", "isAnnual": true, "isPaid": true }` | **400 Bad Request** kèm mã lỗi `E-hrm-075`: "Ngày lễ âm lịch không thể lặp lại theo dương lịch. Vui lòng tắt cờ lặp hàng năm và tạo cho từng năm." | P0 |
+| TC-hrm-313 | Validation | E-hrm-074, FR-hrm-051 | — | `POST /holidays` lần lượt gửi: (1) `{ "name": "Tết", "type": "NATIONAL" }` (thiếu `date`); (2) `{ "date": "2026-01-01", "name": "", "type": "NATIONAL" }` (tên rỗng) | **400 Bad Request** kèm mã lỗi `E-hrm-074`: "Tên ngày lễ và ngày diễn ra không được để trống." | P0 |
+| TC-hrm-314 | Edge | BR-hrm-078, E-hrm-076 | Đã có ngày "2026-01-01" với tên "Tết Dương lịch" | `POST /holidays` `{ "date": "2026-01-01", "name": "Tết Dương lịch", "type": "NATIONAL", "isAnnual": true }` | **409 Conflict** kèm mã lỗi `E-hrm-076`: "Ngày này đã có ngày lễ cùng tên trong hệ thống." (vi phạm `@@unique([date, name])`) | P0 |
+| TC-hrm-315 | Edge | BR-hrm-078 | Đã có ngày "2026-09-02: Quốc khánh" | `POST /holidays` `{ "date": "2026-09-02", "name": "Kỷ niệm thành lập công ty", "type": "COMPANY", "isAnnual": true }` | **201 Created**; Cùng ngày nhưng khác tên lễ vẫn hợp lệ vì khóa duy nhất là cặp `(date, name)` | P1 |
+| TC-hrm-316 | Happy | FR-hrm-052 | DB có cả ngày lễ năm 2026 và các ngày lễ hàng năm (`isAnnual = true`) | `GET /holidays?year=2026&filter=THIS_YEAR` | **200 OK**; Trả về danh sách ngày lễ có hiệu lực trong năm 2026 (gồm ngày chỉ định cho 2026 và các ngày lặp hàng năm), kèm cờ `isPaid`.<br>ℹ️ **Sửa 2026-09-08**: bỏ "thứ trong tuần" khỏi kỳ vọng **máy chủ** — `api-contract.md` Mục 7F.2 không có trường này; giao diện tự tính từ `date` (`LichNgayLePanel.tsx:46-48`). Xem `ISSUE-HRM-15` | P0 |
+| TC-hrm-317 | Happy | FR-hrm-052 | DB có cả ngày lễ lặp và không lặp | `GET /holidays?filter=ANNUAL` | **200 OK**; Chỉ lọc và trả về các ngày lễ có `isAnnual = true` | P1 |
+| TC-hrm-318 | Happy | FR-hrm-052 | Đã có ngày lễ với `id = "hol_01"` | `GET /holidays/hol_01` | **200 OK**; Trả thông tin chi tiết của ngày lễ | P0 |
+| TC-hrm-319 | Happy | FR-hrm-051 | Đã có ngày lễ `hol_01` | `PATCH /holidays/hol_01` `{ "name": "Tết Dương lịch 2026", "note": "Nghỉ trọn vẹn 1 ngày", "isPaid": true }` | **200 OK**; Cập nhật thông tin ngày lễ thành công | P0 |
+| TC-hrm-320 | Validation | BR-hrm-077, E-hrm-075 | Đang sửa ngày lễ có `isAnnual = true` | `PATCH /holidays/:id` `{ "type": "LUNAR" }` (giữ nguyên cờ lặp cũ là `true`) hoặc `{ "type": "LUNAR", "isAnnual": true }` | **400 Bad Request** kèm mã lỗi `E-hrm-075`; Chặn chuyển sang âm lịch nếu cờ lặp đang bật | P0 |
+| TC-hrm-321 | Happy | FR-hrm-053 | Đã có ngày lễ `hol_01` | `DELETE /holidays/hol_01` | **200 OK**; Xóa ngày lễ thành công khỏi danh mục của công ty | P0 |
+| TC-hrm-322 | Happy | BR-hrm-079, FR-hrm-054, AC-hrm-61 | Tenant chưa có ngày lễ nào của năm 2026 | `POST /holidays/quick-generate` `{ "year": 2026 }` | **200 OK**; Sinh đầy đủ đúng 11 ngày nghỉ lễ chuẩn Điều 112 BLLĐ 2019: 01/01 (1 ngày), Tết Bính Ngọ (5 ngày tra bảng âm lịch), Giỗ Tổ Hùng Vương 10/3 AL (1 ngày), 30/04 (1 ngày), 01/05 (1 ngày), Quốc khánh (2 ngày 01-02/09) | P0 |
+| TC-hrm-323 | Happy | BR-hrm-079, AC-hrm-61 | Tenant đã tự tạo sẵn ngày "2026-01-01: Tết Dương lịch" | `POST /holidays/quick-generate` `{ "year": 2026 }` | **200 OK**; Tự động bỏ qua ngày 01/01/2026 đã có, chỉ bổ sung đúng 10 ngày còn thiếu, không bị lỗi trùng lặp `E-hrm-076` (Tính Idempotent) | P0 |
+| TC-hrm-324 | Happy | BR-hrm-079 | Đã sinh đủ 11 ngày lễ của năm 2026 | Bấm Tạo nhanh lần thứ hai: `POST /holidays/quick-generate` `{ "year": 2026 }` | **200 OK**; Trả về danh sách 11 ngày hiện có, số ngày bổ sung mới = 0, không có lỗi | P0 |
+| TC-hrm-325 | Boundary | BR-hrm-079 | — | Lần lượt gửi `POST /holidays/quick-generate`: (1) `{ "year": 2024 }`; (2) `{ "year": 2030 }` | **200 OK** cho cả 2 lượt; Bảng tra âm lịch tĩnh hỗ trợ chính xác cả hai năm biên 2024 và 2030 | P1 |
+| TC-hrm-326 | Boundary | BR-hrm-079 | — | Lần lượt gửi `POST /holidays/quick-generate`: (1) `{ "year": 2023 }`; (2) `{ "year": 2031 }` | **400 Bad Request**; Từ chối vì nằm ngoài dải năm được hỗ trợ bảng tra âm lịch tĩnh (2024–2030) | P1 |
+| TC-hrm-327 | Isolation | NFR-hrm-003 | Có 2 tenant A và B | Tenant A tạo ngày lễ "Kỷ niệm thành lập công ty A"; Tenant B gọi `GET /holidays` | Tenant B không thấy ngày lễ của Tenant A; dữ liệu ngày lễ hoàn toàn độc lập giữa các công ty | P0 |
+
+---
+
+## 8. Ghi chú thực thi cho Phase B
 
 1. **Không sửa mã sản phẩm để test PASS.** Nhóm ca `TC-hrm-067…078`, `085`, `086`, `105`, `127`, `153` được thiết kế theo **SPEC**, và theo phân tích mã nguồn thì hiện tại chúng sẽ FAIL. FAIL ở đây là **phát hiện lỗi sản phẩm**, phải ghi vào `issues-and-bugs.md`, không phải "sửa kỳ vọng cho khớp code".
 2. **Phân biệt rõ 4 loại kết quả** khi ghi `test-report.md`: *Test failed* (lỗi ở test) · *Product bug* (lỗi sản phẩm) · *Test environment issue* (stub/DB/env) · *Test data issue* (fixture).
 3. **Ca cần giả lập đồng hồ**: TC-hrm-086, 089–094 — dùng fake timer, không phụ thuộc ngày chạy CI.
-4. **Ca cần 2 tenant thật**: TC-hrm-179…182 — bắt buộc, đây là bất biến quan trọng nhất của sản phẩm đa doanh nghiệp.
-5. **Ca chỉ chạy thủ công** (ghi rõ trong báo cáo): tạo >99 phòng ban con cùng cấp; tạo >9999 nhân viên.
+4. **Ca cần 2 tenant thật**: TC-hrm-179…182, TC-hrm-287, 309, 327 — bắt buộc, đây là bất biến quan trọng nhất của sản phẩm đa doanh nghiệp.
+5. **Ca chỉ chạy thủ công** (ghi rõ trong báo cáo): tạo >99 phòng ban con cùng cấp; tạo >9999 nhân viên. ~~chạm mốc 99 ca làm việc (`BUG-HRM-45`)~~ — **đã tự động hóa 2026-09-08** ở phép kiểm `KR-08` của `hrmSettingsShiftsHolidaysApi.test.ts` (nạp thẳng 99 bản ghi qua Prisma rồi gọi HTTP).
+6. **Khung test tích hợp `app.inject()` đã có** (2026-09-08): `be_maxv/src/__tests__/hrmSettingsShiftsHolidaysApi.test.ts` — tự cấp 2 DB tenant, đăng nhập bằng cookie httpOnly thật, dọn sạch sau khi chạy. Dùng làm mẫu cho các nhóm HRM còn lại.
+

@@ -20,7 +20,10 @@ import AddRounded from "@mui/icons-material/AddRounded";
 import EditRounded from "@mui/icons-material/EditRounded";
 import DeleteRounded from "@mui/icons-material/DeleteRounded";
 import { getErrorMessage } from "../../../../../lib/errors";
-import { useKhoanThuongList, useXoaKhoanThuong } from "../../../mock/hooks/thuong";
+import {
+  useKhoanThuongList,
+  useXoaKhoanLuong as useXoaKhoanThuong,
+} from "../../../api/cai_dat_luong/salaryItemsQueries";
 import type { KhoanLuong } from "../../../types";
 import KhoanLuongFormDialog from "../../cai_dat_luong/KhoanLuongFormDialog";
 import XacNhanXoaDialog from "../../XacNhanXoaDialog";

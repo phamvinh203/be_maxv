@@ -2,10 +2,16 @@
 type: dev-notes
 feature: hrm
 status: in-review
-updated: 2026-09-08
+updated: 2026-09-10
 links:
   - docs/hrm/architecture/api-contract.md
   - docs/hrm/architecture/data-model.md
+  - docs/hrm/du_lieu_tinh_luong/srs-du-lieu-tinh-luong.md
+  - docs/hrm/du_lieu_tinh_luong/data-model-du-lieu-tinh-luong.md
+  - docs/hrm/du_lieu_tinh_luong/api-contract-du-lieu-tinh-luong.md
+  - docs/hrm/architecture/adr/ADR-010-pipeline-thue-bao-hiem-bang-luong.md
+  - docs/hrm/du_lieu_tinh_luong/test-matrix-bang-luong-tong-hop.md
+  - docs/hrm/review-findings.md
 ---
 
 # HRM — DEV NOTES (đọc cái này trước khi mở code)
@@ -426,6 +432,300 @@ thân cũ `{ donViIds }` bên cạnh thân mới `{ access: [{ donViId, xemLuong
 nguyên `donViIds` đồng thời thêm `so_cong_ty`. `GET /companies/employees` thêm `xemLuong` vào từng
 phần tử `donViAccess` — thêm trường, không đổi trường cũ.
 
+### 1.9. Dữ liệu tính lương (`du_lieu_tinh_luong`) — đợt sửa 8/9 lỗi 🔴 (2026-09-09)
+
+> Nguồn thẩm quyền đầy đủ: `docs/hrm/du_lieu_tinh_luong/srs-du-lieu-tinh-luong.md` (BA) +
+> `data-model-du-lieu-tinh-luong.md` (Architect, 5 ADR `dltl-01..05`) +
+> `docs/hrm/review-findings.md` (Code Review, RVW-001/002 + bảng "Blocking kế thừa"). Mục này chỉ
+> tóm tắt đủ để đọc code nhanh, KHÔNG lặp lại toàn bộ 3 tài liệu trên.
+
+**Mô hình nghiệp vụ — 4 điều hiểu trước khi đọc code:**
+
+1. **`AttendanceRecord` là DELTA, không phải lịch cả tháng.** Chỉ ghi qua `PUT
+   /payroll-data/attendance/cell` khi CÓ NGOẠI LỆ khác chuẩn (ADR-dltl-02, giữ nguyên — không sinh
+   sẵn 26×N dòng/kỳ). Công thức tổng hợp: `actualWorkDays = standardWorkDays + Σ(workDayValue - 1)`
+   — mỗi bản ghi delta thay thế đúng 1 ngày công chuẩn của chính nó. Sửa lần trước (trước
+   2026-09-09) coi tập bản ghi là lịch cả tháng — **đã sửa** (RVW-001), xem `payrollCalculation.service.ts:231-243`.
+2. **`workDayValue` do `attendanceType` quyết định, không phải `actualHours` client gửi.** Chỉ
+   `lam_viec`/`nua_ngay` cho client tự khai giờ; 6 loại còn lại (`cong_tac`/`nghi_phep`/`nghi_le`
+   =1.0 công, `om`/`khong_luong`/`khac`=0 công) dùng hệ số CỐ ĐỊNH, bỏ qua `actualHours` gửi lên.
+   Xem bảng `ATTENDANCE_FIXED_VALUE` — `payrollInputs.service.ts`.
+3. **Hợp đồng tính lương phải LỌC THEO KỲ** — KHÔNG dùng "hợp đồng hiện hành" của module Hợp đồng
+   (khái niệm đó nghĩa là "mới nhất theo `ngay_bat_dau`", không phải "đang hiệu lực trong kỳ đang
+   tính"). `calculatePayrollPreview` tự lọc `hop_dong` bằng `where: { ngay_bat_dau: {lte:
+   endDate}, OR: [...ngay_ket_thuc null/gte startDate] }` ngay trong `include`.
+4. **Toàn bộ 4 controller (`payrollPeriods`/`catalogs`/`payrollInputs`/`payrollCalculation`) đi
+   qua `dbCoQuyenLuongPayroll(req)`** (`helpers/payrollAccessGuard.ts`) — KHÔNG BAO GIỜ gọi
+   `resolveTenantDb(req)` trơn trong nhóm này. Cùng khuôn `assertXemLuong` mà nhóm `/hop-dong` đã
+   dùng (BR-hrm-059/ADR-007) — `OWNER_EMPLOYEE` không có cờ `xemLuong` bị chặn 403 trên MỌI
+   endpoint payroll, kể cả danh mục.
+
+**Luồng dữ liệu tính lương (rút gọn):**
+
+```
+GET /payroll/calculate?periodId=..
+  -> payrollCalculation.controller.ts  ->  dbCoQuyenLuongPayroll(req)  --thieu xemLuong--> 403
+  -> calculatePayrollPreview(db, periodId)
+       |-- load: hrm_nhan_vien (+hop_dong LOC THEO KY, +nguoi_phu_thuoc), GeneralSetting,
+       |         EmployeeSalary(APPROVED), hrm_phong_ban, Holiday        [1 Promise.all]
+       |-- load: 8 khoi bien dong cua ky (attendance..adjustments)       [1 Promise.all]
+       |-- standardWorkDays = resolveStandardWorkDays(period, setting, holidays)
+       |         (FIXED_26 / FIXED_24 hang so theo cau hinh; ACTUAL_MONTH dem thang - T7/CN
+       |          theo saturdayPolicy/sundayPolicy - ngay le isPaid)
+       |-- per-nhan-vien: actualWorkDays = standardWorkDays + Sigma(workDayValue-1)  [DELTA]
+       |                  hourlyRate = baseSalary / (standardWorkDays * standardHoursPerDay)
+       |                  BHXH/BHYT/BHTN + doan phi doc tu GeneralSetting (khong hardcode)
+       |                  thue TNCN: tinhThueLuyTien() GIU NGUYEN (bieu 7 bac hardcode dung luat,
+       |                             CHUA noi voi GeneralSetting.taxBrackets - xem no ben duoi)
+       '-> tra ve 29 truong/nhan-vien (number JS; Decimal serialize thanh chuoi o cac /payroll-data/*)
+```
+
+**Bảng thao tác → route/controller/service (chỉ phần đã sửa trong đợt 2026-09-09):**
+
+| Thao tác | Route | Controller | Service | Sửa gì |
+|:---|:---|:---|:---|:---|
+| Xem bảng lương / snapshot | `GET /payroll/calculate`, `/payroll/sheet-lines` | `payrollCalculation.controller.ts` | `calculatePayrollPreview` — `payrollCalculation.service.ts:82` | A-01 guard xemLuong · RVW-001 công thức delta · A-02 lọc hợp đồng theo kỳ · A-03 (gián tiếp, `workDayValue` đã đúng từ tầng nhập liệu) · BUG-dltl-002 đọc `standardWorkDays`/`standardHoursPerDay`/BHXH/đoàn phí từ `GeneralSetting` |
+| Ghi 1 ô chấm công | `PUT /payroll-data/attendance/cell` | `payrollInputs.controller.ts` | `overrideAttendanceCell` — `payrollInputs.service.ts:132` | A-03 `attendanceType` quyết định `workDayValue` qua `ATTENDANCE_FIXED_VALUE` · BUG-dltl-007 chặn `actualHours > standardHoursPerDay` (400 `E-dltl-005`) thay vì tràn |
+| Xem tăng ca | `GET /payroll-data/overtime` | `payrollInputs.controller.ts` | `getOvertimeData` — `payrollInputs.service.ts:153` | BUG-dltl-002 `isWarningMonth` đọc `GeneralSetting.maxOtHoursPerMonth` thay vì hardcode 40 |
+| Khóa sổ / Mở lại / Phê duyệt kỳ | `POST .../lock`, `.../reopen`, `.../approve` | `payrollPeriods.controller.ts` | `lockPayrollPeriod`/`reopenPayrollPeriod`/`approvePayrollPeriod` — `payrollPeriods.service.ts` | RVW-002 `currentUserId(req)` thay `(req.user as any)?.sub` · Bug#8: route gắn `assertAdminOrOwner` (`payrollPeriods.route.ts`, tái dùng từ `cau_hinh_mac_dinh/generalSettings.route.ts`) · Bug#8: audit log qua `writeLog` (control-plane `sys_log`) trong `ghiNhatKyLuong()` ở controller — KHÔNG tạo bảng audit tenant mới |
+| Danh mục KPI/Sản phẩm/Chuyên cần/Bù trừ | `/payroll-catalogs/*` | `catalogs.controller.ts` | `catalogs.service.ts` | A-01 guard xemLuong (không đổi logic CRUD) |
+
+**Nơi ở của công thức/luật (SINGLE SOURCE — đừng viết lại chỗ khác):**
+
+| Luật | Hàm — nơi ở DUY NHẤT |
+|:---|:---|
+| Ngày công chuẩn của kỳ (thay hằng số 26) | `resolveStandardWorkDays` — `payrollCalculation.service.ts:41` |
+| Quy đổi `attendanceType` → hệ số công | `ATTENDANCE_FIXED_VALUE` + `isHourBasedAttendanceType` — `payrollInputs.service.ts` |
+| Guard quyền xem lương cho TOÀN nhóm payroll | `dbCoQuyenLuongPayroll` — `helpers/payrollAccessGuard.ts` (gọi lại `assertXemLuong`/`resolveTenantCtx` của `resolveTenantDb.ts`, KHÔNG viết logic quyền mới) |
+| Guard role ADMIN/OWNER cho khóa sổ/mở lại/duyệt | tái dùng `assertAdminOrOwner` — `routes/hrm/cau_hinh_mac_dinh/generalSettings.route.ts:10` (import thẳng, KHÔNG copy) |
+| Audit log reopen/lock/approve | `ghiNhatKyLuong` — `payrollPeriods.controller.ts` (gọi `writeLog` — `services/shared/syslog.service.ts`, bảng `sys_log` control plane, KHÔNG phải bảng tenant) |
+| Biểu thuế TNCN 7 bậc | `tinhThueLuyTien` — `payrollCalculation.service.ts:7` — **GIỮ NGUYÊN hardcode, KHÔNG đụng trong đợt này** (đúng luật, nhưng chưa nối với `GeneralSetting.taxBrackets` — xem nợ dưới) |
+
+**TUYỆT ĐỐI KHÔNG NHÂN ĐÔI (bổ sung riêng cho `du_lieu_tinh_luong`):**
+
+1. **Không** gọi `resolveTenantDb(req)` trực tiếp trong 4 controller của `du_lieu_tinh_luong`.
+   Luôn qua `dbCoQuyenLuongPayroll(req)` — thêm endpoint mới mà quên là hở lại đúng lỗ A-01.
+2. **Không** viết lại công thức delta chấm công ở nơi khác. Nếu cần "ngày công thực tế" ở màn hình
+   khác, gọi `resolveStandardWorkDays` + cùng công thức `Σ(workDayValue - 1)`, đừng suy diễn lại.
+3. **Không** đọc `activeContract = emp.hop_dong[0]` mà bỏ qua `where` lọc theo kỳ trong `include`
+   — đó chính là bug A-02 vừa sửa. Copy cả khối `include.hop_dong` khi cần logic tương tự.
+4. **Không** thêm bảng audit tenant riêng cho `du_lieu_tinh_luong` mà không kiểm tra `writeLog`
+   trước — `sys_log` (control plane) đã là nơi ghi âm thanh chuẩn cho toàn HRM (BR-hrm-066), dùng
+   lại là bắt buộc, không phải tùy chọn.
+5. **Không** tự thêm tỷ lệ BHXH/đoàn phí hardcode mới ở bất kỳ chỗ nào khác trong module payroll —
+   đọc từ `GeneralSetting` theo đúng khối đã có ở đầu `calculatePayrollPreview`.
+
+**Còn nợ (ngoài phạm vi đợt sửa 2026-09-09 — KHÔNG tự ý làm thêm khi đọc thấy):**
+
+- **Biểu thuế TNCN chưa nối với `GeneralSetting.taxBrackets`** (OQ-dltl-002 chưa chốt đầy đủ) —
+  `tinhThueLuyTien()` vẫn hardcode 7 bậc (đúng luật). ADR-dltl-04 đề xuất chốt hình dạng JSON rồi
+  viết `loadPayrollConfig()`, nhưng đây là quyết định kiến trúc mới cần BA/Architect chốt riêng.
+- **8/8 file `*Panel.tsx` ở `hdđt_maxv` vẫn dùng `mock/hooks/*`** — KHÔNG thuộc phạm vi backend,
+  để dành `frontend-engineer` khi được kích hoạt lại.
+- **RVW-003 → RVW-017 + A-04 → A-13** (non-blocking/suggestion trong `review-findings.md`) —
+  N+1 trong transaction (A-05), TOCTOU chuyển trạng thái (A-04), thiếu `Math.round` 4 chỗ (A-07),
+  trùng lặp mã diện rộng (RVW-007), chưa phân trang (RVW-011)… **cố ý chưa sửa** trong đợt này —
+  chỉ đúng 8 lỗi 🔴 theo yêu cầu phiên 2026-09-09.
+- **`RVW-005`/`RVW-004`** (7/8 endpoint đọc không kiểm kỳ tồn tại; ghi chấm công/chuyên cần không
+  kiểm ngày thuộc kỳ) — chưa sửa, vẫn `OPEN`.
+
+### 1.10. Bảng lương tổng hợp — pipeline 10 bước thuế/bảo hiểm (ADR-010, 2026-09-10)
+
+> Nguồn thẩm quyền đầy đủ: `ADR-010-pipeline-thue-bao-hiem-bang-luong.md` (Architect, THỨ TỰ 10
+> bước là quyết định kiến trúc, không phải sở thích viết mã) + `srs-du-lieu-tinh-luong.md` Mục 15
+> (BA, công thức + `AC-dltl-12..28`) + `data-model-du-lieu-tinh-luong.md` Mục 11 (schema, 19 cột
+> mới) + `api-contract-du-lieu-tinh-luong.md` Mục 8 (44 trường response). Mục này CHỈ tóm tắt đủ
+> để đọc code nhanh — đọc `ADR-010` TRƯỚC khi sửa bất kỳ dòng nào trong pipeline.
+
+**4 quy tắc pháp lý mới đợt này (`BR-dltl-024..027`) + 1 quyết định chủ dự án (`Q-1`/`Q-2`/`Q-9.3`, gọi tắt QĐ-9):**
+
+1. **Hai trần bảo hiểm ĐỘC LẬP** — BHXH+BHYT trần `baseSalary×20` (46,8tr), BHTN trần
+   `regionMinSalary×20` (99,2tr). Tính RIÊNG rồi cộng, KHÔNG kẹp 1 trần chung.
+2. **Miễn thuế OT vượt chuẩn** — chỉ phần OT trả CAO HƠN đơn giá giờ thường mới miễn, tính TỪNG
+   dòng `OvertimeRecord`, không cộng gộp rồi mới trừ.
+3. **Khấu trừ 10% cho HĐ `thu_viec`/`thoi_vu`** khi thu nhập ≥ ngưỡng — KHÔNG giảm trừ gia cảnh.
+4. **Trần miễn thuế ăn ca 730k/tháng** (quy đổi theo công) — nhận diện bằng cờ
+   `SalaryItem.isMealAllowance`, KHÔNG dò tên khoản.
+5. **QĐ-9 (chủ dự án chốt `Q-1` 2026-09-10):** ô tick "chịu thuế TNCN" (`SalaryItem.isTaxable`) và
+   "Phân loại" (`SalaryStructureItem.taxTreatment`) ở màn Cấu trúc lương **có hiệu lực thật** —
+   khoản phụ cấp cố định khai miễn thuế bị trừ khỏi thu nhập tính thuế. Phép hợp nhất là **OR**:
+   `EXEMPT ∨ isTaxable=false` (KHÔNG phải "cấu trúc lương thắng" — xem lý do ở QĐ-9.2 trong ADR).
+   Khoản ăn ca chỉ áp **1 lớp** (trần thắng ô tick) — TUYỆT ĐỐI không cộng dồn 2 lớp miễn.
+
+**Mô hình nghiệp vụ — pipeline 10 bước (`payrollCalculation.service.ts:calculatePayrollPreview`), THỨ TỰ CỐ ĐỊNH:**
+
+```
+[1] contractBaseSalary = hop_dong.luong_chinh
+    fixedAllowanceTotal = Σ mức THÁNG của EmployeeSalaryItem (FIXED_ALLOWANCE ∪ BENEFIT_ALLOWANCE)
+    baseSalaryMonthly    = contractBaseSalary + fixedAllowanceTotal          -> cột UI "Lương"
+[2] tyLeCong = min(actualWorkDays/standardWorkDays, 1)
+    proratedWorkSalary     = round(contractBaseSalary × tyLeCong)            -- CHỈ hợp đồng
+    allowanceInPeriodTotal = Σ từng khoản quy đổi RIÊNG theo calculationMethod (tinhKhoanPhuCapTheoKy)
+[3] otBase = contractBaseSalary + Σ(khoản isOvertimeBase=true)               -- KHÔNG dùng baseSalaryMonthly
+    otHourlyRate = otBase / (standardWorkDays × standardHoursPerDay)
+    otAmount = Σ round(otHourlyRate × r.convertedHours)  (TỪNG dòng OT)
+[4] grossIncome = proratedWorkSalary + allowanceInPeriodTotal + otAmount + 5 cấu phần còn lại
+[5] mealAllowanceAmount / otherAllowanceTaxExemptAmount  <- phân giỏ CÙNG vòng lặp bước [2]
+    otTaxExemptAmount  <- TỪNG dòng OT, phần vượt đơn giá chuẩn
+    hanMucMienThue = round(730k × tyLeCong); lunchAllowanceExempt = min(meal, hanMuc); ..Taxable = phần dư
+    thuNhapTruocGiamTru = grossIncome - (otTaxExempt + lunchExempt + otherAllowanceTaxExempt)
+[6] capBhxhByt=min(insuranceSalaryBase,46.8tr); capBhtn=min(insuranceSalaryBase,99.2tr) -- ĐỘC LẬP
+[7] công đoàn — giữ nguyên, KHÔNG phải khoản giảm trừ thuế
+[8] loai_hd ∈ {thu_viec,thoi_vu} (laHopDongKhauTruTaiNguon) -> khấu trừ 10% trên thuNhapTruocGiamTru
+    còn lại -> tinhThueLuyTien(thuNhapTruocGiamTru - giảm trừ gia cảnh - BH)
+    tinh_tncn≠true ĐÈ LÊN CẢ 2 CƠ CHẾ, kiểm TRƯỚC MỌI rẽ nhánh
+[9] netTakeHomeSalary = grossIncome - BH - đoàn phí - thuế - adjustmentNetAmount  (cho phép ÂM)
+[10] totalCompanyCost = grossIncome + companyInsuranceExpense + companyUnionExpense
+```
+
+**Bảng thao tác → route/controller/service (phần MỚI đợt 2026-09-10):**
+
+| Thao tác | Route | Controller | Service | Ghi chú |
+|:---|:---|:---|:---|:---|
+| Bảng lương tổng hợp (44 trường) | `GET /payroll/calculate` | `calculatePreview` — `payrollCalculation.controller.ts:15` | `calculatePayrollPreview` — `payrollCalculation.service.ts` | Nguyên object đưa thẳng vào `payrollSheetLine.createMany` khi khóa sổ — xem cảnh báo 🔴 dưới |
+| Tab "Lương hỗ trợ" (**MỚI**) | `GET /payroll/support-allowances` | `getSupportAllowances` — `payrollCalculation.controller.ts` | `getSupportAllowanceBreakdown` — `payrollCalculation.service.ts` | Dùng CHUNG `tinhKhoanPhuCapTheoKy()` với `/payroll/calculate` — bất biến `total` == phần `BENEFIT_ALLOWANCE` của `allowanceInPeriodTotal` |
+| Đặt 3 tham số thuế mới | `PUT /settings/general` | `updateGeneralSettings` (không đổi) | `updateSettings` (không đổi — chỉ thêm field vào `khoiTaoCauHinhMacDinh()` + validator) | `lunchAllowanceTaxFreeCap`/`withholdingTaxRate`/`withholdingTaxThreshold` |
+| Đánh dấu khoản ăn ca | `POST`/`PATCH /salary-items` | `salaryItems.controller.ts` (RVW-018: nay ghi `writeLog`) | `createSalaryItem`/`updateSalaryItem` — `salaryItems.service.ts` (thêm field) | `isMealAllowance: boolean`, mặc định `false`. **Quyền ghi (RVW-018, 2026-09-10): CẢ 3 route ghi `/salary-items` (`POST`/`PATCH`/`DELETE`) nay yêu cầu `assertAdminOrOwner`** — vì 2 cờ `isTaxable`/`isMealAllowance` quyết định trực tiếp thuế TNCN của TOÀN CÔNG TY, không còn là nhãn hiển thị. Guard gắn ở TẦNG ROUTE (`salaryItems.route.ts`), giống `payrollPeriods.route.ts`. |
+
+**Nơi ở của công thức/hàm (SINGLE SOURCE — đừng viết lại chỗ khác):**
+
+| Luật | Hàm — nơi ở DUY NHẤT |
+|:---|:---|
+| Phân giỏ + quy đổi công phụ cấp cố định (dùng CHUNG 2 endpoint) | `tinhKhoanPhuCapTheoKy()` — `payrollCalculation.service.ts` |
+| Hợp nhất 2 cột miễn thuế (`taxTreatment`/`isTaxable`, phép OR) | `laKhoanMienThue()` — `payrollCalculation.service.ts` |
+| Nhận diện HĐ khấu trừ 10% (`{thu_viec, thoi_vu}`) | `laHopDongKhauTruTaiNguon()` — `payrollCalculation.service.ts` — **KHÁC** `loaiHdVeNhanVien()` (`hopDong.service.ts`), xem cảnh báo #2 dưới |
+| Chọn cấu trúc lương hiệu lực trong kỳ | `getActiveStructureItemMap()` (nội bộ, không export) — `payrollCalculation.service.ts` |
+| Hệ số trần bảo hiểm (`× 20`) | `constants/hrm/du_lieu_tinh_luong/insuranceCaps.ts` — HẰNG SỐ, KHÔNG phải cột cấu hình |
+| 3 tham số tiền/thuế suất mới | Cột `GeneralSetting` — mặc định ở `khoiTaoCauHinhMacDinh()` (`generalSettings.service.ts`) |
+
+**TUYỆT ĐỐI KHÔNG NHÂN ĐÔI (bổ sung riêng cho pipeline 10 bước):**
+
+1. **KHÔNG viết lại vòng lặp quy đổi công/phân giỏ miễn thuế phụ cấp ở nơi thứ hai.** Mọi chỗ cần
+   "phụ cấp cố định trong kỳ, đã quy đổi công, đã phân giỏ miễn thuế" PHẢI gọi
+   `tinhKhoanPhuCapTheoKy()`. Đây là lý do duy nhất bảo đảm bất biến `/payroll/support-allowances`
+   `total` khớp `/payroll/calculate` `allowanceInPeriodTotal` (phần BENEFIT_ALLOWANCE) — viết lại
+   lần hai ở endpoint mới là con đường chắc chắn nhất để hai tab lệch số.
+2. **KHÔNG gộp `laHopDongKhauTruTaiNguon()` với `loaiHdVeNhanVien()`** (`hopDong.service.ts:60`).
+   Hai luật khác nhau: `loaiHdVeNhanVien` xếp `thoi_vu` vào nhóm `hdld`; luật thuế cần `thoi_vu`
+   CÙNG NHÓM với `thu_viec`. Gộp chung là tái lập đúng `BUG-HRM-27` (gom ngầm hai luật vào một
+   hàm). Nếu cần sửa phạm vi khấu trừ 10% (vd thêm `xac_dinh` ngắn hạn — `EC-dltl-06/07`, chưa
+   chốt), sửa ĐÚNG hàm này, không đụng `loaiHdVeNhanVien`.
+3. **KHÔNG dùng `baseSalaryMonthly` cho công thức tăng ca.** `otBase`/`otHourlyRate` PHẢI dùng
+   `contractBaseSalary` (+ khoản `isOvertimeBase=true`) — dùng `baseSalaryMonthly` (đã gồm phụ
+   cấp) sẽ làm tiền OT tự phồng theo phụ cấp mới cộng vào (B-5, quy hồi `TC-blth-024b`).
+4. **KHÔNG cộng cả 2 giỏ miễn thuế cho khoản `isMealAllowance=true`.** Bucket trong
+   `tinhKhoanPhuCapTheoKy()` là `if/else if` TRÊN CÙNG MỘT vòng lặp (`MEAL_ALLOWANCE` xét trước,
+   dừng ngay nếu khớp) — cấm tách thành 2 vòng lặp độc lập cộng vào `mealAllowanceAmount` và
+   `otherAllowanceTaxExemptAmount` riêng rẽ, đó chính là chỗ sinh lỗi miễn thuế 2 lần
+   (`TC-blth-047`).
+5. **KHÔNG thêm field vào object trả về của `calculatePayrollPreview()` mà quên thêm cột tương ứng
+   ở model `PayrollSheetLine`** (`prisma/tenant/schema.prisma`). `snapshotPayrollSheet()` đẩy
+   NGUYÊN object vào `payrollSheetLine.createMany` — thiếu 1 cột thì Prisma ném `Unknown argument`
+   và **khóa sổ kỳ lương gãy hoàn toàn**, trong khi `GET /payroll/calculate` vẫn chạy bình thường
+   (lỗi chỉ lộ ra lúc kế toán bấm "Khóa sổ"). Đếm lại: 29 cột cũ + 15 cột mới = 44 field.
+6. **KHÔNG hardcode số tiền trần bảo hiểm tuyệt đối** (46.800.000/99.200.000) ở bất kỳ đâu — luôn
+   tính từ `GeneralSetting.baseSalary`/`regionMinSalary` × hằng số ở `insuranceCaps.ts`. Sửa lương
+   cơ sở mà quên sửa trần là tái lập đúng bệnh `unionFeeMaxAmount = 234.000` (số tuyệt đối phái
+   sinh, đã ghi nợ ở Mục 1.9).
+7. **`getSupportAllowanceBreakdown()` — `columns` và `total`/`monthlyTotal` PHẢI dùng cùng một
+   `columnCodes.has(row.code)` để lọc `benefitRows`** (RVW-019, 2026-09-10). Sửa 1 trong 2 mà quên
+   sửa cái kia là tái lập đúng bug cũ: bảng hiển thị cột nhưng `total` không khớp Σ cột (khoản
+   `SalaryItem.status='INACTIVE'` vẫn bị cộng vào tổng dù không có cột nào hiện nó).
+8. **`employeeSalary.findMany` (cả `calculatePayrollPreview` VÀ `getSupportAllowanceBreakdown`)
+   PHẢI lọc theo `effectiveFrom`/`effectiveTo` phủ kỳ đang tính** (RVW-021, 2026-09-10) — CÙNG
+   nguyên tắc lọc-theo-kỳ đã áp cho hợp đồng (`A-02`). Sửa 1 nơi mà quên nơi kia là để lọt set
+   lương của tháng sau/đã hết hạn vào kỳ hiện tại ở đúng MỘT trong hai endpoint, hai tab lại lệch
+   nhau. `EmployeeSalary.ma_nv` là `@unique` (không có khái niệm "chọn bản phủ kỳ" như hợp đồng —
+   chỉ có "phủ kỳ" hoặc "không phủ kỳ").
+
+**Còn nợ (ngoài phạm vi đợt 2026-09-10 — KHÔNG tự ý làm thêm khi đọc thấy):**
+
+- **`GeneralSetting.taxBrackets` vẫn CHƯA nối vào `tinhThueLuyTien()`** (ADR-010 QĐ-6, hoãn có chủ
+  đích — chủ dự án chốt giữ nguyên biểu 7 bậc hardcode). Sửa biểu thuế trong "Cấu hình mặc định"
+  vẫn KHÔNG có tác dụng tới bảng lương.
+- **`A-06`** (Decimal ra chuỗi ở nhánh snapshot `/payroll/sheet-lines`, nay ảnh hưởng thêm 15
+  trường) — chưa đóng, việc TÁCH RIÊNG (serializer `Decimal → number` ở biên response).
+- **`A-05`** (transaction `lockPayrollPeriod` chưa đặt `{ timeout }` cho công ty > 300 nhân viên,
+  payload `createMany` nay nặng thêm ~25%) — chưa làm.
+- **`OQ-dltl-005`** (cộng dồn trần OT theo năm) · **`OQ-dltl-010`** (thêm `PENDING_REVIEW` vào
+  guard chỉ-đọc của 8 phân hệ nhập liệu) — việc nhỏ, độc lập, chưa làm trong đợt này.
+- **Chờ BA chốt ngữ nghĩa `SalaryItem.status`** (RVW-019, 2026-09-10): khoản `BENEFIT_ALLOWANCE`
+  bị chuyển `INACTIVE` ở danh mục nhưng nhân viên vẫn còn gán trong `EmployeeSalaryItem` — hiện
+  `tinhKhoanPhuCapTheoKy()` (dùng chung với `/payroll/calculate`) **VẪN cộng tiền khoản đó** vào
+  `allowanceInPeriodTotal`. Đã sửa để `/payroll/support-allowances` tự cộng khớp tổng NỘI BỘ
+  (`total` == Σ `amounts` hiển thị), nhưng KHÔNG tự ý đổi công thức tiền thật của
+  `/payroll/calculate` — cần BA xác nhận "ngừng khoản ở danh mục có ngừng trả không" trước khi sửa
+  tiếp cả hai nơi.
+- **Snapshot bóc tách phụ cấp cho kỳ đã khóa** (RVW-020, 2026-09-10): `/payroll/support-allowances`
+  LUÔN tính live kể cả khi kỳ đã `LOCKED`+ (không giống `/payroll/sheet-lines` đọc snapshot đóng
+  băng) vì `PayrollSheetLine` chỉ lưu TỔNG `allowanceInPeriodTotal`, không lưu bóc tách theo từng
+  khoản. Đã trả kèm `periodStatus`/`isLiveRecalculated` để FE cảnh báo — giải pháp dài hạn (bảng
+  snapshot bóc tách) cần Architect ra ADR trước khi code.
+- **⚠️ Phát hiện trong lúc TDD, cần Tester-QA/Code-Reviewer đối chiếu lại:** hai ca `TC-blth-032`/
+  `TC-blth-033` trong `test-matrix-bang-luong-tong-hop.md` Nhóm 6 tính `hanMucMienThue` KHÔNG quy
+  đổi theo công (giữ nguyên 730.000 dù `actualWorkDays<standardWorkDays`) — mâu thuẫn trực tiếp
+  với chính `AC-dltl-23` (SRS 15.3.1) và `ADR-010` bước [5c], cả hai đều nói trần PHẢI quy đổi
+  theo `tyLeCong` giống mọi phần khác. Backend đã hiện thực theo SRS/ADR (trần CÓ quy đổi công) —
+  xem `payrollCalculation.service.ts` bước [5c] và `hrmPayrollCalculation.test.ts` (2 test này có
+  chú thích rõ số liệu đã sửa so với bảng test-matrix cũ). Cần BA/QA xác nhận lại bảng test-matrix
+  Nhóm 6 là lỗi đánh máy của QA, không phải business rule đổi ý.
+
+### 1.10. Seed dữ liệu mẫu (dev tooling, 2026-09-10) — `npm run hrm:seed`
+
+> Dev tooling thuần túy (KHÔNG phải nghiệp vụ) — dựng cho ĐÚNG MỘT tenant test (`test1@gmail.com`
+> / `12345abc`, MST `0111142786`) để QA/Frontend test tay qua trình duyệt. Không đụng 10 tenant
+> thật khác trong `maxv2_sys`.
+
+**Luồng dữ liệu ngắn gọn:**
+
+```
+npm run hrm:seed
+  │
+  ├─► seed-control-plane.ts (maxv2_sys, control plane)
+  │     ensureControlPlaneTestTenant()
+  │       upsert User(test1@gmail.com, role=OWNER, hash bcrypt qua utils/password.ts)
+  │       upsert DonVi(MST 0111142786) — DỪNG LẠI nếu MST thuộc owner khác
+  │       provisionTenant() nếu DB tenant/READY chưa có (services/shared/provisioning.service.ts)
+  │       gia hạn Subscription nếu < 30 ngày còn lại, bảo đảm plan.features.hrm = true
+  │     → trả { ownerId, donViId, mst, dbName }
+  │
+  └─► prisma/tenant/seed.ts (DB tenant maxv_0111142786_app)
+        wipeHrmDomain(db)              — xóa sạch domain HRM/Payroll cũ (thứ tự an toàn FK)
+        seedConfig(db)                 — restoreDefault() + 4 ca làm việc + quickGenerateHolidays()
+        seedPhongBan/NhanVien/HopDong/NguoiPhuThuoc(db)  — gọi ĐÚNG service thật (create*)
+        seedSalaryItems/Structure/EmployeeSalaries(db)   — 9 khoản × 7 category, setEmployeeSalary()+approveEmployeeSalaries()
+        seedPayrollCatalogs(db)        — KPI/Sản phẩm/Chuyên cần/Ứng-bù trừ
+        seedPayrollPeriodData() × 2    — kỳ tháng trước + tháng hiện tại, đủ 8 phân hệ nhập liệu
+        lockPayrollPeriod(kỳ trước)    — khóa sổ THẬT qua snapshotPayrollSheet(), không chép tay dữ liệu
+        sanityCheck()                  — in gross/net vài nhân viên mẫu qua getPayrollSheetLines()
+```
+
+**Bảng "thao tác → file":**
+
+| Thao tác | File |
+|---|---|
+| Bootstrap control-plane (user/donVi/subscription) | `be_maxv/src/scripts/hrm/seed-control-plane.ts` |
+| Seed toàn bộ domain HRM/Payroll của tenant | `be_maxv/prisma/tenant/seed.ts` |
+| NPM script | `package.json` → `"hrm:seed": "tsx prisma/tenant/seed.ts"` |
+
+**Quyết định thiết kế quan trọng nhất — "xóa sạch rồi dựng lại" (wipe-then-rebuild):**
+
+Tenant MST `0111142786` khi khảo sát đã có sẵn một ít dữ liệu THỦ CÔNG của các phiên QA/dev
+trước (4 phòng ban/4 nhân viên/2 kỳ lương, KHÔNG phải dữ liệu kinh doanh thật — 0 chứng từ kế
+toán trong cùng tenant) và không đủ phủ hết nhánh nghiệp vụ yêu cầu. `prisma/tenant/seed.ts` xóa
+sạch domain HRM/Payroll (`wipeHrmDomain()`, thứ tự theo đúng ràng buộc FK cascade/restrict của
+`prisma/tenant/schema.prisma`) rồi dựng lại TOÀN BỘ bằng RNG có seed cố định (`mulberry32(20260910)`)
+— chạy lại nhiều lần cho ra ĐÚNG một bộ dữ liệu giống hệt nhau. **KHÔNG dùng cách này cho migration
+sản xuất** — chỉ hợp lý cho dev seed tooling trên tenant test đã xác nhận không có dữ liệu thật.
+
+**TUYỆT ĐỐI KHÔNG NHÂN ĐÔI:** mọi bước ghi dữ liệu nghiệp vụ (sinh mã tự động, tính giờ công/OT,
+kiểm chồng lấn hợp đồng, tính thuế/bảo hiểm, khóa sổ...) đều gọi THẲNG service thật đã liệt kê ở
+Mục 1.2-1.9 — seed script không tự chép lại một công thức nào. Nếu cần thêm dữ liệu mẫu, ưu tiên
+gọi thêm service có sẵn thay vì `db.<model>.create()` trực tiếp cho các bảng có business rule.
+
+**Không cần chạy lại `sync:tenants`/`hrm:constraints` sau seed** — script chỉ ghi dữ liệu, không
+đụng schema/constraint của tenant (đã áp sẵn lúc `provisionTenant()`).
+
 ---
 
 ## 2. Frontend (`hdđt_maxv`)
@@ -781,3 +1081,229 @@ cd hdđt_maxv
 npm run lint     # kỳ vọng: 0 lỗi, 0 cảnh báo
 npm run build    # tsc -b && vite build
 ```
+
+### 2.12. Bảng lương tổng hợp — nối API thật (2026-09-10, frontend-engineer)
+
+Thay TOÀN BỘ mock của khu "Bảng lương" (`components/bang_luong/*`, `pages/hrm/bang_luong/*`)
+bằng `GET /payroll/calculate` + `GET /payroll/support-allowances` (api-contract Mục 8). Trước đó
+màn này tính lương/thuế NGAY TRÊN TRÌNH DUYỆT (`calculations/bang_luong/bangLuong.ts`) từ kho
+`useHrmStore()` giả — giờ mọi con số tính sẵn ở `be_maxv` (ADR-010), FE chỉ đổi tên trường.
+
+**Luồng dữ liệu (đọc theo thứ tự để hiểu 1 request):**
+
+```
+BangLuongPanel/LuongHoTroPanel
+  -> api/bang_luong/bangLuongQueries.ts   (useBangLuongRows / useLuongHoTroRows / useKyBangLuong / useSoNhanVienDangLam)
+       -> api/du_lieu_tinh_luong/payrollCalculationQueries.ts   (usePayrollCalculateQuery / useSupportAllowancesQuery)
+            -> api/du_lieu_tinh_luong/payrollCalculationApi.ts  (api.get('/hrm/payroll/calculate'|'/hrm/payroll/support-allowances'))
+       -> components/du_lieu_tinh_luong/useCurrentPayrollPeriod.ts  (periodId — CÙNG context với khu "Dữ liệu tính lương")
+```
+
+- **File mới**: `api/bang_luong/bangLuongQueries.ts` — adapter duy nhất đổi `PayrollCalculationLineApi`
+  (44 trường) sang `DongBangLuong` (kiểu UI cũ, giữ nguyên để 5 component tiêu thụ không phải sửa
+  field) và `SupportAllowanceResponseApi` sang `{ columns, rows: DongLuongHoTro[] }`.
+- **File xóa**: `mock/hooks/bangLuong.ts` (khác các mock khác trong feature — file này KHÔNG giữ
+  lại làm di sản vì nó `import` thẳng `tinhDongBangLuong`/`lyDoKhongTinhDuocLuong` mà tôi đã xóa
+  khỏi `calculations/bang_luong/bangLuong.ts`; giữ lại sẽ vỡ `tsc`).
+- **`calculations/bang_luong/bangLuong.ts`**: chỉ còn hàm **format hiển thị thuần**
+  (`tienTheoCheDo`, `hauToCheDo`, `CHE_DO_HIEN_THI`, `tongBangLuong`). Đã xóa `tinhDongBangLuong`,
+  `thueLuyTien`, `lyDoKhongTinhDuocLuong`, `NguonTinhLuong`, `LOI_BIEU_THUE_KHONG_DU_BAC` — đây là
+  nghiệp vụ tính thuế/bảo hiểm, giờ là **nguồn sự thật DUY NHẤT ở `be_maxv`**. ĐỪNG dựng lại công
+  thức thuế/bảo hiểm ở FE dưới bất kỳ tên hàm nào (nhân đôi nghiệp vụ — rủi ro 2 nơi ra 2 số).
+
+**Hai cạm bẫy field mapping (api-contract Mục 8.1.1, đã ghi thành comment ⭐ ngay trong
+`bangLuongQueries.ts`, nhắc lại ở đây vì QA/reviewer cần biết để lập test case riêng):**
+
+1. `gio_tang_ca` (cột "Giờ tăng ca") ← `otRawHours` (giờ GỐC). **KHÔNG** dùng `otConvertedHours`
+   (đã nhân hệ số) — dùng nhầm là sai số giờ hiển thị dù tiền tăng ca vẫn đúng (vì `tien_tang_ca`
+   đọc đúng `otAmount`).
+2. `thu_nhap_chiu_thue` suy từ 4 số hạng: `grossIncome − otTaxExemptAmount −
+   lunchAllowanceExemptAmount − otherAllowanceTaxExemptAmount`. **KHÔNG** dùng thẳng
+   `taxableIncome` — trường đó đổi Ý NGHĨA theo `withholdingTaxApplied` (8.1.2): nhánh lũy tiến
+   đã trừ giảm trừ gia cảnh + bảo hiểm, nhánh khấu trừ 10% thì chưa trừ gì thêm ngoài 3 khoản
+   miễn thuế. Trộn hai nhánh vào cùng 1 cột là hiểu sai số liệu.
+
+**Kỳ lương dùng CHUNG cơ chế với khu "Dữ liệu tính lương", không tự chế:**
+
+`BangLuongPage.tsx` bọc lại đúng `PayrollPeriodProvider` (component `components/du_lieu_tinh_luong/
+PayrollPeriodContext.tsx`, KHÔNG viết bản mới) + render lại `KyLuongSelector` — trước đó khu
+"Bảng lương" hoàn toàn KHÔNG có khái niệm kỳ (mock luôn lấy "tháng hiện tại" qua `thangHienTai()`
+phía trình duyệt). Cây Provider của `bang-luong` độc lập codewise với cây của `du-lieu-luong`
+(hai route riêng, `<Outlet/>` khác nhau) nhưng CÙNG đọc/ghi khóa `localStorage`
+`hrm_selected_payroll_period_id`, nên kỳ đã chọn ở bên "Dữ liệu tính lương" tự động là kỳ mặc
+định khi mở "Bảng lương" lần đầu — không hỏi lại người dùng.
+
+**Query key**: thêm `hrmPayrollCalculationKeys.supportAllowances(companyId, periodId)` vào
+`api/hrmKeys.ts`, CÙNG tiền tố `"hrm-payroll-calculation"` với `calculate`/`sheetLines` để
+`useInvalidatePayroll()` (`payrollPeriodsQueries.ts`) tự invalidate luôn khi khóa/mở lại/duyệt kỳ
+lương — không phải sửa thêm chỗ nào khác khi đổi trạng thái kỳ.
+
+**4 trạng thái Loading/Error/Empty/Success**: `useBangLuongRows`/`useLuongHoTroRows` trả
+`{ isLoading, isFetching, isError, errorMessage }`. `BangLuongTable.tsx` nhận thêm prop
+`isLoading` và tự vẽ `CircularProgress` trong chính `TableBody` (giữ nguyên khung bảng/sticky
+header khi đang tải, tránh layout nhảy). Panel hiện `Alert severity="info"` riêng khi
+`ky.periodId === null` (công ty chưa tạo kỳ lương nào — trước đây không có trạng thái này vì mock
+luôn có "tháng hiện tại"), và `Alert severity="error"` khi `isError`. Nút "Tính lại lương"/"Tính
+lương" đổi từ tăng `nonce` ép `useMemo` chạy lại (cách cũ) sang gọi thẳng `refetch()` của
+TanStack Query — bỏ hẳn khái niệm `nonce`.
+
+**`luong_theo_ngay` cộng thêm `allowanceInPeriodTotal`**: `proratedWorkSalary` của API CHỈ là
+phần hợp đồng quy đổi công (SRS 15.5 giữ nguyên nghĩa cũ), khác bản mock gộp cả phụ cấp vào một
+cột. Muốn khớp UI cũ phải cộng `proratedWorkSalary + allowanceInPeriodTotal` — đã làm đúng trong
+`veDongBangLuong()`, đừng bỏ sót nếu sau này thêm màn khác dùng lại field này.
+
+**Tab "Lương hỗ trợ" — cột động**: kiểu `KhoanLuong` (thực thể đầy đủ "Cài đặt lương") KHÔNG được
+dùng lại cho cột động của tab này — API `columns` chỉ trả 4 trường mô tả cột, ép vào `KhoanLuong`
+phải bịa `loai`/`ghi_chu`/`tinh_bhxh`/`ty_le`. Thêm kiểu riêng `KhoanHoTroCot` (`types/index.ts`),
+`luongHoTroExcel.ts` đổi type tham số theo.
+
+**Bug tiện thể sửa khi chạm vào `ThanhLocBangLuong.tsx`**: component này đang import
+`usePhongBanList` từ `mock/hooks/phongBan` (kho giả) thay vì `api/du_lieu_nhan_vien/
+phongBanQueries` (API thật, cùng hook đang dùng ở `ThanhLocKyLuong.tsx` của khu "Dữ liệu tính
+lương") — sửa luôn vì nằm trong phạm vi file phải chạm, không phải lỗi tôi tạo ra nhưng để lại thì
+bộ lọc "Phòng ban" của Bảng lương mãi mãi không khớp phòng ban thật.
+
+**Lọc theo phòng ban cần tra chéo**: cả hai endpoint payroll chỉ trả TÊN phòng ban
+(`departmentName`), không trả mã. `filters.ma_pb` (từ `ThanhLocBangLuong`) là MÃ, nên
+`bangLuongQueries.ts` phải gọi thêm `useNhanVienRows({ status: '1' })` (cache dùng chung với màn
+"Nhân viên") để dựng `Map<ma_nv, ma_pb>` rồi lọc chéo qua `ma_nv` — không so trực tiếp tên với mã.
+
+**⚠️ Chưa làm — biết trước khi QA/PO hỏi:**
+
+| # | Việc còn thiếu | Vì sao chưa làm |
+|:--:|---|---|
+| 1 | ~~`BangLuongPanel` gọi `GET /payroll/calculate` (LUÔN live) thay vì `GET /payroll/sheet-lines`~~ | ✅ **Đã sửa 2026-09-10** — xem Mục 2.13 |
+| 2 | Chưa test qua trình duyệt với dữ liệu tenant thật (chỉ smoke-test chưa đăng nhập) | Môi trường dev không có tài khoản/tenant test sẵn (không tìm thấy credential nào trong `docs/`/scripts seed). Đã xác nhận: `npm run build`/`lint`/`tsc -b` sạch; mở `/hrm/bang-luong/bang-luong` lúc chưa đăng nhập không crash JS (chỉ 401 kỳ vọng từ `/auth/me`), hành vi giống hệt route cũ `/hrm/du-lieu-luong/cham-cong` (không tự tạo ra) — chưa xác nhận được số liệu hiển thị đúng với dữ liệu thật. Vẫn nợ sau Mục 2.13. |
+| 3 | `isLiveRecalculated`/`periodStatus` của `/payroll/support-allowances` chưa hiển thị cảnh báo riêng trên UI khi kỳ đã khóa (RVW-020 backend đã lưu ý số có thể lệch) | 🟡 **Giảm nhẹ 2026-09-10**: `LuongHoTroPanel` nay hiện `Alert warning` khi `useCurrentPayrollPeriod().isLocked` (xem Mục 2.13) — dùng cờ context sẵn có thay vì đọc đúng field `isLiveRecalculated`/`periodStatus` của chính response (2 field đó API đã trả nhưng FE vẫn CHƯA đọc tới, tương đương về ngữ nghĩa vì set trạng thái khóa 2 nguồn trùng nhau, nhưng chưa dùng field thật của endpoint — nợ kỹ thuật nhỏ nếu 2 nguồn lệch nhau trong tương lai) |
+
+### 2.13. Bảng lương chính đổi nguồn sang `/payroll/sheet-lines` — snapshot bất biến khi khóa sổ (2026-09-10, frontend-engineer)
+
+Đóng khoản nợ #1 của Mục 2.12: `useBangLuongRows`/`useSoNhanVienDangLam`
+(`api/bang_luong/bangLuongQueries.ts`) đổi từ `usePayrollCalculateQuery` (LUÔN live) sang
+`usePayrollSheetLinesQuery` (`api/du_lieu_tinh_luong/payrollCalculationQueries.ts`, hook đã viết
+sẵn từ phiên trước, chỉ chưa đấu dây). `getPayrollSheetLines()` (be_maxv) tự chuyển nhánh theo
+`PayrollPeriod.status`: `DRAFT`/`PENDING_REVIEW` → gọi lại `calculatePayrollPreview()` (tính live);
+`LOCKED`/`APPROVED`/`PAID`/`ARCHIVED` → đọc thẳng `db.payrollSheetLine.findMany({ where:
+{ periodId } })` (snapshot đóng băng lúc khóa sổ) — route `GET /payroll/sheet-lines` + controller
+`getSheetLines` đã tồn tại sẵn trước phiên này (`payrollCalculation.route.ts`:6,
+`payrollCalculation.controller.ts`:21-25), KHÔNG cần backend làm gì thêm.
+
+**Bug ẩn phát hiện khi đấu dây, đã tự sửa ở biên FE (A-06, KHÔNG đụng backend):** nhánh snapshot
+trả thẳng cột `Decimal` Prisma của `PayrollSheetLine` — `Decimal.prototype.toJSON()` serialize ra
+**chuỗi**, khác nhánh live (`calculatePayrollPreview` đã `Number(...)` mọi trường trước khi trả).
+Cùng endpoint, cùng kiểu khai báo `PayrollCalculationLineApi`, nhưng RUNTIME đổi kiểu giữa hai
+nhánh — không ném lỗi nào, chỉ âm thầm sai số nếu cộng chuỗi (`"1000000" + "500000"` nối thành
+`"1000000500000"` thay vì `1500000`), đúng lúc `veDongBangLuong()` cộng
+`proratedWorkSalary + allowanceInPeriodTotal` cho `luong_theo_ngay`. Đây chính là nợ kỹ thuật
+`A-06` đã ghi nhận từ review-findings.md/api-contract Mục 0.3 (BE cố ý chưa đóng, cần Architect
+chốt serializer chung cho `/payroll*`) — **không thuộc phạm vi backend của phiên FE này**, nên xử
+lý bằng cách ép kiểu tại biên: `getPayrollSheetLines()` (`payrollCalculationApi.ts`) nay nhận response
+thô `Record<string, unknown>[]`, chạy `normalizePayrollLine()` (`Number(...)` toàn bộ 34 trường
+Decimal/Int liệt kê tường minh trong `PAYROLL_LINE_NUMERIC_FIELDS`) trước khi trả về
+`PayrollCalculationLineApi[]`. Từ điểm này trở xuống (`bangLuongQueries.ts` và mọi nơi dùng lại
+`usePayrollSheetLinesQuery`), kiểu `number` khai báo là ĐÚNG runtime cho cả hai nhánh — KHÔNG cần
+tự phòng thủ lại. **Nếu Architect/Backend sau này đóng A-06 ở tầng serializer chung**, hàm
+`normalizePayrollLine()` trở thành no-op vô hại (`Number(5)` === `5`), không cần xóa gấp nhưng nên
+dọn khi có dịp.
+
+**UI — badge "Đã khóa sổ":** `BangLuongPanel` đọc thêm `useCurrentPayrollPeriod().isLocked`
+(context đã có sẵn từ trước, cùng bộ điều kiện `LOCKED`/`APPROVED`/`PAID`/`ARCHIVED` khớp Y HỆT
+nhánh snapshot của backend) để hiện `Chip` "Đã khóa sổ — số liệu đã chốt" cạnh tên kỳ, và đổi nhãn
+nút từ "Tính lại lương" (icon `CalculateRounded`) sang "Tải lại số liệu" (icon `RefreshRounded`)
+khi kỳ đã khóa — tránh hiểu lầm là bấm nút sẽ tính lại theo dữ liệu hiện tại (không phải, chỉ tải
+lại đúng snapshot đã đóng băng). `LuongHoTroPanel` thêm `Alert severity="warning"` khi `isLocked`
+— cảnh báo tab này KHÔNG có snapshot riêng (RVW-020, be_maxv), vẫn luôn tính live.
+
+**KHÔNG đổi** (đúng phạm vi bug report, không mở rộng): `useLuongHoTroRows`/`/payroll/support-allowances`
+vẫn luôn tính live — backend chưa có bảng snapshot bóc tách theo từng khoản phụ cấp (nợ thiết kế
+riêng, cần ADR mới, không thuộc phạm vi phiên này). `usePayrollCalculateQuery` (`/payroll/calculate`
+thô) vẫn giữ nguyên, không xóa — không còn nơi nào gọi trực tiếp sau đổi này nhưng vẫn có ích cho
+trường hợp cố ý cần xem số tính lại tức thời sau này.
+
+Kiểm chứng: `npx tsc -b` (exit 0) · `npm run lint` (0 lỗi, 0 cảnh báo) · `npm run build` (thành
+công, 12346 module). **Chưa test tay qua trình duyệt với dữ liệu tenant thật** (cùng lý do Mục
+2.12 mục #2 — không có tài khoản/tenant test trong môi trường này) — CHƯA xác nhận: (a) số hiển thị
+ở kỳ LOCKED khớp đúng snapshot đã lưu lúc khóa sổ, (b) badge/nút đổi nhãn đúng khi chuyển qua lại
+DRAFT ↔ LOCKED, (c) `normalizePayrollLine()` áp đúng cho response thật (chỉ verify qua đọc code
+service be_maxv + kiểu Prisma schema, chưa gọi API thật).
+
+### 2.14. 3 tham số pháp lý (ADR-010) + cờ `isMealAllowance` — nối UI cho dữ liệu BE đã có sẵn (2026-09-10, frontend-engineer)
+
+Việc thuần FE: `be_maxv` đã có sẵn 3 cột `GeneralSetting` (`lunchAllowanceTaxFreeCap` /
+`withholdingTaxRate` / `withholdingTaxThreshold`) và cột `SalaryItem.isMealAllowance` từ đợt ADR-010
+(Mục 1.10), route `GET`/`PUT /hrm/settings/general` và `POST`/`PATCH /hrm/salary-items` đã nhận/trả
+đủ — chỉ thiếu đường dẫn dữ liệu ở FE. KHÔNG đụng `be_maxv`.
+
+**Đơn vị `withholdingTaxRate` — điểm dễ sai nhất, đã đối chiếu kỹ:** cột là **số nguyên phần
+trăm** (`Decimal(5,2)`, mặc định `10.0` nghĩa là 10%), CÙNG quy ước với `insuranceEmployeeSocial`
+(`bhxh_nv` = 8, không phải 0.08) — KHÔNG phải phân số 0..1. Domain field FE `ty_le_khau_tru_thu_viec`
+giữ nguyên đơn vị này ở cả 3 lớp: type (`number`, không đổi tên gợi ý "rate 0-1"), giá trị mặc định
+(`cauHinhMacDinhGoc()` = `10`, KHÔNG phải `0.1`), và phép kiểm trước khi gửi (`0 ≤ x ≤ 100`, khớp
+`z.number().min(0).max(100)` của `generalSettings.validator.ts:160`).
+
+- **Thiết lập chung** — 3 field mới đi theo đúng đường ống Decimal-là-chuỗi có sẵn ở Mục 2.2/2.1
+  (`GeneralSettingApiData` đọc `string`, `UpdateGeneralSettingsApiBody` ghi `number`, `Number()` chỉ
+  một chỗ trong `veKieuFeCauHinh()`). Render ở khối `NhomCauHinh` mới trong `ThueSection.tsx`, dưới
+  khối "Giảm trừ thuế TNCN" — KHÔNG tạo section riêng vì cùng nhóm nghiệp vụ thuế TNCN.
+- **Danh mục khoản lương** — cờ `phu_cap_an_trua` đi theo đúng khuôn `isTaxable`/`chiu_thue_tncn`
+  đã có (đọc/ghi ở `salaryItemsQueries.ts`, mặc định `false` ở `formDefaults.ts`). Ô tích chỉ hiện ở
+  dialog khi `MoTaLoaiKhoan.coMienAnTrua === true` — **chỉ bật cho loại `luong_ho_tro`** (nhóm "Hỗ
+  trợ ăn ca, xăng xe, điện thoại"), 6 loại còn lại giữ `false`. Người dùng vẫn CÓ THỂ tự tick cờ
+  `isTaxable`/`tinh_bhxh` độc lập với `phu_cap_an_trua` — ba cờ không loại trừ nhau, nghiệp vụ tính
+  thuế (trần miễn thuế cộng lớp nào trước) là việc của `payrollCalculation.service.ts` (be_maxv),
+  FE chỉ truyền cờ thô.
+- **Domain type dùng chung buộc phải sửa `mock/seed.ts`** dù ngoài phạm vi yêu cầu ban đầu: thêm
+  `TypeScript required field` vào `CauHinhMacDinh`/`KhoanLuong` làm `CAU_HINH_MAU`/`KHOAN_LUONG_MAU`
+  (dữ liệu demo tĩnh, không phải hook) không còn compile — đây là ví dụ cụ thể của nguyên tắc "đổi
+  type dùng chung thì sửa luôn nơi dùng nó", không phải lấn phạm vi. `KL08` "Phụ cấp tiền cơm" được
+  gán `phu_cap_an_trua: true` (khoản duy nhất mang nghĩa ăn trưa/ăn ca trong dữ liệu mẫu), 18 khoản
+  còn lại `false`.
+
+Kiểm chứng: `npx tsc -b` (exit 0, sau khi sửa `mock/seed.ts`) · `npm run lint` (0 lỗi) · `npm run
+build` (thành công, 12346 module — 2 cảnh báo Rolldown đã có từ trước, không mới). **Chưa test tay
+qua trình duyệt** — không có tài khoản/tenant test trong môi trường này, chỉ xác nhận qua đọc code
+be_maxv (schema/validator/service) + build sạch.
+
+### 2.15. Dashboard HRM — bỏ kho giả, đọc API thật (2026-09-10)
+
+Không có endpoint tổng hợp: Dashboard GHÉP các truy vấn các màn khác đã dùng, **cùng `queryKey` +
+cùng hàm tải**, nên không tốn thêm request khi cache còn tươi. `mock/hooks/tongQuan.ts` đã xóa.
+
+| Khối | Nguồn | Nơi gom số |
+|---|---|---|
+| Tình hình nhân sự · Sinh nhật · Sắp kết thúc HĐ | `GET /hrm/nhan-vien` (dòng BE thô qua `useDanhSachNhanVien`) | `calculations/dashboard/tongQuan.ts` |
+| Xu hướng lương 6 tháng | `GET /payroll/sheet-lines` × mỗi kỳ trong khung (`useQueries` + `payrollSheetLinesOptions`) | `tongKyLuong()` |
+| Chi phí theo phòng ban | `sheet-lines` của kỳ theo dõi | `chiPhiTheoPhongBan()` |
+| Chờ phê duyệt · Trình lương | `GET /payroll-periods` | `kyChoPheDuyet()` / `kyNenTrinh()` |
+| Tổng giờ tăng ca | `GET /payroll-data/overtime` (kỳ theo dõi + kỳ trước) | `tongHopTangCa()` |
+
+- **Không tính lại lương.** Quỹ lương = Σ`totalCompanyCost`, thực lĩnh = Σ`netTakeHomeSalary` — cùng
+  hai cột ở màn Bảng lương. `PayrollPeriodApiItem.totalGrossSalary/totalNetSalary` là field FE khai
+  nhưng **BE không trả** (model `PayrollPeriod` không có cột đó) — đừng dùng, chúng luôn `undefined`.
+- **Hợp đồng lấy từ hồ sơ nhân viên** (`loai_hop_dong` 3 nhóm, `ngay_hieu_luc_toi` do BE tính lúc
+  đọc) — không gọi `/hrm/hop-dong` theo từng người. Hạn chế đã biết: người đã ký sẵn hợp đồng gia hạn
+  bắt đầu SAU ngày hết hạn của hợp đồng hiện hành vẫn hiện trong "sắp kết thúc" cho tới khi hợp đồng
+  mới có hiệu lực.
+- **Quyền xem lương:** cả nhóm `/payroll-*` trả 403 cho người không có quyền. `useKyLuongDashboard`
+  chỉ bật `usePayrollPeriodList(undefined, { enabled })` khi `useQuyenXemLuong().daXacDinh` (cờ mới:
+  danh sách nhân viên đã tải xong hoặc là OWNER) — tránh một 403 + một retry vô ích lúc danh sách
+  còn tải. Khối lương hiện lời nhắc `LOI_KHONG_CO_QUYEN_LUONG` (qua prop `chan` của `TheDashboard`),
+  khối nhân sự vẫn hiện. Lỗi API đọc thẳng `message` của BE — 403 thiếu quyền lương đã mang đúng câu
+  E-hrm-058, đừng tự đổi mọi 403 thành câu đó (403 của guard module/tenant là chuyện khác).
+- **Kỳ theo dõi** = kỳ của tháng này, chưa có thì kỳ mới nhất (`chonKyTheoDoi`). Lối tắt chấm công /
+  tăng ca / bảng lương mở màn đích với kỳ đã chọn sẵn qua `luuKyLuongDaChon()` — cặp
+  `docKyLuongDaChon`/`luuKyLuongDaChon` ở `useCurrentPayrollPeriod.ts` là nơi DUY NHẤT đụng khóa
+  `localStorage` (Provider cũng gọi qua đó), có try/catch khi trình duyệt chặn lưu trữ.
+- **Trạng thái kỳ dùng chung:** `TRANG_THAI_KY` (nhãn + màu), `kyDaKhoaSo()` và `tenKyMacDinh()` ở
+  `_shared/constants.ts` — `KyLuongSelector`, `PayrollPeriodContext` (`isLocked`) và Dashboard cùng đọc.
+- **Biểu đồ vẽ SVG/HTML thuần** (`components/dashboard/charts/`) — dự án chưa có thư viện biểu đồ, ba
+  loại cần dùng không đáng thêm dependency. Màu dữ liệu cố định (`mauBieuDo.ts`, đã chạy kiểm bảng
+  màu cho người mù màu trên nền Paper sáng/tối), tách khỏi màu accent người dùng chọn. Bề rộng đo
+  bằng `useElementWidth` (cùng lõi đo hai lớp với `useElementHeight`, `features/hddt/hooks/`).
+- **Nợ hiệu năng đã biết:** "Xu hướng lương" gọi tối đa 6 `sheet-lines`; kỳ nháp tính live cả bảng
+  lương chỉ để lấy 4 tổng. Cách triệt để là một endpoint BE trả tổng theo kỳ — chưa làm (ngoài phạm vi
+  thuần FE).
+
+Kiểm chứng: `npx tsc -b` exit 0 · `npm run lint` 0 lỗi · `vite build` thành công. Giao diện soát bằng
+trang preview tạm với dữ liệu giả (sáng, tối, không có quyền lương, rỗng, màn 1000/1280/1440px), đã
+xóa sau khi soát. **Chưa chạy trên tenant thật** (cần đăng nhập).

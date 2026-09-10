@@ -13,8 +13,8 @@ import Tooltip from "@mui/material/Tooltip";
 import Typography from "@mui/material/Typography";
 import DeleteRounded from "@mui/icons-material/DeleteRounded";
 import { getErrorMessage } from "../../../../../lib/errors";
-import { tienVn } from "../../../format";
-import { useXoaBanLuongSanPham } from "../../../mock/hooks/luongSanPham";
+import { tienVn } from "../../../_shared/format";
+import { useApplyPiecework } from "../../../api/du_lieu_tinh_luong/payrollInputsQueries";
 import type {
   LocNhanVienKyLuong,
   LuongSanPhamNhanVienRow,
@@ -30,9 +30,8 @@ interface Props {
   onFilters: (filters: LocNhanVienKyLuong) => void;
   /** Danh sách đã lọc — cũng chính là danh sách "Áp dụng lương SP" sẽ ghi. */
   rows: LuongSanPhamNhanVienRow[];
-  coThayDoi: boolean;
-  dangLuu: boolean;
-  onLuu: () => void;
+  periodId: string;
+  isReadOnly: boolean;
 }
 
 /** Chọn phạm vi áp lương sản phẩm và xem tiền đã nghiệm thu của từng nhân viên. */
@@ -42,17 +41,21 @@ export default function DanhSachLuongSanPhamCard({
   filters,
   onFilters,
   rows,
-  coThayDoi,
-  dangLuu,
-  onLuu,
+  periodId,
+  isReadOnly,
 }: Props) {
-  const xoaBan = useXoaBanLuongSanPham();
+  const applyMut = useApplyPiecework(periodId);
   const [dangXoa, setDangXoa] = useState<LuongSanPhamNhanVienRow | undefined>(undefined);
 
   const xacNhanXoa = async () => {
     if (!dangXoa) return;
     try {
-      await xoaBan(dangXoa.ma_nv);
+      await applyMut.mutateAsync({
+        periodId,
+        scope: "nhan_vien",
+        employeeIds: [dangXoa.ma_nv],
+        items: [],
+      });
       toast.success(`Đã xóa lương sản phẩm của ${dangXoa.ho_ten}.`);
     } catch (err) {
       toast.error(getErrorMessage(err, "Không xóa được lương sản phẩm."));
@@ -69,9 +72,6 @@ export default function DanhSachLuongSanPhamCard({
         filters={filters}
         onFilters={onFilters}
         soNhanVien={rows.length}
-        coThayDoi={coThayDoi}
-        dangLuu={dangLuu}
-        onLuu={onLuu}
       />
 
       <TableContainer sx={{ mt: 1 }}>
@@ -127,7 +127,7 @@ export default function DanhSachLuongSanPhamCard({
                       <IconButton
                         size="small"
                         color="error"
-                        disabled={row.so_dong === 0}
+                        disabled={isReadOnly || row.so_dong === 0}
                         onClick={() => setDangXoa(row)}
                       >
                         <DeleteRounded fontSize="small" />

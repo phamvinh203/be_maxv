@@ -1,5 +1,6 @@
-import { useEffect, useRef, useState, type ChangeEvent } from "react";
+import { useEffect, useMemo, useRef, useState, type ChangeEvent } from "react";
 import { toast } from "react-toastify";
+import Alert from "@mui/material/Alert";
 import Box from "@mui/material/Box";
 import Paper from "@mui/material/Paper";
 import Stack from "@mui/material/Stack";
@@ -18,17 +19,19 @@ import ContentCopyRounded from "@mui/icons-material/ContentCopyRounded";
 import DeleteSweepRounded from "@mui/icons-material/DeleteSweepRounded";
 import TuneRounded from "@mui/icons-material/TuneRounded";
 import { getErrorMessage } from "../../../../../lib/errors";
-import { PHAM_VI_AP_DUNG } from "../../../constants";
-import { nhan, tienVn } from "../../../format";
-import { tongTienPhanTram } from "../../../luongPhanTram";
-import {
-  useApDungLuongPhanTram,
-  useKhoanPhanTramList,
-  useLuongPhanTramRows,
-  useLuuMauLuongPhanTram,
-  useMauLuongPhanTram,
-} from "../../../mock/hooks/luongPhanTram";
-import type { DongLuongPhanTram, LocNhanVienKyLuong, PhamViApDung } from "../../../types";
+import { PHAM_VI_AP_DUNG } from "../../../_shared/constants";
+import { nhan, tienVn } from "../../../_shared/format";
+import { tongTienPhanTram } from "../../../calculations/du_lieu_tinh_luong/luongPhanTram";
+import { useKhoanLuongIdByCode, useKhoanPhanTramList } from "../../../api/cai_dat_luong/salaryItemsQueries";
+import { useApplyCommission, useCommissionDataList } from "../../../api/du_lieu_tinh_luong/payrollInputsQueries";
+import { useCurrentPayrollPeriod } from "../useCurrentPayrollPeriod";
+import { mergeNhanVienKyLuongWithData, useNhanVienKyLuong } from "../useNhanVienKyLuong";
+import type {
+  DongLuongPhanTram,
+  LocNhanVienKyLuong,
+  LuongPhanTramNhanVienRow,
+  PhamViApDung,
+} from "../../../types";
 import XacNhanXoaDialog from "../../XacNhanXoaDialog";
 import BangPhanTramCard from "./BangPhanTramCard";
 import DanhSachLuongPhanTramCard from "./DanhSachLuongPhanTramCard";
@@ -39,28 +42,25 @@ import { docFilePhanTram, taiFileMauPhanTram, xuatPhanTramExcel } from "./luongP
 /**
  * Màn hình Lương phần trăm của khu "Dữ liệu tính lương".
  *
- * Cùng lối làm việc với các màn còn lại: bảng giữ ở **bản nháp** trong state màn
- * hình, chỉ ghi xuống kho khi bấm "Lưu thay đổi" hoặc "Áp dụng lương %"; và "Áp
- * dụng lương %" ghi cho **toàn bộ nhân viên đang hiện ở danh sách bên dưới".
- *
- * Giống màn Lương sản phẩm ở một điểm cần lưu ý: số tiền cơ sở là doanh số của
- * **riêng từng người**, nên áp một bảng cho nhiều người chỉ hợp lý khi cả nhóm
- * ăn chung một gốc doanh số.
+ * Cùng lối làm việc với các màn còn lại (xem ghi chú ở `KpiPanel`): bảng là bản nháp cục bộ, ghi
+ * thật duy nhất qua "Áp dụng lương %", LUÔN gửi `commissionRate` tường minh theo đúng tỷ lệ đã
+ * chốt trên bảng đang soạn (không để máy chủ tự lấy tỷ lệ mặc định hiện hành của danh mục).
  */
 export default function LuongPhanTramPanel() {
-  const daLuu = useMauLuongPhanTram();
-  const danhMuc = useKhoanPhanTramList();
-  const luuMau = useLuuMauLuongPhanTram();
-  const apDung = useApDungLuongPhanTram();
+  const { selectedPeriodId, isReadOnly } = useCurrentPayrollPeriod();
+  const periodId = selectedPeriodId ?? "";
 
-  const [mau, setMau] = useState<DongLuongPhanTram[]>(daLuu);
+  const danhMuc = useKhoanPhanTramList();
+  const idTheoMa = useKhoanLuongIdByCode();
+  const applyMut = useApplyCommission(periodId);
+
+  const [mau, setMau] = useState<DongLuongPhanTram[]>([]);
   const [phamVi, setPhamVi] = useState<PhamViApDung>("nhan_vien");
   const [filters, setFilters] = useState<LocNhanVienKyLuong>({
     q: "",
     ma_pb: "",
     loai_hd: "",
   });
-  const [dangLuu, setDangLuu] = useState(false);
 
   const [moQuanLy, setMoQuanLy] = useState(false);
   const [moTaiSuDung, setMoTaiSuDung] = useState(false);
@@ -68,37 +68,41 @@ export default function LuongPhanTramPanel() {
   const [moApDung, setMoApDung] = useState(false);
 
   const inputFile = useRef<HTMLInputElement>(null);
-  const rows = useLuongPhanTramRows(phamVi, filters);
+  const nhanVien = useNhanVienKyLuong(phamVi, filters);
+  const { data: commissionData } = useCommissionDataList({ periodId });
 
   useEffect(() => {
-    // Bám theo bảng đã lưu — vừa lưu xong, hoặc rời màn hình rồi quay lại.
     // eslint-disable-next-line react-hooks/set-state-in-effect
-    setMau(daLuu);
-  }, [daLuu]);
+    setMau([]);
+  }, [periodId]);
 
-  const coThayDoi = JSON.stringify(mau) !== JSON.stringify(daLuu);
+  const rows: LuongPhanTramNhanVienRow[] = useMemo(
+    () =>
+      mergeNhanVienKyLuongWithData(nhanVien, commissionData, (row, ban) => ({
+        ...row,
+        tien_luong: ban ? ban.totalAmount : null,
+        so_dong: ban?.records.length ?? 0,
+      })),
+    [nhanVien, commissionData],
+  );
+
+  const coThayDoi = mau.length > 0;
   const tong = tongTienPhanTram(mau);
-
-  const handleLuu = async () => {
-    setDangLuu(true);
-    try {
-      await luuMau(mau);
-      toast.success("Đã lưu bảng lương phần trăm.");
-    } catch (err) {
-      toast.error(getErrorMessage(err, "Không lưu được bảng lương phần trăm."));
-    } finally {
-      setDangLuu(false);
-    }
-  };
 
   const handleApDung = async () => {
     setMoApDung(false);
     try {
-      const so = await apDung(
-        rows.map((row) => row.ma_nv),
-        mau,
-      );
-      toast.success(`Đã áp bảng lương phần trăm cho ${so} nhân viên.`);
+      await applyMut.mutateAsync({
+        periodId,
+        scope: "nhan_vien",
+        employeeIds: rows.map((row) => row.ma_nv),
+        items: mau.map((d) => ({
+          salaryItemId: idTheoMa.get(d.ma_khoan) ?? d.ma_khoan,
+          commissionRate: d.ty_le,
+          baseAmount: d.so_tien_co_so,
+        })),
+      });
+      toast.success(`Đã áp bảng lương phần trăm cho ${rows.length} nhân viên.`);
     } catch (err) {
       toast.error(getErrorMessage(err, "Không áp được lương phần trăm."));
     }
@@ -123,21 +127,35 @@ export default function LuongPhanTramPanel() {
 
   const handleNhap = async (e: ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
-    // Xóa giá trị input ngay: không xóa thì chọn lại đúng file vừa lỗi sẽ không
-    // bắn `change` lần nữa và nút trông như hỏng.
     e.target.value = "";
     if (!file) return;
     try {
       const dong = await docFilePhanTram(file, danhMuc);
       setMau(dong);
-      toast.success(`Đã đọc ${dong.length} khoản % từ file. Bấm "Lưu thay đổi" để ghi lại.`);
+      toast.success(`Đã đọc ${dong.length} khoản % từ file. Bấm "Áp dụng lương %" để ghi lại.`);
     } catch (err) {
       toast.error(getErrorMessage(err, "Không đọc được file Excel."));
     }
   };
 
+  if (!periodId) {
+    return (
+      <Alert severity="info">
+        Chưa có kỳ lương nào được chọn — tạo hoặc chọn một kỳ lương ở thanh phía trên trước khi
+        nhập lương phần trăm.
+      </Alert>
+    );
+  }
+
   return (
     <Stack spacing={2.5}>
+      {isReadOnly && (
+        <Alert severity="warning">
+          Kỳ lương đang chọn đã khóa sổ/chờ duyệt — không thể sửa hoặc áp dụng lương phần trăm
+          mới.
+        </Alert>
+      )}
+
       <Paper variant="outlined" sx={{ p: 2 }}>
         <Stack
           direction={{ xs: "column", xl: "row" }}
@@ -155,6 +173,7 @@ export default function LuongPhanTramPanel() {
             <Button
               startIcon={<UploadFileRounded />}
               onClick={() => inputFile.current?.click()}
+              disabled={isReadOnly}
               sx={{ textTransform: "none" }}
             >
               Nhập Excel
@@ -170,7 +189,7 @@ export default function LuongPhanTramPanel() {
               variant="contained"
               startIcon={<PlaylistAddCheckRounded />}
               onClick={() => setMoApDung(true)}
-              disabled={mau.length === 0 || rows.length === 0}
+              disabled={isReadOnly || mau.length === 0 || rows.length === 0}
               sx={{ textTransform: "none" }}
             >
               Áp dụng lương % ({rows.length})
@@ -178,6 +197,7 @@ export default function LuongPhanTramPanel() {
             <Button
               startIcon={<ContentCopyRounded />}
               onClick={() => setMoTaiSuDung(true)}
+              disabled={isReadOnly}
               sx={{ textTransform: "none" }}
             >
               Tái sử dụng
@@ -206,7 +226,7 @@ export default function LuongPhanTramPanel() {
               <Chip
                 size="small"
                 color="warning"
-                label="Bảng lương phần trăm có thay đổi chưa lưu"
+                label="Bảng lương phần trăm có nội dung chưa áp dụng"
                 sx={{ height: 22 }}
               />
             </Box>
@@ -224,9 +244,8 @@ export default function LuongPhanTramPanel() {
         filters={filters}
         onFilters={setFilters}
         rows={rows}
-        coThayDoi={coThayDoi}
-        dangLuu={dangLuu}
-        onLuu={handleLuu}
+        periodId={periodId}
+        isReadOnly={isReadOnly}
       />
 
       <QuanLyPhanTramDialog open={moQuanLy} onClose={() => setMoQuanLy(false)} />
@@ -273,7 +292,12 @@ export default function LuongPhanTramPanel() {
           <Button onClick={() => setMoApDung(false)} sx={{ textTransform: "none" }}>
             Hủy
           </Button>
-          <Button variant="contained" onClick={handleApDung} sx={{ textTransform: "none" }}>
+          <Button
+            variant="contained"
+            onClick={handleApDung}
+            disabled={applyMut.isPending}
+            sx={{ textTransform: "none" }}
+          >
             Áp dụng
           </Button>
         </DialogActions>
