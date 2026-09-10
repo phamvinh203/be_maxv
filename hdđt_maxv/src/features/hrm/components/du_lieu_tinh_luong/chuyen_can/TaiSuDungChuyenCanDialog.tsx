@@ -10,9 +10,9 @@ import ListItemText from "@mui/material/ListItemText";
 import Stack from "@mui/material/Stack";
 import Chip from "@mui/material/Chip";
 import Typography from "@mui/material/Typography";
-import { nhanBanDongChuyenCan, tongGioChuyenCan } from "../../../chuyenCan";
-import { ngayVn } from "../../../format";
-import { useDiligenceDataList } from "../../../api/payrollInputsQueries";
+import { nhanBanDongChuyenCan, tongGioChuyenCan } from "../../../calculations/du_lieu_tinh_luong/chuyenCan";
+import { ngayVn } from "../../../_shared/format";
+import { useDiligenceDataList } from "../../../api/du_lieu_tinh_luong/payrollInputsQueries";
 import { useCurrentPayrollPeriod } from "../useCurrentPayrollPeriod";
 import type { DongChuyenCan } from "../../../types";
 

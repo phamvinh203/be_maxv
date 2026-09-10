@@ -13,7 +13,7 @@ import Tooltip from "@mui/material/Tooltip";
 import Typography from "@mui/material/Typography";
 import DeleteRounded from "@mui/icons-material/DeleteRounded";
 import { getErrorMessage } from "../../../../../lib/errors";
-import { tienVn } from "../../../format";
+import { tienVn } from "../../../_shared/format";
 import type {
   ChuyenCanNhanVienRow,
   LocNhanVienKyLuong,

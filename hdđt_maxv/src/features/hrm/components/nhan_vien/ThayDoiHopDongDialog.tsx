@@ -15,15 +15,15 @@ import Alert from "@mui/material/Alert";
 import FormControlLabel from "@mui/material/FormControlLabel";
 import Checkbox from "@mui/material/Checkbox";
 import { getErrorMessage } from "../../../../lib/errors";
-import { trangThaiHopDong } from "../../cay";
-import { KIEU_LUONG, LOAI_HD } from "../../constants";
-import { homNay, ngayVn, nhan, tienVn } from "../../format";
-import { hopDongRong } from "../../formDefaults";
+import { trangThaiHopDong } from "../../_shared/cay";
+import { KIEU_LUONG, LOAI_HD } from "../../_shared/constants";
+import { homNay, ngayVn, nhan, tienVn } from "../../_shared/format";
+import { hopDongRong } from "../../_shared/formDefaults";
 import {
   soatLuongHopDong,
   useDoiHopDong,
   useHopDongList,
-} from "../../api/hopDongQueries";
+} from "../../api/du_lieu_nhan_vien/hopDongQueries";
 import type { HopDong, HopDongFormValues, KieuLuong, LoaiHopDong, NhanVien } from "../../types";
 import OThongTin from "../OThongTin";
 import TienField from "../TienField";

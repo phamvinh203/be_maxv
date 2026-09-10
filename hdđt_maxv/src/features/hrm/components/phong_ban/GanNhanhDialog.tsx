@@ -18,14 +18,14 @@ import ListItemText from "@mui/material/ListItemText";
 import Alert from "@mui/material/Alert";
 import Divider from "@mui/material/Divider";
 import { getErrorMessage } from "../../../../lib/errors";
-import { sapXepCay } from "../../cay";
-import { PB_CHUA_GAN } from "../../constants";
+import { sapXepCay } from "../../_shared/cay";
+import { PB_CHUA_GAN } from "../../_shared/constants";
 // Cả ba nguồn đều là API thật: phòng ban, danh sách nhân viên, và thao tác gán.
-import { usePhongBanList } from "../../api/phongBanQueries";
+import { usePhongBanList } from "../../api/du_lieu_nhan_vien/phongBanQueries";
 import {
   useGanNhanhPhongBan,
   useNhanVienList,
-} from "../../api/nhanVienQueries";
+} from "../../api/du_lieu_nhan_vien/nhanVienQueries";
 
 interface Props {
   open: boolean;

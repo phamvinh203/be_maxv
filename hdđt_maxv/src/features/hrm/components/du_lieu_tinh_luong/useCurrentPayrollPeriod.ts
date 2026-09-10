@@ -1,5 +1,5 @@
 import { createContext, useContext } from "react";
-import type { PayrollPeriodApiItem } from "../../api/payrollPeriodsQueries";
+import type { PayrollPeriodApiItem } from "../../api/du_lieu_tinh_luong/payrollPeriodsQueries";
 
 export interface PayrollPeriodContextValue {
   selectedPeriodId: string | null;

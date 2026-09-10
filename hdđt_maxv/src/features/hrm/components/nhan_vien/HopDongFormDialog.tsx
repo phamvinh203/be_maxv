@@ -12,9 +12,9 @@ import Stack from "@mui/material/Stack";
 import FormControlLabel from "@mui/material/FormControlLabel";
 import Checkbox from "@mui/material/Checkbox";
 import { getErrorMessage } from "../../../../lib/errors";
-import { KIEU_LUONG, LOAI_HD } from "../../constants";
-import { hopDongRong } from "../../formDefaults";
-import { soatLuongHopDong, useLuuHopDong } from "../../api/hopDongQueries";
+import { KIEU_LUONG, LOAI_HD } from "../../_shared/constants";
+import { hopDongRong } from "../../_shared/formDefaults";
+import { soatLuongHopDong, useLuuHopDong } from "../../api/du_lieu_nhan_vien/hopDongQueries";
 import type { HopDong, HopDongFormValues, KieuLuong, LoaiHopDong } from "../../types";
 import TienField from "../TienField";
 

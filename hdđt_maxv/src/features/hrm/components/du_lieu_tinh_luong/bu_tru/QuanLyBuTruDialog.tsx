@@ -24,13 +24,13 @@ import AddRounded from "@mui/icons-material/AddRounded";
 import EditRounded from "@mui/icons-material/EditRounded";
 import DeleteRounded from "@mui/icons-material/DeleteRounded";
 import { getErrorMessage } from "../../../../../lib/errors";
-import { CHIEU_BU_TRU, TRANG_THAI_PB, moTaChieuBuTru } from "../../../constants";
-import { khoanBuTruRong } from "../../../formDefaults";
+import { CHIEU_BU_TRU, TRANG_THAI_PB, moTaChieuBuTru } from "../../../_shared/constants";
+import { khoanBuTruRong } from "../../../_shared/formDefaults";
 import {
   useKhoanBuTruList,
   useLuuKhoanBuTru,
   useXoaKhoanBuTru,
-} from "../../../api/payrollCatalogsQueries";
+} from "../../../api/du_lieu_tinh_luong/payrollCatalogsQueries";
 import type {
   ChieuBuTru,
   KhoanBuTru,

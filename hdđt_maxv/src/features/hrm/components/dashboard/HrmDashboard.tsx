@@ -18,7 +18,7 @@ import BadgeRounded from "@mui/icons-material/BadgeRounded";
 import AccountTreeRounded from "@mui/icons-material/AccountTreeRounded";
 import FamilyRestroomRounded from "@mui/icons-material/FamilyRestroomRounded";
 import Diversity3Rounded from "@mui/icons-material/Diversity3Rounded";
-import { ngayVn } from "../../format";
+import { ngayVn } from "../../_shared/format";
 import { useThongKeHrm } from "../../mock/hooks/tongQuan";
 
 /**

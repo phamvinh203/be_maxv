@@ -4,7 +4,7 @@ import Box from "@mui/material/Box";
 import Stack from "@mui/material/Stack";
 import Typography from "@mui/material/Typography";
 import { getErrorMessage } from "../../../../lib/errors";
-import { useXoaKhoanLuong, type KhoanLuongFilters } from "../../api/salaryItemsQueries";
+import { useXoaKhoanLuong, type KhoanLuongFilters } from "../../api/cai_dat_luong/salaryItemsQueries";
 import type { KhoanLuong, LoaiKhoanLuong } from "../../types";
 import XacNhanXoaDialog from "../XacNhanXoaDialog";
 import KhoanLuongFormDialog from "./KhoanLuongFormDialog";

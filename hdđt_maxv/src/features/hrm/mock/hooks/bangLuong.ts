@@ -16,23 +16,23 @@
  */
 
 import { useMemo } from "react";
-import { useCauHinh } from "../../api/cauHinhQueries";
+import { useCauHinh } from "../../api/cau_hinh_mac_dinh/cauHinhQueries";
 import {
   lyDoKhongTinhDuocLuong,
   tinhDongBangLuong,
   type NguonTinhLuong,
-} from "../../bangLuong";
-import { tongBiTru } from "../../buTru";
-import { thangHienTai } from "../../chamCong";
-import { thanhTienChuyenCan, tongTruChuyenCan } from "../../chuyenCan";
-import { hopDongHienHanh } from "../../cay";
-import { CHUC_VU } from "../../constants";
-import { homNay, nhan } from "../../format";
-import { hieuSuat } from "../../kpi";
-import { tongTienPhanTram } from "../../luongPhanTram";
-import { tongTienSanPham } from "../../luongSanPham";
-import { tongGioOt, tongGioQuyDoi } from "../../tangCa";
-import { tongTienThuong } from "../../thuong";
+} from "../../calculations/bang_luong/bangLuong";
+import { tongBiTru } from "../../calculations/du_lieu_tinh_luong/buTru";
+import { thangHienTai } from "../../calculations/du_lieu_tinh_luong/chamCong";
+import { thanhTienChuyenCan, tongTruChuyenCan } from "../../calculations/du_lieu_tinh_luong/chuyenCan";
+import { hopDongHienHanh } from "../../_shared/cay";
+import { CHUC_VU } from "../../_shared/constants";
+import { homNay, nhan } from "../../_shared/format";
+import { hieuSuat } from "../../calculations/du_lieu_tinh_luong/kpi";
+import { tongTienPhanTram } from "../../calculations/du_lieu_tinh_luong/luongPhanTram";
+import { tongTienSanPham } from "../../calculations/du_lieu_tinh_luong/luongSanPham";
+import { tongGioOt, tongGioQuyDoi } from "../../calculations/du_lieu_tinh_luong/tangCa";
+import { tongTienThuong } from "../../calculations/du_lieu_tinh_luong/thuong";
 import type {
   BangLuongFilters,
   DongBangLuong,

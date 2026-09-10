@@ -18,12 +18,12 @@ import AddRounded from "@mui/icons-material/AddRounded";
 import EditRounded from "@mui/icons-material/EditRounded";
 import DeleteRounded from "@mui/icons-material/DeleteRounded";
 import { getErrorMessage } from "../../../../../lib/errors";
-import { QUAN_HE } from "../../../constants";
-import { kyGiamTru, ngayVn, nhan } from "../../../format";
+import { QUAN_HE } from "../../../_shared/constants";
+import { kyGiamTru, ngayVn, nhan } from "../../../_shared/format";
 import {
   useNguoiPhuThuocList,
   useXoaNguoiPhuThuoc,
-} from "../../../api/nguoiPhuThuocQueries";
+} from "../../../api/du_lieu_nhan_vien/nguoiPhuThuocQueries";
 import type { NguoiPhuThuoc } from "../../../types";
 import XacNhanXoaDialog from "../../XacNhanXoaDialog";
 import NguoiPhuThuocFormDialog from "../../nguoi_phu_thuoc/NguoiPhuThuocFormDialog";

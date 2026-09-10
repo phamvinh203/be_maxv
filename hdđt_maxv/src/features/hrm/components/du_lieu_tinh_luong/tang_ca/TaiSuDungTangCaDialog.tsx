@@ -10,10 +10,10 @@ import ListItemText from "@mui/material/ListItemText";
 import Stack from "@mui/material/Stack";
 import Chip from "@mui/material/Chip";
 import Typography from "@mui/material/Typography";
-import { moTaLoaiTangCa } from "../../../constants";
-import { gioVn, mauGioTangCa, nhanBanDongTangCa } from "../../../tangCa";
-import { useCauHinh } from "../../../api/cauHinhQueries";
-import { useOvertimeList } from "../../../api/payrollInputsQueries";
+import { moTaLoaiTangCa } from "../../../_shared/constants";
+import { gioVn, mauGioTangCa, nhanBanDongTangCa } from "../../../calculations/du_lieu_tinh_luong/tangCa";
+import { useCauHinh } from "../../../api/cau_hinh_mac_dinh/cauHinhQueries";
+import { useOvertimeList } from "../../../api/du_lieu_tinh_luong/payrollInputsQueries";
 import { useCurrentPayrollPeriod } from "../useCurrentPayrollPeriod";
 import type { DongTangCa } from "../../../types";
 

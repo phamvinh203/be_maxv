@@ -5,7 +5,7 @@ import {
   nhanBanDongChuyenCan,
   thanhTienChuyenCan,
   tongTruChuyenCan,
-} from "../../chuyenCan";
+} from "../../calculations/du_lieu_tinh_luong/chuyenCan";
 import type {
   BanChuyenCanNhanVien,
   ChuyenCanNhanVienRow,

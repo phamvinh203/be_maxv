@@ -17,7 +17,7 @@ import CalculateRounded from "@mui/icons-material/CalculateRounded";
 import VolunteerActivismRounded from "@mui/icons-material/VolunteerActivismRounded";
 import { alpha } from "@mui/material/styles";
 import { getErrorMessage } from "../../../../lib/errors";
-import { tienVn } from "../../format";
+import { tienVn } from "../../_shared/format";
 import {
   useKhoanHoTroList,
   useKyBangLuong,

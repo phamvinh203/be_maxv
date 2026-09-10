@@ -16,15 +16,15 @@ import {
   KIEU_LUONG,
   LOAI_HD,
   TRANG_THAI_NV,
-} from "../../../constants";
+} from "../../../_shared/constants";
 import Alert from "@mui/material/Alert";
-import { homNay, ngayVn, nhan, tienVn } from "../../../format";
-import { trangThaiHopDong } from "../../../cay";
-import { usePhongBanList } from "../../../api/phongBanQueries";
+import { homNay, ngayVn, nhan, tienVn } from "../../../_shared/format";
+import { trangThaiHopDong } from "../../../_shared/cay";
+import { usePhongBanList } from "../../../api/du_lieu_nhan_vien/phongBanQueries";
 import {
   LOI_KHONG_CO_QUYEN_LUONG,
   useQuyenXemLuong,
-} from "../../../api/quyenLuongQueries";
+} from "../../../api/du_lieu_nhan_vien/quyenLuongQueries";
 import type { HopDong, NhanVien } from "../../../types";
 import OThongTin from "../../OThongTin";
 

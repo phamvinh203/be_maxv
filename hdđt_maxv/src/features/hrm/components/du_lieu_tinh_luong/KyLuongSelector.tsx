@@ -25,7 +25,7 @@ import {
   useLockPayrollPeriod,
   useReopenPayrollPeriod,
   useSubmitPayrollPeriod,
-} from "../../api/payrollPeriodsQueries";
+} from "../../api/du_lieu_tinh_luong/payrollPeriodsQueries";
 
 export default function KyLuongSelector() {
   const {

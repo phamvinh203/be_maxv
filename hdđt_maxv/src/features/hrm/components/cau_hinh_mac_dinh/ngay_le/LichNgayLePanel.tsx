@@ -25,13 +25,13 @@ import AutoAwesomeRounded from "@mui/icons-material/AutoAwesomeRounded";
 import CheckRounded from "@mui/icons-material/CheckRounded";
 import RemoveRounded from "@mui/icons-material/RemoveRounded";
 import { getErrorMessage } from "../../../../../lib/errors";
-import { LOAI_NGAY_LE } from "../../../constants";
-import { ngayVn, nhan } from "../../../format";
+import { LOAI_NGAY_LE } from "../../../_shared/constants";
+import { ngayVn, nhan } from "../../../_shared/format";
 import {
   useNgayLeRows,
   useTrangThaiNgayLe,
   useXoaNgayLe,
-} from "../../../api/holidaysQueries";
+} from "../../../api/cau_hinh_mac_dinh/holidaysQueries";
 import type { LocNgayLe, NgayLe } from "../../../types";
 import XacNhanXoaDialog from "../../XacNhanXoaDialog";
 import NgayLeFormDialog from "./NgayLeFormDialog";

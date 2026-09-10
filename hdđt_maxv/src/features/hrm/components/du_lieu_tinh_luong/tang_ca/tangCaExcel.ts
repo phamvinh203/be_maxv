@@ -4,8 +4,8 @@
  */
 
 import type { CellValue, Workbook, Worksheet } from "exceljs";
-import { LOAI_TANG_CA, moTaLoaiTangCa } from "../../../constants";
-import { gioQuyDoi, sinhIdDongTangCa, tongGioOt, tongGioQuyDoi } from "../../../tangCa";
+import { LOAI_TANG_CA, moTaLoaiTangCa } from "../../../_shared/constants";
+import { gioQuyDoi, sinhIdDongTangCa, tongGioOt, tongGioQuyDoi } from "../../../calculations/du_lieu_tinh_luong/tangCa";
 import type {
   CauHinhMacDinh,
   DongTangCa,

@@ -1,5 +1,5 @@
 import { useState, useMemo, type ReactNode } from "react";
-import { usePayrollPeriodList } from "../../api/payrollPeriodsQueries";
+import { usePayrollPeriodList } from "../../api/du_lieu_tinh_luong/payrollPeriodsQueries";
 import { PayrollPeriodContext } from "./useCurrentPayrollPeriod";
 
 const STORAGE_KEY = "hrm_selected_payroll_period_id";

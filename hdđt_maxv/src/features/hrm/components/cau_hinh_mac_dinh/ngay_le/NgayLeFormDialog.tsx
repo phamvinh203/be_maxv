@@ -13,9 +13,9 @@ import Typography from "@mui/material/Typography";
 import FormControlLabel from "@mui/material/FormControlLabel";
 import Checkbox from "@mui/material/Checkbox";
 import { getErrorMessage } from "../../../../../lib/errors";
-import { LOAI_NGAY_LE } from "../../../constants";
-import { ngayLeRong } from "../../../formDefaults";
-import { useLuuNgayLe } from "../../../api/holidaysQueries";
+import { LOAI_NGAY_LE } from "../../../_shared/constants";
+import { ngayLeRong } from "../../../_shared/formDefaults";
+import { useLuuNgayLe } from "../../../api/cau_hinh_mac_dinh/holidaysQueries";
 import type { LoaiNgayLe, NgayLe, NgayLeFormValues } from "../../../types";
 
 interface Props {

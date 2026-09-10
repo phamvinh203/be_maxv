@@ -22,13 +22,13 @@ import DeleteRounded from "@mui/icons-material/DeleteRounded";
 import ScheduleRounded from "@mui/icons-material/ScheduleRounded";
 import WarningAmberRounded from "@mui/icons-material/WarningAmberRounded";
 import { getErrorMessage } from "../../../../../lib/errors";
-import { soGioCa } from "../../../format";
+import { soGioCa } from "../../../_shared/format";
 import {
   CANH_BAO_GIO_LAM_VUOT_TRAN_BLLD,
   useCaLamViecList,
   useTrangThaiCaLamViec,
   useXoaCaLamViec,
-} from "../../../api/workShiftsQueries";
+} from "../../../api/cau_hinh_mac_dinh/workShiftsQueries";
 import type { CaLamViec } from "../../../types";
 import XacNhanXoaDialog from "../../XacNhanXoaDialog";
 import CaLamViecFormDialog from "./CaLamViecFormDialog";

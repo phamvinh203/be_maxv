@@ -19,11 +19,11 @@ import ContentCopyRounded from "@mui/icons-material/ContentCopyRounded";
 import DeleteSweepRounded from "@mui/icons-material/DeleteSweepRounded";
 import TuneRounded from "@mui/icons-material/TuneRounded";
 import { getErrorMessage } from "../../../../../lib/errors";
-import { PHAM_VI_AP_DUNG } from "../../../constants";
-import { nhan, tienVn } from "../../../format";
-import { tongBiTru } from "../../../buTru";
-import { useKhoanBuTruIdByCode, useKhoanBuTruList } from "../../../api/payrollCatalogsQueries";
-import { useAdjustmentDataList, useApplyAdjustments } from "../../../api/payrollInputsQueries";
+import { PHAM_VI_AP_DUNG } from "../../../_shared/constants";
+import { nhan, tienVn } from "../../../_shared/format";
+import { tongBiTru } from "../../../calculations/du_lieu_tinh_luong/buTru";
+import { useKhoanBuTruIdByCode, useKhoanBuTruList } from "../../../api/du_lieu_tinh_luong/payrollCatalogsQueries";
+import { useAdjustmentDataList, useApplyAdjustments } from "../../../api/du_lieu_tinh_luong/payrollInputsQueries";
 import { useCurrentPayrollPeriod } from "../useCurrentPayrollPeriod";
 import { mergeNhanVienKyLuongWithData, useNhanVienKyLuong } from "../useNhanVienKyLuong";
 import type {

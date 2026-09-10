@@ -1,7 +1,7 @@
 /** Hook nghiệp vụ chấm công. Xem ghi chú về chữ ký ở `hooks/phongBan.ts`. */
 
 import { useCallback, useMemo } from "react";
-import { useCauHinh } from "../../api/cauHinhQueries";
+import { useCauHinh } from "../../api/cau_hinh_mac_dinh/cauHinhQueries";
 import {
   cacNgayTrongThang,
   khoaCham,
@@ -10,7 +10,7 @@ import {
   thongKeDong,
   type NgayCham,
   type ThongKeDong,
-} from "../../chamCong";
+} from "../../calculations/du_lieu_tinh_luong/chamCong";
 import type { NhanVien, OChamCong } from "../../types";
 import { useHrmStore } from "../useHrmStore";
 

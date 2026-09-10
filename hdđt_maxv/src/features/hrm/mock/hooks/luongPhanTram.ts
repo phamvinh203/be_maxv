@@ -1,7 +1,7 @@
 /** Hook nghiệp vụ Lương phần trăm. Xem ghi chú về chữ ký ở `hooks/phongBan.ts`. */
 
 import { useCallback, useMemo } from "react";
-import { nhanBanDongPhanTram, tongTienPhanTram } from "../../luongPhanTram";
+import { nhanBanDongPhanTram, tongTienPhanTram } from "../../calculations/du_lieu_tinh_luong/luongPhanTram";
 import type {
   BanLuongPhanTramNhanVien,
   DongLuongPhanTram,

@@ -18,7 +18,7 @@ import {
   useKhoiPhucCauHinh,
   useLuuCauHinh,
   useTrangThaiCauHinh,
-} from "../../api/cauHinhQueries";
+} from "../../api/cau_hinh_mac_dinh/cauHinhQueries";
 import type { CauHinhMacDinh } from "../../types";
 import CaLamViecSection from "./ca_lam_viec/CaLamViecSection";
 import LuongBaoHiemSection from "./sections/LuongBaoHiemSection";

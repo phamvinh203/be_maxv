@@ -25,7 +25,7 @@ import SearchRounded from "@mui/icons-material/SearchRounded";
 import GroupAddRounded from "@mui/icons-material/GroupAddRounded";
 import SubdirectoryArrowRightRounded from "@mui/icons-material/SubdirectoryArrowRightRounded";
 import { getErrorMessage } from "../../../../lib/errors";
-import { usePhongBanRows, useXoaPhongBan } from "../../api/phongBanQueries";
+import { usePhongBanRows, useXoaPhongBan } from "../../api/du_lieu_nhan_vien/phongBanQueries";
 import type { PhongBanRow } from "../../types";
 import XacNhanXoaDialog from "../XacNhanXoaDialog";
 import GanNhanhDialog from "./GanNhanhDialog";

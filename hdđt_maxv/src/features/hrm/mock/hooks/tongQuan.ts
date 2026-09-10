@@ -1,8 +1,8 @@
 /** Số liệu tổng hợp cho tab Dashboard. Chỉ đọc, không có thao tác ghi. */
 
 import { useMemo } from "react";
-import { hopDongHienHanh, sapXepCay } from "../../cay";
-import { homNay } from "../../format";
+import { hopDongHienHanh, sapXepCay } from "../../_shared/cay";
+import { homNay } from "../../_shared/format";
 import { useHrmStore } from "../useHrmStore";
 
 export interface DongPhanBo {

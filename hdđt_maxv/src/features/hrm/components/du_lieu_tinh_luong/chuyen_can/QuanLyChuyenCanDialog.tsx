@@ -24,14 +24,14 @@ import AddRounded from "@mui/icons-material/AddRounded";
 import EditRounded from "@mui/icons-material/EditRounded";
 import DeleteRounded from "@mui/icons-material/DeleteRounded";
 import { getErrorMessage } from "../../../../../lib/errors";
-import { CACH_TRU_CHUYEN_CAN, TRANG_THAI_PB, moTaCachTru } from "../../../constants";
-import { tienVn } from "../../../format";
-import { loaiChuyenCanRong } from "../../../formDefaults";
+import { CACH_TRU_CHUYEN_CAN, TRANG_THAI_PB, moTaCachTru } from "../../../_shared/constants";
+import { tienVn } from "../../../_shared/format";
+import { loaiChuyenCanRong } from "../../../_shared/formDefaults";
 import {
   useLoaiChuyenCanList,
   useLuuLoaiChuyenCan,
   useXoaLoaiChuyenCan,
-} from "../../../api/payrollCatalogsQueries";
+} from "../../../api/du_lieu_tinh_luong/payrollCatalogsQueries";
 import type {
   CachTruChuyenCan,
   LoaiChuyenCan,

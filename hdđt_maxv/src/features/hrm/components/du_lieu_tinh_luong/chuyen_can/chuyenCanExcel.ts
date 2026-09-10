@@ -5,9 +5,9 @@
  */
 
 import type { CellValue, Workbook, Worksheet } from "exceljs";
-import { moTaCachTru } from "../../../constants";
-import { sinhIdDongChuyenCan } from "../../../chuyenCan";
-import { homNay } from "../../../format";
+import { moTaCachTru } from "../../../_shared/constants";
+import { sinhIdDongChuyenCan } from "../../../calculations/du_lieu_tinh_luong/chuyenCan";
+import { homNay } from "../../../_shared/format";
 import type { ChuyenCanNhanVienRow, DongChuyenCan, LoaiChuyenCan } from "../../../types";
 
 /** Cột của sheet "Bảng chuyên cần" — thứ tự này là hợp đồng giữa xuất và nhập. */

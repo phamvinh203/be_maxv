@@ -5,8 +5,8 @@
  */
 
 import type { CellValue, Workbook, Worksheet } from "exceljs";
-import { moTaChieuBuTru } from "../../../constants";
-import { sinhIdDongBuTru, tongBiTru } from "../../../buTru";
+import { moTaChieuBuTru } from "../../../_shared/constants";
+import { sinhIdDongBuTru, tongBiTru } from "../../../calculations/du_lieu_tinh_luong/buTru";
 import type { BuTruNhanVienRow, DongBuTru, KhoanBuTru } from "../../../types";
 
 /** Cột của sheet "Ứng - bù trừ" — thứ tự này là hợp đồng giữa xuất và nhập. */

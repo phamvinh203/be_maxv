@@ -9,12 +9,12 @@ import Stack from "@mui/material/Stack";
 import Button from "@mui/material/Button";
 import Typography from "@mui/material/Typography";
 import { getErrorMessage } from "../../../../../lib/errors";
-import { LOAI_TANG_CA } from "../../../constants";
+import { LOAI_TANG_CA } from "../../../_shared/constants";
 import {
   useCauHinh,
   useLuuCauHinh,
   useTrangThaiCauHinh,
-} from "../../../api/cauHinhQueries";
+} from "../../../api/cau_hinh_mac_dinh/cauHinhQueries";
 import type { CauHinhMacDinh } from "../../../types";
 import SoField from "../../cau_hinh_mac_dinh/SoField";
 

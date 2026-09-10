@@ -13,9 +13,9 @@ import FormControlLabel from "@mui/material/FormControlLabel";
 import Checkbox from "@mui/material/Checkbox";
 import Box from "@mui/material/Box";
 import { getErrorMessage } from "../../../../lib/errors";
-import { TRANG_THAI_PB, moTaLoaiKhoan } from "../../constants";
-import { khoanLuongRong } from "../../formDefaults";
-import { useLuuKhoanLuong } from "../../api/salaryItemsQueries";
+import { TRANG_THAI_PB, moTaLoaiKhoan } from "../../_shared/constants";
+import { khoanLuongRong } from "../../_shared/formDefaults";
+import { useLuuKhoanLuong } from "../../api/cai_dat_luong/salaryItemsQueries";
 import type {
   KhoanLuong,
   KhoanLuongFormValues,

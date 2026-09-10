@@ -10,9 +10,9 @@ import ListItemText from "@mui/material/ListItemText";
 import Stack from "@mui/material/Stack";
 import Chip from "@mui/material/Chip";
 import Typography from "@mui/material/Typography";
-import { nhanBanDongBuTru } from "../../../buTru";
-import { tienVn } from "../../../format";
-import { useAdjustmentDataList } from "../../../api/payrollInputsQueries";
+import { nhanBanDongBuTru } from "../../../calculations/du_lieu_tinh_luong/buTru";
+import { tienVn } from "../../../_shared/format";
+import { useAdjustmentDataList } from "../../../api/du_lieu_tinh_luong/payrollInputsQueries";
 import { useCurrentPayrollPeriod } from "../useCurrentPayrollPeriod";
 import type { DongBuTru } from "../../../types";
 

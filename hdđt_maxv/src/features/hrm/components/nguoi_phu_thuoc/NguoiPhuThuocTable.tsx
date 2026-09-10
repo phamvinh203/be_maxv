@@ -22,12 +22,12 @@ import EditRounded from "@mui/icons-material/EditRounded";
 import DeleteRounded from "@mui/icons-material/DeleteRounded";
 import SearchRounded from "@mui/icons-material/SearchRounded";
 import { getErrorMessage } from "../../../../lib/errors";
-import { QUAN_HE } from "../../constants";
-import { kyGiamTru, ngayVn, nhan } from "../../format";
+import { QUAN_HE } from "../../_shared/constants";
+import { kyGiamTru, ngayVn, nhan } from "../../_shared/format";
 import {
   useNguoiPhuThuocRows,
   useXoaNguoiPhuThuoc,
-} from "../../api/nguoiPhuThuocQueries";
+} from "../../api/du_lieu_nhan_vien/nguoiPhuThuocQueries";
 import type { NguoiPhuThuocRow } from "../../types";
 import XacNhanXoaDialog from "../XacNhanXoaDialog";
 import NguoiPhuThuocFormDialog from "./NguoiPhuThuocFormDialog";

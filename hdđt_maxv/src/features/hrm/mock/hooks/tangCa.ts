@@ -1,9 +1,9 @@
 /** Hook nghiệp vụ Tăng ca. Xem ghi chú về chữ ký ở `hooks/phongBan.ts`. */
 
 import { useCallback, useMemo } from "react";
-import { useCauHinh } from "../../api/cauHinhQueries";
-import { moTaLoaiTangCa } from "../../constants";
-import { nhanBanDongTangCa, tongGioOt, tongGioQuyDoi } from "../../tangCa";
+import { useCauHinh } from "../../api/cau_hinh_mac_dinh/cauHinhQueries";
+import { moTaLoaiTangCa } from "../../_shared/constants";
+import { nhanBanDongTangCa, tongGioOt, tongGioQuyDoi } from "../../calculations/du_lieu_tinh_luong/tangCa";
 import type {
   BanTangCaNhanVien,
   DongTangCa,

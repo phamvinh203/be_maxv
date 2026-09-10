@@ -8,8 +8,8 @@
  */
 
 import { useMemo } from "react";
-import { hopDongHienHanh } from "../../cay";
-import { homNay } from "../../format";
+import { hopDongHienHanh } from "../../_shared/cay";
+import { homNay } from "../../_shared/format";
 import type {
   HopDong,
   LocNhanVienKyLuong,

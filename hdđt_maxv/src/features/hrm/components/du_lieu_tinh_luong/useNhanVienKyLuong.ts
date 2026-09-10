@@ -15,7 +15,7 @@
  */
 
 import { useMemo } from "react";
-import { useNhanVienRows } from "../../api/nhanVienQueries";
+import { useNhanVienRows } from "../../api/du_lieu_nhan_vien/nhanVienQueries";
 import type { LocNhanVienKyLuong, NhanVienKyLuongRow, PhamViApDung } from "../../types";
 
 export function useNhanVienKyLuong(

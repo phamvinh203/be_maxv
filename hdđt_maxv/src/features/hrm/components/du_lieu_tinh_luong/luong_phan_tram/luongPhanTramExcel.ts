@@ -10,7 +10,7 @@ import {
   thanhTienPhanTram,
   tongCoSoPhanTram,
   tongTienPhanTram,
-} from "../../../luongPhanTram";
+} from "../../../calculations/du_lieu_tinh_luong/luongPhanTram";
 import type {
   DongLuongPhanTram,
   KhoanLuong,

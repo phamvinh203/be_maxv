@@ -1,9 +1,9 @@
 /** Hook nghiệp vụ Set lương. Xem ghi chú về chữ ký ở `hooks/phongBan.ts`. */
 
 import { useCallback, useMemo } from "react";
-import { hopDongHienHanh } from "../../cay";
-import { CHUC_VU } from "../../constants";
-import { homNay, nhan } from "../../format";
+import { hopDongHienHanh } from "../../_shared/cay";
+import { CHUC_VU } from "../../_shared/constants";
+import { homNay, nhan } from "../../_shared/format";
 import type {
   CauTrucLuong,
   SetLuongFilters,

@@ -10,8 +10,8 @@ import ListItemText from "@mui/material/ListItemText";
 import Stack from "@mui/material/Stack";
 import Chip from "@mui/material/Chip";
 import Typography from "@mui/material/Typography";
-import { hieuSuat, mauHieuSuat, nhanBanDongKpi } from "../../../kpi";
-import { useKpiDataList } from "../../../api/payrollInputsQueries";
+import { hieuSuat, mauHieuSuat, nhanBanDongKpi } from "../../../calculations/du_lieu_tinh_luong/kpi";
+import { useKpiDataList } from "../../../api/du_lieu_tinh_luong/payrollInputsQueries";
 import { useCurrentPayrollPeriod } from "../useCurrentPayrollPeriod";
 import type { DongKpi } from "../../../types";
 

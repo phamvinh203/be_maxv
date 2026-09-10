@@ -10,9 +10,9 @@ import ListItemText from "@mui/material/ListItemText";
 import Stack from "@mui/material/Stack";
 import Chip from "@mui/material/Chip";
 import Typography from "@mui/material/Typography";
-import { tienVn } from "../../../format";
-import { nhanBanDongPhanTram, tongTienPhanTram } from "../../../luongPhanTram";
-import { useCommissionDataList } from "../../../api/payrollInputsQueries";
+import { tienVn } from "../../../_shared/format";
+import { nhanBanDongPhanTram, tongTienPhanTram } from "../../../calculations/du_lieu_tinh_luong/luongPhanTram";
+import { useCommissionDataList } from "../../../api/du_lieu_tinh_luong/payrollInputsQueries";
 import { useCurrentPayrollPeriod } from "../useCurrentPayrollPeriod";
 import type { DongLuongPhanTram } from "../../../types";
 

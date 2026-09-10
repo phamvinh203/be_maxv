@@ -8,9 +8,9 @@ import Typography from "@mui/material/Typography";
 import ToggleButton from "@mui/material/ToggleButton";
 import ToggleButtonGroup from "@mui/material/ToggleButtonGroup";
 import SearchRounded from "@mui/icons-material/SearchRounded";
-import { sapXepCay } from "../../cay";
-import { LOAI_HD, PHAM_VI_AP_DUNG } from "../../constants";
-import { usePhongBanList } from "../../api/phongBanQueries";
+import { sapXepCay } from "../../_shared/cay";
+import { LOAI_HD, PHAM_VI_AP_DUNG } from "../../_shared/constants";
+import { usePhongBanList } from "../../api/du_lieu_nhan_vien/phongBanQueries";
 import type { LoaiHopDong, LocNhanVienKyLuong, PhamViApDung } from "../../types";
 
 interface Props {

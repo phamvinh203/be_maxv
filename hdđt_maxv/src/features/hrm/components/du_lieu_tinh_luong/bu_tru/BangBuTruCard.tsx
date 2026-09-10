@@ -17,10 +17,10 @@ import Tooltip from "@mui/material/Tooltip";
 import Chip from "@mui/material/Chip";
 import AddRounded from "@mui/icons-material/AddRounded";
 import DeleteRounded from "@mui/icons-material/DeleteRounded";
-import { moTaChieuBuTru } from "../../../constants";
-import { dongBuTruRong, tongBiTru, tongTheoChieu } from "../../../buTru";
-import { tienVn } from "../../../format";
-import { useKhoanBuTruList } from "../../../api/payrollCatalogsQueries";
+import { moTaChieuBuTru } from "../../../_shared/constants";
+import { dongBuTruRong, tongBiTru, tongTheoChieu } from "../../../calculations/du_lieu_tinh_luong/buTru";
+import { tienVn } from "../../../_shared/format";
+import { useKhoanBuTruList } from "../../../api/du_lieu_tinh_luong/payrollCatalogsQueries";
 import type { DongBuTru } from "../../../types";
 import TienField from "../../TienField";
 

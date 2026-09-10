@@ -10,9 +10,9 @@
  */
 
 import { useCallback, useMemo } from "react";
-import { hopDongHienHanh, sinhMaNhanVien } from "../../cay";
-import { CHUC_VU, PB_CHUA_GAN } from "../../constants";
-import { homNay, nhan } from "../../format";
+import { hopDongHienHanh, sinhMaNhanVien } from "../../_shared/cay";
+import { CHUC_VU, PB_CHUA_GAN } from "../../_shared/constants";
+import { homNay, nhan } from "../../_shared/format";
 import type {
   HopDong,
   NhanVien,

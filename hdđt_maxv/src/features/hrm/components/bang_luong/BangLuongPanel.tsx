@@ -15,8 +15,8 @@ import PaymentsRounded from "@mui/icons-material/PaymentsRounded";
 import ReceiptLongRounded from "@mui/icons-material/ReceiptLongRounded";
 import { alpha } from "@mui/material/styles";
 import { getErrorMessage } from "../../../../lib/errors";
-import { CHE_DO_HIEN_THI, tongBangLuong } from "../../bangLuong";
-import { tienVn } from "../../format";
+import { CHE_DO_HIEN_THI, tongBangLuong } from "../../calculations/bang_luong/bangLuong";
+import { tienVn } from "../../_shared/format";
 import {
   useBangLuongRows,
   useKyBangLuong,

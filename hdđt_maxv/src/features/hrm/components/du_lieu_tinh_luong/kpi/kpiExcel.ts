@@ -10,7 +10,7 @@
  */
 
 import type { CellValue, Workbook, Worksheet } from "exceljs";
-import { hieuSuat, sinhIdDongKpi, tyLeHt } from "../../../kpi";
+import { hieuSuat, sinhIdDongKpi, tyLeHt } from "../../../calculations/du_lieu_tinh_luong/kpi";
 import type { ChiTieuKpi, DongKpi, KpiNhanVienRow } from "../../../types";
 
 /** Cột của sheet "Bảng KPI" — thứ tự này là hợp đồng giữa xuất và nhập. */

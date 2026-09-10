@@ -18,7 +18,7 @@ import Tooltip from "@mui/material/Tooltip";
 import Chip from "@mui/material/Chip";
 import AddRounded from "@mui/icons-material/AddRounded";
 import DeleteRounded from "@mui/icons-material/DeleteRounded";
-import { LOAI_TANG_CA } from "../../../constants";
+import { LOAI_TANG_CA } from "../../../_shared/constants";
 import {
   dongTangCaRong,
   gioQuyDoi,
@@ -27,8 +27,8 @@ import {
   mauGioTangCa,
   tongGioOt,
   tongGioQuyDoi,
-} from "../../../tangCa";
-import { useCauHinh } from "../../../api/cauHinhQueries";
+} from "../../../calculations/du_lieu_tinh_luong/tangCa";
+import { useCauHinh } from "../../../api/cau_hinh_mac_dinh/cauHinhQueries";
 import type { DongTangCa, LoaiTangCa } from "../../../types";
 
 interface Props {

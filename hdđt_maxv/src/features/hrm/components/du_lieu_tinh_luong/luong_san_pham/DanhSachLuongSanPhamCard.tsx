@@ -13,8 +13,8 @@ import Tooltip from "@mui/material/Tooltip";
 import Typography from "@mui/material/Typography";
 import DeleteRounded from "@mui/icons-material/DeleteRounded";
 import { getErrorMessage } from "../../../../../lib/errors";
-import { tienVn } from "../../../format";
-import { useApplyPiecework } from "../../../api/payrollInputsQueries";
+import { tienVn } from "../../../_shared/format";
+import { useApplyPiecework } from "../../../api/du_lieu_tinh_luong/payrollInputsQueries";
 import type {
   LocNhanVienKyLuong,
   LuongSanPhamNhanVienRow,

@@ -3,7 +3,7 @@ import Stack from "@mui/material/Stack";
 import TextField from "@mui/material/TextField";
 import MenuItem from "@mui/material/MenuItem";
 import Typography from "@mui/material/Typography";
-import { QUAN_HE } from "../../constants";
+import { QUAN_HE } from "../../_shared/constants";
 import type { NguoiPhuThuocFormValues, QuanHe } from "../../types";
 
 interface Props {

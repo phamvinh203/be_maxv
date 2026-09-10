@@ -1,7 +1,7 @@
 /** Hook nghiệp vụ KPI. Xem ghi chú về chữ ký ở `hooks/phongBan.ts`. */
 
 import { useCallback, useMemo } from "react";
-import { hieuSuat, nhanBanDongKpi, tongTrongSo } from "../../kpi";
+import { hieuSuat, nhanBanDongKpi, tongTrongSo } from "../../calculations/du_lieu_tinh_luong/kpi";
 import type {
   BanKpiNhanVien,
   ChiTieuKpi,

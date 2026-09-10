@@ -1,4 +1,4 @@
-import type { EmployeeSalaryListParams } from "./employeeSalariesApi";
+import type { EmployeeSalaryListParams } from "./cai_dat_luong/employeeSalariesApi";
 
 /**
  * Query key của khu HRM, gom một chỗ vì ba thực thể **phụ thuộc số liệu của nhau**:

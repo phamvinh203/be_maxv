@@ -17,16 +17,16 @@ import Paper from "@mui/material/Paper";
 import CircularProgress from "@mui/material/CircularProgress";
 import Typography from "@mui/material/Typography";
 import { getErrorMessage } from "../../../../../lib/errors";
-import { ngayVn } from "../../../format";
+import { ngayVn } from "../../../_shared/format";
 import {
   DAI_NAM_TAO_NHANH,
   NAM_TAO_NHANH_MAX,
   NAM_TAO_NHANH_MIN,
-} from "../../../api/holidaysApi";
+} from "../../../api/cau_hinh_mac_dinh/holidaysApi";
 import {
   useTaoNhanhNgayLe,
   useXemTruocTaoNhanh,
-} from "../../../api/holidaysQueries";
+} from "../../../api/cau_hinh_mac_dinh/holidaysQueries";
 
 interface Props {
   open: boolean;

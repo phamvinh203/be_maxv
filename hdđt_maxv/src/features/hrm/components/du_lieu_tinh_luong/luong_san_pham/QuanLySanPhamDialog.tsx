@@ -24,14 +24,14 @@ import AddRounded from "@mui/icons-material/AddRounded";
 import EditRounded from "@mui/icons-material/EditRounded";
 import DeleteRounded from "@mui/icons-material/DeleteRounded";
 import { getErrorMessage } from "../../../../../lib/errors";
-import { TRANG_THAI_PB } from "../../../constants";
-import { tienVn } from "../../../format";
-import { sanPhamRong } from "../../../formDefaults";
+import { TRANG_THAI_PB } from "../../../_shared/constants";
+import { tienVn } from "../../../_shared/format";
+import { sanPhamRong } from "../../../_shared/formDefaults";
 import {
   useSanPhamList,
   useLuuSanPham,
   useXoaSanPham,
-} from "../../../api/payrollCatalogsQueries";
+} from "../../../api/du_lieu_tinh_luong/payrollCatalogsQueries";
 import type { SanPham, SanPhamFormValues, TrangThai } from "../../../types";
 import TienField from "../../TienField";
 import XacNhanXoaDialog from "../../XacNhanXoaDialog";

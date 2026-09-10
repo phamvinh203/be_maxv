@@ -15,7 +15,7 @@
  * - `MOCK-PB01` không có phòng ban con nhưng còn nhân viên → thử chặn xóa.
  */
 
-import { ngayLeChuanVN } from "../ngayLeChuan";
+import { ngayLeChuanVN } from "./ngayLeChuan";
 import type {
   BanBuTruNhanVien,
   BanChuyenCanNhanVien,

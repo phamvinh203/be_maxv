@@ -11,13 +11,13 @@ import Box from "@mui/material/Box";
 import Alert from "@mui/material/Alert";
 import Stack from "@mui/material/Stack";
 import { getErrorMessage } from "../../../../../lib/errors";
-import { TRANG_THAI_PB } from "../../../constants";
-import { soGioCa } from "../../../format";
-import { caLamViecRong } from "../../../formDefaults";
+import { TRANG_THAI_PB } from "../../../_shared/constants";
+import { soGioCa } from "../../../_shared/format";
+import { caLamViecRong } from "../../../_shared/formDefaults";
 import {
   CANH_BAO_GIO_LAM_VUOT_TRAN_BLLD,
   useLuuCaLamViec,
-} from "../../../api/workShiftsQueries";
+} from "../../../api/cau_hinh_mac_dinh/workShiftsQueries";
 import type { CaLamViec, CaLamViecFormValues, TrangThai } from "../../../types";
 import SoField from "../SoField";
 

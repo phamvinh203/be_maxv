@@ -23,7 +23,7 @@ import { getErrorMessage } from "../../../../../lib/errors";
 import {
   useKhoanThuongList,
   useXoaKhoanLuong as useXoaKhoanThuong,
-} from "../../../api/salaryItemsQueries";
+} from "../../../api/cai_dat_luong/salaryItemsQueries";
 import type { KhoanLuong } from "../../../types";
 import KhoanLuongFormDialog from "../../cai_dat_luong/KhoanLuongFormDialog";
 import XacNhanXoaDialog from "../../XacNhanXoaDialog";

@@ -1,7 +1,7 @@
 /** Hook nghiệp vụ Thưởng. Xem ghi chú về chữ ký ở `hooks/phongBan.ts`. */
 
 import { useCallback, useMemo } from "react";
-import { nhanBanDongThuong, tongTienThuong } from "../../thuong";
+import { nhanBanDongThuong, tongTienThuong } from "../../calculations/du_lieu_tinh_luong/thuong";
 import type {
   BanThuongNhanVien,
   DongThuong,

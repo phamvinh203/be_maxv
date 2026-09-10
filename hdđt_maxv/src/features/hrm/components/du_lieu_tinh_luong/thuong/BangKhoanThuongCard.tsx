@@ -17,9 +17,9 @@ import Tooltip from "@mui/material/Tooltip";
 import Chip from "@mui/material/Chip";
 import AddRounded from "@mui/icons-material/AddRounded";
 import DeleteRounded from "@mui/icons-material/DeleteRounded";
-import { tienVn } from "../../../format";
-import { dongThuongRong, thanhTien, tongTienThuong } from "../../../thuong";
-import { useKhoanThuongList } from "../../../api/salaryItemsQueries";
+import { tienVn } from "../../../_shared/format";
+import { dongThuongRong, thanhTien, tongTienThuong } from "../../../calculations/du_lieu_tinh_luong/thuong";
+import { useKhoanThuongList } from "../../../api/cai_dat_luong/salaryItemsQueries";
 import type { DongThuong } from "../../../types";
 import TienField from "../../TienField";
 

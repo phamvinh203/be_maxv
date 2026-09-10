@@ -25,12 +25,12 @@ import {
   oMacDinh,
   thongKeDong,
   type NgayCham,
-} from "../../../chamCong";
-import { COT_THONG_KE_CONG, moTaLoaiCong } from "../../../constants";
-import { useCauHinh } from "../../../api/cauHinhQueries";
-import { useNgayLeList } from "../../../api/holidaysQueries";
-import { useNhanVienList } from "../../../api/nhanVienQueries";
-import { useAttendanceMatrix, useOverrideAttendanceCell } from "../../../api/payrollInputsQueries";
+} from "../../../calculations/du_lieu_tinh_luong/chamCong";
+import { COT_THONG_KE_CONG, moTaLoaiCong } from "../../../_shared/constants";
+import { useCauHinh } from "../../../api/cau_hinh_mac_dinh/cauHinhQueries";
+import { useNgayLeList } from "../../../api/cau_hinh_mac_dinh/holidaysQueries";
+import { useNhanVienList } from "../../../api/du_lieu_nhan_vien/nhanVienQueries";
+import { useAttendanceMatrix, useOverrideAttendanceCell } from "../../../api/du_lieu_tinh_luong/payrollInputsQueries";
 import { useCurrentPayrollPeriod } from "../useCurrentPayrollPeriod";
 import type { LoaiCong, OChamCong } from "../../../types";
 import OChamCongPopover from "./OChamCongPopover";

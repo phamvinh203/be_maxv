@@ -9,8 +9,8 @@ import TableRow from "@mui/material/TableRow";
 import Tooltip from "@mui/material/Tooltip";
 import Typography from "@mui/material/Typography";
 import { alpha } from "@mui/material/styles";
-import { hauToCheDo, tienTheoCheDo } from "../../bangLuong";
-import { tienVn } from "../../format";
+import { hauToCheDo, tienTheoCheDo } from "../../calculations/bang_luong/bangLuong";
+import { tienVn } from "../../_shared/format";
 import type { CheDoHienThi, DongBangLuong } from "../../types";
 import { cotTheoMuc, tongTheoCot, type CotBangLuong } from "./cotBangLuong";
 
