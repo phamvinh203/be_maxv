@@ -1263,3 +1263,47 @@ Kiểm chứng: `npx tsc -b` (exit 0, sau khi sửa `mock/seed.ts`) · `npm run 
 build` (thành công, 12346 module — 2 cảnh báo Rolldown đã có từ trước, không mới). **Chưa test tay
 qua trình duyệt** — không có tài khoản/tenant test trong môi trường này, chỉ xác nhận qua đọc code
 be_maxv (schema/validator/service) + build sạch.
+
+### 2.15. Dashboard HRM — bỏ kho giả, đọc API thật (2026-09-10)
+
+Không có endpoint tổng hợp: Dashboard GHÉP các truy vấn các màn khác đã dùng, **cùng `queryKey` +
+cùng hàm tải**, nên không tốn thêm request khi cache còn tươi. `mock/hooks/tongQuan.ts` đã xóa.
+
+| Khối | Nguồn | Nơi gom số |
+|---|---|---|
+| Tình hình nhân sự · Sinh nhật · Sắp kết thúc HĐ | `GET /hrm/nhan-vien` (dòng BE thô qua `useDanhSachNhanVien`) | `calculations/dashboard/tongQuan.ts` |
+| Xu hướng lương 6 tháng | `GET /payroll/sheet-lines` × mỗi kỳ trong khung (`useQueries` + `payrollSheetLinesOptions`) | `tongKyLuong()` |
+| Chi phí theo phòng ban | `sheet-lines` của kỳ theo dõi | `chiPhiTheoPhongBan()` |
+| Chờ phê duyệt · Trình lương | `GET /payroll-periods` | `kyChoPheDuyet()` / `kyNenTrinh()` |
+| Tổng giờ tăng ca | `GET /payroll-data/overtime` (kỳ theo dõi + kỳ trước) | `tongHopTangCa()` |
+
+- **Không tính lại lương.** Quỹ lương = Σ`totalCompanyCost`, thực lĩnh = Σ`netTakeHomeSalary` — cùng
+  hai cột ở màn Bảng lương. `PayrollPeriodApiItem.totalGrossSalary/totalNetSalary` là field FE khai
+  nhưng **BE không trả** (model `PayrollPeriod` không có cột đó) — đừng dùng, chúng luôn `undefined`.
+- **Hợp đồng lấy từ hồ sơ nhân viên** (`loai_hop_dong` 3 nhóm, `ngay_hieu_luc_toi` do BE tính lúc
+  đọc) — không gọi `/hrm/hop-dong` theo từng người. Hạn chế đã biết: người đã ký sẵn hợp đồng gia hạn
+  bắt đầu SAU ngày hết hạn của hợp đồng hiện hành vẫn hiện trong "sắp kết thúc" cho tới khi hợp đồng
+  mới có hiệu lực.
+- **Quyền xem lương:** cả nhóm `/payroll-*` trả 403 cho người không có quyền. `useKyLuongDashboard`
+  chỉ bật `usePayrollPeriodList(undefined, { enabled })` khi `useQuyenXemLuong().daXacDinh` (cờ mới:
+  danh sách nhân viên đã tải xong hoặc là OWNER) — tránh một 403 + một retry vô ích lúc danh sách
+  còn tải. Khối lương hiện lời nhắc `LOI_KHONG_CO_QUYEN_LUONG` (qua prop `chan` của `TheDashboard`),
+  khối nhân sự vẫn hiện. Lỗi API đọc thẳng `message` của BE — 403 thiếu quyền lương đã mang đúng câu
+  E-hrm-058, đừng tự đổi mọi 403 thành câu đó (403 của guard module/tenant là chuyện khác).
+- **Kỳ theo dõi** = kỳ của tháng này, chưa có thì kỳ mới nhất (`chonKyTheoDoi`). Lối tắt chấm công /
+  tăng ca / bảng lương mở màn đích với kỳ đã chọn sẵn qua `luuKyLuongDaChon()` — cặp
+  `docKyLuongDaChon`/`luuKyLuongDaChon` ở `useCurrentPayrollPeriod.ts` là nơi DUY NHẤT đụng khóa
+  `localStorage` (Provider cũng gọi qua đó), có try/catch khi trình duyệt chặn lưu trữ.
+- **Trạng thái kỳ dùng chung:** `TRANG_THAI_KY` (nhãn + màu), `kyDaKhoaSo()` và `tenKyMacDinh()` ở
+  `_shared/constants.ts` — `KyLuongSelector`, `PayrollPeriodContext` (`isLocked`) và Dashboard cùng đọc.
+- **Biểu đồ vẽ SVG/HTML thuần** (`components/dashboard/charts/`) — dự án chưa có thư viện biểu đồ, ba
+  loại cần dùng không đáng thêm dependency. Màu dữ liệu cố định (`mauBieuDo.ts`, đã chạy kiểm bảng
+  màu cho người mù màu trên nền Paper sáng/tối), tách khỏi màu accent người dùng chọn. Bề rộng đo
+  bằng `useElementWidth` (cùng lõi đo hai lớp với `useElementHeight`, `features/hddt/hooks/`).
+- **Nợ hiệu năng đã biết:** "Xu hướng lương" gọi tối đa 6 `sheet-lines`; kỳ nháp tính live cả bảng
+  lương chỉ để lấy 4 tổng. Cách triệt để là một endpoint BE trả tổng theo kỳ — chưa làm (ngoài phạm vi
+  thuần FE).
+
+Kiểm chứng: `npx tsc -b` exit 0 · `npm run lint` 0 lỗi · `vite build` thành công. Giao diện soát bằng
+trang preview tạm với dữ liệu giả (sáng, tối, không có quyền lương, rỗng, màn 1000/1280/1440px), đã
+xóa sau khi soát. **Chưa chạy trên tenant thật** (cần đăng nhập).

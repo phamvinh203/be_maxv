@@ -10,7 +10,7 @@ Vào phân hệ, bạn sẽ thấy một dải tab lớn ở trên cùng gồm 8
 
 | Tab | Dùng để làm gì |
 |---|---|
-| **Dashboard** | Xem nhanh số nhân viên đang làm, số phòng ban, những hợp đồng sắp hết hạn cần xử lý. |
+| **Dashboard** | Lối tắt dùng hằng ngày, biểu đồ lương 6 tháng, chi phí theo phòng ban, tình hình nhân sự, và các danh sách cần để ý (sinh nhật, hợp đồng sắp hết, kỳ chờ duyệt, giờ tăng ca). |
 | **Dữ liệu nhân viên** | Quản lý Phòng ban, Nhân viên, Người phụ thuộc. |
 | **Cấu hình mặc định** | Cài các tham số nghiệp vụ dùng chung: ngày công, bảo hiểm, thuế, ca làm việc, lịch nghỉ lễ. |
 | **Cài đặt lương** | Khai danh mục các khoản lương/phụ cấp, cấu trúc lương chuẩn của công ty, và set mức lương cho từng người. |
@@ -21,7 +21,13 @@ Vào phân hệ, bạn sẽ thấy một dải tab lớn ở trên cùng gồm 8
 
 Hướng dẫn này đi lần lượt qua từng khu theo đúng thứ tự công việc thực tế: khai tổ chức và nhân viên trước, rồi tới cấu hình tham số, cài đặt lương, nhập liệu theo từng kỳ, và cuối cùng xem bảng lương ra kết quả.
 
-**Màn hình Dashboard** cho bạn cái nhìn tổng quan mỗi khi mở phân hệ: số nhân viên đang làm/đã nghỉ, số phòng ban, số người phụ thuộc đã đăng ký giảm trừ, số người tham gia công đoàn, biểu đồ nhân viên theo từng phòng ban, và một bảng cảnh báo các hợp đồng sắp hết hạn trong 90 ngày tới hoặc đã quá hạn mà chưa ký tiếp — bấm "Mở danh sách" trên cảnh báo để nhảy thẳng tới danh sách nhân viên cần xử lý.
+**Màn hình Dashboard** cho bạn cái nhìn tổng quan mỗi khi mở phân hệ, chia làm ba tầng:
+
+- **Thao tác nhanh** — bốn nút: *Thêm nhân viên mới* (mở ngay hộp thoại hồ sơ), *Chấm công tháng này* và *Nhập tăng ca* (mở đúng kỳ lương của tháng hiện tại; tháng này chưa có kỳ thì hệ thống hỏi tạo kỳ mới trước), *Trình lương* (hiện tổng số nhân viên, thu nhập, thực lĩnh, quỹ lương của kỳ nháp rồi mới gửi trình duyệt; muốn soát từng dòng thì bấm "Xem bảng lương").
+- **Biểu đồ** — *Xu hướng lương 6 tháng* (cột là quỹ lương, đường là thực lĩnh; tháng chưa tạo kỳ để trống; kỳ chưa khóa sổ ghi "Tạm tính"), *Chi phí theo phòng ban* của kỳ gần nhất, và *Tình hình nhân sự* (số người đang làm, vào làm tháng này, đã nghỉ; cơ cấu loại hợp đồng và giới tính; nhân viên theo phòng ban; số người mới vào làm 6 tháng). Rê chuột lên cột/thanh để xem số chi tiết.
+- **Danh sách cần để ý** — *Sinh nhật tháng này*, *Nhân viên sắp kết thúc hợp đồng* (hết hạn trong 90 ngày tới hoặc đã quá hạn; còn dưới 30 ngày được đánh dấu gấp), *Chờ phê duyệt* (kỳ lương đã trình hoặc đã khóa sổ — bấm để mở đúng kỳ ở màn Bảng lương), và *Tổng giờ tăng ca* của kỳ gần nhất kèm những người vượt ngưỡng giờ tăng ca/tháng. Bấm vào tên một nhân viên để xem hồ sơ.
+
+Các khối về lương (xu hướng lương, chi phí phòng ban, chờ phê duyệt, tăng ca và ba nút thao tác liên quan) chỉ hiện số liệu với tài khoản được cấp quyền xem dữ liệu lương; tài khoản khác thấy lời nhắc liên hệ chủ tài khoản.
 
 ---
 

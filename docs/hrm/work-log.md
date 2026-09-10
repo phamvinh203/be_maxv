@@ -320,3 +320,36 @@
 - Xác nhận đơn vị `withholdingTaxRate`: đối chiếu `be_maxv/prisma/tenant/schema.prisma`:1143 (`@default(10.0) @db.Decimal(5,2)`) + `generalSettings.validator.ts`:160 (`z.number().min(0).max(100)`) + service mặc định `generalSettings.service.ts`:139 (`10.0`) + `payrollCalculation.service.ts`:586 (`personalIncomeTax = ... * (withholdingTaxRate / 100)`) — xác nhận **số nguyên phần trăm** (10 = 10%), khớp đúng cách `bhxh_nv`/`bhyt_nv` đang lưu (8, 1.5 — không phải 0.08/0.015). FE giữ nguyên quy ước này ở cả 3 lớp (API type, domain field, giá trị mặc định, phép kiểm 0–100).
 - Commit: chưa commit
 
+## [2026-09-10 22:30] frontend-engineer — code mới (yêu cầu trực tiếp của chủ dự án, ngoài luồng 3 Amigos — thuần UI, không đụng `be_maxv`)
+- Nhiệm vụ: làm lại tab Dashboard HRM theo yêu cầu — Thao tác nhanh (Thêm nhân viên mới / Chấm công tháng này / Nhập tăng ca / Trình lương), biểu đồ (Xu hướng lương 6 tháng / Chi phí theo phòng ban / Tình hình nhân sự), danh sách (Sinh nhật tháng này / Nhân viên sắp kết thúc hợp đồng / Chờ phê duyệt / Tổng giờ tăng ca). Đồng thời bỏ kho giả: Dashboard trước đọc `mock/hooks/tongQuan.ts`, giờ đọc API thật.
+- Đã sửa:
+  - `hdđt_maxv/src/features/hrm/components/dashboard/HrmDashboard.tsx` — viết lại toàn bộ, ghép 9 khối + dialog hồ sơ nhân viên (thêm/xem/sửa).
+  - MỚI `components/dashboard/`: `ThaoTacNhanh.tsx` (kèm hộp thoại tạo kỳ tháng này), `TrinhLuongDialog.tsx`, `XuHuongLuongCard.tsx`, `ChiPhiPhongBanCard.tsx`, `TinhHinhNhanSuCard.tsx`, `SinhNhatCard.tsx`, `HopDongSapHetCard.tsx`, `ChoPheDuyetCard.tsx`, `TangCaCard.tsx`, `TheDashboard.tsx`, `dieuHuong.ts`, `dinhDang.ts`, `charts/BieuDoCot.tsx`, `charts/ThanhNgang.tsx`, `charts/ThanhTyLe.tsx`, `charts/mauBieuDo.ts`.
+  - MỚI `hdđt_maxv/src/features/hrm/api/dashboard/dashboardQueries.ts` — hook ghép truy vấn (dùng chung `queryKey` với các màn khác), chặn gọi nhóm `/payroll-*` tới khi biết quyền xem lương.
+  - MỚI `hdđt_maxv/src/features/hrm/calculations/dashboard/tongQuan.ts` — hàm gom số thuần (không tính lại lương).
+  - `hdđt_maxv/src/features/hrm/api/du_lieu_tinh_luong/payrollPeriodsQueries.ts`:31 — `usePayrollPeriodList` nhận thêm `options.enabled` (tùy chọn, mặc định như cũ).
+  - `hdđt_maxv/src/features/hrm/api/du_lieu_nhan_vien/nhanVienQueries.ts`:207 — thêm `useNhanVienApiRows()` (dòng BE thô, cùng truy vấn).
+  - `hdđt_maxv/src/features/hrm/components/du_lieu_tinh_luong/useCurrentPayrollPeriod.ts` — export `KHOA_KY_LUONG_DA_CHON` + `chonTruocKyLuong()`; `PayrollPeriodContext.tsx`:4 dùng lại khóa này thay hằng số riêng (giá trị khóa không đổi).
+  - XÓA `hdđt_maxv/src/features/hrm/mock/hooks/tongQuan.ts` (không còn ai import).
+  - `docs/HDSD_hrm.md`:13,24 — mô tả Dashboard mới; `docs/hrm/architecture/dev-notes.md` Mục 2.15.
+- Liên kết: BR-hrm-059 (quyền xem lương, `dbCoQuyenLuongPayroll`), ADR-010 (quỹ lương/thực lĩnh lấy nguyên từ `/payroll/sheet-lines`).
+- Kiểm chứng: `npx tsc -b` exit 0 · `npm run lint` 0 lỗi · `vite build` thành công (2 cảnh báo Rolldown có từ trước). Soát giao diện bằng trang preview tạm dữ liệu giả qua Playwright (sáng/tối, không có quyền lương, rỗng, 1000/1280/1440px) — đã xóa trang preview. **Chưa chạy trên tenant thật** (cần đăng nhập, không tự nhập mật khẩu).
+- Commit: chưa commit
+
+## [2026-09-10 23:15] frontend-engineer — refactor (`/simplify` trên diff Dashboard — tái dùng, gọn, đúng tầng; không đổi hành vi)
+- Nhiệm vụ: soát lại diff Dashboard theo 4 góc (tái dùng / đơn giản hóa / hiệu năng / đúng tầng) và sửa các điểm trùng lặp, thay cho vài quyết định ở phiên 22:30.
+- Đã sửa:
+  - `hdđt_maxv/src/features/hrm/_shared/constants.ts`:431,447 — MỚI `TRANG_THAI_KY` + `kyDaKhoaSo()` + `tenKyMacDinh()` (một nguồn cho vòng đời kỳ lương). `components/du_lieu_tinh_luong/KyLuongSelector.tsx`:132 `statusChip()` đọc nhãn/màu từ đó (giữ icon), 4 chỗ tên kỳ mặc định dùng `tenKyMacDinh`; `PayrollPeriodContext.tsx`:31 `isLocked = kyDaKhoaSo(...)`.
+  - `hdđt_maxv/src/features/hrm/components/du_lieu_tinh_luong/useCurrentPayrollPeriod.ts`:20,32 — thay `KHOA_KY_LUONG_DA_CHON`/`chonTruocKyLuong` (phiên 22:30) bằng cặp `docKyLuongDaChon`/`luuKyLuongDaChon`, khóa không còn export; Provider đọc/ghi qua cặp này (có try/catch) thay vì gọi `localStorage` trực tiếp.
+  - `hdđt_maxv/src/features/hrm/api/du_lieu_tinh_luong/payrollCalculationQueries.ts`:63 — MỚI `payrollSheetLinesOptions()` (`queryOptions`); `usePayrollSheetLinesQuery` và `useQueries` của Dashboard cùng dùng, hết cặp khóa khai tay phải "giữ khớp".
+  - `hdđt_maxv/src/features/hrm/api/du_lieu_nhan_vien/quyenLuongQueries.ts`:56 — thêm cờ `daXacDinh`; Dashboard không còn đăng ký thêm truy vấn nhân viên chỉ để đọc `isPending`.
+  - `hdđt_maxv/src/features/hrm/api/du_lieu_nhan_vien/nhanVienQueries.ts`:191 — export thẳng `useDanhSachNhanVien`, bỏ hook bọc `useNhanVienApiRows` (phiên 22:30).
+  - `hdđt_maxv/src/features/hddt/hooks/useElementHeight.ts`:37 — tách lõi đo hai lớp dùng chung, thêm `useElementWidth`; `useElementHeight` giữ nguyên hành vi. Biểu đồ Dashboard dùng hook này thay `useDoRongKhung` tự viết (hook cũ hỏng khi tab ẩn — ResizeObserver bị hoãn).
+  - `api/dashboard/dashboardQueries.ts` — bỏ `loiLuong` (BE đã trả đúng câu E-hrm-058 cho 403; tự đổi mọi 403 là gắn nhầm nhãn cho 403 của guard module).
+  - `calculations/dashboard/tongQuan.ts` — thêm `thangCuaKy()`, dùng lại `soThuTuThang` thay `year*12+month` rải rác; `gopPhanDuoi` tự gắn nhãn + cờ `laKhac`; bỏ trường/tham số không ai dùng (`chuaCoHopDong`, `DongSinhNhat.thang`, `DongHopDongSapHet.ten_pb`, `nguong`, `soDong`).
+  - `components/dashboard/TheDashboard.tsx` — prop `chan` (không có quyền / lỗi / đang tải) thay chuỗi `if` lặp ở 7 thẻ; thêm `DanhSach`/`DongDanhSach`/`SoSanh` dùng chung; `ThaoTacNhanh` dùng lại khung này. `dinhDang.ts` — bỏ `ngayThang` (không dùng), `gioVn` → `soGio` (tránh trùng tên `gioVn` của khu Tăng ca), thêm `nhanCotThang`.
+- Cố ý KHÔNG làm: endpoint BE tổng theo kỳ cho "Xu hướng lương" (ngoài phạm vi FE — ghi nợ ở dev-notes 2.15); tái dùng `veDongBangLuong`+`tongBangLuong` cho tổng kỳ (map 1:1 ba trường, kéo cả dòng 44 trường chỉ để cộng 3 số); `visuallyHidden` của `@mui/utils` (phải thêm dependency cho 11 dòng); gỡ `NhanVienDialog` khi đóng (mất hiệu ứng đóng, giống cách `NhanVienTable` đang làm).
+- Liên kết: không đổi nghiệp vụ.
+- Kiểm chứng: `npx tsc -b` exit 0 · `npm run lint` 0 lỗi. Soát lại bằng trang preview tạm (Playwright, dữ liệu giả, chế độ thường + không có quyền lương) — không lỗi console, bố cục như trước; đã xóa trang preview.
+- Commit: chưa commit
+
