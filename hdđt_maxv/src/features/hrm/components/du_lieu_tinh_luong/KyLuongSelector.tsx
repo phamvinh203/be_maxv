@@ -16,6 +16,7 @@ import LockRounded from "@mui/icons-material/LockRounded";
 import LockOpenRounded from "@mui/icons-material/LockOpenRounded";
 import SendRounded from "@mui/icons-material/SendRounded";
 import CheckCircleRounded from "@mui/icons-material/CheckCircleRounded";
+import UndoRounded from "@mui/icons-material/UndoRounded";
 import { toast } from "react-toastify";
 import { getApiError } from "@/lib/apiClient";
 import { useCurrentPayrollPeriod } from "./useCurrentPayrollPeriod";
@@ -23,6 +24,7 @@ import {
   useApprovePayrollPeriod,
   useCreatePayrollPeriod,
   useLockPayrollPeriod,
+  useRejectPayrollPeriod,
   useReopenPayrollPeriod,
   useSubmitPayrollPeriod,
 } from "../../api/du_lieu_tinh_luong/payrollPeriodsQueries";
@@ -50,6 +52,7 @@ export default function KyLuongSelector() {
   const taoKyMut = useCreatePayrollPeriod();
   const submitMut = useSubmitPayrollPeriod();
   const lockMut = useLockPayrollPeriod();
+  const rejectMut = useRejectPayrollPeriod();
   const reopenMut = useReopenPayrollPeriod();
   const approveMut = useApprovePayrollPeriod();
 
@@ -83,6 +86,16 @@ export default function KyLuongSelector() {
     try {
       await submitMut.mutateAsync(selectedPeriodId);
       toast.success("Đã trình duyệt kỳ lương.");
+    } catch (err) {
+      toast.error(getApiError(err));
+    }
+  };
+
+  const handleTuChoi = async () => {
+    if (!selectedPeriodId) return;
+    try {
+      await rejectMut.mutateAsync(selectedPeriodId);
+      toast.success("Đã từ chối, trả kỳ lương về bản nháp.");
     } catch (err) {
       toast.error(getApiError(err));
     }
@@ -212,30 +225,56 @@ export default function KyLuongSelector() {
             )}
 
             {selectedPeriod.status === "PENDING_REVIEW" && (
-              <Button
-                size="small"
-                variant="contained"
-                color="success"
-                startIcon={<CheckCircleRounded />}
-                onClick={handleDuyet}
-                disabled={approveMut.isPending}
-                sx={{ textTransform: "none" }}
-              >
-                Duyệt kỳ lương
-              </Button>
+              <>
+                <Button
+                  size="small"
+                  variant="outlined"
+                  color="inherit"
+                  startIcon={<UndoRounded />}
+                  onClick={handleTuChoi}
+                  disabled={rejectMut.isPending}
+                  sx={{ textTransform: "none" }}
+                >
+                  Từ chối
+                </Button>
+                <Button
+                  size="small"
+                  variant="contained"
+                  color="warning"
+                  startIcon={<LockRounded />}
+                  onClick={handleKhoaSo}
+                  disabled={lockMut.isPending}
+                  sx={{ textTransform: "none" }}
+                >
+                  Khóa sổ
+                </Button>
+              </>
             )}
 
             {selectedPeriod.status === "LOCKED" && (
-              <Button
-                size="small"
-                variant="outlined"
-                color="warning"
-                startIcon={<LockOpenRounded />}
-                onClick={() => setMoMoLai(true)}
-                sx={{ textTransform: "none" }}
-              >
-                Mở lại kỳ lương
-              </Button>
+              <>
+                <Button
+                  size="small"
+                  variant="outlined"
+                  color="warning"
+                  startIcon={<LockOpenRounded />}
+                  onClick={() => setMoMoLai(true)}
+                  sx={{ textTransform: "none" }}
+                >
+                  Mở lại kỳ lương
+                </Button>
+                <Button
+                  size="small"
+                  variant="contained"
+                  color="success"
+                  startIcon={<CheckCircleRounded />}
+                  onClick={handleDuyet}
+                  disabled={approveMut.isPending}
+                  sx={{ textTransform: "none" }}
+                >
+                  Duyệt kỳ lương
+                </Button>
+              </>
             )}
           </Stack>
         )}

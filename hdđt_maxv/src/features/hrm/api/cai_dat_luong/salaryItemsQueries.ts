@@ -61,6 +61,7 @@ function veKieuFe(r: SalaryItemApiItem): KhoanLuong {
     ghi_chu: r.description ?? "",
     tinh_bhxh: r.isSocialInsurance,
     chiu_thue_tncn: r.isTaxable,
+    phu_cap_an_trua: r.isMealAllowance,
     ty_le: r.defaultRate ?? 0,
     status: r.status === "ACTIVE" ? "1" : "0",
   };
@@ -181,6 +182,7 @@ export function useLuuKhoanLuong(): (
             description: values.ghi_chu || null,
             isSocialInsurance: values.tinh_bhxh,
             isTaxable: values.chiu_thue_tncn,
+            isMealAllowance: values.phu_cap_an_trua,
             defaultRate: values.ty_le,
             status: values.status === "1" ? "ACTIVE" : "INACTIVE",
           },
@@ -194,6 +196,7 @@ export function useLuuKhoanLuong(): (
         description: values.ghi_chu || null,
         isSocialInsurance: values.tinh_bhxh,
         isTaxable: values.chiu_thue_tncn,
+        isMealAllowance: values.phu_cap_an_trua,
         defaultRate: values.ty_le,
       });
     },

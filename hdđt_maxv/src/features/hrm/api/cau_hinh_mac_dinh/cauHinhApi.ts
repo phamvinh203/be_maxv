@@ -62,6 +62,12 @@ export interface GeneralSettingApiData {
   personalDeduction: string;
   dependentDeduction: string;
 
+  // ── 3 tham số pháp lý mới (ADR-010): trần miễn thuế ăn trưa + khấu trừ tại nguồn HĐ
+  //    thử việc/thời vụ — cũng là cột Decimal, cùng khuôn 20 cột trên ──
+  lunchAllowanceTaxFreeCap: string;
+  withholdingTaxRate: string;
+  withholdingTaxThreshold: string;
+
   // ── 5 cột Int: số thật ──
   baseAnnualLeaveDays: number;
   seniorityYearsForExtraDay: number;
@@ -116,6 +122,10 @@ export interface UpdateGeneralSettingsApiBody {
   unionFeeCompanyRate?: number;
   personalDeduction?: number;
   dependentDeduction?: number;
+
+  lunchAllowanceTaxFreeCap?: number;
+  withholdingTaxRate?: number;
+  withholdingTaxThreshold?: number;
 
   baseAnnualLeaveDays?: number;
   seniorityYearsForExtraDay?: number;

@@ -92,6 +92,7 @@ export function khoanLuongRong(loai: LoaiKhoanLuong): KhoanLuongFormValues {
     tinh_bhxh: moTa.macDinhBhxh,
     chiu_thue_tncn: moTa.macDinhTncn,
     ty_le: 0,
+    phu_cap_an_trua: false,
     status: "1",
   };
 }

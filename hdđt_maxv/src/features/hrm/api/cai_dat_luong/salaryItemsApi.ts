@@ -21,6 +21,8 @@ export interface SalaryItemApiItem {
   description: string | null;
   isSocialInsurance: boolean;
   isTaxable: boolean;
+  /** Phụ cấp ăn trưa — miễn thuế trong hạn mức `lunchAllowanceTaxFreeCap` (ADR-010). */
+  isMealAllowance: boolean;
   defaultRate: number | null;
   status: SalaryItemStatusApi;
   createdAt: string;
@@ -41,6 +43,7 @@ export interface CreateSalaryItemApiBody {
   description?: string | null;
   isSocialInsurance?: boolean;
   isTaxable?: boolean;
+  isMealAllowance?: boolean;
   defaultRate?: number | null;
 }
 
@@ -50,6 +53,7 @@ export interface UpdateSalaryItemApiBody {
   description?: string | null;
   isSocialInsurance?: boolean;
   isTaxable?: boolean;
+  isMealAllowance?: boolean;
   defaultRate?: number | null;
   status?: SalaryItemStatusApi;
 }

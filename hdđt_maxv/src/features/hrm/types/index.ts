@@ -217,6 +217,14 @@ export interface CauHinhMacDinh {
   giam_tru_ban_than: number;
   giam_tru_npt: number;
 
+  // Miễn trừ & khấu trừ đặc biệt (ADR-010)
+  /** Trần miễn thuế phụ cấp ăn trưa (VNĐ/tháng, quy đổi theo công). */
+  tran_mien_thue_an_trua: number;
+  /** Tỷ lệ khấu trừ thuế TNCN tại nguồn cho HĐ thử việc/thời vụ (%, số nguyên phần trăm — cùng đơn vị `bhxh_nv`). */
+  ty_le_khau_tru_thu_viec: number;
+  /** Ngưỡng thu nhập/lần chi trả để áp khấu trừ tại nguồn (VNĐ). */
+  nguong_khau_tru_thu_viec: number;
+
   /**
    * Biểu thuế lũy tiến từng phần — **số bậc thay đổi được (N bậc)**, tối thiểu 2 bậc
    * (BR-hrm-081/082). Biểu chuẩn theo Điều 22 là **7 bậc**, trần 35%; bậc cuối luôn là bậc
@@ -287,6 +295,8 @@ export interface KhoanLuong {
   chiu_thue_tncn: boolean;
   /** Chỉ có nghĩa với loại `luong_phan_tram`; các loại khác luôn là 0. */
   ty_le: number;
+  /** Phụ cấp ăn trưa — miễn thuế trong hạn mức `tran_mien_thue_an_trua` của Cấu hình mặc định (ADR-010). */
+  phu_cap_an_trua: boolean;
   status: TrangThai;
 }
 

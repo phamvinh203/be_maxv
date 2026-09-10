@@ -163,6 +163,8 @@ export interface MoTaLoaiKhoan {
   coBhxh: boolean;
   /** Có hiện ô nhập tỷ lệ phần trăm không. */
   coTyLe: boolean;
+  /** Có hiện ô tích "Phụ cấp ăn trưa (miễn thuế trong hạn mức)" không (ADR-010). */
+  coMienAnTrua: boolean;
   macDinhBhxh: boolean;
   macDinhTncn: boolean;
 }
@@ -178,6 +180,7 @@ export const LOAI_KHOAN_LUONG: MoTaLoaiKhoan[] = [
     moTa: "Khoản trả cố định hằng tháng theo hợp đồng.",
     coBhxh: true,
     coTyLe: false,
+    coMienAnTrua: false,
     macDinhBhxh: true,
     macDinhTncn: true,
   },
@@ -191,6 +194,7 @@ export const LOAI_KHOAN_LUONG: MoTaLoaiKhoan[] = [
     moTa: "Hỗ trợ ăn ca, xăng xe, điện thoại — không vào gốc đóng BHXH.",
     coBhxh: false,
     coTyLe: false,
+    coMienAnTrua: true,
     macDinhBhxh: false,
     macDinhTncn: true,
   },
@@ -204,6 +208,7 @@ export const LOAI_KHOAN_LUONG: MoTaLoaiKhoan[] = [
     moTa: "Trả theo khối lượng công việc đã nghiệm thu.",
     coBhxh: true,
     coTyLe: false,
+    coMienAnTrua: false,
     macDinhBhxh: true,
     macDinhTncn: true,
   },
@@ -217,6 +222,7 @@ export const LOAI_KHOAN_LUONG: MoTaLoaiKhoan[] = [
     moTa: "Hoa hồng tính theo tỷ lệ trên doanh số.",
     coBhxh: true,
     coTyLe: true,
+    coMienAnTrua: false,
     macDinhBhxh: false,
     macDinhTncn: true,
   },
@@ -230,6 +236,7 @@ export const LOAI_KHOAN_LUONG: MoTaLoaiKhoan[] = [
     moTa: "Trả theo mức hoàn thành chỉ tiêu.",
     coBhxh: true,
     coTyLe: false,
+    coMienAnTrua: false,
     macDinhBhxh: false,
     macDinhTncn: true,
   },
@@ -243,6 +250,7 @@ export const LOAI_KHOAN_LUONG: MoTaLoaiKhoan[] = [
     moTa: "Thưởng lễ, tết, thành tích — trả không định kỳ.",
     coBhxh: true,
     coTyLe: false,
+    coMienAnTrua: false,
     macDinhBhxh: false,
     macDinhTncn: true,
   },
@@ -256,6 +264,7 @@ export const LOAI_KHOAN_LUONG: MoTaLoaiKhoan[] = [
     moTa: "Trả khi đi làm đủ công, không nghỉ không phép.",
     coBhxh: true,
     coTyLe: false,
+    coMienAnTrua: false,
     macDinhBhxh: false,
     macDinhTncn: true,
   },

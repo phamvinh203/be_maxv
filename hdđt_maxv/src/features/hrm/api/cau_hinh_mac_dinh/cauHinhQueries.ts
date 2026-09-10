@@ -134,6 +134,10 @@ function veKieuFeCauHinh(r: GeneralSettingApiData): CauHinhMacDinh {
     giam_tru_ban_than: Number(r.personalDeduction),
     giam_tru_npt: Number(r.dependentDeduction),
 
+    tran_mien_thue_an_trua: Number(r.lunchAllowanceTaxFreeCap),
+    ty_le_khau_tru_thu_viec: Number(r.withholdingTaxRate),
+    nguong_khau_tru_thu_viec: Number(r.withholdingTaxThreshold),
+
     bac_thue: veKieuFeBacThue(r.taxBrackets ?? []),
   };
 }
@@ -184,6 +188,9 @@ function veKieuBe(fe: CauHinhMacDinh): UpdateGeneralSettingsApiBody {
     unionFeeCompanyRate: fe.kinh_phi_cong_doan_ct,
     personalDeduction: fe.giam_tru_ban_than,
     dependentDeduction: fe.giam_tru_npt,
+    lunchAllowanceTaxFreeCap: fe.tran_mien_thue_an_trua,
+    withholdingTaxRate: fe.ty_le_khau_tru_thu_viec,
+    withholdingTaxThreshold: fe.nguong_khau_tru_thu_viec,
     taxBrackets: veKieuBeBacThue(fe.bac_thue),
   };
 }
@@ -231,6 +238,12 @@ export function cauHinhMacDinhGoc(): CauHinhMacDinh {
     kinh_phi_cong_doan_ct: 2,
     giam_tru_ban_than: 11000000,
     giam_tru_npt: 4400000,
+    // ADR-010: trần miễn thuế ăn trưa (TT 26/2016/TT-BLĐTBXH), tỷ lệ + ngưỡng khấu trừ tại
+    // nguồn HĐ thử việc/thời vụ (Điều 25 TT 111/2013). `ty_le_khau_tru_thu_viec` là số nguyên
+    // phần trăm (10 = 10%), CÙNG đơn vị với `bhxh_nv`/`bhyt_nv` ở trên — KHÔNG phải 0.10.
+    tran_mien_thue_an_trua: 730000,
+    ty_le_khau_tru_thu_viec: 10,
+    nguong_khau_tru_thu_viec: 2000000,
     bac_thue: [
       { khoang: 5000000, thue_suat: 5 },
       { khoang: 10000000, thue_suat: 10 },
@@ -315,6 +328,22 @@ export function useLuuCauHinh() {
       }
       if (cauHinh.luong_toi_thieu_vung <= 0) {
         throw new Error("Lương tối thiểu vùng phải lớn hơn 0.");
+      }
+      /*
+       * Khớp `withholdingTaxRate` máy chủ: `z.number().min(0).max(100)`
+       * (`generalSettings.validator.ts:160`) — đơn vị số nguyên phần trăm, không phải 0..1.
+       */
+      if (
+        cauHinh.ty_le_khau_tru_thu_viec < 0 ||
+        cauHinh.ty_le_khau_tru_thu_viec > 100
+      ) {
+        throw new Error("Tỷ lệ khấu trừ thuế thử việc/thời vụ phải trong khoảng 0–100%.");
+      }
+      if (cauHinh.nguong_khau_tru_thu_viec <= 0) {
+        throw new Error("Ngưỡng khấu trừ thuế thử việc/thời vụ phải lớn hơn 0.");
+      }
+      if (cauHinh.tran_mien_thue_an_trua < 0) {
+        throw new Error("Trần miễn thuế ăn trưa không được âm.");
       }
 
       const bac = cauHinh.bac_thue;

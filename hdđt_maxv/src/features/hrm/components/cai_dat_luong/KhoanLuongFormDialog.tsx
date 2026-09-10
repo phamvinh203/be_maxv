@@ -60,6 +60,7 @@ export default function KhoanLuongFormDialog({ open, onClose, loai, khoan }: Pro
             tinh_bhxh: khoan.tinh_bhxh,
             chiu_thue_tncn: khoan.chiu_thue_tncn,
             ty_le: khoan.ty_le,
+            phu_cap_an_trua: khoan.phu_cap_an_trua,
             status: khoan.status,
           }
         : khoanLuongRong(loai),
@@ -161,8 +162,30 @@ export default function KhoanLuongFormDialog({ open, onClose, loai, khoan }: Pro
                   </Typography>
                 </Box>
               }
-              sx={{ display: "flex", alignItems: "flex-start" }}
+              sx={{ display: "flex", alignItems: "flex-start", mb: moTa.coMienAnTrua ? 1 : 0 }}
             />
+            {moTa.coMienAnTrua && (
+              <FormControlLabel
+                control={
+                  <Checkbox
+                    checked={values.phu_cap_an_trua}
+                    onChange={(e) => dat("phu_cap_an_trua", e.target.checked)}
+                  />
+                }
+                label={
+                  <Box>
+                    <Typography variant="body2">
+                      Phụ cấp ăn trưa (miễn thuế trong hạn mức)
+                    </Typography>
+                    <Typography variant="caption" color="text.secondary">
+                      Phần trong trần miễn thuế ở Cấu hình mặc định được trừ khỏi thu nhập chịu
+                      thuế; phần vượt trần vẫn tính thuế bình thường.
+                    </Typography>
+                  </Box>
+                }
+                sx={{ display: "flex", alignItems: "flex-start" }}
+              />
+            )}
           </Box>
 
           {/* Chỉ có ở chế độ sửa — khoản mới luôn đang dùng. */}

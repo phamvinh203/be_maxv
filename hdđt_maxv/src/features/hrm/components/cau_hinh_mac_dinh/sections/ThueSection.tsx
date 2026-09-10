@@ -11,6 +11,7 @@ import AddRounded from "@mui/icons-material/AddRounded";
 import DeleteOutlineRounded from "@mui/icons-material/DeleteOutlineRounded";
 import PersonRemoveRounded from "@mui/icons-material/PersonRemoveRounded";
 import AccountBalanceRounded from "@mui/icons-material/AccountBalanceRounded";
+import GavelRounded from "@mui/icons-material/GavelRounded";
 import { nhanNguongBacThue } from "../../../_shared/constants";
 import { tienVn } from "../../../_shared/format";
 import type { BacThue, CauHinhMacDinh } from "../../../types";
@@ -88,6 +89,34 @@ export default function ThueSection({ values, onChange }: Props) {
           value={values.giam_tru_npt}
           onChange={(v) => dat("giam_tru_npt", v)}
           helperText="Nhân với số người phụ thuộc đã đăng ký giảm trừ."
+        />
+      </NhomCauHinh>
+
+      <NhomCauHinh
+        tieuDe="Miễn trừ & khấu trừ đặc biệt"
+        moTa="Trần miễn thuế phụ cấp ăn trưa (quy đổi theo công thực tế) và tỷ lệ khấu trừ thuế TNCN tại nguồn áp cho hợp đồng thử việc/thời vụ trước khi trả thu nhập."
+        icon={<GavelRounded color="primary" />}
+        soCot={3}
+      >
+        <TienField
+          label="Trần miễn thuế ăn trưa (VNĐ/tháng)"
+          value={values.tran_mien_thue_an_trua}
+          onChange={(v) => dat("tran_mien_thue_an_trua", v)}
+          helperText="Phần phụ cấp ăn trưa vượt mức này bị tính vào thu nhập chịu thuế."
+        />
+        <SoField
+          label="Tỷ lệ khấu trừ thử việc/thời vụ"
+          donVi="%"
+          buocNhay={0.5}
+          value={values.ty_le_khau_tru_thu_viec}
+          onChange={(v) => dat("ty_le_khau_tru_thu_viec", v)}
+          helperText="Khấu trừ ngay 10% trước khi trả cho HĐ thử việc/thời vụ (Điều 25 TT 111/2013)."
+        />
+        <TienField
+          label="Ngưỡng áp dụng khấu trừ (VNĐ/lần)"
+          value={values.nguong_khau_tru_thu_viec}
+          onChange={(v) => dat("nguong_khau_tru_thu_viec", v)}
+          helperText="Chỉ khấu trừ khi thu nhập mỗi lần chi trả từ mức này trở lên."
         />
       </NhomCauHinh>
 
