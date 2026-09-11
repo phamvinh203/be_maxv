@@ -40,16 +40,28 @@ export function maThang(nam: number, thang: number): string {
   return `${nam}-${String(thang).padStart(2, "0")}`;
 }
 
+function laNamNhuan(nam: number): boolean {
+  return (nam % 4 === 0 && nam % 100 !== 0) || nam % 400 === 0;
+}
+
 /**
  * Ngày lễ áp cho một mốc cụ thể.
  *
- * Ngày lặp hằng năm chỉ so ngày–tháng nên áp cho mọi năm; ngày không lặp phải
- * khớp trọn cả năm.
+ * Ngày lặp hằng năm chỉ so ngày–tháng nên áp cho mọi năm — NHƯNG chỉ từ năm ngày lễ được TẠO trở
+ * đi (RVW-512): tạo ngày lễ năm 2026 không được áp ngược cho kỳ 2025 xem lại. Ngày `29/02` lặp chỉ
+ * khớp năm nhuận, năm không nhuận coi như không có ngày lễ đó (không dồn sang 28/02 hay 01/03).
+ * Ngày không lặp phải khớp trọn cả năm.
  */
 function timNgayLe(iso: string, danhSach: NgayLe[]): NgayLe | undefined {
-  return danhSach.find((nl) =>
-    nl.lap_lai_hang_nam ? nl.ngay.slice(5) === iso.slice(5) : nl.ngay === iso,
-  );
+  const namIso = Number(iso.slice(0, 4));
+  return danhSach.find((nl) => {
+    if (!nl.lap_lai_hang_nam) return nl.ngay === iso;
+    const namTao = Number(nl.ngay.slice(0, 4));
+    if (namIso < namTao) return false;
+    const thangNgay = nl.ngay.slice(5);
+    if (thangNgay === "02-29" && !laNamNhuan(namIso)) return false;
+    return thangNgay === iso.slice(5);
+  });
 }
 
 /** Toàn bộ ngày của một tháng, kèm thông tin để dựng bảng chấm công. */

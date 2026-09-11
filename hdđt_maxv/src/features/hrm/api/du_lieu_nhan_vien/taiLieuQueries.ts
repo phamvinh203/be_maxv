@@ -88,17 +88,18 @@ function veKieuApi(values: TaiLieuFormValues): TaiLieuApiBody {
 }
 
 /**
- * Lấy toàn bộ tài liệu của công ty rồi lọc ở client — cùng lý do với người phụ thuộc: danh mục
- * nhỏ, và một query dùng chung thì sửa ở tab này là mọi nơi khác thấy ngay.
+ * Tài liệu của MỘT nhân viên — lọc bằng `ma_nv` phía máy chủ (RVW-513), không tải toàn bộ tài
+ * liệu công ty rồi lọc ở client như trước. Mỗi nhân viên một khóa cache riêng, giống
+ * `hrmHopDongKeys`.
  */
-function useDanhSachTaiLieu() {
+function useDanhSachTaiLieu(maNv: string | null) {
   const { isAuthenticated, currentCompanyId } = useAuth();
   // KHÔNG dùng `placeholderData: (prev) => prev` — xem ghi chú cùng loại ở các file api khác:
   // nó giữ dữ liệu cũ xuyên qua việc đổi công ty.
   return useQuery({
-    queryKey: hrmTaiLieuKeys.list(currentCompanyId),
-    queryFn: () => listTaiLieu(),
-    enabled: isAuthenticated && !!currentCompanyId,
+    queryKey: hrmTaiLieuKeys.list(currentCompanyId, maNv),
+    queryFn: () => listTaiLieu({ ma_nv: maNv ?? undefined }),
+    enabled: isAuthenticated && !!currentCompanyId && !!maNv,
   });
 }
 
@@ -109,12 +110,8 @@ export function useTaiLieuList(maNv: string | null): {
   isError: boolean;
   error: unknown;
 } {
-  const { data, isLoading, isError, error } = useDanhSachTaiLieu();
-  const items = useMemo(
-    () =>
-      maNv ? (data ?? []).filter((r) => r.ma_nv === maNv).map(veKieuFe) : [],
-    [data, maNv],
-  );
+  const { data, isLoading, isError, error } = useDanhSachTaiLieu(maNv);
+  const items = useMemo(() => (data ?? []).map(veKieuFe), [data]);
   return { items, isLoading, isError, error };
 }
 

@@ -23,10 +23,17 @@ export function tienVn(so: number): string {
   return so.toLocaleString("vi-VN");
 }
 
-/** Bỏ mọi ký tự không phải số — dùng cho ô nhập tiền có dấu phân cách. */
+/**
+ * Bỏ mọi ký tự không phải số — dùng cho ô nhập tiền có dấu phân cách.
+ *
+ * CHỦ Ý chỉ nhận số KHÔNG ÂM: dấu `-` bị coi là ký tự rác và loại bỏ cùng các ký tự khác (tiền/mã
+ * số trong HRM không âm) — ô nào thật sự cần nhập số âm phải dùng hàm khác, KHÔNG dùng `chiSo`.
+ * Kẹp trần `MAX_SAFE_INTEGER` để không tràn khi dán chuỗi số quá dài.
+ */
 export function chiSo(text: string): number {
   const so = Number(text.replace(/\D/g, ""));
-  return Number.isFinite(so) ? so : 0;
+  if (!Number.isFinite(so)) return 0;
+  return Math.min(so, Number.MAX_SAFE_INTEGER);
 }
 
 /** Tra nhãn hiển thị từ mã. Mã lạ thì trả lại chính nó, không nuốt mất dữ liệu. */
@@ -40,11 +47,14 @@ export function kyGiamTru(tuThang: string, denThang: string): string {
   return `${thangVn(tuThang)} – ${denThang ? thangVn(denThang) : "nay"}`;
 }
 
-/** `08:00` → số phút từ nửa đêm. Sai định dạng trả `0`. */
+/** `08:00` → số phút từ nửa đêm. Sai định dạng (kể cả không phải số) trả `0`. */
 function phutTrongNgay(hhmm: string): number {
   const phan = hhmm.split(":");
   if (phan.length !== 2) return 0;
-  return Number(phan[0]) * 60 + Number(phan[1]);
+  const gio = Number(phan[0]);
+  const phut = Number(phan[1]);
+  if (!Number.isFinite(gio) || !Number.isFinite(phut)) return 0;
+  return gio * 60 + phut;
 }
 
 /**
@@ -67,4 +77,15 @@ export function homNay(): string {
   const thang = String(d.getMonth() + 1).padStart(2, "0");
   const ngay = String(d.getDate()).padStart(2, "0");
   return `${d.getFullYear()}-${thang}-${ngay}`;
+}
+
+/**
+ * Cảnh báo MỀM khi số chữ số không khớp độ dài thường gặp (CCCD/SĐT/MST) — KHÔNG chặn submit:
+ * hồ sơ cũ (CMND 9 số trước khi đổi sang CCCD 12 số...) có thể lệch chuẩn mà vẫn là dữ liệu thật.
+ * Dùng ở `ThongTinTab.tsx` (nhân viên) và `NguoiPhuThuocForm.tsx` (người phụ thuộc).
+ */
+export function canhBaoDoDai(gia: string, doDaiHopLe: number[]): string | undefined {
+  const so = gia.replace(/\D/g, "");
+  if (!so) return undefined;
+  return doDaiHopLe.includes(so.length) ? undefined : `Thường có ${doDaiHopLe.join(" hoặc ")} số.`;
 }
