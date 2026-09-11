@@ -4,6 +4,8 @@ import Tabs from "@mui/material/Tabs";
 import Tab from "@mui/material/Tab";
 import ListAltRounded from "@mui/icons-material/ListAltRounded";
 import TuneRounded from "@mui/icons-material/TuneRounded";
+import NutHuongDan from "../huong_dan/NutHuongDan";
+import { HUONG_DAN_CAI_DAT_LUONG } from "../huong_dan/noiDung";
 
 const MAN_HINH = [
   { path: "danh-muc-khoan", label: "Danh mục lương & phụ cấp", icon: <ListAltRounded /> },
@@ -19,8 +21,9 @@ export default function CaiDatLuongNav() {
     MAN_HINH.find((mh) => pathname.startsWith(`/hrm/cai-dat-luong/${mh.path}`))?.path ?? false;
 
   return (
-    <Box sx={{ borderBottom: 1, borderColor: "divider" }}>
+    <Box sx={{ borderBottom: 1, borderColor: "divider", display: "flex", alignItems: "center", gap: 2 }}>
       <Tabs
+        sx={{ flex: 1, minWidth: 0 }}
         value={hienTai}
         onChange={(_, value: string) => navigate(`/hrm/cai-dat-luong/${value}`)}
         variant="scrollable"
@@ -37,6 +40,7 @@ export default function CaiDatLuongNav() {
           />
         ))}
       </Tabs>
+      <NutHuongDan huongDan={HUONG_DAN_CAI_DAT_LUONG} />
     </Box>
   );
 }

@@ -4,6 +4,8 @@ import Tabs from "@mui/material/Tabs";
 import Tab from "@mui/material/Tab";
 import TuneRounded from "@mui/icons-material/TuneRounded";
 import EventRounded from "@mui/icons-material/EventRounded";
+import NutHuongDan from "../huong_dan/NutHuongDan";
+import { HUONG_DAN_CAU_HINH_MAC_DINH } from "../huong_dan/noiDung";
 
 const MAN_HINH = [
   { path: "thiet-lap-chung", label: "Thiết lập chung", icon: <TuneRounded /> },
@@ -19,8 +21,9 @@ export default function CauHinhNav() {
     MAN_HINH.find((mh) => pathname.startsWith(`/hrm/cau-hinh/${mh.path}`))?.path ?? false;
 
   return (
-    <Box sx={{ borderBottom: 1, borderColor: "divider" }}>
+    <Box sx={{ borderBottom: 1, borderColor: "divider", display: "flex", alignItems: "center", gap: 2 }}>
       <Tabs
+        sx={{ flex: 1, minWidth: 0 }}
         value={hienTai}
         onChange={(_, value: string) => navigate(`/hrm/cau-hinh/${value}`)}
         variant="scrollable"
@@ -37,6 +40,7 @@ export default function CauHinhNav() {
           />
         ))}
       </Tabs>
+      <NutHuongDan huongDan={HUONG_DAN_CAU_HINH_MAC_DINH} />
     </Box>
   );
 }
