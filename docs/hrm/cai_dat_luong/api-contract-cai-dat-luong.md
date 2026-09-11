@@ -273,12 +273,20 @@ cấp ăn ca/ăn trưa — hưởng trần miễn thuế riêng (`GeneralSetting
 - **Response 200 OK**: `{ "success": true, "data": { ...EmployeeSalary, "status": "APPROVED" } }`
 
 ### 3.5. Phê duyệt lương hàng loạt
-- **Method**: `POST /api/v1/hrm/employee-salaries/approve`
-- **Request Body**:
+- **Method**: `POST /api/v1/hrm/employee-salaries/approve` — chỉ ADMIN/OWNER, cần quyền xem lương.
+- **Request Body** (từ 2026-09-11, vbsec LOW #39/#40): danh sách các bản ĐANG CHỜ DUYỆT mà người duyệt đang
+  xem, kèm đúng phiên bản (`setupVersion`) đã xem. Không còn kiểu "bỏ trống = duyệt tất cả".
 ```json
 {
-  "employeeIds": ["NV0001", "NV0002", "NV0003"]
+  "items": [
+    { "employeeId": "NV0001", "setupVersion": 3 },
+    { "employeeId": "NV0002", "setupVersion": 1 }
+  ]
 }
 ```
-- **Response 200 OK**: `{ "success": true, "data": { "count": 3 } }`
-- **Response 400 Bad Request**: Mảng rỗng (`E-sal-011`).
+- Máy chủ chỉ duyệt dòng CÒN đúng `setupVersion` đó và còn `PENDING_APPROVAL` (một câu UPDATE có điều kiện).
+  Dòng bị sửa sau khi xem (phiên bản đã tăng), bản nháp, bản bị từ chối, bản đã duyệt → bỏ qua, đếm vào
+  `skippedCount`.
+- **Response 200 OK**: `{ "success": true, "data": { "approvedCount": 1, "skippedCount": 1, "message": "..." } }`
+- **Response 400 Bad Request**: thiếu `items` / mảng rỗng / `setupVersion` không phải số nguyên dương / trùng
+  nhân viên.
