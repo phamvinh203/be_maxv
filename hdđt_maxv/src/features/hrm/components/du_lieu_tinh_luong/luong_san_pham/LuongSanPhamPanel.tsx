@@ -25,6 +25,8 @@ import { tongTienSanPham } from "../../../calculations/du_lieu_tinh_luong/luongS
 import { useSanPhamIdByCode, useSanPhamList } from "../../../api/du_lieu_tinh_luong/payrollCatalogsQueries";
 import { useApplyPiecework, usePieceworkDataList } from "../../../api/du_lieu_tinh_luong/payrollInputsQueries";
 import { useCurrentPayrollPeriod } from "../useCurrentPayrollPeriod";
+import { useBangKeChiDoc } from "../useBangKeChiDoc";
+import CanhBaoChiDoc from "../CanhBaoChiDoc";
 import { mergeNhanVienKyLuongWithData, useNhanVienKyLuong } from "../useNhanVienKyLuong";
 import type {
   DongLuongSanPham,
@@ -48,7 +50,8 @@ import { docFileSanPham, taiFileMauSanPham, xuatSanPhamExcel } from "./luongSanP
  * tháng trước không được đổi theo bảng giá tháng sau).
  */
 export default function LuongSanPhamPanel() {
-  const { selectedPeriodId, isReadOnly } = useCurrentPayrollPeriod();
+  const { selectedPeriodId } = useCurrentPayrollPeriod();
+  const { isReadOnly, bangKeDaChot } = useBangKeChiDoc("PIECEWORK");
   const periodId = selectedPeriodId ?? "";
 
   const danhMuc = useSanPhamList();
@@ -151,9 +154,10 @@ export default function LuongSanPhamPanel() {
   return (
     <Stack spacing={2.5}>
       {isReadOnly && (
-        <Alert severity="warning">
-          Kỳ lương đang chọn đã khóa sổ/chờ duyệt — không thể sửa hoặc áp dụng lương sản phẩm mới.
-        </Alert>
+        <CanhBaoChiDoc
+          bangKeDaChot={bangKeDaChot}
+          hanhDong="không thể sửa hoặc áp dụng lương sản phẩm mới"
+        />
       )}
 
       <Paper variant="outlined" sx={{ p: 2 }}>

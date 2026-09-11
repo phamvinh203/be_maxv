@@ -32,6 +32,8 @@ import { useNgayLeList } from "../../../api/cau_hinh_mac_dinh/holidaysQueries";
 import { useNhanVienList } from "../../../api/du_lieu_nhan_vien/nhanVienQueries";
 import { useAttendanceMatrix, useOverrideAttendanceCell } from "../../../api/du_lieu_tinh_luong/payrollInputsQueries";
 import { useCurrentPayrollPeriod } from "../useCurrentPayrollPeriod";
+import { useBangKeChiDoc } from "../useBangKeChiDoc";
+import CanhBaoChiDoc from "../CanhBaoChiDoc";
 import type { LoaiCong, OChamCong } from "../../../types";
 import OChamCongPopover from "./OChamCongPopover";
 
@@ -63,7 +65,8 @@ interface ODangMo {
  * kết quả hiển thị giống hệt "xóa" dù trong CSDL vẫn còn một dòng ghi đè.
  */
 export default function ChamCongPanel() {
-  const { selectedPeriod, isReadOnly } = useCurrentPayrollPeriod();
+  const { selectedPeriod } = useCurrentPayrollPeriod();
+  const { isReadOnly, bangKeDaChot } = useBangKeChiDoc("ATTENDANCE");
   const periodId = selectedPeriod?.id ?? "";
   const nam = selectedPeriod?.year ?? new Date().getFullYear();
   const thang = selectedPeriod?.month ?? new Date().getMonth() + 1;
@@ -149,9 +152,11 @@ export default function ChamCongPanel() {
   return (
     <Box>
       {isReadOnly && (
-        <Alert severity="warning" sx={{ mb: 2 }}>
-          Kỳ lương đang chọn đã khóa sổ/chờ duyệt — không thể sửa chấm công.
-        </Alert>
+        <CanhBaoChiDoc
+          bangKeDaChot={bangKeDaChot}
+          hanhDong="không thể sửa chấm công"
+          sx={{ mb: 2 }}
+        />
       )}
 
       <Stack

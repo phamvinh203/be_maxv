@@ -25,6 +25,8 @@ import { tongBiTru } from "../../../calculations/du_lieu_tinh_luong/buTru";
 import { useKhoanBuTruIdByCode, useKhoanBuTruList } from "../../../api/du_lieu_tinh_luong/payrollCatalogsQueries";
 import { useAdjustmentDataList, useApplyAdjustments } from "../../../api/du_lieu_tinh_luong/payrollInputsQueries";
 import { useCurrentPayrollPeriod } from "../useCurrentPayrollPeriod";
+import { useBangKeChiDoc } from "../useBangKeChiDoc";
+import CanhBaoChiDoc from "../CanhBaoChiDoc";
 import { mergeNhanVienKyLuongWithData, useNhanVienKyLuong } from "../useNhanVienKyLuong";
 import type {
   BuTruNhanVienRow,
@@ -50,7 +52,8 @@ import { docFileBuTru, taiFileMauBuTru, xuatBuTruExcel } from "./buTruExcel";
  * nói rõ số tiền và nhắc riêng khi danh sách có nhiều hơn một người.
  */
 export default function BuTruPanel() {
-  const { selectedPeriodId, isReadOnly } = useCurrentPayrollPeriod();
+  const { selectedPeriodId } = useCurrentPayrollPeriod();
+  const { isReadOnly, bangKeDaChot } = useBangKeChiDoc("ADJUSTMENT");
   const periodId = selectedPeriodId ?? "";
 
   const danhMuc = useKhoanBuTruList();
@@ -156,9 +159,10 @@ export default function BuTruPanel() {
   return (
     <Stack spacing={2.5}>
       {isReadOnly && (
-        <Alert severity="warning">
-          Kỳ lương đang chọn đã khóa sổ/chờ duyệt — không thể sửa hoặc áp dụng khoản bù trừ mới.
-        </Alert>
+        <CanhBaoChiDoc
+          bangKeDaChot={bangKeDaChot}
+          hanhDong="không thể sửa hoặc áp dụng khoản bù trừ mới"
+        />
       )}
 
       <Paper variant="outlined" sx={{ p: 2 }}>

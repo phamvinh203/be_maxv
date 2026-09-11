@@ -46,6 +46,7 @@ import UngBuTruPage from "../pages/hrm/du_lieu_tinh_luong/UngBuTruPage";
 import BangLuongPage from "../pages/hrm/bang_luong/BangLuongPage";
 import BangLuongKyPage from "../pages/hrm/bang_luong/BangLuongKyPage";
 import LuongHoTroPage from "../pages/hrm/bang_luong/LuongHoTroPage";
+import ChotKyLuongPage from "../pages/hrm/chot_ky_luong/ChotKyLuongPage";
 import ToKhaiThuePage from "../pages/hrm/to_khai_thue/ToKhaiThuePage";
 import ToKhaiThueChuaDungPage from "../pages/hrm/to_khai_thue/ToKhaiThueChuaDungPage";
 import HoSoLuongPage from "../pages/hrm/ho_so_luong/HoSoLuongPage";
@@ -281,6 +282,8 @@ export default function AppRouter() {
               <Route path="bang-luong" element={<BangLuongKyPage />} />
               <Route path="luong-ho-tro" element={<LuongHoTroPage />} />
             </Route>
+            {/* Không phải tab của thanh HRM — mở từ nút "Chốt kỳ lương" ở góc phải thanh đó. */}
+            <Route path="chot-ky-luong" element={<ChotKyLuongPage />} />
             {/* Năm màn hình chưa dựng — dùng chung chỗ giữ, xem `to_khai_thue/tabs.ts`. */}
             <Route path="to-khai-thue" element={<ToKhaiThuePage />}>
               <Route

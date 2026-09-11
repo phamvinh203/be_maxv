@@ -25,6 +25,8 @@ import { gioVn, tongGioOt, tongGioQuyDoi } from "../../../calculations/du_lieu_t
 import { useCauHinh } from "../../../api/cau_hinh_mac_dinh/cauHinhQueries";
 import { useApplyOvertime, useOvertimeList } from "../../../api/du_lieu_tinh_luong/payrollInputsQueries";
 import { useCurrentPayrollPeriod } from "../useCurrentPayrollPeriod";
+import { useBangKeChiDoc } from "../useBangKeChiDoc";
+import CanhBaoChiDoc from "../CanhBaoChiDoc";
 import { mergeNhanVienKyLuongWithData, useNhanVienKyLuong } from "../useNhanVienKyLuong";
 import type {
   DongTangCa,
@@ -52,7 +54,8 @@ import { docFileTangCa, taiFileMauTangCa, xuatTangCaExcel } from "./tangCaExcel"
  * ngoài phạm vi phiên đấu dây này — ghi rõ trong `docs/hrm/work-log.md`.
  */
 export default function TangCaPanel() {
-  const { selectedPeriodId, isReadOnly } = useCurrentPayrollPeriod();
+  const { selectedPeriodId } = useCurrentPayrollPeriod();
+  const { isReadOnly, bangKeDaChot } = useBangKeChiDoc("OVERTIME");
   const periodId = selectedPeriodId ?? "";
 
   const cauHinh = useCauHinh();
@@ -155,9 +158,10 @@ export default function TangCaPanel() {
   return (
     <Stack spacing={2.5}>
       {isReadOnly && (
-        <Alert severity="warning">
-          Kỳ lương đang chọn đã khóa sổ/chờ duyệt — không thể sửa hoặc áp dụng tăng ca mới.
-        </Alert>
+        <CanhBaoChiDoc
+          bangKeDaChot={bangKeDaChot}
+          hanhDong="không thể sửa hoặc áp dụng tăng ca mới"
+        />
       )}
 
       <Paper variant="outlined" sx={{ p: 2 }}>

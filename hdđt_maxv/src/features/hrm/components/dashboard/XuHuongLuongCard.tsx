@@ -11,7 +11,7 @@ import {
   type DiemXuHuongLuong,
   type KyLuongDashboard,
 } from "../../api/dashboard/dashboardQueries";
-import { nhanThang } from "../../calculations/dashboard/tongQuan";
+import { nhanThang } from "../../_shared/thangKyLuong";
 import BieuDoCot, { DongChiTiet } from "./charts/BieuDoCot";
 import { useMauBieuDo } from "./charts/mauBieuDo";
 import { DUONG_DAN, useMoManKyLuong } from "./dieuHuong";
@@ -45,7 +45,7 @@ export default function XuHuongLuongCard({ ky }: { ky: KyLuongDashboard }) {
     if (ky.periods.length === 0) {
       return (
         <ThongBaoRong icon={<ShowChartRounded />}>
-          Chưa có kỳ lương nào. Tạo kỳ ở mục Dữ liệu tính lương để bắt đầu theo dõi.
+          Chưa có kỳ lương nào. Bấm "Tạo kỳ lương" ở góc phải thanh HRM để bắt đầu theo dõi.
         </ThongBaoRong>
       );
     }
@@ -123,7 +123,7 @@ export default function XuHuongLuongCard({ ky }: { ky: KyLuongDashboard }) {
         !ky.biTuChoi && ky.kyTheoDoi ? (
           <Button
             size="small"
-            onClick={() => moKy(DUONG_DAN.bangLuong, moiNhat?.ky?.id ?? ky.kyTheoDoi?.id)}
+            onClick={() => moKy(DUONG_DAN.bangLuong, moiNhat?.ky ?? ky.kyTheoDoi)}
             sx={{ textTransform: "none" }}
           >
             Bảng lương

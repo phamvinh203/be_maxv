@@ -20,32 +20,33 @@ import {
   hopDongSapKetThuc,
   khungSauThang,
   kyChoPheDuyet,
-  kyCuaThang,
   kyNenTrinh,
-  luiThang,
   sinhNhatTrongThang,
-  thangCua,
-  thangCuaKy,
   tinhTinhHinhNhanSu,
   tongHopTangCa,
   tongKyLuong,
   type DongChiPhiPhongBan,
   type DongHopDongSapHet,
   type DongSinhNhat,
-  type ThangNam,
   type TinhHinhNhanSu,
   type TongHopTangCa,
   type TongKyLuong,
 } from "../../calculations/dashboard/tongQuan";
+import {
+  kyCuaThang,
+  luiThang,
+  thangCua,
+  thangCuaKy,
+  type ThangNam,
+} from "../../_shared/thangKyLuong";
 import { useDanhSachNhanVien } from "../du_lieu_nhan_vien/nhanVienQueries";
-import { useQuyenXemLuong } from "../du_lieu_nhan_vien/quyenLuongQueries";
 import {
   payrollSheetLinesOptions,
   usePayrollSheetLinesQuery,
 } from "../du_lieu_tinh_luong/payrollCalculationQueries";
 import { useOvertimeList } from "../du_lieu_tinh_luong/payrollInputsQueries";
 import {
-  usePayrollPeriodList,
+  useDanhSachKyLuongTheoQuyen,
   type PayrollPeriodApiItem,
 } from "../du_lieu_tinh_luong/payrollPeriodsQueries";
 
@@ -97,25 +98,14 @@ export interface KyLuongDashboard {
 }
 
 export function useKyLuongDashboard(homNay: string): KyLuongDashboard {
-  const quyen = useQuyenXemLuong();
-
-  /*
-   * Chỉ gọi khi đã biết quyền. Lúc danh sách nhân viên còn đang tải, `useQuyenXemLuong` báo
-   * "chua_ro" và coi là ĐƯỢC — bắn ngay thì người không có quyền ăn một 403 (thêm một lần retry)
-   * vô ích. Tải xong mà vẫn "chua_ro" (công ty chưa có nhân viên nào) thì để máy chủ chốt.
-   */
-  const duocGoi = quyen.daXacDinh && !quyen.biTuChoi;
-
-  const { data, isLoading, isError, error } = usePayrollPeriodList(undefined, {
-    enabled: duocGoi,
-  });
+  // Cùng hook (cùng cổng quyền, cùng khóa cache) với góc chọn kỳ trên thanh HRM.
+  const { periods, isLoading, isError, error, biTuChoi } = useDanhSachKyLuongTheoQuyen();
 
   return useMemo(() => {
-    const periods = data ?? [];
     const kyTheoDoi = chonKyTheoDoi(periods, homNay);
     return {
-      biTuChoi: quyen.biTuChoi,
-      isLoading: !quyen.biTuChoi && (!duocGoi || isLoading),
+      biTuChoi,
+      isLoading,
       loi: isError ? getErrorMessage(error, "Không tải được danh sách kỳ lương.") : null,
       periods,
       kyThangNay: kyCuaThang(periods, thangCua(homNay)),
@@ -125,7 +115,7 @@ export function useKyLuongDashboard(homNay: string): KyLuongDashboard {
       choPheDuyet: kyChoPheDuyet(periods),
       khungXuHuong: khungSauThang(periods, homNay),
     };
-  }, [data, isLoading, isError, error, homNay, quyen.biTuChoi, duocGoi]);
+  }, [periods, isLoading, isError, error, homNay, biTuChoi]);
 }
 
 // ─────────────────────────────── Bảng lương ───────────────────────────────

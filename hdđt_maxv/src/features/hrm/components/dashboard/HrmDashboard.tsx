@@ -2,7 +2,7 @@ import { useState } from "react";
 import Box from "@mui/material/Box";
 import Stack from "@mui/material/Stack";
 import { homNay } from "../../_shared/format";
-import { thangCua } from "../../calculations/dashboard/tongQuan";
+import { thangCua } from "../../_shared/thangKyLuong";
 import {
   useKyLuongDashboard,
   useNhanSuDashboard,

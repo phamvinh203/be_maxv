@@ -25,6 +25,8 @@ import { tongTienPhanTram } from "../../../calculations/du_lieu_tinh_luong/luong
 import { useKhoanLuongIdByCode, useKhoanPhanTramList } from "../../../api/cai_dat_luong/salaryItemsQueries";
 import { useApplyCommission, useCommissionDataList } from "../../../api/du_lieu_tinh_luong/payrollInputsQueries";
 import { useCurrentPayrollPeriod } from "../useCurrentPayrollPeriod";
+import { useBangKeChiDoc } from "../useBangKeChiDoc";
+import CanhBaoChiDoc from "../CanhBaoChiDoc";
 import { mergeNhanVienKyLuongWithData, useNhanVienKyLuong } from "../useNhanVienKyLuong";
 import type {
   DongLuongPhanTram,
@@ -47,7 +49,8 @@ import { docFilePhanTram, taiFileMauPhanTram, xuatPhanTramExcel } from "./luongP
  * chốt trên bảng đang soạn (không để máy chủ tự lấy tỷ lệ mặc định hiện hành của danh mục).
  */
 export default function LuongPhanTramPanel() {
-  const { selectedPeriodId, isReadOnly } = useCurrentPayrollPeriod();
+  const { selectedPeriodId } = useCurrentPayrollPeriod();
+  const { isReadOnly, bangKeDaChot } = useBangKeChiDoc("COMMISSION");
   const periodId = selectedPeriodId ?? "";
 
   const danhMuc = useKhoanPhanTramList();
@@ -150,10 +153,10 @@ export default function LuongPhanTramPanel() {
   return (
     <Stack spacing={2.5}>
       {isReadOnly && (
-        <Alert severity="warning">
-          Kỳ lương đang chọn đã khóa sổ/chờ duyệt — không thể sửa hoặc áp dụng lương phần trăm
-          mới.
-        </Alert>
+        <CanhBaoChiDoc
+          bangKeDaChot={bangKeDaChot}
+          hanhDong="không thể sửa hoặc áp dụng lương phần trăm mới"
+        />
       )}
 
       <Paper variant="outlined" sx={{ p: 2 }}>

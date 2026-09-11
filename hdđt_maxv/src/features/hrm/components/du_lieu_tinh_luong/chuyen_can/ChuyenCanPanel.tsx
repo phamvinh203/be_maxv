@@ -28,6 +28,8 @@ import {
   useRecordDiligence,
 } from "../../../api/du_lieu_tinh_luong/payrollInputsQueries";
 import { useCurrentPayrollPeriod } from "../useCurrentPayrollPeriod";
+import { useBangKeChiDoc } from "../useBangKeChiDoc";
+import CanhBaoChiDoc from "../CanhBaoChiDoc";
 import { mergeNhanVienKyLuongWithData, useNhanVienKyLuong } from "../useNhanVienKyLuong";
 import type { ChuyenCanNhanVienRow, DongChuyenCan, LocNhanVienKyLuong, PhamViApDung } from "../../../types";
 import XacNhanXoaDialog from "../../XacNhanXoaDialog";
@@ -52,7 +54,8 @@ import { docFileChuyenCan, taiFileMauChuyenCan, xuatChuyenCanExcel } from "./chu
  * biến "chặn sàn chuyên cần" BR-dltl-016) — không tính lại ở trình duyệt như bản mock.
  */
 export default function ChuyenCanPanel() {
-  const { selectedPeriodId, isReadOnly } = useCurrentPayrollPeriod();
+  const { selectedPeriodId } = useCurrentPayrollPeriod();
+  const { isReadOnly, bangKeDaChot } = useBangKeChiDoc("DILIGENCE");
   const periodId = selectedPeriodId ?? "";
 
   const danhMuc = useLoaiChuyenCanList();
@@ -189,9 +192,10 @@ export default function ChuyenCanPanel() {
   return (
     <Stack spacing={2.5}>
       {isReadOnly && (
-        <Alert severity="warning">
-          Kỳ lương đang chọn đã khóa sổ/chờ duyệt — không thể sửa hoặc áp dụng chuyên cần mới.
-        </Alert>
+        <CanhBaoChiDoc
+          bangKeDaChot={bangKeDaChot}
+          hanhDong="không thể sửa hoặc áp dụng chuyên cần mới"
+        />
       )}
 
       <Paper variant="outlined" sx={{ p: 2 }}>

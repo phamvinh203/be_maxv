@@ -14,14 +14,17 @@ import type { NhanVienApiRow } from "../../api/du_lieu_nhan_vien/nhanVienApi";
 import type { PayrollCalculationLineApi } from "../../api/du_lieu_tinh_luong/payrollCalculationApi";
 import type { OvertimeSummaryApi } from "../../api/du_lieu_tinh_luong/payrollInputsApi";
 import type { PayrollPeriodApiItem } from "../../api/du_lieu_tinh_luong/payrollPeriodsApi";
+import {
+  kyCuaThang,
+  kyMoiNhat,
+  luiThang,
+  soThuTuThang,
+  thangCua,
+  thangCuaKy,
+  type ThangNam,
+} from "../../_shared/thangKyLuong";
 
 // ─────────────────────────────── Ngày tháng ───────────────────────────────
-
-export interface ThangNam {
-  nam: number;
-  /** 1–12 */
-  thang: number;
-}
 
 /** ISO đầy đủ của BE (`2026-03-01T00:00:00.000Z`) hoặc `YYYY-MM-DD` → `YYYY-MM-DD`. */
 function ngayIso(s: string | null | undefined): string | null {
@@ -41,29 +44,6 @@ function soNgayGiua(tu: string, den: string): number {
   const b = Date.parse(`${den}T00:00:00Z`);
   if (Number.isNaN(a) || Number.isNaN(b)) return 0;
   return Math.round((b - a) / 86400000);
-}
-
-export function thangCua(iso: string): ThangNam {
-  const { nam, thang } = tachNgay(iso);
-  return { nam, thang };
-}
-
-/** Lùi `soThang` tháng (âm là tiến). */
-export function luiThang({ nam, thang }: ThangNam, soThang = 1): ThangNam {
-  const tong = nam * 12 + (thang - 1) - soThang;
-  return { nam: Math.floor(tong / 12), thang: (tong % 12) + 1 };
-}
-
-function soThuTuThang({ nam, thang }: ThangNam): number {
-  return nam * 12 + thang;
-}
-
-export function thangCuaKy(ky: PayrollPeriodApiItem): ThangNam {
-  return { nam: ky.year, thang: ky.month };
-}
-
-export function nhanThang({ nam, thang }: ThangNam): string {
-  return `T${thang}/${nam}`;
 }
 
 // ─────────────────────────────── Nhân sự ───────────────────────────────
@@ -241,21 +221,6 @@ export function hopDongSapKetThuc(rows: NhanVienApiRow[], homNay: string): DongH
 }
 
 // ─────────────────────────────── Kỳ lương ───────────────────────────────
-
-export function kyCuaThang(
-  periods: PayrollPeriodApiItem[],
-  { nam, thang }: ThangNam,
-): PayrollPeriodApiItem | null {
-  return periods.find((p) => p.year === nam && p.month === thang) ?? null;
-}
-
-function kyMoiNhat(periods: PayrollPeriodApiItem[]): PayrollPeriodApiItem | null {
-  let moiNhat: PayrollPeriodApiItem | null = null;
-  for (const p of periods) {
-    if (!moiNhat || soThuTuThang(thangCuaKy(p)) > soThuTuThang(thangCuaKy(moiNhat))) moiNhat = p;
-  }
-  return moiNhat;
-}
 
 /**
  * Kỳ lương Dashboard lấy làm "kỳ hiện tại" cho chi phí phòng ban và tăng ca: kỳ của tháng này;

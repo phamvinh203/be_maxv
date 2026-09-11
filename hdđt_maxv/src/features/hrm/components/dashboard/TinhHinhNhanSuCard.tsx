@@ -11,9 +11,9 @@ import type { NhanSuDashboard } from "../../api/dashboard/dashboardQueries";
 import {
   gopPhanDuoi,
   NHAN_NHOM_HOP_DONG,
-  nhanThang,
   TEN_CHUA_GAN_PHONG_BAN,
 } from "../../calculations/dashboard/tongQuan";
+import { nhanThang } from "../../_shared/thangKyLuong";
 import BieuDoCot from "./charts/BieuDoCot";
 import { useMauBieuDo } from "./charts/mauBieuDo";
 import ThanhNgang from "./charts/ThanhNgang";

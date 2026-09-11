@@ -129,6 +129,15 @@ export const hrmPayrollPeriodKeys = {
     ["hrm-payroll-periods", companyId, "list"] as const,
   detail: (companyId: string | null, id: string) =>
     ["hrm-payroll-periods", companyId, "detail", id] as const,
+  /*
+   * Màn "Chốt kỳ lương" nằm CHUNG tiền tố `hrm-payroll-periods` có chủ ý: khóa sổ / mở lại / duyệt
+   * kỳ (invalidate `all`) đổi luôn trạng thái chốt của 12 bảng kê và thêm dòng lịch sử — chung tiền
+   * tố thì hai khóa này tự nạp lại, không phải nhớ invalidate thêm ở từng mutation vòng đời kỳ.
+   */
+  closing: (companyId: string | null, id: string) =>
+    ["hrm-payroll-periods", companyId, "closing", id] as const,
+  activities: (companyId: string | null, id: string) =>
+    ["hrm-payroll-periods", companyId, "activities", id] as const,
 };
 
 /** 4 Danh mục chuyên biệt phục vụ tính lương (KPI, Sản phẩm, Lỗi chuyên cần, Bù trừ) */

@@ -1,21 +1,18 @@
 import { Outlet } from "react-router-dom";
 import Box from "@mui/material/Box";
 import DuLieuLuongNav from "../../../features/hrm/components/du_lieu_tinh_luong/DuLieuLuongNav";
-import KyLuongSelector from "../../../features/hrm/components/du_lieu_tinh_luong/KyLuongSelector";
-import { PayrollPeriodProvider } from "../../../features/hrm/components/du_lieu_tinh_luong/PayrollPeriodContext";
 
-/** Layout của khu "Dữ liệu tính lương": tab con + quản lý kỳ lương + màn hình con. */
+/**
+ * Layout của khu "Dữ liệu tính lương": tab con + màn hình con. Kỳ lương chọn ở góc phải thanh HRM
+ * (`GocKyLuong`, provider bọc ở `HrmPage`); khóa sổ/trình duyệt/mở lại kỳ nằm ở màn Chốt kỳ lương.
+ */
 export default function DuLieuLuongPage() {
   return (
-    <PayrollPeriodProvider>
-      <Box>
-        <KyLuongSelector />
-        <DuLieuLuongNav />
-        <Box sx={{ pt: 3 }}>
-          <Outlet />
-        </Box>
+    <Box>
+      <DuLieuLuongNav />
+      <Box sx={{ pt: 3 }}>
+        <Outlet />
       </Box>
-    </PayrollPeriodProvider>
+    </Box>
   );
 }
-

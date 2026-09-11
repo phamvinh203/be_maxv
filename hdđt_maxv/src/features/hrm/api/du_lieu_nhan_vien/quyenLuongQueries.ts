@@ -64,13 +64,17 @@ export function useQuyenXemLuong(): QuyenXemLuong {
    * hai chỗ dùng về một mục cache, nên KHÔNG phát sinh thêm lượt gọi mạng nào.
    *
    * Khai lại ở đây thay vì import hook kia: `nhanVienQueries` cần chính `useQuyenXemLuong` (để
-   * bỏ ba trường ngân hàng khỏi thân request), import hai chiều là vòng import. Đổi `enabled`
-   * hay `queryFn` ở một bên thì phải đổi cả bên kia.
+   * bỏ ba trường ngân hàng khỏi thân request), import hai chiều là vòng import. Đổi `queryFn` ở
+   * một bên thì phải đổi cả bên kia.
+   *
+   * OWNER luôn có quyền (luật máy chủ, xem nhánh dưới) nên KHÔNG tải danh sách chỉ để suy quyền —
+   * hook này chạy ở mọi màn HRM qua `PayrollPeriodProvider`. Màn nào cần danh sách thật tự đăng ký
+   * truy vấn cùng khóa, TanStack vẫn tải khi có một nơi bật.
    */
   const { data, isPending } = useQuery({
     queryKey: hrmNhanVienKeys.list(currentCompanyId),
     queryFn: () => listNhanVien(),
-    enabled: isAuthenticated && !!currentCompanyId,
+    enabled: isAuthenticated && !!currentCompanyId && user?.role !== "OWNER",
   });
 
   return useMemo(() => {

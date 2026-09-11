@@ -39,7 +39,7 @@ export default function ChoPheDuyetCard({ ky }: { ky: KyLuongDashboard }) {
         {ds.map((p) => (
           <DongDanhSach
             key={p.id}
-            onClick={() => moKy(DUONG_DAN.bangLuong, p.id)}
+            onClick={() => moKy(DUONG_DAN.bangLuong, p)}
             tieuDe={p.name}
             phu={viecConLai(p)}
             cuoi={
