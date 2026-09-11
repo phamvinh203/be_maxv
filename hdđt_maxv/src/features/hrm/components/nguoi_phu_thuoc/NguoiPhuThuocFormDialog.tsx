@@ -1,5 +1,4 @@
 import { useEffect, useState } from "react";
-import { toast } from "react-toastify";
 import Dialog from "@mui/material/Dialog";
 import DialogTitle from "@mui/material/DialogTitle";
 import DialogContent from "@mui/material/DialogContent";
@@ -8,12 +7,12 @@ import TextField from "@mui/material/TextField";
 import MenuItem from "@mui/material/MenuItem";
 import Button from "@mui/material/Button";
 import Stack from "@mui/material/Stack";
-import { getErrorMessage } from "../../../../lib/errors";
 import { nptRong } from "../../_shared/formDefaults";
 import { useLuuNguoiPhuThuoc } from "../../api/du_lieu_nhan_vien/nguoiPhuThuocQueries";
 // Phải là danh sách nhân viên THẬT: BE chặn ma_nv không tồn tại, chọn từ mock sẽ lưu lỗi 404.
 import { useNhanVienList } from "../../api/du_lieu_nhan_vien/nhanVienQueries";
 import type { NguoiPhuThuoc, NguoiPhuThuocFormValues } from "../../types";
+import { useFormDialog } from "../useFormDialog";
 import NguoiPhuThuocForm from "./NguoiPhuThuocForm";
 
 interface Props {
@@ -38,15 +37,19 @@ export default function NguoiPhuThuocFormDialog({
   const nhanVien = useNhanVienList();
   const luuNpt = useLuuNguoiPhuThuoc();
 
+  // `maNv` nằm NGOÀI `values`: chỉ có ô chọn khi mở từ màn hình độc lập, và không đổi được
+  // sau khi đã lưu — tách riêng cho rõ, không lẫn vào giá trị của form người phụ thuộc.
   const [maNv, setMaNv] = useState("");
-  const [values, setValues] = useState<NguoiPhuThuocFormValues>(nptRong);
-  const [dangLuu, setDangLuu] = useState(false);
-
   useEffect(() => {
     if (!open) return;
-    // eslint-disable-next-line react-hooks/set-state-in-effect
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- nạp lại mỗi lần mở, cố ý reset theo state ngoài
     setMaNv(npt?.ma_nv ?? maNvCoDinh ?? "");
-    setValues(
+  }, [open, npt, maNvCoDinh]);
+
+  const { values, setValues, dangLuu, handleSubmit } = useFormDialog<NguoiPhuThuocFormValues>({
+    open,
+    onClose,
+    khoiTao: () =>
       npt
         ? {
             ho_ten: npt.ho_ten,
@@ -60,21 +63,16 @@ export default function NguoiPhuThuocFormDialog({
             gt_den_thang: npt.gt_den_thang,
           }
         : nptRong(),
-    );
-  }, [open, npt, maNvCoDinh]);
-
-  const handleSubmit = async () => {
-    setDangLuu(true);
-    try {
-      await luuNpt(maNv, values, npt?.id);
-      toast.success(laSua ? "Đã cập nhật người phụ thuộc." : "Đã thêm người phụ thuộc.");
-      onClose();
-    } catch (err) {
-      toast.error(getErrorMessage(err, "Không lưu được người phụ thuộc."));
-    } finally {
-      setDangLuu(false);
-    }
-  };
+    // RVW-A08: trước đây bấm Lưu với ô trống tốn 1 round-trip mới nhận lỗi 400 chung chung.
+    soat: (v) => {
+      if (!maNvCoDinh && !maNv) return "Chọn nhân viên.";
+      if (!v.ho_ten.trim()) return "Nhập họ tên.";
+      return undefined;
+    },
+    luu: (v) => luuNpt(maNv, v, npt?.id),
+    thongBaoThanhCong: laSua ? "Đã cập nhật người phụ thuộc." : "Đã thêm người phụ thuộc.",
+    thongBaoLoiMacDinh: "Không lưu được người phụ thuộc.",
+  });
 
   return (
     <Dialog open={open} onClose={onClose} maxWidth="md" fullWidth>

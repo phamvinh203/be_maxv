@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { toast } from "react-toastify";
 import Box from "@mui/material/Box";
 import Stack from "@mui/material/Stack";
@@ -10,6 +10,7 @@ import TableBody from "@mui/material/TableBody";
 import TableCell from "@mui/material/TableCell";
 import TableContainer from "@mui/material/TableContainer";
 import TableHead from "@mui/material/TableHead";
+import TablePagination from "@mui/material/TablePagination";
 import TableRow from "@mui/material/TableRow";
 import TextField from "@mui/material/TextField";
 import MenuItem from "@mui/material/MenuItem";
@@ -52,6 +53,34 @@ export default function NhanVienTable() {
 
   const dat = <K extends keyof NhanVienFilters>(khoa: K, giaTri: NhanVienFilters[K]) =>
     setFilters((cu) => ({ ...cu, [khoa]: giaTri }));
+
+  // Ô tìm gõ tức thì, chỉ đẩy vào bộ lọc (kéo theo gọi lại API) sau 250ms ngừng gõ —
+  // công ty vài trăm-nghìn nhân viên gõ tìm không bị giật theo từng phím (RVW-A06).
+  const [qGo, setQGo] = useState(filters.q);
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- đồng bộ khi bộ lọc bị reset từ nơi khác
+    setQGo(filters.q);
+  }, [filters.q]);
+  useEffect(() => {
+    const hen = setTimeout(() => {
+      if (qGo !== filters.q) dat("q", qGo);
+    }, 250);
+    return () => clearTimeout(hen);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- chỉ debounce theo qGo, filters/dat đọc giá trị mới nhất ở lần chạy effect
+  }, [qGo]);
+
+  // Phân trang client — bảng nhân sự có thể vài trăm-nghìn dòng, không phân trang
+  // sẽ giật khi cuộn/lọc (RVW-A06).
+  const [page, setPage] = useState(0);
+  const [rowsPerPage, setRowsPerPage] = useState(25);
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- lọc đổi làm danh sách ngắn lại, trang cũ có thể vượt quá
+    if (page > 0 && page * rowsPerPage >= rows.length) setPage(0);
+  }, [rows.length, rowsPerPage, page]);
+  const rowsTrang = useMemo(
+    () => rows.slice(page * rowsPerPage, page * rowsPerPage + rowsPerPage),
+    [rows, page, rowsPerPage],
+  );
 
   const moThem = () => {
     setMaNvDangSua(undefined);
@@ -98,8 +127,8 @@ export default function NhanVienTable() {
           <TextField
             size="small"
             placeholder="Tìm mã, tên, CCCD hoặc điện thoại"
-            value={filters.q}
-            onChange={(e) => dat("q", e.target.value)}
+            value={qGo}
+            onChange={(e) => setQGo(e.target.value)}
             sx={{ width: { xs: "100%", sm: 300 } }}
             slotProps={{
               input: {
@@ -183,7 +212,7 @@ export default function NhanVienTable() {
             </TableRow>
           </TableHead>
           <TableBody>
-            {rows.map((nv) => (
+            {rowsTrang.map((nv) => (
               <TableRow
                 key={nv.ma_nv}
                 hover
@@ -282,6 +311,22 @@ export default function NhanVienTable() {
           </TableBody>
         </Table>
       </TableContainer>
+      {rows.length > 0 && (
+        <TablePagination
+          component="div"
+          count={rows.length}
+          page={page}
+          onPageChange={(_, trangMoi) => setPage(trangMoi)}
+          rowsPerPage={rowsPerPage}
+          onRowsPerPageChange={(e) => {
+            setRowsPerPage(Number(e.target.value));
+            setPage(0);
+          }}
+          rowsPerPageOptions={[10, 25, 50, 100]}
+          labelRowsPerPage="Số dòng/trang"
+          labelDisplayedRows={({ from, to, count }) => `${from}-${to} / ${count}`}
+        />
+      )}
 
       <NhanVienChiTietDialog
         open={Boolean(maNvDangXem)}

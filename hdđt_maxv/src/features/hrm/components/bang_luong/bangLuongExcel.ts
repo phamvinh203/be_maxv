@@ -6,37 +6,15 @@
  * không khớp với nguồn. Muốn đổi số thì sửa ở màn nguồn rồi tính lại.
  */
 
-import type { Workbook, Worksheet } from "exceljs";
+import type { Workbook } from "exceljs";
 import { COT_BANG_LUONG, tongTheoCot } from "./cotBangLuong";
+import { HEADER_FILL, TIEN_FMT, TONG_FILL, taiVeExcel, toTieuDe } from "./excelChung";
 import type { DongBangLuong } from "../../types";
 
-const HEADER_FILL = "FFDDE6F2";
-const TONG_FILL = "FFF3E8D2";
-const TIEN_FMT = "#,##0";
-
-function taiVe(buffer: ArrayBuffer, filename: string): void {
-  const blob = new Blob([buffer], {
-    type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-  });
-  const url = URL.createObjectURL(blob);
-  const link = document.createElement("a");
-  link.href = url;
-  link.download = filename;
-  document.body.appendChild(link);
-  link.click();
-  document.body.removeChild(link);
-  URL.revokeObjectURL(url);
-}
-
-function toTieuDe(ws: Worksheet, hang: number, soCot: number, mau: string): void {
-  const row = ws.getRow(hang);
-  for (let i = 1; i <= soCot; i += 1) {
-    row.getCell(i).fill = { type: "pattern", pattern: "solid", fgColor: { argb: mau } };
-  }
-  row.font = { bold: true };
-  row.alignment = { vertical: "middle", horizontal: "center", wrapText: true };
-  row.height = 32;
-}
+/** Định dạng riêng cột "Các khoản bù trừ": ghi giá trị đảo dấu (xem `dauNguoc`) nên
+ * số dương hiện có tiền tố "+", số âm hiện tiền tố "-" — cùng quy ước "+"/"−" với bảng
+ * trên màn hình thay vì để Excel tự hiểu theo dấu gốc trong DB (RVW-A02). */
+const BU_TRU_FMT = `"+"${TIEN_FMT};"-"${TIEN_FMT};0`;
 
 /** Sheet giải thích các khoản không có cột riêng — xem ghi chú ở `BangLuongTable`. */
 function themSheetChiTiet(wb: Workbook, rows: DongBangLuong[]): void {
@@ -74,7 +52,7 @@ function themSheetChiTiet(wb: Workbook, rows: DongBangLuong[]): void {
 /**
  * Xuất bảng lương của kỳ.
  *
- * Luôn xuất **đủ 18 cột** và luôn theo **đồng**, bất kể màn hình đang để "Rút
+ * Luôn xuất **đủ 19 cột** và luôn theo **đồng**, bất kể màn hình đang để "Rút
  * gọn" hay đang xem theo nghìn/triệu: file này đi kèm chứng từ chi lương, thiếu
  * cột hay làm tròn về triệu là không đối chiếu được với phiếu chi.
  */
@@ -89,7 +67,9 @@ export async function xuatBangLuongExcel(
   const soCot = COT_BANG_LUONG.length;
   ws.columns = COT_BANG_LUONG.map((c) => ({ width: c.text ? 26 : 16 }));
   for (let i = 1; i <= soCot; i += 1) {
-    if (COT_BANG_LUONG[i - 1]?.tien) ws.getColumn(i).numFmt = TIEN_FMT;
+    const c = COT_BANG_LUONG[i - 1];
+    if (!c?.tien) continue;
+    ws.getColumn(i).numFmt = c.dauNguoc ? BU_TRU_FMT : TIEN_FMT;
   }
 
   // Dòng 1: tên bảng + kỳ, gộp hết bề ngang — file rời khỏi máy vẫn tự nói được
@@ -101,7 +81,16 @@ export async function xuatBangLuongExcel(
   tieuDe.alignment = { vertical: "middle", horizontal: "center" };
   ws.getRow(1).height = 26;
 
-  const hangTieuDe = 3;
+  // Dòng 2: sheet chính chỉ 5/7 cột cấu thành "Thu nhập" (thiếu Lương % và Chuyên
+  // cần) — không có dòng này, người nhận cộng lệch số rồi tưởng sai (RVW-A03).
+  ws.mergeCells(2, 1, 2, soCot);
+  const ghiChu = ws.getCell(2, 1);
+  ghiChu.value =
+    "Cột \"Thu nhập\" gồm cả Lương % và Chuyên cần (không có cột riêng ở sheet này) — xem đủ 7 khoản cấu thành ở sheet \"Chi tiết thu nhập\".";
+  ghiChu.font = { italic: true, size: 10, color: { argb: "FF6B6B6B" } };
+  ghiChu.alignment = { vertical: "middle", horizontal: "center" };
+
+  const hangTieuDe = 4;
   const rowTieuDe = ws.getRow(hangTieuDe);
   COT_BANG_LUONG.forEach((c, i) => {
     rowTieuDe.getCell(i + 1).value = c.header;
@@ -111,7 +100,12 @@ export async function xuatBangLuongExcel(
   rows.forEach((row, i) => {
     const r = ws.getRow(hangTieuDe + 1 + i);
     COT_BANG_LUONG.forEach((c, ci) => {
-      r.getCell(ci + 1).value = c.text ? c.text(row) : c.value(row);
+      if (c.text) {
+        r.getCell(ci + 1).value = c.text(row);
+        return;
+      }
+      const so = c.value(row);
+      r.getCell(ci + 1).value = c.dauNguoc ? -so : so;
     });
   });
 
@@ -122,7 +116,10 @@ export async function xuatBangLuongExcel(
   COT_BANG_LUONG.forEach((c, i) => {
     const cell = rowTong.getCell(i + 1);
     if (i === 0) cell.value = "TỔNG CỘNG";
-    else if (c.cong) cell.value = tong.get(c.key) ?? 0;
+    else if (c.cong) {
+      const t = tong.get(c.key) ?? 0;
+      cell.value = c.dauNguoc ? -t : t;
+    }
   });
   toTieuDe(ws, hangTong, soCot, TONG_FILL);
   rowTong.alignment = { vertical: "middle" };
@@ -130,5 +127,8 @@ export async function xuatBangLuongExcel(
   ws.views = [{ state: "frozen", xSplit: 2, ySplit: hangTieuDe }];
 
   themSheetChiTiet(wb, rows);
-  taiVe((await wb.xlsx.writeBuffer()) as ArrayBuffer, `Bang-luong-${nhanKy.replace(/\W+/g, "-")}.xlsx`);
+  taiVeExcel(
+    (await wb.xlsx.writeBuffer()) as ArrayBuffer,
+    `Bang-luong-${nhanKy.replace(/\W+/g, "-")}.xlsx`,
+  );
 }

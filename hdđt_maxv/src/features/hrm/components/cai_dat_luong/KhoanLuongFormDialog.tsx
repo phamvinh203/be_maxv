@@ -1,5 +1,3 @@
-import { useEffect, useState } from "react";
-import { toast } from "react-toastify";
 import Dialog from "@mui/material/Dialog";
 import DialogTitle from "@mui/material/DialogTitle";
 import DialogContent from "@mui/material/DialogContent";
@@ -12,7 +10,6 @@ import Typography from "@mui/material/Typography";
 import FormControlLabel from "@mui/material/FormControlLabel";
 import Checkbox from "@mui/material/Checkbox";
 import Box from "@mui/material/Box";
-import { getErrorMessage } from "../../../../lib/errors";
 import { TRANG_THAI_PB, moTaLoaiKhoan } from "../../_shared/constants";
 import { khoanLuongRong } from "../../_shared/formDefaults";
 import { useLuuKhoanLuong } from "../../api/cai_dat_luong/salaryItemsQueries";
@@ -22,7 +19,8 @@ import type {
   LoaiKhoanLuong,
   TrangThai,
 } from "../../types";
-import SoField from "../cau_hinh_mac_dinh/SoField";
+import SoField from "../SoField";
+import { useFormDialog } from "../useFormDialog";
 
 interface Props {
   open: boolean;
@@ -45,13 +43,10 @@ export default function KhoanLuongFormDialog({ open, onClose, loai, khoan }: Pro
   const moTa = moTaLoaiKhoan(khoan?.loai ?? loai);
   const luuKhoan = useLuuKhoanLuong();
 
-  const [values, setValues] = useState<KhoanLuongFormValues>(() => khoanLuongRong(loai));
-  const [dangLuu, setDangLuu] = useState(false);
-
-  useEffect(() => {
-    if (!open) return;
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    setValues(
+  const { values, dat, dangLuu, handleSubmit } = useFormDialog<KhoanLuongFormValues>({
+    open,
+    onClose,
+    khoiTao: () =>
       khoan
         ? {
             loai: khoan.loai,
@@ -64,26 +59,12 @@ export default function KhoanLuongFormDialog({ open, onClose, loai, khoan }: Pro
             status: khoan.status,
           }
         : khoanLuongRong(loai),
-    );
-  }, [open, khoan, loai]);
-
-  const dat = <K extends keyof KhoanLuongFormValues>(
-    khoa: K,
-    giaTri: KhoanLuongFormValues[K],
-  ) => setValues((cu) => ({ ...cu, [khoa]: giaTri }));
-
-  const handleSubmit = async () => {
-    setDangLuu(true);
-    try {
-      await luuKhoan(values, khoan?.ma_khoan);
-      toast.success(laSua ? "Đã cập nhật khoản lương." : `Đã tạo ${moTa.label.toLowerCase()}.`);
-      onClose();
-    } catch (err) {
-      toast.error(getErrorMessage(err, "Không lưu được khoản lương."));
-    } finally {
-      setDangLuu(false);
-    }
-  };
+    // RVW-A08: trước đây bấm Lưu với tên khoản trống tốn 1 round-trip mới nhận lỗi 400 chung chung.
+    soat: (v) => (v.ten_khoan.trim() ? undefined : `Nhập ${moTa.nhanTen.toLowerCase()}.`),
+    luu: (v) => luuKhoan(v, khoan?.ma_khoan),
+    thongBaoThanhCong: laSua ? "Đã cập nhật khoản lương." : `Đã tạo ${moTa.label.toLowerCase()}.`,
+    thongBaoLoiMacDinh: "Không lưu được khoản lương.",
+  });
 
   return (
     <Dialog open={open} onClose={onClose} maxWidth="sm" fullWidth>

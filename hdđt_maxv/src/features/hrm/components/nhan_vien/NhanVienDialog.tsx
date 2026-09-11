@@ -95,6 +95,16 @@ export default function NhanVienDialog({ open, onClose, maNv }: Props) {
   );
 
   const handleSubmit = async () => {
+    // RVW-A08: trước đây bấm Lưu với ô trống tốn 1 round-trip mới nhận lỗi 400 chung chung.
+    if (!nhanVien.ho_ten.trim()) {
+      toast.error("Nhập họ và tên.");
+      return;
+    }
+    if (!laSua && !nhanVien.ma_nv.trim()) {
+      toast.error("Nhập mã nhân viên.");
+      return;
+    }
+
     setDangLuu(true);
     try {
       if (laSua) {

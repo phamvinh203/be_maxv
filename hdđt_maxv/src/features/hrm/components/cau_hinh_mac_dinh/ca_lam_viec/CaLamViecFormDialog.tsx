@@ -1,4 +1,3 @@
-import { useEffect, useState } from "react";
 import { toast } from "react-toastify";
 import Dialog from "@mui/material/Dialog";
 import DialogTitle from "@mui/material/DialogTitle";
@@ -10,7 +9,6 @@ import Button from "@mui/material/Button";
 import Box from "@mui/material/Box";
 import Alert from "@mui/material/Alert";
 import Stack from "@mui/material/Stack";
-import { getErrorMessage } from "../../../../../lib/errors";
 import { TRANG_THAI_PB } from "../../../_shared/constants";
 import { soGioCa } from "../../../_shared/format";
 import { caLamViecRong } from "../../../_shared/formDefaults";
@@ -19,7 +17,8 @@ import {
   useLuuCaLamViec,
 } from "../../../api/cau_hinh_mac_dinh/workShiftsQueries";
 import type { CaLamViec, CaLamViecFormValues, TrangThai } from "../../../types";
-import SoField from "../SoField";
+import SoField from "../../SoField";
+import { useFormDialog } from "../../useFormDialog";
 
 interface Props {
   open: boolean;
@@ -32,13 +31,10 @@ export default function CaLamViecFormDialog({ open, onClose, ca }: Props) {
   const laSua = Boolean(ca);
   const luuCa = useLuuCaLamViec();
 
-  const [values, setValues] = useState<CaLamViecFormValues>(caLamViecRong);
-  const [dangLuu, setDangLuu] = useState(false);
-
-  useEffect(() => {
-    if (!open) return;
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    setValues(
+  const { values, dat, dangLuu, handleSubmit } = useFormDialog<CaLamViecFormValues>({
+    open,
+    onClose,
+    khoiTao: () =>
       ca
         ? {
             ten_ca: ca.ten_ca,
@@ -48,38 +44,24 @@ export default function CaLamViecFormDialog({ open, onClose, ca }: Props) {
             status: ca.status,
           }
         : caLamViecRong(),
-    );
-  }, [open, ca]);
-
-  const dat = <K extends keyof CaLamViecFormValues>(
-    khoa: K,
-    giaTri: CaLamViecFormValues[K],
-  ) => setValues((cu) => ({ ...cu, [khoa]: giaTri }));
-
-  const soGio = soGioCa(values.gio_vao, values.gio_ra, values.nghi_giua_ca);
-  const quaDem = Boolean(values.gio_vao && values.gio_ra && values.gio_ra <= values.gio_vao);
-
-  const handleSubmit = async () => {
-    // Khóa nút ngay: `POST /work-shifts` KHÔNG idempotent — bấm hai lần khi để trống mã ca
-    // tạo ra HAI ca (`CA01` và `CA02`).
-    setDangLuu(true);
-    try {
-      const canhBao = await luuCa(values, ca?.ma_ca);
-      toast.success(laSua ? "Đã cập nhật ca làm việc." : "Đã thêm ca làm việc.");
+    // RVW-A08: trước đây bấm Lưu với tên ca trống tốn 1 round-trip mới nhận lỗi 400 chung chung.
+    soat: (v) => (v.ten_ca.trim() ? undefined : "Nhập tên ca."),
+    luu: async (v) => {
       // Cảnh báo do máy chủ sinh (`workingHours > 12`), không tự tính lại ở đây. Vắng mặt là
       // chuyện bình thường — mã cũ của máy chủ chưa trả trường này, giao diện vẫn phải chạy.
+      const canhBao = await luuCa(v, ca?.ma_ca);
       if (canhBao === CANH_BAO_GIO_LAM_VUOT_TRAN_BLLD) {
         toast.warning(
           "Ca này vượt trần 12 giờ/ngày theo Điều 105 & 107 BLLĐ 2019. Đã lưu, nhưng hãy rà lại nếu không phải ca trực đặc thù.",
         );
       }
-      onClose();
-    } catch (err) {
-      toast.error(getErrorMessage(err, "Không lưu được ca làm việc."));
-    } finally {
-      setDangLuu(false);
-    }
-  };
+    },
+    thongBaoThanhCong: laSua ? "Đã cập nhật ca làm việc." : "Đã thêm ca làm việc.",
+    thongBaoLoiMacDinh: "Không lưu được ca làm việc.",
+  });
+
+  const soGio = soGioCa(values.gio_vao, values.gio_ra, values.nghi_giua_ca);
+  const quaDem = Boolean(values.gio_vao && values.gio_ra && values.gio_ra <= values.gio_vao);
 
   return (
     <Dialog open={open} onClose={onClose} maxWidth="sm" fullWidth>

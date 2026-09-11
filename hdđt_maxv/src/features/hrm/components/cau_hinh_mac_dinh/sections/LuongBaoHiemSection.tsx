@@ -8,7 +8,7 @@ import Diversity3Rounded from "@mui/icons-material/Diversity3Rounded";
 import type { CauHinhMacDinh } from "../../../types";
 import TienField from "../../TienField";
 import NhomCauHinh from "../NhomCauHinh";
-import SoField from "../SoField";
+import SoField from "../../SoField";
 
 interface Props {
   values: CauHinhMacDinh;

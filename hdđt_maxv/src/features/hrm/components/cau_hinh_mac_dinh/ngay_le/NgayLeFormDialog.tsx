@@ -1,5 +1,3 @@
-import { useEffect, useState } from "react";
-import { toast } from "react-toastify";
 import Dialog from "@mui/material/Dialog";
 import DialogTitle from "@mui/material/DialogTitle";
 import DialogContent from "@mui/material/DialogContent";
@@ -12,11 +10,11 @@ import Stack from "@mui/material/Stack";
 import Typography from "@mui/material/Typography";
 import FormControlLabel from "@mui/material/FormControlLabel";
 import Checkbox from "@mui/material/Checkbox";
-import { getErrorMessage } from "../../../../../lib/errors";
 import { LOAI_NGAY_LE } from "../../../_shared/constants";
 import { ngayLeRong } from "../../../_shared/formDefaults";
 import { useLuuNgayLe } from "../../../api/cau_hinh_mac_dinh/holidaysQueries";
 import type { LoaiNgayLe, NgayLe, NgayLeFormValues } from "../../../types";
+import { useFormDialog } from "../../useFormDialog";
 
 interface Props {
   open: boolean;
@@ -39,13 +37,10 @@ export default function NgayLeFormDialog({ open, onClose, ngayLe }: Props) {
   const laSua = Boolean(ngayLe);
   const luuNgayLe = useLuuNgayLe();
 
-  const [values, setValues] = useState<NgayLeFormValues>(ngayLeRong);
-  const [dangLuu, setDangLuu] = useState(false);
-
-  useEffect(() => {
-    if (!open) return;
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    setValues(
+  const { values, setValues, dat, dangLuu, handleSubmit } = useFormDialog<NgayLeFormValues>({
+    open,
+    onClose,
+    khoiTao: () =>
       ngayLe
         ? {
             ngay: ngayLe.ngay,
@@ -56,11 +51,16 @@ export default function NgayLeFormDialog({ open, onClose, ngayLe }: Props) {
             ghi_chu: ngayLe.ghi_chu,
           }
         : ngayLeRong(),
-    );
-  }, [open, ngayLe]);
-
-  const dat = <K extends keyof NgayLeFormValues>(khoa: K, giaTri: NgayLeFormValues[K]) =>
-    setValues((cu) => ({ ...cu, [khoa]: giaTri }));
+    // RVW-A08: trước đây bấm Lưu với ô trống tốn 1 round-trip mới nhận lỗi 400 chung chung.
+    soat: (v) => {
+      if (!v.ten.trim()) return "Nhập tên ngày lễ.";
+      if (!v.ngay) return "Chọn ngày.";
+      return undefined;
+    },
+    luu: (v) => luuNgayLe(v, ngayLe?.id),
+    thongBaoThanhCong: laSua ? "Đã cập nhật ngày lễ." : "Đã thêm ngày lễ.",
+    thongBaoLoiMacDinh: "Không lưu được ngày lễ.",
+  });
 
   const khongLapLaiDuoc = LOAI_KHONG_LAP_LAI.includes(values.loai);
 
@@ -71,19 +71,6 @@ export default function NgayLeFormDialog({ open, onClose, ngayLe }: Props) {
       loai,
       lap_lai_hang_nam: LOAI_KHONG_LAP_LAI.includes(loai) ? false : cu.lap_lai_hang_nam,
     }));
-
-  const handleSubmit = async () => {
-    setDangLuu(true);
-    try {
-      await luuNgayLe(values, ngayLe?.id);
-      toast.success(laSua ? "Đã cập nhật ngày lễ." : "Đã thêm ngày lễ.");
-      onClose();
-    } catch (err) {
-      toast.error(getErrorMessage(err, "Không lưu được ngày lễ."));
-    } finally {
-      setDangLuu(false);
-    }
-  };
 
   return (
     <Dialog open={open} onClose={onClose} maxWidth="sm" fullWidth>

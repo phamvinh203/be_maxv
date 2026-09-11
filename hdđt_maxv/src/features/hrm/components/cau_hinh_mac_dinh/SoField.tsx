@@ -1,47 +1,12 @@
-import TextField from "@mui/material/TextField";
-import InputAdornment from "@mui/material/InputAdornment";
-
-interface Props {
-  label: string;
-  value: number;
-  onChange: (value: number) => void;
-  /** Đơn vị hiện ở cuối ô: `%`, `giờ`, `ngày`, `năm`… */
-  donVi?: string;
-  helperText?: string;
-  buocNhay?: number;
-}
-
 /**
- * Ô nhập số cho các tham số cấu hình (tỷ lệ, số giờ, số ngày).
+ * Re-export tạm — implementation THẬT đã chuyển sang `components/SoField.tsx` (RVW-A12,
+ * `docs/hrm/review-findings.md`: ≥2 module dùng nên phải ở hạ tầng dùng chung, không nằm
+ * riêng trong `cau_hinh_mac_dinh/`).
  *
- * Lăn chuột trên ô số đang focus sẽ âm thầm đổi giá trị, nên nhả focus khi lăn —
- * người dùng cuộn trang qua một màn hình dày đặc ô số mà không sợ sửa nhầm.
- * Tiền tệ dùng `TienField` vì cần dấu phân cách hàng nghìn.
+ * File này CHỈ còn vì `du_lieu_tinh_luong/tang_ca/QuanLyTangCaDialog.tsx` còn trỏ vào đây và
+ * đang nằm ngoài phạm vi sửa của đợt này (agent khác đang code song song trong
+ * `du_lieu_tinh_luong/**`) — xóa hẳn file này sẽ vỡ import của họ. Import mới ở mọi chỗ khác
+ * đã trỏ thẳng `components/SoField.tsx`; khi `du_lieu_tinh_luong` rảnh tay đổi nốt import đó
+ * thì xóa file này.
  */
-export default function SoField({
-  label,
-  value,
-  onChange,
-  donVi,
-  helperText,
-  buocNhay = 1,
-}: Props) {
-  return (
-    <TextField
-      label={label}
-      type="number"
-      size="small"
-      fullWidth
-      value={Number.isFinite(value) ? value : 0}
-      onChange={(e) => onChange(e.target.value === "" ? 0 : Number(e.target.value))}
-      onWheel={(e) => (e.target as HTMLElement).blur()}
-      helperText={helperText}
-      slotProps={{
-        htmlInput: { step: buocNhay, min: 0 },
-        input: donVi
-          ? { endAdornment: <InputAdornment position="end">{donVi}</InputAdornment> }
-          : undefined,
-      }}
-    />
-  );
-}
+export { default } from "../SoField";

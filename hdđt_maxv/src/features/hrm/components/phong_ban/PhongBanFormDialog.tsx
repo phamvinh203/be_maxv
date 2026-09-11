@@ -1,5 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
-import { toast } from "react-toastify";
+import { useMemo } from "react";
 import Dialog from "@mui/material/Dialog";
 import DialogTitle from "@mui/material/DialogTitle";
 import DialogContent from "@mui/material/DialogContent";
@@ -8,11 +7,18 @@ import TextField from "@mui/material/TextField";
 import MenuItem from "@mui/material/MenuItem";
 import Button from "@mui/material/Button";
 import Stack from "@mui/material/Stack";
-import { getErrorMessage } from "../../../../lib/errors";
 import { layConChau, sapXepCay } from "../../_shared/cay";
 import { TRANG_THAI_PB } from "../../_shared/constants";
 import { useLuuPhongBan, usePhongBanList } from "../../api/du_lieu_nhan_vien/phongBanQueries";
 import type { PhongBanRow, TrangThai } from "../../types";
+import { useFormDialog } from "../useFormDialog";
+
+interface PhongBanFormValues {
+  ten_pb: string;
+  ma_pb_me: string;
+  ghi_chu: string;
+  status: TrangThai;
+}
 
 interface Props {
   open: boolean;
@@ -26,21 +32,25 @@ export default function PhongBanFormDialog({ open, onClose, phongBan }: Props) {
   const danhSach = usePhongBanList();
   const luuPhongBan = useLuuPhongBan();
 
-  const [tenPb, setTenPb] = useState("");
-  const [maPbMe, setMaPbMe] = useState("");
-  const [ghiChu, setGhiChu] = useState("");
-  const [status, setStatus] = useState<TrangThai>("1");
-  const [dangLuu, setDangLuu] = useState(false);
-
-  useEffect(() => {
-    if (!open) return;
-    // Nạp lại form mỗi lần mở dialog — cố ý reset theo state ngoài.
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    setTenPb(phongBan?.ten_pb ?? "");
-    setMaPbMe(phongBan?.ma_pb_me ?? "");
-    setGhiChu(phongBan?.ghi_chu ?? "");
-    setStatus(phongBan?.status ?? "1");
-  }, [open, phongBan]);
+  const { values, dat, dangLuu, handleSubmit } = useFormDialog<PhongBanFormValues>({
+    open,
+    onClose,
+    khoiTao: () => ({
+      ten_pb: phongBan?.ten_pb ?? "",
+      ma_pb_me: phongBan?.ma_pb_me ?? "",
+      ghi_chu: phongBan?.ghi_chu ?? "",
+      status: phongBan?.status ?? "1",
+    }),
+    // RVW-A08: trước đây bấm Lưu với tên phòng ban trống tốn 1 round-trip mới nhận lỗi 400 chung chung.
+    soat: (v) => (v.ten_pb.trim() ? undefined : "Nhập tên phòng ban."),
+    luu: (v) =>
+      luuPhongBan(
+        { ten_pb: v.ten_pb, ma_pb_me: v.ma_pb_me || null, ghi_chu: v.ghi_chu, status: v.status },
+        phongBan?.ma_pb,
+      ),
+    thongBaoThanhCong: laSua ? "Đã cập nhật phòng ban." : "Đã thêm phòng ban.",
+    thongBaoLoiMacDinh: "Không lưu được phòng ban.",
+  });
 
   /**
    * Ô "Trực thuộc" phải loại chính nó và toàn bộ nhánh dưới: cho một phòng ban
@@ -53,22 +63,6 @@ export default function PhongBanFormDialog({ open, onClose, phongBan }: Props) {
     return caysapXep.filter((pb) => pb.ma_pb !== phongBan.ma_pb && !loai.has(pb.ma_pb));
   }, [danhSach, phongBan]);
 
-  const handleSubmit = async () => {
-    setDangLuu(true);
-    try {
-      await luuPhongBan(
-        { ten_pb: tenPb, ma_pb_me: maPbMe || null, ghi_chu: ghiChu, status },
-        phongBan?.ma_pb,
-      );
-      toast.success(laSua ? "Đã cập nhật phòng ban." : "Đã thêm phòng ban.");
-      onClose();
-    } catch (err) {
-      toast.error(getErrorMessage(err, "Không lưu được phòng ban."));
-    } finally {
-      setDangLuu(false);
-    }
-  };
-
   return (
     <Dialog open={open} onClose={onClose} maxWidth="sm" fullWidth>
       <DialogTitle>{laSua ? `Sửa phòng ban ${phongBan?.ma_pb}` : "Thêm phòng ban"}</DialogTitle>
@@ -80,8 +74,8 @@ export default function PhongBanFormDialog({ open, onClose, phongBan }: Props) {
             autoFocus
             fullWidth
             size="small"
-            value={tenPb}
-            onChange={(e) => setTenPb(e.target.value)}
+            value={values.ten_pb}
+            onChange={(e) => dat("ten_pb", e.target.value)}
           />
 
           <TextField
@@ -89,8 +83,8 @@ export default function PhongBanFormDialog({ open, onClose, phongBan }: Props) {
             label="Trực thuộc phòng ban"
             fullWidth
             size="small"
-            value={maPbMe}
-            onChange={(e) => setMaPbMe(e.target.value)}
+            value={values.ma_pb_me}
+            onChange={(e) => dat("ma_pb_me", e.target.value)}
             helperText="Để trống nếu đây là phòng ban cấp cao nhất."
           >
             <MenuItem value="">
@@ -111,8 +105,8 @@ export default function PhongBanFormDialog({ open, onClose, phongBan }: Props) {
             multiline
             minRows={2}
             size="small"
-            value={ghiChu}
-            onChange={(e) => setGhiChu(e.target.value)}
+            value={values.ghi_chu}
+            onChange={(e) => dat("ghi_chu", e.target.value)}
           />
 
           {/* Chỉ có ở chế độ sửa — phòng ban mới luôn đang dùng. */}
@@ -122,8 +116,8 @@ export default function PhongBanFormDialog({ open, onClose, phongBan }: Props) {
               label="Trạng thái"
               fullWidth
               size="small"
-              value={status}
-              onChange={(e) => setStatus(e.target.value as TrangThai)}
+              value={values.status}
+              onChange={(e) => dat("status", e.target.value as TrangThai)}
               helperText="Ngừng dùng để giữ lại phòng ban đã giải thể mà vẫn còn dính chứng từ cũ."
             >
               {TRANG_THAI_PB.map((item) => (

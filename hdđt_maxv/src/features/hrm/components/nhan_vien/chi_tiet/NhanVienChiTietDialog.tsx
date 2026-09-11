@@ -9,13 +9,17 @@ import Box from "@mui/material/Box";
 import Tabs from "@mui/material/Tabs";
 import Tab from "@mui/material/Tab";
 import Chip from "@mui/material/Chip";
+import CircularProgress from "@mui/material/CircularProgress";
 import Stack from "@mui/material/Stack";
 import CloseRounded from "@mui/icons-material/CloseRounded";
 import EditRounded from "@mui/icons-material/EditRounded";
 import { getErrorMessage } from "../../../../../lib/errors";
 import { hopDongHienHanh } from "../../../_shared/cay";
 import { homNay } from "../../../_shared/format";
-import { useNhanVienDetail } from "../../../api/du_lieu_nhan_vien/nhanVienQueries";
+import {
+  useDanhSachNhanVien,
+  useNhanVienDetail,
+} from "../../../api/du_lieu_nhan_vien/nhanVienQueries";
 import { useHopDongList } from "../../../api/du_lieu_nhan_vien/hopDongQueries";
 import HoSoTab from "../tabs/HoSoTab";
 import NguoiPhuThuocTab from "../tabs/NguoiPhuThuocTab";
@@ -42,6 +46,9 @@ const NHAN_TAB = ["Thông tin nhân viên", "Hồ sơ tài liệu", "Người ph
  */
 export default function NhanVienChiTietDialog({ open, onClose, maNv, onSua }: Props) {
   const nhanVien = useNhanVienDetail(maNv);
+  // Phân biệt "đang tải" với "đã xóa" (RVW-A16 dùng nhầm cùng nhánh `!nhanVien` trước đây) —
+  // mạng chậm thì hiện spinner, chỉ thật sự đóng khi tải XONG mà không thấy người này nữa.
+  const { isLoading: dangTaiDanhSach } = useDanhSachNhanVien();
   const {
     items: lichSuHopDong,
     isError: loiTaiHopDong,
@@ -62,8 +69,22 @@ export default function NhanVienChiTietDialog({ open, onClose, maNv, onSua }: Pr
     [lichSuHopDong],
   );
 
-  // Nhân viên vừa bị xóa ở tab khác thì đóng lại thay vì render hồ sơ rỗng.
-  if (!nhanVien) return null;
+  if (!nhanVien) {
+    // Vẫn đang tải danh sách (mạng chậm) — hiện spinner, KHÔNG return null, kẻo bấm "Xem chi
+    // tiết" mà màn hình đứng yên không dialog không spinner (RVW-A16).
+    if (dangTaiDanhSach) {
+      return (
+        <Dialog open={open} onClose={onClose} fullScreen>
+          <Stack sx={{ alignItems: "center", justifyContent: "center", minHeight: "100vh" }}>
+            <CircularProgress />
+          </Stack>
+        </Dialog>
+      );
+    }
+    // Tải xong mà vẫn không thấy — nhân viên vừa bị xóa ở tab khác, đóng lại thay vì render
+    // hồ sơ rỗng.
+    return null;
+  }
 
   return (
     <Dialog open={open} onClose={onClose} fullScreen>

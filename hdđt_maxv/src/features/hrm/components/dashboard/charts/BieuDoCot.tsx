@@ -3,7 +3,7 @@ import Box from "@mui/material/Box";
 import Paper from "@mui/material/Paper";
 import Stack from "@mui/material/Stack";
 import Typography from "@mui/material/Typography";
-import { useElementWidth } from "../../../../hddt/hooks/useElementHeight";
+import { useElementWidth } from "@/hooks/useKichThuocPhanTu";
 import { AN_TREN_MAN_HINH, useMauBieuDo } from "./mauBieuDo";
 
 export interface CotBieuDo {

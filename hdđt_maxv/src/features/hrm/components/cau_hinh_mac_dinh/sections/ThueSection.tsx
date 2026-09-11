@@ -17,7 +17,7 @@ import { tienVn } from "../../../_shared/format";
 import type { BacThue, CauHinhMacDinh } from "../../../types";
 import TienField from "../../TienField";
 import NhomCauHinh from "../NhomCauHinh";
-import SoField from "../SoField";
+import SoField from "../../SoField";
 
 interface Props {
   values: CauHinhMacDinh;

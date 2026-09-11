@@ -6,7 +6,7 @@ import Paper from "@mui/material/Paper";
 import Stack from "@mui/material/Stack";
 import Tooltip from "@mui/material/Tooltip";
 import Typography from "@mui/material/Typography";
-import { alpha } from "@mui/material/styles";
+import { alpha, useTheme } from "@mui/material/styles";
 import LockRounded from "@mui/icons-material/LockRounded";
 import LockOpenRounded from "@mui/icons-material/LockOpenRounded";
 import ChevronRightRounded from "@mui/icons-material/ChevronRightRounded";
@@ -16,8 +16,6 @@ import type { BangKeApiItem } from "../../api/chot_ky_luong/chotKyLuongQueries";
 import { hienThiBangKe } from "./bangKe";
 import IconVuong from "./IconVuong";
 
-const MAU_DA_CHOT = "#e53935";
-const MAU_NUT_CHOT = "#f4511e";
 const O_NUT = { flex: "1 1 0", minWidth: 0, display: "flex" } as const;
 
 /** "16:38 10/9/26" — gọn như trên thẻ, đủ để biết chốt lúc nào; ngày giờ đầy đủ ở tooltip. */
@@ -47,9 +45,12 @@ export default function TheBangKe({
   onMoChot,
 }: Props) {
   const navigate = useNavigate();
-  const { icon: Icon, mau, duongDan } = hienThiBangKe(bangKe.module);
+  const theme = useTheme();
+  // Màu KHÔNG hardcode hex — theo theme để đổi đúng theo sáng/tối (RVW-A14).
+  const { icon: Icon, mau, duongDan } = hienThiBangKe(bangKe.module, theme.palette.mode === "dark");
   const daChot = bangKe.locked;
-  const mauThe = daChot ? MAU_DA_CHOT : mau;
+  const mauDaChot = theme.palette.error.main;
+  const mauThe = daChot ? mauDaChot : mau;
 
   const moTaChot =
     daChot && bangKe.lockedAt
@@ -74,7 +75,7 @@ export default function TheBangKe({
         flexDirection: "column",
         gap: 1.5,
         borderColor: alpha(mauThe, daChot ? 0.7 : 0.35),
-        bgcolor: daChot ? alpha(MAU_DA_CHOT, 0.04) : "background.paper",
+        bgcolor: daChot ? alpha(mauDaChot, 0.04) : "background.paper",
         borderWidth: daChot ? 1.5 : 1,
         transition: "border-color .2s, background-color .2s",
       }}
@@ -151,15 +152,11 @@ export default function TheBangKe({
               fullWidth
               size="small"
               variant="contained"
+              color="warning"
               startIcon={<LockRounded />}
               onClick={onChot}
               disabled={dangXuLy}
-              sx={{
-                textTransform: "none",
-                fontWeight: 600,
-                bgcolor: MAU_NUT_CHOT,
-                "&:hover": { bgcolor: "#e64a19" },
-              }}
+              sx={{ textTransform: "none", fontWeight: 600 }}
             >
               Chốt số liệu
             </Button>

@@ -6,6 +6,7 @@ import Paper from "@mui/material/Paper";
 import Stack from "@mui/material/Stack";
 import Tooltip from "@mui/material/Tooltip";
 import Typography from "@mui/material/Typography";
+import { useTheme } from "@mui/material/styles";
 import LockRounded from "@mui/icons-material/LockRounded";
 import LockOutlined from "@mui/icons-material/LockOutlined";
 import ReceiptLongRounded from "@mui/icons-material/ReceiptLongRounded";
@@ -35,6 +36,7 @@ const chipSx = { borderRadius: 1, fontWeight: 600, height: 24 } as const;
  * Chốt số toàn kỳ / Hướng dẫn (tự quản mutation + hộp thoại của mình) và dải nút vòng đời kỳ.
  */
 export default function ChotKyLuongHeader({ period, tongQuan }: Props) {
+  const theme = useTheme();
   const tinhLuongMut = useTinhLuongKy(period.id);
   const chotToanKyMut = useChotToanKy(period.id);
   const [moChotToanKy, setMoChotToanKy] = useState(false);
@@ -53,10 +55,11 @@ export default function ChotKyLuongHeader({ period, tongQuan }: Props) {
         sx={{ alignItems: { lg: "center" }, justifyContent: "space-between" }}
       >
         <Stack direction="row" spacing={1.5} useFlexGap sx={{ alignItems: "center", flexWrap: "wrap" }}>
-          <IconVuong mau="#e53935">
+          {/* Màu theo token theme (không hardcode hex) — tự đổi đúng theo sáng/tối (RVW-A14). */}
+          <IconVuong mau={theme.palette.error.main}>
             <LockRounded fontSize="small" />
           </IconVuong>
-          <IconVuong mau="#1e88e5">
+          <IconVuong mau={theme.palette.info.main}>
             <LockOutlined fontSize="small" />
           </IconVuong>
           <Typography variant="subtitle1" sx={{ fontWeight: 800, letterSpacing: 0.3 }}>

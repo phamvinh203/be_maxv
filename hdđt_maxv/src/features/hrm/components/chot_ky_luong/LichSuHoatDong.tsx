@@ -6,7 +6,7 @@ import Paper from "@mui/material/Paper";
 import Skeleton from "@mui/material/Skeleton";
 import Stack from "@mui/material/Stack";
 import Typography from "@mui/material/Typography";
-import { alpha } from "@mui/material/styles";
+import { alpha, useTheme, type Theme } from "@mui/material/styles";
 import HistoryRounded from "@mui/icons-material/HistoryRounded";
 import LockRounded from "@mui/icons-material/LockRounded";
 import LockOpenRounded from "@mui/icons-material/LockOpenRounded";
@@ -19,12 +19,16 @@ import {
   type LoaiHoatDong,
 } from "../../api/chot_ky_luong/chotKyLuongQueries";
 
-const KIEU_HOAT_DONG: Record<LoaiHoatDong, { icon: SvgIconComponent; mau: string }> = {
-  LOCK: { icon: LockRounded, mau: "#e53935" },
-  UNLOCK: { icon: LockOpenRounded, mau: "#fb8c00" },
-  EDIT: { icon: DescriptionOutlined, mau: "#1e88e5" },
-  APPROVE: { icon: CheckCircleOutlineRounded, mau: "#43a047" },
-};
+// Màu theo TOKEN theme (không hardcode hex) — tự đổi đúng theo sáng/tối, khớp ý nghĩa đã dùng
+// nơi khác trong app (khóa/mở khóa = error/warning, sửa = info, duyệt = success) (RVW-A14).
+function kieuHoatDong(theme: Theme): Record<LoaiHoatDong, { icon: SvgIconComponent; mau: string }> {
+  return {
+    LOCK: { icon: LockRounded, mau: theme.palette.error.main },
+    UNLOCK: { icon: LockOpenRounded, mau: theme.palette.warning.main },
+    EDIT: { icon: DescriptionOutlined, mau: theme.palette.info.main },
+    APPROVE: { icon: CheckCircleOutlineRounded, mau: theme.palette.success.main },
+  };
+}
 
 /** "16:38:11 10/9/2026" — giờ trước ngày sau, như trên màn tham chiếu. */
 function thoiDiem(iso: string): string {
@@ -38,6 +42,8 @@ function thoiDiem(iso: string): string {
 /** Cột phải màn Chốt kỳ lương — 50 thao tác gần nhất của kỳ, đọc lại từ nhật ký hệ thống. */
 export default function LichSuHoatDong({ periodId }: { periodId: string }) {
   const { data = [], isLoading, isError, error } = useLichSuKyLuong(periodId);
+  const theme = useTheme();
+  const KIEU_HOAT_DONG = kieuHoatDong(theme);
 
   return (
     <Paper variant="outlined" sx={{ p: 2, alignSelf: "start" }}>
