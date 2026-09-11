@@ -1,7 +1,12 @@
+import { Suspense } from "react";
 import { Outlet } from "react-router-dom";
 import Box from "@mui/material/Box";
 import Stack from "@mui/material/Stack";
 import AppHeader from "../../components/AppHeader";
+import FullScreenLoader from "../../components/FullScreenLoader";
+// NB-1: tái dùng ErrorBoundary sẵn có (không phụ thuộc gì riêng accounting, dùng chung được) thay
+// vì viết mới ~20 dòng gần giống hệt.
+import { AccountingErrorBoundary } from "../../components/Accounting/AccountingErrorBoundary";
 import HrmNav from "../../features/hrm/components/HrmNav";
 import { PayrollPeriodProvider } from "../../features/hrm/components/du_lieu_tinh_luong/PayrollPeriodContext";
 import GocKyLuong from "../../features/hrm/components/chot_ky_luong/GocKyLuong";
@@ -31,7 +36,14 @@ export default function HrmPage() {
         </Stack>
 
         <Box sx={{ pt: 3 }}>
-          <Outlet />
+          {/* NB-1: chặn crash trắng cả app khi 1 màn HRM lỗi lúc render.
+              NB-2: 29 màn HRM nay là lazy chunk riêng (xem AppRouter.tsx) — Suspense ở SÁT
+              Outlet để chỉ vùng nội dung này chờ tải, header/nav bên trên không bị ẩn theo. */}
+          <AccountingErrorBoundary>
+            <Suspense fallback={<FullScreenLoader />}>
+              <Outlet />
+            </Suspense>
+          </AccountingErrorBoundary>
         </Box>
       </Box>
     </PayrollPeriodProvider>

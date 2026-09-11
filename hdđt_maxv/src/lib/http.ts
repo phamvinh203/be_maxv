@@ -207,6 +207,10 @@ export async function apiFetchData<T>(
   fallbackMessage = "Yêu cầu thất bại",
 ): Promise<T> {
   const body = await apiFetch<ApiEnvelope<T>>(path, options);
-  if (!body.data) throw new Error(body.message || fallbackMessage);
+  // RVW-C06: `!body.data` loại nhầm payload hợp lệ `0`/`false`/`""` — chỉ coi là thiếu dữ liệu
+  // khi thật sự không có field `data` (undefined/null).
+  if (body.data === undefined || body.data === null) {
+    throw new Error(body.message || fallbackMessage);
+  }
   return body.data;
 }

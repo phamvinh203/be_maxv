@@ -1,63 +1,72 @@
+import { lazy, Suspense } from "react";
 import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
 import App from "../App";
-import AuthPage from "../pages/AuthPage";
-import RegisterPage from "../pages/RegisterPage";
-import ForgotPasswordPage from "../pages/ForgotPasswordPage";
-import HomePage from "../pages/HomePage";
-import SettingsPage from "../pages/settings/SettingsPage";
-import DvcPage from "../pages/dich_vu_cong/DvcPage";
-import ToKhai from "../pages/to_khai/ToKhai";
-import AccountingModulesPage from "../pages/accounting/ModulesPage";
 import { AccountingErrorBoundary } from "../components/Accounting/AccountingErrorBoundary";
 import { defaultModulePath as defaultAccountingPath } from "../features/accounting/_shared/config";
-import KeToanDanhMucKHPage from "../pages/accounting/ban_hang/DanhMucKHPage";
-import KeToanHoaDonBanHangPage from "../pages/accounting/ban_hang/HoaDonBanHangPage";
-import KeToanPhongBanPage from "../pages/accounting/tong_hop/PhongBanPage";
-import KeToanTaiKhoanPage from "../pages/accounting/tong_hop/TaiKhoanPage";
-import KeToanTienTePage from "../pages/accounting/tong_hop/TienTePage";
-import KeToanDvtPage from "../pages/accounting/ton_kho/DvtPage";
-import KeToanHangHoaPage from "../pages/accounting/ton_kho/HangHoaPage";
-import KeToanKhoPage from "../pages/accounting/ton_kho/KhoPage";
-import KeToanLoaiVtPage from "../pages/accounting/ton_kho/LoaiVtPage";
-import KeToanMaGdPage from "../pages/accounting/ton_kho/MaGdPage";
-import KeToanNhomKhoPage from "../pages/accounting/ton_kho/NhomKhoPage";
-import KeToanPhanNhomPage from "../pages/accounting/ton_kho/PhanNhomPage";
-import KeToanViTriKhoPage from "../pages/accounting/ton_kho/ViTriKhoPage";
-import HrmPage from "../pages/hrm/HrmPage";
-import DashboardPage from "../pages/hrm/DashboardPage";
-import DanhMucPage from "../pages/hrm/du_lieu_nhan_vien/DanhMucPage";
-import PhongBanPage from "../pages/hrm/du_lieu_nhan_vien/PhongBanPage";
-import NhanVienPage from "../pages/hrm/du_lieu_nhan_vien/NhanVienPage";
-import NguoiPhuThuocPage from "../pages/hrm/du_lieu_nhan_vien/NguoiPhuThuocPage";
-import CauHinhPage from "../pages/hrm/cau_hinh_mac_dinh/CauHinhPage";
-import ThietLapChungPage from "../pages/hrm/cau_hinh_mac_dinh/ThietLapChungPage";
-import LichNgayLePage from "../pages/hrm/cau_hinh_mac_dinh/LichNgayLePage";
-import CaiDatLuongPage from "../pages/hrm/cai_dat_luong/CaiDatLuongPage";
-import DanhMucKhoanLuongPage from "../pages/hrm/cai_dat_luong/DanhMucKhoanLuongPage";
-import SetLuongPage from "../pages/hrm/cai_dat_luong/SetLuongPage";
-import DuLieuLuongPage from "../pages/hrm/du_lieu_tinh_luong/DuLieuLuongPage";
-import ChamCongPage from "../pages/hrm/du_lieu_tinh_luong/ChamCongPage";
-import TangCaPage from "../pages/hrm/du_lieu_tinh_luong/TangCaPage";
-import KpiPage from "../pages/hrm/du_lieu_tinh_luong/KpiPage";
-import ThuongPage from "../pages/hrm/du_lieu_tinh_luong/ThuongPage";
-import LuongSanPhamPage from "../pages/hrm/du_lieu_tinh_luong/LuongSanPhamPage";
-import LuongPhanTramPage from "../pages/hrm/du_lieu_tinh_luong/LuongPhanTramPage";
-import LuongChuyenCanPage from "../pages/hrm/du_lieu_tinh_luong/LuongChuyenCanPage";
-import UngBuTruPage from "../pages/hrm/du_lieu_tinh_luong/UngBuTruPage";
-import BangLuongPage from "../pages/hrm/bang_luong/BangLuongPage";
-import BangLuongKyPage from "../pages/hrm/bang_luong/BangLuongKyPage";
-import LuongHoTroPage from "../pages/hrm/bang_luong/LuongHoTroPage";
-import ChotKyLuongPage from "../pages/hrm/chot_ky_luong/ChotKyLuongPage";
-import ToKhaiThuePage from "../pages/hrm/to_khai_thue/ToKhaiThuePage";
-import ToKhaiThueChuaDungPage from "../pages/hrm/to_khai_thue/ToKhaiThueChuaDungPage";
-import HoSoLuongPage from "../pages/hrm/ho_so_luong/HoSoLuongPage";
-import HoSoLuongChuaDungPage from "../pages/hrm/ho_so_luong/HoSoLuongChuaDungPage";
 import { MAN_HINH_HO_SO_LUONG } from "../features/hrm/components/ho_so_luong/tabs";
+import { MAN_HINH_TO_KHAI_THUE } from "../features/hrm/components/to_khai_thue/tabs";
 import ProtectedRoute from "./ProtectedRoute";
 import ModuleRoute from "./ModuleRoute";
 import FullScreenLoader from "../components/FullScreenLoader";
 import { useAuth } from "../features/auth/useAuth";
 import type { ComponentType, ReactNode } from "react";
+
+/**
+ * RVW-C03 / NB-2: mọi page cấp route nạp theo yêu cầu (`React.lazy`) thay vì import tĩnh — trước
+ * đây 55 import tĩnh gộp hết vào 1 bundle 2,68 MB (đo trên `dist/`), riêng cây HRM (192
+ * file/34.465 dòng) đã chiếm phần lớn. `<Suspense>` quanh `<Routes>` bên dưới hiện
+ * `FullScreenLoader` trong lúc chờ chunk của route đang vào tải xong.
+ */
+const AuthPage = lazy(() => import("../pages/AuthPage"));
+const RegisterPage = lazy(() => import("../pages/RegisterPage"));
+const ForgotPasswordPage = lazy(() => import("../pages/ForgotPasswordPage"));
+const HomePage = lazy(() => import("../pages/HomePage"));
+const SettingsPage = lazy(() => import("../pages/settings/SettingsPage"));
+const DvcPage = lazy(() => import("../pages/dich_vu_cong/DvcPage"));
+const ToKhai = lazy(() => import("../pages/to_khai/ToKhai"));
+const AccountingModulesPage = lazy(() => import("../pages/accounting/ModulesPage"));
+const KeToanDanhMucKHPage = lazy(() => import("../pages/accounting/ban_hang/DanhMucKHPage"));
+const KeToanHoaDonBanHangPage = lazy(() => import("../pages/accounting/ban_hang/HoaDonBanHangPage"));
+const KeToanPhongBanPage = lazy(() => import("../pages/accounting/tong_hop/PhongBanPage"));
+const KeToanTaiKhoanPage = lazy(() => import("../pages/accounting/tong_hop/TaiKhoanPage"));
+const KeToanTienTePage = lazy(() => import("../pages/accounting/tong_hop/TienTePage"));
+const KeToanDvtPage = lazy(() => import("../pages/accounting/ton_kho/DvtPage"));
+const KeToanHangHoaPage = lazy(() => import("../pages/accounting/ton_kho/HangHoaPage"));
+const KeToanKhoPage = lazy(() => import("../pages/accounting/ton_kho/KhoPage"));
+const KeToanLoaiVtPage = lazy(() => import("../pages/accounting/ton_kho/LoaiVtPage"));
+const KeToanMaGdPage = lazy(() => import("../pages/accounting/ton_kho/MaGdPage"));
+const KeToanNhomKhoPage = lazy(() => import("../pages/accounting/ton_kho/NhomKhoPage"));
+const KeToanPhanNhomPage = lazy(() => import("../pages/accounting/ton_kho/PhanNhomPage"));
+const KeToanViTriKhoPage = lazy(() => import("../pages/accounting/ton_kho/ViTriKhoPage"));
+const HrmPage = lazy(() => import("../pages/hrm/HrmPage"));
+const DashboardPage = lazy(() => import("../pages/hrm/DashboardPage"));
+const DanhMucPage = lazy(() => import("../pages/hrm/du_lieu_nhan_vien/DanhMucPage"));
+const PhongBanPage = lazy(() => import("../pages/hrm/du_lieu_nhan_vien/PhongBanPage"));
+const NhanVienPage = lazy(() => import("../pages/hrm/du_lieu_nhan_vien/NhanVienPage"));
+const NguoiPhuThuocPage = lazy(() => import("../pages/hrm/du_lieu_nhan_vien/NguoiPhuThuocPage"));
+const CauHinhPage = lazy(() => import("../pages/hrm/cau_hinh_mac_dinh/CauHinhPage"));
+const ThietLapChungPage = lazy(() => import("../pages/hrm/cau_hinh_mac_dinh/ThietLapChungPage"));
+const LichNgayLePage = lazy(() => import("../pages/hrm/cau_hinh_mac_dinh/LichNgayLePage"));
+const CaiDatLuongPage = lazy(() => import("../pages/hrm/cai_dat_luong/CaiDatLuongPage"));
+const DanhMucKhoanLuongPage = lazy(() => import("../pages/hrm/cai_dat_luong/DanhMucKhoanLuongPage"));
+const SetLuongPage = lazy(() => import("../pages/hrm/cai_dat_luong/SetLuongPage"));
+const DuLieuLuongPage = lazy(() => import("../pages/hrm/du_lieu_tinh_luong/DuLieuLuongPage"));
+const ChamCongPage = lazy(() => import("../pages/hrm/du_lieu_tinh_luong/ChamCongPage"));
+const TangCaPage = lazy(() => import("../pages/hrm/du_lieu_tinh_luong/TangCaPage"));
+const KpiPage = lazy(() => import("../pages/hrm/du_lieu_tinh_luong/KpiPage"));
+const ThuongPage = lazy(() => import("../pages/hrm/du_lieu_tinh_luong/ThuongPage"));
+const LuongSanPhamPage = lazy(() => import("../pages/hrm/du_lieu_tinh_luong/LuongSanPhamPage"));
+const LuongPhanTramPage = lazy(() => import("../pages/hrm/du_lieu_tinh_luong/LuongPhanTramPage"));
+const LuongChuyenCanPage = lazy(() => import("../pages/hrm/du_lieu_tinh_luong/LuongChuyenCanPage"));
+const UngBuTruPage = lazy(() => import("../pages/hrm/du_lieu_tinh_luong/UngBuTruPage"));
+const BangLuongPage = lazy(() => import("../pages/hrm/bang_luong/BangLuongPage"));
+const BangLuongKyPage = lazy(() => import("../pages/hrm/bang_luong/BangLuongKyPage"));
+const LuongHoTroPage = lazy(() => import("../pages/hrm/bang_luong/LuongHoTroPage"));
+const ChotKyLuongPage = lazy(() => import("../pages/hrm/chot_ky_luong/ChotKyLuongPage"));
+const ToKhaiThuePage = lazy(() => import("../pages/hrm/to_khai_thue/ToKhaiThuePage"));
+const ToKhaiThueChuaDungPage = lazy(() => import("../pages/hrm/to_khai_thue/ToKhaiThueChuaDungPage"));
+const HoSoLuongPage = lazy(() => import("../pages/hrm/ho_so_luong/HoSoLuongPage"));
+const HoSoLuongChuaDungPage = lazy(() => import("../pages/hrm/ho_so_luong/HoSoLuongChuaDungPage"));
 
 /**
  * Trang danh mục/chứng từ Kế toán đã dựng — path khớp đúng `path` khai báo
@@ -112,8 +121,9 @@ function GuestOnlyRoute({ children }: { children: ReactNode }) {
 export default function AppRouter() {
   return (
     <BrowserRouter>
-      <Routes>
-        <Route element={<App />}>
+      <Suspense fallback={<FullScreenLoader />}>
+        <Routes>
+          <Route element={<App />}>
           <Route
             path="login"
             element={
@@ -270,29 +280,26 @@ export default function AppRouter() {
             </Route>
             {/* Không phải tab của thanh HRM — mở từ nút "Chốt kỳ lương" ở góc phải thanh đó. */}
             <Route path="chot-ky-luong" element={<ChotKyLuongPage />} />
-            {/* Năm màn hình chưa dựng — dùng chung chỗ giữ, xem `to_khai_thue/tabs.ts`. */}
+            {/* NB-4: route sinh từ MAN_HINH_TO_KHAI_THUE (cùng cách khu `ho-so-luong` làm) thay
+                vì khai tay từng dòng — trước đây nav (đọc từ bảng) và route (khai tay) là 2 nguồn
+                riêng, thêm/sửa 1 tab ở bảng mà quên sửa route là tab hiện ra nhưng bấm vào bị đá
+                khỏi HRM (catch-all "*" -> Navigate "/"). */}
             <Route path="to-khai-thue" element={<ToKhaiThuePage />}>
               <Route
                 index
-                element={<Navigate to="thu-nhap-ngoai-luong" replace />}
+                element={
+                  <Navigate to={MAN_HINH_TO_KHAI_THUE[0]!.path} replace />
+                }
               />
-              <Route
-                path="thu-nhap-ngoai-luong"
-                element={<ToKhaiThueChuaDungPage />}
-              />
-              <Route
-                path="bang-tinh-thue"
-                element={<ToKhaiThueChuaDungPage />}
-              />
-              <Route path="to-khai-tncn" element={<ToKhaiThueChuaDungPage />} />
-              <Route
-                path="to-khai-quyet-toan"
-                element={<ToKhaiThueChuaDungPage />}
-              />
-              <Route
-                path="doi-soat-cong-thuc"
-                element={<ToKhaiThueChuaDungPage />}
-              />
+              {MAN_HINH_TO_KHAI_THUE.map((mh) => (
+                <Route
+                  key={mh.path}
+                  path={mh.path}
+                  element={
+                    <ToKhaiThueChuaDungPage ten={mh.label} moTa={mh.moTa} />
+                  }
+                />
+              ))}
             </Route>
             {/*
               Mười bốn màn hình chưa dựng, sinh route thẳng từ bảng tab thay vì
@@ -310,7 +317,9 @@ export default function AppRouter() {
                 <Route
                   key={mh.path}
                   path={mh.path}
-                  element={<HoSoLuongChuaDungPage />}
+                  element={
+                    <HoSoLuongChuaDungPage ten={mh.label} moTa={mh.moTa} />
+                  }
                 />
               ))}
             </Route>
@@ -318,7 +327,8 @@ export default function AppRouter() {
           {/* Bắt mọi path không khớp, tránh màn hình trắng khi gõ sai URL */}
           <Route path="*" element={<NotFoundRedirect />} />
         </Route>
-      </Routes>
+        </Routes>
+      </Suspense>
     </BrowserRouter>
   );
 }

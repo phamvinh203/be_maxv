@@ -26,7 +26,6 @@ import MenuBookRounded from "@mui/icons-material/MenuBookRounded";
 import { useAuth } from "../features/auth/useAuth";
 import { useActiveCompanyMst } from "../features/auth/useActiveCompanyMst";
 import { useGdtSession } from "../features/hddt/gdtSession/useGdtSession";
-import { clearDvcKeys } from "../features/dich_vu_cong/dvcKeyStore";
 import { useCompanySwitch } from "../features/company/hooks/useCompanySwitch";
 import DialogLoginHddt from "./dialogLoginHddt";
 import logoMaxv from "../assets/Logo_Maxv.png";
@@ -37,7 +36,7 @@ export default function AppHeader() {
   const { user, logout, companies, currentCompanyId, modules } = useAuth();
   // MST công ty đang chọn — 1 định nghĩa duy nhất (dùng chung với luồng chọn token GDT).
   const currentMst = useActiveCompanyMst();
-  const { clearGdtSession, getGdtToken, setGdtToken } = useGdtSession();
+  const { getGdtToken, setGdtToken } = useGdtSession();
   const { switchingId, error: switchError, switchTo, clearError } = useCompanySwitch();
   const navigate = useNavigate();
   const [userMenuEl, setUserMenuEl] = useState<HTMLElement | null>(null);
@@ -247,11 +246,9 @@ export default function AppHeader() {
             <MenuItem
               onClick={() => {
                 setUserMenuEl(null);
+                // RVW-C02: logout() -> resetSession() giờ tự dọn token GDT + khóa DVC (cả đường
+                // hết-phiên bị động cũng đi qua resetSession), không cần gọi tay ở đây nữa.
                 logout();
-                clearGdtSession();
-                // Khóa phiên DVC sống trong localStorage (qua cả lần mở lại trình duyệt) nên phải
-                // dọn tay ở đây — máy dùng chung không được để lại khóa của người vừa đăng xuất.
-                clearDvcKeys();
               }}
             >
               Đăng xuất
