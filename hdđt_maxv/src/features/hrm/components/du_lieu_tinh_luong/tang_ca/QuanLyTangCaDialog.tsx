@@ -71,7 +71,24 @@ export default function QuanLyTangCaDialog({ open, onClose }: Props) {
   const handleLuu = async () => {
     setDangLuu(true);
     try {
-      await luuCauHinh(values);
+      // RVW-710: merge vào `daLuu` ĐỌC LẠI NGAY LÚC LƯU (không phải `values` —
+      // bản sao chụp từ lúc MỞ dialog), chỉ ghi đè đúng 9 ô hệ số/trần tăng ca
+      // dialog này chỉnh. Trước đây gửi thẳng `values` (toàn bộ `CauHinhMacDinh`,
+      // kể cả biểu thuế/BHXH không đụng tới) — ai sửa các ô khác trong lúc dialog
+      // này còn mở sẽ bị đè mất (last-write-wins) vì `values` đã cũ từ lúc mở.
+      const payload: CauHinhMacDinh = {
+        ...daLuu,
+        tc_ngay_thuong_ngay: values.tc_ngay_thuong_ngay,
+        tc_ngay_thuong_dem: values.tc_ngay_thuong_dem,
+        tc_chu_nhat_ngay: values.tc_chu_nhat_ngay,
+        tc_chu_nhat_dem: values.tc_chu_nhat_dem,
+        tc_ngay_le_ngay: values.tc_ngay_le_ngay,
+        tc_ngay_le_dem: values.tc_ngay_le_dem,
+        gioi_han_tc_thang: values.gioi_han_tc_thang,
+        nguong_canh_bao_tc_nam: values.nguong_canh_bao_tc_nam,
+        nguong_vuot_muc_tc_nam: values.nguong_vuot_muc_tc_nam,
+      };
+      await luuCauHinh(payload);
       toast.success("Đã lưu hệ số và trần giờ tăng ca.");
       onClose();
     } catch (err) {
@@ -140,7 +157,7 @@ export default function QuanLyTangCaDialog({ open, onClose }: Props) {
                 buocNhay={10}
                 value={values.nguong_vuot_muc_tc_nam}
                 onChange={(so) => dat("nguong_vuot_muc_tc_nam", so)}
-                helperText="Cột 'Tổng giờ năm' vượt mức này sẽ bị tô đỏ."
+                helperText="Chưa có lũy kế năm thật để so — xem ghi chú ở TangCaPanel."
               />
             </Stack>
           </Box>

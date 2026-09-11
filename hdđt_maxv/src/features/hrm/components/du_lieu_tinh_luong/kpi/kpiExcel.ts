@@ -9,8 +9,9 @@
  * `exceljs` nặng ~1MB nên nạp trễ đúng lúc bấm nút, giống `hddt/exportXlsx.ts`.
  */
 
-import type { CellValue, Workbook, Worksheet } from "exceljs";
+import type { Workbook } from "exceljs";
 import { hieuSuat, sinhIdDongKpi, tyLeHt } from "../../../calculations/du_lieu_tinh_luong/kpi";
+import { chuoiO, soThapPhan, taiXlsx, toTieuDe } from "../_shared/excel";
 import type { ChiTieuKpi, DongKpi, KpiNhanVienRow } from "../../../types";
 
 /** Cột của sheet "Bảng KPI" — thứ tự này là hợp đồng giữa xuất và nhập. */
@@ -22,63 +23,6 @@ const COT_BANG = [
   { header: "Thực thi", width: 18 },
   { header: "Tỉ lệ HT (%)", width: 14 },
 ];
-
-const HEADER_FILL = "FFDDE6F2";
-
-/** Ô Excel có thể là số, chuỗi, công thức hoặc rich text — ép về chuỗi đã trim. */
-function chuoiO(giaTri: CellValue): string {
-  if (giaTri === null || giaTri === undefined) return "";
-  if (typeof giaTri === "object") {
-    if ("richText" in giaTri) return giaTri.richText.map((p) => p.text).join("").trim();
-    if ("text" in giaTri) return String(giaTri.text).trim();
-    if ("result" in giaTri) return String(giaTri.result ?? "").trim();
-    return "";
-  }
-  return String(giaTri).trim();
-}
-
-/**
- * Ô số của file người dùng sửa tay: chấp nhận cả `1.234.567` lẫn `1,5`.
- *
- * Bỏ dấu chấm (phân cách nghìn kiểu Việt) rồi đổi dấu phẩy thành dấu chấm thập
- * phân — Excel tiếng Việt xuất số theo lối đó, để nguyên thì `Number()` trả NaN
- * và cả cột mục tiêu về 0 mà không ai biết.
- */
-function soO(giaTri: CellValue): number {
-  if (typeof giaTri === "number") return giaTri;
-  const text = chuoiO(giaTri).replace(/\s/g, "").replace(/\./g, "").replace(",", ".");
-  if (!text) return 0;
-  const so = Number(text);
-  return Number.isFinite(so) ? so : 0;
-}
-
-function taiVe(buffer: ArrayBuffer, filename: string): void {
-  const blob = new Blob([buffer], {
-    type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-  });
-  const url = URL.createObjectURL(blob);
-  const link = document.createElement("a");
-  link.href = url;
-  link.download = filename;
-  document.body.appendChild(link);
-  link.click();
-  document.body.removeChild(link);
-  URL.revokeObjectURL(url);
-}
-
-/** Tiêu đề in đậm, nền nhạt — dùng cho mọi sheet của màn KPI. */
-function toTieuDe(ws: Worksheet, soCot: number): void {
-  const row = ws.getRow(1);
-  for (let i = 1; i <= soCot; i += 1) {
-    row.getCell(i).fill = {
-      type: "pattern",
-      pattern: "solid",
-      fgColor: { argb: HEADER_FILL },
-    };
-  }
-  row.font = { bold: true };
-  row.alignment = { vertical: "middle", horizontal: "center", wrapText: true };
-}
 
 /** Sheet tra cứu mã ↔ tên, để người điền file biết gõ mã nào vào cột đầu. */
 function themSheetDanhMuc(wb: Workbook, danhMuc: ChiTieuKpi[]): void {
@@ -118,7 +62,7 @@ export async function taiFileMauKpi(danhMuc: ChiTieuKpi[]): Promise<void> {
   }
 
   themSheetDanhMuc(wb, danhMuc);
-  taiVe((await wb.xlsx.writeBuffer()) as ArrayBuffer, "Mau-nhap-KPI.xlsx");
+  taiXlsx((await wb.xlsx.writeBuffer()) as ArrayBuffer, "Mau-nhap-KPI.xlsx");
 }
 
 /**
@@ -168,7 +112,7 @@ export async function xuatKpiExcel(
   }
 
   themSheetDanhMuc(wb, danhMuc);
-  taiVe((await wb.xlsx.writeBuffer()) as ArrayBuffer, "Bang-KPI.xlsx");
+  taiXlsx((await wb.xlsx.writeBuffer()) as ArrayBuffer, "Bang-KPI.xlsx");
 }
 
 /**
@@ -212,13 +156,13 @@ export async function docFileKpi(file: File, danhMuc: ChiTieuKpi[]): Promise<Don
     if (daGap.has(chiTieu.ma_kpi)) return;
     daGap.add(chiTieu.ma_kpi);
 
-    const trongSo = soO(row.getCell(3).value);
+    const trongSo = soThapPhan(row.getCell(3).value);
     dong.push({
       id: sinhIdDongKpi(),
       ma_kpi: chiTieu.ma_kpi,
       trong_so: trongSo > 0 ? trongSo : chiTieu.trong_so_mac_dinh,
-      muc_tieu: soO(row.getCell(4).value),
-      thuc_thi: soO(row.getCell(5).value),
+      muc_tieu: soThapPhan(row.getCell(4).value),
+      thuc_thi: soThapPhan(row.getCell(5).value),
     });
   });
 

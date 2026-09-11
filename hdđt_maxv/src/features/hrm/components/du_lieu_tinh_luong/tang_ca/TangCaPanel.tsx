@@ -2,32 +2,26 @@ import { useEffect, useMemo, useRef, useState, type ChangeEvent } from "react";
 import { toast } from "react-toastify";
 import Alert from "@mui/material/Alert";
 import Box from "@mui/material/Box";
-import Paper from "@mui/material/Paper";
 import Stack from "@mui/material/Stack";
 import Button from "@mui/material/Button";
-import Chip from "@mui/material/Chip";
 import Dialog from "@mui/material/Dialog";
 import DialogTitle from "@mui/material/DialogTitle";
 import DialogContent from "@mui/material/DialogContent";
 import DialogContentText from "@mui/material/DialogContentText";
 import DialogActions from "@mui/material/DialogActions";
-import DownloadRounded from "@mui/icons-material/DownloadRounded";
-import UploadFileRounded from "@mui/icons-material/UploadFileRounded";
-import FileDownloadRounded from "@mui/icons-material/FileDownloadRounded";
-import PlaylistAddCheckRounded from "@mui/icons-material/PlaylistAddCheckRounded";
-import ContentCopyRounded from "@mui/icons-material/ContentCopyRounded";
-import DeleteSweepRounded from "@mui/icons-material/DeleteSweepRounded";
-import TuneRounded from "@mui/icons-material/TuneRounded";
 import { getErrorMessage } from "../../../../../lib/errors";
 import { PHAM_VI_AP_DUNG } from "../../../_shared/constants";
 import { nhan } from "../../../_shared/format";
 import { gioVn, tongGioOt, tongGioQuyDoi } from "../../../calculations/du_lieu_tinh_luong/tangCa";
 import { useCauHinh } from "../../../api/cau_hinh_mac_dinh/cauHinhQueries";
 import { useApplyOvertime, useOvertimeList } from "../../../api/du_lieu_tinh_luong/payrollInputsQueries";
+import { useCanhBaoRoiTrang } from "../_shared/useCanhBaoRoiTrang";
 import { useCurrentPayrollPeriod } from "../useCurrentPayrollPeriod";
 import { useBangKeChiDoc } from "../useBangKeChiDoc";
 import CanhBaoChiDoc from "../CanhBaoChiDoc";
-import { mergeNhanVienKyLuongWithData, useNhanVienKyLuong } from "../useNhanVienKyLuong";
+import CanhBaoNgoaiBoLoc from "../CanhBaoNgoaiBoLoc";
+import ThanhCongCuBangNhap from "../ThanhCongCuBangNhap";
+import { demSoNgoaiBoLoc, mergeNhanVienKyLuongWithData, useNhanVienKyLuong } from "../useNhanVienKyLuong";
 import type {
   DongTangCa,
   LoaiTangCa,
@@ -48,7 +42,9 @@ import { docFileTangCa, taiFileMauTangCa, xuatTangCaExcel } from "./tangCaExcel"
  * Cùng lối làm việc với các màn còn lại (xem ghi chú ở `KpiPanel`): bảng là bản nháp cục bộ, ghi
  * thật duy nhất qua "Áp dụng tăng ca".
  *
- * ⚠️ Cột "Tổng giờ năm" chỉ còn bằng giờ OT **của kỳ này** (`totalHours`) — API
+ * ⚠️ `gio_nam` (cột "Giờ OT kỳ này" ở `DanhSachTangCaCard`, RVW-709 đổi nhãn từ
+ * "Tổng giờ năm" — KHÔNG còn tô theo `nguong_vuot_muc_tc_nam` vì gây hiểu nhầm
+ * đã kiểm tra trần năm) chỉ bằng giờ OT **của kỳ này** (`totalHours`) — API
  * `GET /payroll-data/overtime` không trả lũy kế các kỳ TRƯỚC trong năm (khác bản mock vốn giữ
  * `gio_luy_ke_nam` riêng). Muốn có đúng lũy kế cả năm cần cộng dồn `GET` của từng kỳ trong năm,
  * ngoài phạm vi phiên đấu dây này — ghi rõ trong `docs/hrm/work-log.md`.
@@ -96,6 +92,12 @@ export default function TangCaPanel() {
   );
 
   const coThayDoi = mau.length > 0;
+  // RVW-707: nháp chỉ sống trong state — chặn F5/đóng tab khi còn nội dung
+  // chưa áp dụng, tránh mất trắng im lặng.
+  useCanhBaoRoiTrang(coThayDoi);
+  // RVW-711: nhân viên có tăng ca trong kỳ nhưng bị 3 ô lọc ẩn khỏi bảng — dữ
+  // liệu vẫn tính vào lương, chỉ là không ai thấy để kiểm tra ở màn này.
+  const soNgoaiBoLoc = demSoNgoaiBoLoc(nhanVien, otData);
   const tongGio = tongGioOt(mau);
 
   const handleApDung = async () => {
@@ -166,85 +168,24 @@ export default function TangCaPanel() {
         />
       )}
 
-      <Paper variant="outlined" sx={{ p: 2 }}>
-        <Stack
-          direction={{ xs: "column", xl: "row" }}
-          spacing={1.5}
-          sx={{ alignItems: { xl: "center" }, justifyContent: "space-between" }}
-        >
-          <Stack direction="row" spacing={1.5} sx={{ flexWrap: "wrap", gap: 1.5 }}>
-            <Button
-              startIcon={<DownloadRounded />}
-              onClick={handleTaiMau}
-              sx={{ textTransform: "none" }}
-            >
-              Tải mẫu
-            </Button>
-            <Button
-              startIcon={<UploadFileRounded />}
-              onClick={() => inputFile.current?.click()}
-              disabled={isReadOnly}
-              sx={{ textTransform: "none" }}
-            >
-              Nhập Excel
-            </Button>
-            <Button
-              startIcon={<FileDownloadRounded />}
-              onClick={handleXuat}
-              sx={{ textTransform: "none" }}
-            >
-              Xuất Excel
-            </Button>
-            <Button
-              variant="contained"
-              startIcon={<PlaylistAddCheckRounded />}
-              onClick={() => setMoApDung(true)}
-              disabled={isReadOnly || mau.length === 0 || rows.length === 0}
-              sx={{ textTransform: "none" }}
-            >
-              Áp dụng tăng ca ({rows.length})
-            </Button>
-            <Button
-              startIcon={<ContentCopyRounded />}
-              onClick={() => setMoTaiSuDung(true)}
-              disabled={isReadOnly}
-              sx={{ textTransform: "none" }}
-            >
-              Tái sử dụng
-            </Button>
-            <Button
-              color="error"
-              startIcon={<DeleteSweepRounded />}
-              onClick={() => setMoXoaTatCa(true)}
-              disabled={mau.length === 0}
-              sx={{ textTransform: "none" }}
-            >
-              Xóa tất cả
-            </Button>
-            <Button
-              variant="outlined"
-              startIcon={<TuneRounded />}
-              onClick={() => setMoQuanLy(true)}
-              sx={{ textTransform: "none" }}
-            >
-              Quản lý tăng ca
-            </Button>
-          </Stack>
-
-          {coThayDoi && (
-            <Box>
-              <Chip
-                size="small"
-                color="warning"
-                label="Bảng tăng ca có nội dung chưa áp dụng"
-                sx={{ height: 22 }}
-              />
-            </Box>
-          )}
-        </Stack>
-
-        <input ref={inputFile} type="file" accept=".xlsx,.xlsm" hidden onChange={handleNhap} />
-      </Paper>
+      <ThanhCongCuBangNhap
+        isReadOnly={isReadOnly}
+        coThayDoi={coThayDoi}
+        soLuongApDung={rows.length}
+        disabledApDung={isReadOnly || mau.length === 0 || rows.length === 0}
+        disabledXoaTatCa={mau.length === 0}
+        inputFile={inputFile}
+        onTaiMau={handleTaiMau}
+        onNhap={handleNhap}
+        onXuat={handleXuat}
+        onApDung={() => setMoApDung(true)}
+        onTaiSuDung={() => setMoTaiSuDung(true)}
+        onXoaTatCa={() => setMoXoaTatCa(true)}
+        onQuanLy={() => setMoQuanLy(true)}
+        nhanApDung="Áp dụng tăng ca"
+        nhanQuanLy="Quản lý tăng ca"
+        canhBaoChuaApDung="Bảng tăng ca có nội dung chưa áp dụng"
+      />
 
       <BangTangCaCard values={mau} onChange={setMau} />
 
@@ -257,6 +198,7 @@ export default function TangCaPanel() {
         periodId={periodId}
         isReadOnly={isReadOnly}
       />
+      <CanhBaoNgoaiBoLoc soLuong={soNgoaiBoLoc} module="tăng ca" />
 
       <QuanLyTangCaDialog open={moQuanLy} onClose={() => setMoQuanLy(false)} />
 

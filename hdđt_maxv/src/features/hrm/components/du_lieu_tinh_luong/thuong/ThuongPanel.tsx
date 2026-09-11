@@ -1,33 +1,26 @@
 import { useEffect, useMemo, useRef, useState, type ChangeEvent } from "react";
 import { toast } from "react-toastify";
 import Alert from "@mui/material/Alert";
-import Box from "@mui/material/Box";
-import Paper from "@mui/material/Paper";
 import Stack from "@mui/material/Stack";
 import Button from "@mui/material/Button";
-import Chip from "@mui/material/Chip";
 import Dialog from "@mui/material/Dialog";
 import DialogTitle from "@mui/material/DialogTitle";
 import DialogContent from "@mui/material/DialogContent";
 import DialogContentText from "@mui/material/DialogContentText";
 import DialogActions from "@mui/material/DialogActions";
-import DownloadRounded from "@mui/icons-material/DownloadRounded";
-import UploadFileRounded from "@mui/icons-material/UploadFileRounded";
-import FileDownloadRounded from "@mui/icons-material/FileDownloadRounded";
-import PlaylistAddCheckRounded from "@mui/icons-material/PlaylistAddCheckRounded";
-import ContentCopyRounded from "@mui/icons-material/ContentCopyRounded";
-import DeleteSweepRounded from "@mui/icons-material/DeleteSweepRounded";
-import TuneRounded from "@mui/icons-material/TuneRounded";
 import { getErrorMessage } from "../../../../../lib/errors";
 import { PHAM_VI_AP_DUNG } from "../../../_shared/constants";
 import { nhan, tienVn } from "../../../_shared/format";
 import { tongTienThuong } from "../../../calculations/du_lieu_tinh_luong/thuong";
 import { useKhoanThuongList, useKhoanLuongIdByCode } from "../../../api/cai_dat_luong/salaryItemsQueries";
 import { useApplyBonus, useBonusDataList } from "../../../api/du_lieu_tinh_luong/payrollInputsQueries";
+import { useCanhBaoRoiTrang } from "../_shared/useCanhBaoRoiTrang";
 import { useCurrentPayrollPeriod } from "../useCurrentPayrollPeriod";
 import { useBangKeChiDoc } from "../useBangKeChiDoc";
 import CanhBaoChiDoc from "../CanhBaoChiDoc";
-import { mergeNhanVienKyLuongWithData, useNhanVienKyLuong } from "../useNhanVienKyLuong";
+import CanhBaoNgoaiBoLoc from "../CanhBaoNgoaiBoLoc";
+import ThanhCongCuBangNhap from "../ThanhCongCuBangNhap";
+import { demSoNgoaiBoLoc, mergeNhanVienKyLuongWithData, useNhanVienKyLuong } from "../useNhanVienKyLuong";
 import type { DongThuong, LocNhanVienKyLuong, PhamViApDung, ThuongNhanVienRow } from "../../../types";
 import XacNhanXoaDialog from "../../XacNhanXoaDialog";
 import BangKhoanThuongCard from "./BangKhoanThuongCard";
@@ -85,6 +78,12 @@ export default function ThuongPanel() {
   );
 
   const coThayDoi = mau.length > 0;
+  // RVW-707: nháp chỉ sống trong state — chặn F5/đóng tab khi còn nội dung
+  // chưa áp dụng, tránh mất trắng im lặng.
+  useCanhBaoRoiTrang(coThayDoi);
+  // RVW-711: nhân viên có thưởng trong kỳ nhưng bị 3 ô lọc ẩn khỏi bảng — dữ
+  // liệu vẫn tính vào lương, chỉ là không ai thấy để kiểm tra ở màn này.
+  const soNgoaiBoLoc = demSoNgoaiBoLoc(nhanVien, bonusData);
   // RVW-701: dòng chưa chọn loại thưởng bị BE từ chối ("Còn dòng chưa chọn loại
   // thưởng") — chặn trước khi gửi cả batch, tránh 400 mù mờ.
   const hopLe = mau.every((d) => d.ma_khoan !== "");
@@ -152,85 +151,24 @@ export default function ThuongPanel() {
         <CanhBaoChiDoc bangKeDaChot={bangKeDaChot} hanhDong="không thể sửa hoặc áp dụng thưởng mới" />
       )}
 
-      <Paper variant="outlined" sx={{ p: 2 }}>
-        <Stack
-          direction={{ xs: "column", xl: "row" }}
-          spacing={1.5}
-          sx={{ alignItems: { xl: "center" }, justifyContent: "space-between" }}
-        >
-          <Stack direction="row" spacing={1.5} sx={{ flexWrap: "wrap", gap: 1.5 }}>
-            <Button
-              startIcon={<DownloadRounded />}
-              onClick={handleTaiMau}
-              sx={{ textTransform: "none" }}
-            >
-              Tải mẫu
-            </Button>
-            <Button
-              startIcon={<UploadFileRounded />}
-              onClick={() => inputFile.current?.click()}
-              disabled={isReadOnly}
-              sx={{ textTransform: "none" }}
-            >
-              Nhập Excel
-            </Button>
-            <Button
-              startIcon={<FileDownloadRounded />}
-              onClick={handleXuat}
-              sx={{ textTransform: "none" }}
-            >
-              Xuất Excel
-            </Button>
-            <Button
-              variant="contained"
-              startIcon={<PlaylistAddCheckRounded />}
-              onClick={() => setMoApDung(true)}
-              disabled={isReadOnly || mau.length === 0 || rows.length === 0 || !hopLe}
-              sx={{ textTransform: "none" }}
-            >
-              Áp dụng thưởng ({rows.length})
-            </Button>
-            <Button
-              startIcon={<ContentCopyRounded />}
-              onClick={() => setMoTaiSuDung(true)}
-              disabled={isReadOnly}
-              sx={{ textTransform: "none" }}
-            >
-              Tái sử dụng
-            </Button>
-            <Button
-              color="error"
-              startIcon={<DeleteSweepRounded />}
-              onClick={() => setMoXoaTatCa(true)}
-              disabled={mau.length === 0}
-              sx={{ textTransform: "none" }}
-            >
-              Xóa tất cả
-            </Button>
-            <Button
-              variant="outlined"
-              startIcon={<TuneRounded />}
-              onClick={() => setMoQuanLy(true)}
-              sx={{ textTransform: "none" }}
-            >
-              Quản lý thưởng
-            </Button>
-          </Stack>
-
-          {coThayDoi && (
-            <Box>
-              <Chip
-                size="small"
-                color="warning"
-                label="Bảng thưởng có nội dung chưa áp dụng"
-                sx={{ height: 22 }}
-              />
-            </Box>
-          )}
-        </Stack>
-
-        <input ref={inputFile} type="file" accept=".xlsx,.xlsm" hidden onChange={handleNhap} />
-      </Paper>
+      <ThanhCongCuBangNhap
+        isReadOnly={isReadOnly}
+        coThayDoi={coThayDoi}
+        soLuongApDung={rows.length}
+        disabledApDung={isReadOnly || mau.length === 0 || rows.length === 0 || !hopLe}
+        disabledXoaTatCa={mau.length === 0}
+        inputFile={inputFile}
+        onTaiMau={handleTaiMau}
+        onNhap={handleNhap}
+        onXuat={handleXuat}
+        onApDung={() => setMoApDung(true)}
+        onTaiSuDung={() => setMoTaiSuDung(true)}
+        onXoaTatCa={() => setMoXoaTatCa(true)}
+        onQuanLy={() => setMoQuanLy(true)}
+        nhanApDung="Áp dụng thưởng"
+        nhanQuanLy="Quản lý thưởng"
+        canhBaoChuaApDung="Bảng thưởng có nội dung chưa áp dụng"
+      />
 
       <BangKhoanThuongCard values={mau} onChange={setMau} soNhanVien={rows.length} />
 
@@ -243,6 +181,7 @@ export default function ThuongPanel() {
         periodId={periodId}
         isReadOnly={isReadOnly}
       />
+      <CanhBaoNgoaiBoLoc soLuong={soNgoaiBoLoc} module="thưởng" />
 
       <QuanLyThuongDialog open={moQuanLy} onClose={() => setMoQuanLy(false)} />
 

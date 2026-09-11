@@ -21,6 +21,7 @@ import DeleteRounded from "@mui/icons-material/DeleteRounded";
 import { tienVn } from "../../../_shared/format";
 import { dongSanPhamRong, thanhTienSanPham, tongTienSanPham } from "../../../calculations/du_lieu_tinh_luong/luongSanPham";
 import { useSanPhamList } from "../../../api/du_lieu_tinh_luong/payrollCatalogsQueries";
+import { soDuong } from "../_shared/inputGuards";
 import type { DongLuongSanPham } from "../../../types";
 import TienField from "../../TienField";
 
@@ -159,9 +160,7 @@ export default function BangSanPhamCard({ values, onChange }: Props) {
                       size="small"
                       fullWidth
                       value={dong.so_luong}
-                      onChange={(e) =>
-                        datDong(dong.id, { so_luong: Number(e.target.value) || 0 })
-                      }
+                      onChange={(e) => datDong(dong.id, { so_luong: soDuong(e.target.value) })}
                       onWheel={(e) => (e.target as HTMLElement).blur()}
                       slotProps={{
                         htmlInput: { min: 0, step: 1 },

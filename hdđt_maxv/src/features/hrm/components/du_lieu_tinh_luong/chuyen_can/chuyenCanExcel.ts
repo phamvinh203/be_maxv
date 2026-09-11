@@ -4,10 +4,11 @@
  * được ngay.
  */
 
-import type { CellValue, Workbook, Worksheet } from "exceljs";
+import type { CellValue, Workbook } from "exceljs";
 import { moTaCachTru } from "../../../_shared/constants";
 import { sinhIdDongChuyenCan } from "../../../calculations/du_lieu_tinh_luong/chuyenCan";
 import { homNay } from "../../../_shared/format";
+import { soThapPhan, taiXlsx, TIEN_FMT, toTieuDe } from "../_shared/excel";
 import type { ChuyenCanNhanVienRow, DongChuyenCan, LoaiChuyenCan } from "../../../types";
 
 /** Cột của sheet "Bảng chuyên cần" — thứ tự này là hợp đồng giữa xuất và nhập. */
@@ -18,11 +19,15 @@ const COT_BANG = [
   { header: "Ngày (yyyy-mm-dd)", width: 20 },
 ];
 
-const HEADER_FILL = "FFDDE6F2";
-const TIEN_FMT = "#,##0";
 const NGAY_FMT = "@";
 
-/** Ô Excel có thể là số, chuỗi, công thức hoặc rich text — ép về chuỗi đã trim. */
+/**
+ * Ô Excel có thể là số, chuỗi, công thức hoặc rich text — ép về chuỗi đã trim.
+ *
+ * RIÊNG bản của file này (KHÔNG dùng `chuoiO` chung ở `_shared/excel.ts`): có
+ * thêm nhánh nhận diện `Date` (ô "Ngày" Excel hay trả kiểu `Date`) mà 6 module
+ * anh em không cần — xem `ngayO`.
+ */
 function chuoiO(giaTri: CellValue): string {
   if (giaTri === null || giaTri === undefined) return "";
   if (giaTri instanceof Date) return isoNgay(giaTri);
@@ -42,15 +47,6 @@ function isoNgay(d: Date): string {
   return `${d.getFullYear()}-${thang}-${ngay}`;
 }
 
-/** Chấp nhận cả `2,5` lẫn `2.5` — xem ghi chú ở `kpiExcel.soO`. */
-function soO(giaTri: CellValue): number {
-  if (typeof giaTri === "number") return giaTri;
-  const text = chuoiO(giaTri).replace(/\s/g, "").replace(/h$/i, "").replace(",", ".");
-  if (!text) return 0;
-  const so = Number(text);
-  return Number.isFinite(so) ? so : 0;
-}
-
 /**
  * Ô ngày về `YYYY-MM-DD`.
  *
@@ -67,33 +63,6 @@ function ngayO(giaTri: CellValue): string {
     return `${nam}-${thang!.padStart(2, "0")}-${ngay!.padStart(2, "0")}`;
   }
   return "";
-}
-
-function taiVe(buffer: ArrayBuffer, filename: string): void {
-  const blob = new Blob([buffer], {
-    type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-  });
-  const url = URL.createObjectURL(blob);
-  const link = document.createElement("a");
-  link.href = url;
-  link.download = filename;
-  document.body.appendChild(link);
-  link.click();
-  document.body.removeChild(link);
-  URL.revokeObjectURL(url);
-}
-
-function toTieuDe(ws: Worksheet, soCot: number): void {
-  const row = ws.getRow(1);
-  for (let i = 1; i <= soCot; i += 1) {
-    row.getCell(i).fill = {
-      type: "pattern",
-      pattern: "solid",
-      fgColor: { argb: HEADER_FILL },
-    };
-  }
-  row.font = { bold: true };
-  row.alignment = { vertical: "middle", horizontal: "center", wrapText: true };
 }
 
 /** Sheet tra cứu mã ↔ tên ↔ cách trừ, để người điền file biết gõ mã nào vào cột đầu. */
@@ -134,7 +103,7 @@ export async function taiFileMauChuyenCan(danhMuc: LoaiChuyenCan[]): Promise<voi
   }
 
   themSheetDanhMuc(wb, danhMuc);
-  taiVe((await wb.xlsx.writeBuffer()) as ArrayBuffer, "Mau-nhap-chuyen-can.xlsx");
+  taiXlsx((await wb.xlsx.writeBuffer()) as ArrayBuffer, "Mau-nhap-chuyen-can.xlsx");
 }
 
 /** Xuất bảng đang soạn + danh sách nhân viên đang lọc. */
@@ -178,7 +147,7 @@ export async function xuatChuyenCanExcel(
   }
 
   themSheetDanhMuc(wb, danhMuc);
-  taiVe((await wb.xlsx.writeBuffer()) as ArrayBuffer, "Bang-chuyen-can.xlsx");
+  taiXlsx((await wb.xlsx.writeBuffer()) as ArrayBuffer, "Bang-chuyen-can.xlsx");
 }
 
 /**
@@ -221,7 +190,7 @@ export async function docFileChuyenCan(
       dongLoi.push(soDong);
       return;
     }
-    const soGio = soO(row.getCell(3).value);
+    const soGio = soThapPhan(row.getCell(3).value);
     const ngay = ngayO(row.getCell(4).value);
     // Chưa điền gì thì loại này kỳ đó không phát sinh — bỏ qua, không phải lỗi.
     if (soGio <= 0 && !ngay) return;

@@ -4,9 +4,10 @@
  * file xuất ra nhập lại được ngay.
  */
 
-import type { CellValue, Workbook, Worksheet } from "exceljs";
+import type { Workbook } from "exceljs";
 import { moTaChieuBuTru } from "../../../_shared/constants";
 import { sinhIdDongBuTru, tongBiTru } from "../../../calculations/du_lieu_tinh_luong/buTru";
+import { chuoiO, soTien, taiXlsx, TIEN_FMT, toTieuDe } from "../_shared/excel";
 import type { BuTruNhanVienRow, DongBuTru, KhoanBuTru } from "../../../types";
 
 /** Cột của sheet "Ứng - bù trừ" — thứ tự này là hợp đồng giữa xuất và nhập. */
@@ -16,61 +17,6 @@ const COT_BANG = [
   { header: "Chiều", width: 20 },
   { header: "Số tiền", width: 18 },
 ];
-
-const HEADER_FILL = "FFDDE6F2";
-const TIEN_FMT = "#,##0";
-
-/** Ô Excel có thể là số, chuỗi, công thức hoặc rich text — ép về chuỗi đã trim. */
-function chuoiO(giaTri: CellValue): string {
-  if (giaTri === null || giaTri === undefined) return "";
-  if (typeof giaTri === "object") {
-    if ("richText" in giaTri) return giaTri.richText.map((p) => p.text).join("").trim();
-    if ("text" in giaTri) return String(giaTri.text).trim();
-    if ("result" in giaTri) return String(giaTri.result ?? "").trim();
-    return "";
-  }
-  return String(giaTri).trim();
-}
-
-/** Chấp nhận cả `2.000.000` lẫn `2000000` — xem ghi chú ở `kpiExcel.soO`. */
-function soO(giaTri: CellValue): number {
-  if (typeof giaTri === "number") return giaTri;
-  const text = chuoiO(giaTri)
-    .replace(/\s/g, "")
-    .replace(/[₫đ]/gi, "")
-    .replace(/\./g, "")
-    .replace(",", ".");
-  if (!text) return 0;
-  const so = Number(text);
-  return Number.isFinite(so) ? so : 0;
-}
-
-function taiVe(buffer: ArrayBuffer, filename: string): void {
-  const blob = new Blob([buffer], {
-    type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-  });
-  const url = URL.createObjectURL(blob);
-  const link = document.createElement("a");
-  link.href = url;
-  link.download = filename;
-  document.body.appendChild(link);
-  link.click();
-  document.body.removeChild(link);
-  URL.revokeObjectURL(url);
-}
-
-function toTieuDe(ws: Worksheet, soCot: number): void {
-  const row = ws.getRow(1);
-  for (let i = 1; i <= soCot; i += 1) {
-    row.getCell(i).fill = {
-      type: "pattern",
-      pattern: "solid",
-      fgColor: { argb: HEADER_FILL },
-    };
-  }
-  row.font = { bold: true };
-  row.alignment = { vertical: "middle", horizontal: "center", wrapText: true };
-}
 
 /** Sheet tra cứu mã ↔ tên ↔ chiều, để người điền file biết gõ mã nào vào cột đầu. */
 function themSheetDanhMuc(wb: Workbook, danhMuc: KhoanBuTru[]): void {
@@ -113,7 +59,7 @@ export async function taiFileMauBuTru(danhMuc: KhoanBuTru[]): Promise<void> {
   }
 
   themSheetDanhMuc(wb, danhMuc);
-  taiVe((await wb.xlsx.writeBuffer()) as ArrayBuffer, "Mau-nhap-ung-bu-tru.xlsx");
+  taiXlsx((await wb.xlsx.writeBuffer()) as ArrayBuffer, "Mau-nhap-ung-bu-tru.xlsx");
 }
 
 /** Xuất bảng đang soạn + danh sách nhân viên đang lọc. */
@@ -158,7 +104,7 @@ export async function xuatBuTruExcel(
   }
 
   themSheetDanhMuc(wb, danhMuc);
-  taiVe((await wb.xlsx.writeBuffer()) as ArrayBuffer, "Bang-ung-bu-tru.xlsx");
+  taiXlsx((await wb.xlsx.writeBuffer()) as ArrayBuffer, "Bang-ung-bu-tru.xlsx");
 }
 
 /**
@@ -203,17 +149,17 @@ export async function docFileBuTru(
       dongLoi.push(soDong);
       return;
     }
-    const soTien = soO(row.getCell(4).value);
-    if (soTien < 0) {
+    const tien = soTien(row.getCell(4).value);
+    if (tien < 0) {
       dongAm.push(soDong);
       return;
     }
-    if (soTien === 0) return; // khoản kỳ này không phát sinh
+    if (tien === 0) return; // khoản kỳ này không phát sinh
     // Cùng một khoản hai lần thì tiền cộng đôi — lấy lần đầu, bỏ các lần sau.
     if (daGap.has(khoan.ma_bt)) return;
     daGap.add(khoan.ma_bt);
 
-    dong.push({ id: sinhIdDongBuTru(), ma_bt: khoan.ma_bt, so_tien: soTien });
+    dong.push({ id: sinhIdDongBuTru(), ma_bt: khoan.ma_bt, so_tien: tien });
   });
 
   if (dongLoi.length > 0) {

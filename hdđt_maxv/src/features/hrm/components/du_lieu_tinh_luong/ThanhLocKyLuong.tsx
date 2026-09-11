@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import Stack from "@mui/material/Stack";
 import TextField from "@mui/material/TextField";
 import MenuItem from "@mui/material/MenuItem";
@@ -52,6 +52,27 @@ export default function ThanhLocKyLuong({
     giaTri: LocNhanVienKyLuong[K],
   ) => onFilters({ ...filters, [khoa]: giaTri });
 
+  // RVW-708: ô tìm kiếm gõ tay — mỗi keystroke đẩy thẳng vào `filters.q` sẽ kích
+  // `useNhanVienKyLuong` filter + sort toàn bộ nhân viên + dựng lại Map ngay lập
+  // tức. Giữ state gõ RIÊNG (`qDraft`, hiện ngay để không giật ô nhập) rồi debounce
+  // 250ms mới đẩy lên `onFilters` — gõ nhanh không làm re-render toàn bảng liên tục.
+  // Không đồng bộ ngược từ `filters.q` — chỉ ô này ghi vào đó, không nơi nào khác
+  // reset `q` từ ngoài (không có nút "Xóa bộ lọc" nào đụng riêng `q`).
+  const [qDraft, setQDraft] = useState(filters.q);
+  const qDebounceRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+
+  useEffect(() => {
+    return () => {
+      if (qDebounceRef.current) clearTimeout(qDebounceRef.current);
+    };
+  }, []);
+
+  const doiQ = (giaTri: string) => {
+    setQDraft(giaTri);
+    if (qDebounceRef.current) clearTimeout(qDebounceRef.current);
+    qDebounceRef.current = setTimeout(() => dat("q", giaTri), 250);
+  };
+
   return (
     <>
       <Stack
@@ -80,8 +101,8 @@ export default function ThanhLocKyLuong({
           <TextField
             size="small"
             placeholder="Tìm mã/tên nhân viên"
-            value={filters.q}
-            onChange={(e) => dat("q", e.target.value)}
+            value={qDraft}
+            onChange={(e) => doiQ(e.target.value)}
             disabled={phamVi !== "nhan_vien"}
             sx={{ width: { xs: "100%", md: 240 } }}
             slotProps={{

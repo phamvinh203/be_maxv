@@ -29,6 +29,7 @@ import {
   tongGioQuyDoi,
 } from "../../../calculations/du_lieu_tinh_luong/tangCa";
 import { useCauHinh } from "../../../api/cau_hinh_mac_dinh/cauHinhQueries";
+import { soDuong } from "../_shared/inputGuards";
 import type { DongTangCa, LoaiTangCa } from "../../../types";
 
 interface Props {
@@ -147,7 +148,7 @@ export default function BangTangCaCard({ values, onChange }: Props) {
                       size="small"
                       fullWidth
                       value={dong.so_gio}
-                      onChange={(e) => datDong(dong.id, { so_gio: Number(e.target.value) || 0 })}
+                      onChange={(e) => datDong(dong.id, { so_gio: soDuong(e.target.value) })}
                       onWheel={(e) => (e.target as HTMLElement).blur()}
                       error={dong.so_gio <= 0}
                       helperText={dong.so_gio <= 0 ? "Số giờ phải lớn hơn 0 — dòng này sẽ bị bỏ qua khi áp dụng" : undefined}
