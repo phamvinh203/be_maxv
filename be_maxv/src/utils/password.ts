@@ -3,13 +3,17 @@ import { randomBytes } from 'node:crypto';
 
 const SALT_ROUNDS = 10;
 
-/** Sinh mật khẩu ngẫu nhiên (~12 ký tự) cho admin đặt lại hộ người dùng. */
-export function generatePassword(): string {
-  return randomBytes(9).toString('base64url');
-}
-
 export function hashPassword(plain: string): Promise<string> {
   return bcrypt.hash(plain, SALT_ROUNDS);
+}
+
+/**
+ * Băm một mật khẩu NGẪU NHIÊN không ai biết (kể cả hệ thống — không giữ lại bản rõ): cho tài khoản vừa duyệt
+ * lời mời, hoặc vừa bị admin vô hiệu mật khẩu. Người dùng tự đặt mật khẩu bằng "Quên mật khẩu" (OTP).
+ * Thay cho việc sinh mật khẩu rồi gửi dạng rõ qua email / hiện cho admin (vbsec 2026-09-10).
+ */
+export function bamMatKhauKhongAiBiet(): Promise<string> {
+  return hashPassword(randomBytes(32).toString('base64url'));
 }
 
 export function verifyPassword(plain: string, hash: string): Promise<boolean> {

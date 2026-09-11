@@ -17,6 +17,11 @@ import { listAccessibleCompanies } from '../shared/companyAccess.service';
 import { moduleCuaUser } from '../shared/modules.service';
 import { canAccessDonVi } from '../../helpers/access';
 import {
+  dangBiKhoaDangNhap,
+  ghiNhanDangNhapSai,
+  xoaDemDangNhapSai,
+} from '../../helpers/khoaDangNhap';
+import {
   ConflictError,
   NotFoundError,
   UnauthorizedError,
@@ -95,13 +100,20 @@ export async function registerUser(input: RegisterInput) {
 export async function loginUser(input: LoginInput) {
   const { email, password } = input;
 
+  // Đang tạm khóa vì sai quá nhiều lần: chặn TRƯỚC khi so mật khẩu (không cho đoán tiếp).
+  if (dangBiKhoaDangNhap(email)) {
+    throw new UnauthorizedError(MESSAGES.AUTH.LOGIN_LOCKED);
+  }
+
   const user = await sysPrisma.user.findUnique({ where: { email } });
 
   // Luôn so sánh 1 lần bcrypt (kể cả user không tồn tại) -> thời gian không đổi.
   const ok = await verifyPassword(password, user?.password ?? DUMMY_HASH);
   if (!user || !ok) {
+    ghiNhanDangNhapSai(email);
     throw new UnauthorizedError(MESSAGES.AUTH.INVALID_CREDENTIALS);
   }
+  xoaDemDangNhapSai(email);
   if (!user.isActive) {
     throw new UnauthorizedError(MESSAGES.AUTH.ACCOUNT_INACTIVE);
   }
@@ -274,37 +286,20 @@ export async function resetPasswordWithOtp(input: ResetPasswordInput) {
 }
 
 /**
- * `tokenVersion` HIỆN TẠI trong DB của 1 user.
+ * Nạp user của một phiên và CHẶN nếu phiên đó đã bị thu hồi: user không còn / bị khóa, hoặc
+ * `tokenVersion` của vé đang dùng lệch DB (đặt lại mật khẩu tăng cột này).
  *
- * Dùng khi cấp lại bộ token ngoài luồng login/refresh (đổi công ty, tạo công ty). Không
- * lấy từ `req.user.tokenVersion`: access token không được đối chiếu DB, nên nếu vừa có
- * đợt đặt lại mật khẩu thì payload đó đã cũ và ta sẽ ký ra refresh token chết ngay từ đầu.
- * Bất biến cần giữ: mọi refresh token vừa phát đều mang version khớp DB.
- */
-export async function currentTokenVersion(userId: string): Promise<number> {
-  const user = await sysPrisma.user.findUnique({
-    where: { id: userId },
-    select: { tokenVersion: true },
-  });
-  if (!user) throw new UnauthorizedError(MESSAGES.AUTH.UNAUTHORIZED);
-  return user.tokenVersion;
-}
-
-/**
- * Tải lại user theo id để cấp access token mới (refresh).
- * Đọc lại role từ DB (không tin payload cũ) và giữ lại công ty đang chọn từ refresh
- * token — nhưng chỉ khi user VẪN còn quyền vào công ty đó (quyền có thể đã bị thu hồi).
+ * Nguồn DUY NHẤT của quy tắc "phiên còn hiệu lực" cho mọi chỗ ký token mới từ một vé cũ —
+ * refresh (`loadUserForRefresh`) và cấp lại giữa phiên (`loadUserForReissue`).
  *
- * `tokenVersion` trong token phải khớp DB: đặt lại mật khẩu tăng cột này nên mọi refresh
- * token phát trước đó bị chặn ở đây — đây là chỗ duy nhất thu hồi được phiên đã cấp.
+ * `tokenVersion` undefined = token ký TRƯỚC khi có tokenVersion. Coi như 0 để khớp giá trị
+ * migration backfill cho mọi user cũ, tránh đá toàn bộ phiên đang đăng nhập ngay lúc deploy.
+ * Bỏ `?? 0` được sau khi mọi refresh token cũ đã hết hạn (quá refreshTtl).
  */
-export async function loadUserForRefresh(
+async function taiUserPhienConHieuLuc(
   userId: string,
-  tokenDonViId: string | null,
-  // undefined = token ký TRƯỚC khi có tokenVersion. Coi như 0 để khớp giá trị migration
-  // backfill cho mọi user cũ, tránh đá toàn bộ phiên đang đăng nhập ngay lúc deploy.
-  // Bỏ `?? 0` được sau khi mọi refresh token cũ đã hết hạn (quá refreshTtl).
   tokenVersion: number | undefined,
+  thongBaoLoi: string,
 ) {
   // Chỉ lấy 4 cột thật sự dùng: hàm này chạy mỗi lần access token hết hạn của MỌI phiên
   // đang mở, không cần kéo cả bản ghi (gồm cả hash mật khẩu) về.
@@ -313,8 +308,49 @@ export async function loadUserForRefresh(
     select: { id: true, role: true, isActive: true, tokenVersion: true },
   });
   if (!user || !user.isActive || user.tokenVersion !== (tokenVersion ?? 0)) {
-    throw new UnauthorizedError(MESSAGES.AUTH.REFRESH_INVALID);
+    throw new UnauthorizedError(thongBaoLoi);
   }
+  return user;
+}
+
+/**
+ * Kiểm lại phiên trước khi cấp lại bộ token GIỮA PHIÊN (đổi / tạo / xóa công ty đang chọn).
+ *
+ * Access token không được đối chiếu DB mỗi request, nên chỗ này phải chặn y như refresh. Nếu
+ * chỉ đọc `tokenVersion` hiện tại trong DB rồi ký (cách cũ), một vé đã bị thu hồi — đặt lại mật
+ * khẩu, tài khoản bị khóa — sẽ được "nâng cấp" thành refresh token hợp lệ và sống mãi. Role đọc
+ * lại từ DB, không tin role trong JWT cũ (có thể đã bị hạ quyền).
+ */
+export async function loadUserForReissue(
+  userId: string,
+  tokenVersion: number | undefined,
+): Promise<{ role: string; tokenVersion: number }> {
+  const user = await taiUserPhienConHieuLuc(
+    userId,
+    tokenVersion,
+    MESSAGES.AUTH.UNAUTHORIZED,
+  );
+  return { role: user.role, tokenVersion: user.tokenVersion };
+}
+
+/**
+ * Tải lại user theo id để cấp access token mới (refresh).
+ * Đọc lại role từ DB (không tin payload cũ) và giữ lại công ty đang chọn từ refresh
+ * token — nhưng chỉ khi user VẪN còn quyền vào công ty đó (quyền có thể đã bị thu hồi).
+ *
+ * `tokenVersion` trong token phải khớp DB: đặt lại mật khẩu tăng cột này nên mọi refresh
+ * token phát trước đó bị chặn ở đây.
+ */
+export async function loadUserForRefresh(
+  userId: string,
+  tokenDonViId: string | null,
+  tokenVersion: number | undefined,
+) {
+  const user = await taiUserPhienConHieuLuc(
+    userId,
+    tokenVersion,
+    MESSAGES.AUTH.REFRESH_INVALID,
+  );
 
   let donViId: string | null = null;
   if (

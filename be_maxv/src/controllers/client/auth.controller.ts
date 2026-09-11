@@ -23,7 +23,11 @@ import {
   REFRESH_COOKIE,
   REFRESH_PATH,
 } from '../../constants/auth';
-import { issueTokens } from '../../helpers/authTokens';
+import { batDauPhien, issueTokens } from '../../helpers/authTokens';
+import {
+  thuHoiPhien,
+  xoayPhien,
+} from '../../services/client/phienDangNhap.service';
 
 /** POST /api/v1/auth/register — Bước 1: đăng ký người dùng. */
 export async function register(req: FastifyRequest, reply: FastifyReply) {
@@ -35,7 +39,7 @@ export async function register(req: FastifyRequest, reply: FastifyReply) {
 export async function login(req: FastifyRequest, reply: FastifyReply) {
   const { user, tokenVersion, companies, activeDonViId, modules } =
     await loginUser(validateBody(loginSchema, req.body));
-  await issueTokens(reply, {
+  await batDauPhien(reply, {
     userId: user.id,
     donViId: activeDonViId,
     role: user.role,
@@ -71,29 +75,59 @@ export async function me(req: FastifyRequest, reply: FastifyReply) {
   return sendOk(reply, session);
 }
 
-/** POST /api/v1/auth/refresh — cấp access token (cookie) mới từ refresh cookie. */
+/**
+ * POST /api/v1/auth/refresh — cấp bộ token (cookie) mới từ refresh cookie, XOAY `jti` của phiên
+ * (`xoayPhien`): refresh token vừa dùng trở thành "cũ", dùng lại quá ân hạn là hủy cả phiên.
+ */
 export async function refresh(req: FastifyRequest, reply: FastifyReply) {
-  let userId: string;
-  let donViId: string | null;
-  let tokenVersion: number;
+  let ve: Awaited<ReturnType<FastifyRequest['refreshJwtVerify']>>;
   try {
-    ({ userId, donViId, tokenVersion } = await req.refreshJwtVerify());
+    ve = await req.refreshJwtVerify();
   } catch {
     throw new UnauthorizedError(MESSAGES.AUTH.REFRESH_INVALID);
   }
 
-  const ctx = await loadUserForRefresh(userId, donViId, tokenVersion);
-  await issueTokens(reply, {
+  const ctx = await loadUserForRefresh(ve.userId, ve.donViId, ve.tokenVersion);
+  const payload = {
     userId: ctx.id,
     donViId: ctx.donViId,
     role: ctx.role,
     tokenVersion: ctx.tokenVersion,
-  });
+  };
+  if (ve.sid) {
+    const jti = await xoayPhien(ve.sid, ve.jti, ctx.id);
+    await issueTokens(reply, { ...payload, sid: ve.sid }, jti);
+  } else {
+    // Refresh token ký TRƯỚC khi có phiên phía server: chuyển sang một phiên mới. Bỏ nhánh này sau
+    // `refreshTtl` kể từ ngày triển khai — khi đó mọi token không có `sid` đã hết hạn.
+    await batDauPhien(reply, payload);
+  }
   return sendOk(reply, { activeDonViId: ctx.donViId });
 }
 
-/** POST /api/v1/auth/logout — xóa cả access lẫn refresh cookie. */
+/** `sid` của phiên đang gửi request: ưu tiên refresh cookie, mất thì lấy từ access cookie. */
+async function sidCuaRequest(req: FastifyRequest): Promise<string | undefined> {
+  try {
+    const sid = (await req.refreshJwtVerify()).sid;
+    if (sid) return sid;
+  } catch {
+    // Không có / hết hạn / sai chữ ký — thử access cookie.
+  }
+  try {
+    return (await req.jwtVerify<{ sid?: string }>()).sid;
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * POST /api/v1/auth/logout — THU HỒI phiên phía server rồi xóa cả access lẫn refresh cookie.
+ * Chỉ xóa cookie thì refresh token đã lộ vẫn làm mới được thêm 7 ngày, gia hạn mãi.
+ * Không cần đăng nhập, không có cookie nào vẫn 200 (idempotent).
+ */
 export async function logout(req: FastifyRequest, reply: FastifyReply) {
+  const sid = await sidCuaRequest(req);
+  if (sid) await thuHoiPhien(sid);
   reply.clearCookie(ACCESS_COOKIE, { path: ACCESS_PATH });
   reply.clearCookie(REFRESH_COOKIE, { path: REFRESH_PATH });
   return sendOk(reply, { message: MESSAGES.AUTH.LOGOUT_OK });
