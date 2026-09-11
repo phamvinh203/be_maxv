@@ -1,6 +1,7 @@
 /**
- * Danh mục 26 Mã lỗi chuẩn hóa của Phân hệ Dữ liệu Tính Lương (du_lieu_tinh_luong).
- * Tuân thủ theo tài liệu SRS Mục 4.2 và QA Test Matrix.
+ * Danh mục 28 Mã lỗi chuẩn hóa của Phân hệ Dữ liệu Tính Lương (du_lieu_tinh_luong).
+ * Tuân thủ theo tài liệu SRS Mục 4.2 và QA Test Matrix. `E-dltl-027`/`028` thuộc màn
+ * "Chốt kỳ lương" — chốt số từng bảng kê (BR-dltl-030).
  */
 export const PAYROLL_ERROR_CODES = {
   E_DLTL_001: 'E-dltl-001',
@@ -29,6 +30,8 @@ export const PAYROLL_ERROR_CODES = {
   E_DLTL_024: 'E-dltl-024',
   E_DLTL_025: 'E-dltl-025',
   E_DLTL_026: 'E-dltl-026',
+  E_DLTL_027: 'E-dltl-027',
+  E_DLTL_028: 'E-dltl-028',
 } as const;
 
 export type PayrollErrorCode = typeof PAYROLL_ERROR_CODES[keyof typeof PAYROLL_ERROR_CODES];
@@ -60,4 +63,6 @@ export const PAYROLL_ERROR_MESSAGES: Record<PayrollErrorCode, string> = {
   [PAYROLL_ERROR_CODES.E_DLTL_024]: 'File Excel nhập vào không đúng cấu trúc mẫu quy định.',
   [PAYROLL_ERROR_CODES.E_DLTL_025]: 'Kỳ lương không tồn tại trong hệ thống.',
   [PAYROLL_ERROR_CODES.E_DLTL_026]: 'Đang có thao tác khóa sổ kỳ lương đồng thời, vui lòng thử lại.',
+  [PAYROLL_ERROR_CODES.E_DLTL_027]: 'Bảng kê này đã được chốt số cho kỳ lương, không thể thay đổi dữ liệu. Mở chốt bảng kê trước khi sửa.',
+  [PAYROLL_ERROR_CODES.E_DLTL_028]: 'Trạng thái chốt của bảng kê vừa thay đổi, vui lòng tải lại để xem trạng thái mới nhất.',
 };

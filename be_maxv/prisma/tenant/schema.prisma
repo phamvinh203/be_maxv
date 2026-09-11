@@ -1386,6 +1386,24 @@ enum CatalogStatus {
   INACTIVE
 }
 
+/// 12 bảng kê của màn "Chốt kỳ lương" (BR-dltl-030). 8 bảng kê đầu có dữ liệu RIÊNG của kỳ — chốt
+/// số thì máy chủ chặn ghi; 4 bảng kê cuối là dữ liệu DÙNG CHUNG nhiều kỳ — chốt số chỉ là xác nhận
+/// đã rà soát, không khóa danh mục (khóa thì các kỳ khác đang mở cũng không sửa được).
+enum PayrollModuleCode {
+  ATTENDANCE
+  OVERTIME
+  KPI
+  BONUS
+  ADJUSTMENT
+  PIECEWORK
+  COMMISSION
+  DILIGENCE
+  OTHER_INCOME
+  TAX_DEDUCTION
+  SALARY_PROFILE
+  SUPPORT_ALLOWANCE
+}
+
 // ============================================================
 //  HRM › DỮ LIỆU TÍNH LƯƠNG: KỲ LƯƠNG, 8 PHÂN HỆ BIẾN ĐỘNG & BẢNG LƯƠNG
 // ============================================================
@@ -1418,10 +1436,26 @@ model PayrollPeriod {
   diligenceRecords  DiligenceRecord[]
   adjustmentRecords SalaryAdjustmentRecord[]
   payrollSheetLines PayrollSheetLine[]
+  moduleLocks       PayrollModuleLock[]
 
   @@index([status])
   @@index([year, month])
   @@map("hrm_payroll_periods")
+}
+
+/// 1b. Chốt số từng bảng kê của kỳ (BR-dltl-030). CÓ dòng = bảng kê đã chốt số, KHÔNG có dòng =
+/// đang mở — mở chốt là xóa dòng, lịch sử ai chốt/mở chốt nằm ở nhật ký hệ thống (`writeLog`).
+model PayrollModuleLock {
+  id             String            @id @default(uuid()) @db.VarChar(64)
+  periodId       String            @db.VarChar(64)
+  module         PayrollModuleCode
+  lockedByUserId String            @db.VarChar(64)
+  lockedAt       DateTime          @default(now())
+
+  period PayrollPeriod @relation(fields: [periodId], references: [id], onDelete: Cascade)
+
+  @@unique([periodId, module])
+  @@map("hrm_payroll_module_locks")
 }
 
 /// 2. Bảng Chấm công chi tiết theo ngày (AttendanceRecord)
@@ -1683,6 +1717,9 @@ model SalaryAdjustmentRecord {
 }
 
 /// 14. Bảng Lương Tổng hợp Snapshot (PayrollSheetLine)
+/// Kỳ đã khóa sổ trở đi: bản chụp ĐÓNG BĂNG lúc khóa sổ. Kỳ còn mở (DRAFT/PENDING_REVIEW): chỉ là
+/// kết quả TẠM của nút "Tính lương" (màn Chốt kỳ lương, dùng để đếm "Bảng lương a/b NV") — số liệu lương
+/// của kỳ còn mở LUÔN tính trực tiếp (`getPayrollSheetLines`), KHÔNG đọc bảng này.
 model PayrollSheetLine {
   id                         String        @id @default(uuid()) @db.VarChar(64)
   periodId                   String        @db.VarChar(64)

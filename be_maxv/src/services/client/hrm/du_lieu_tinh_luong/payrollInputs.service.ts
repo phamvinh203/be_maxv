@@ -4,9 +4,18 @@ import { PayrollError } from '../../../../helpers/hrm/payrollErrors';
 import { PAYROLL_ERROR_CODES } from '../../../../constants/hrm/payrollErrors';
 import { HttpStatus } from '../../../../constants/httpStatus';
 import {
-  assertPayrollPeriodWritable,
+  assertPayrollModuleWritable,
   getPayrollPeriodOrThrow,
+  khoaKyDeGhiDuLieu,
 } from '../../../../helpers/hrm/payrollPeriodLockGuard';
+
+/*
+ * MỌI đường ghi dữ liệu bảng kê kiểm khóa kỳ HAI lần (vbsec 2026-09-10):
+ *  - `assertPayrollModuleWritable` ngoài giao dịch, đầu hàm — báo lỗi sớm, giữ thứ tự lỗi (403 trước 400);
+ *  - `khoaKyDeGhiDuLieu` ở đầu giao dịch ghi — kiểm QUYẾT ĐỊNH, giữ khóa dòng kỳ tới lúc commit để khóa sổ /
+ *    chốt số không chen được vào giữa lúc kiểm và lúc ghi.
+ * Thêm đường ghi mới: phải có cả hai, ghi trong `db.$transaction`.
+ */
 import {
   buildActiveEmployeeWhere,
   groupByMaNv,
@@ -148,7 +157,7 @@ function isHourBasedAttendanceType(type: AttendanceType): boolean {
 }
 
 export async function overrideAttendanceCell(db: PrismaClient, input: CellOverrideInput) {
-  await assertPayrollPeriodWritable(db, input.periodId);
+  await assertPayrollModuleWritable(db, input.periodId, 'ATTENDANCE');
 
   const workDate = new Date(input.workDate);
   const attendanceType = input.attendanceType as AttendanceType;
@@ -179,29 +188,32 @@ export async function overrideAttendanceCell(db: PrismaClient, input: CellOverri
     actualHours = Number((fixedValue * standardHoursPerDay).toFixed(2));
   }
 
-  return db.attendanceRecord.upsert({
-    where: {
-      periodId_ma_nv_workDate: {
+  return db.$transaction(async (tx) => {
+    await khoaKyDeGhiDuLieu(tx, input.periodId, 'ATTENDANCE');
+    return tx.attendanceRecord.upsert({
+      where: {
+        periodId_ma_nv_workDate: {
+          periodId: input.periodId,
+          ma_nv: input.ma_nv,
+          workDate,
+        },
+      },
+      create: {
         periodId: input.periodId,
         ma_nv: input.ma_nv,
         workDate,
+        attendanceType,
+        actualHours,
+        workDayValue,
+        note: input.note,
       },
-    },
-    create: {
-      periodId: input.periodId,
-      ma_nv: input.ma_nv,
-      workDate,
-      attendanceType,
-      actualHours,
-      workDayValue,
-      note: input.note,
-    },
-    update: {
-      attendanceType,
-      actualHours,
-      workDayValue,
-      note: input.note,
-    },
+      update: {
+        attendanceType,
+        actualHours,
+        workDayValue,
+        note: input.note,
+      },
+    });
   });
 }
 
@@ -253,7 +265,7 @@ export async function getOvertimeData(db: PrismaClient, query: ListModuleDataQue
 }
 
 export async function applyOvertime(db: PrismaClient, input: ApplyOvertimeInput) {
-  await assertPayrollPeriodWritable(db, input.periodId);
+  await assertPayrollModuleWritable(db, input.periodId, 'OVERTIME');
 
   // Kiểm tra trùng loại tăng ca (E-dltl-006)
   const seenTypes = new Set<string>();
@@ -279,6 +291,7 @@ export async function applyOvertime(db: PrismaClient, input: ApplyOvertimeInput)
   };
 
   return db.$transaction(async (tx) => {
+    await khoaKyDeGhiDuLieu(tx, input.periodId, 'OVERTIME');
     await replaceScopedRecords(
       tx.overtimeRecord,
       input.periodId,
@@ -303,9 +316,12 @@ export async function applyOvertime(db: PrismaClient, input: ApplyOvertimeInput)
 }
 
 export async function deleteEmployeeOvertime(db: PrismaClient, periodId: string, ma_nv: string) {
-  await assertPayrollPeriodWritable(db, periodId);
-  return db.overtimeRecord.deleteMany({
-    where: { periodId, ma_nv },
+  await assertPayrollModuleWritable(db, periodId, 'OVERTIME');
+  return db.$transaction(async (tx) => {
+    await khoaKyDeGhiDuLieu(tx, periodId, 'OVERTIME');
+    return tx.overtimeRecord.deleteMany({
+      where: { periodId, ma_nv },
+    });
   });
 }
 
@@ -349,7 +365,7 @@ export async function getKpiData(db: PrismaClient, query: ListModuleDataQuery) {
 }
 
 export async function applyKpi(db: PrismaClient, input: ApplyKpiInput) {
-  await assertPayrollPeriodWritable(db, input.periodId);
+  await assertPayrollModuleWritable(db, input.periodId, 'KPI');
 
   // Kiểm tra trùng chỉ tiêu KPI (E-dltl-009)
   const seenKpis = new Set<string>();
@@ -369,6 +385,7 @@ export async function applyKpi(db: PrismaClient, input: ApplyKpiInput) {
   const targetEmployees = await resolveTargetEmployees(db, input.scope, input.ma_pb, input.employeeIds);
 
   return db.$transaction(async (tx) => {
+    await khoaKyDeGhiDuLieu(tx, input.periodId, 'KPI');
     await replaceScopedRecords(
       tx.kpiRecord,
       input.periodId,
@@ -424,7 +441,7 @@ export async function getBonusData(db: PrismaClient, query: ListModuleDataQuery)
 }
 
 export async function applyBonus(db: PrismaClient, input: ApplyBonusInput) {
-  await assertPayrollPeriodWritable(db, input.periodId);
+  await assertPayrollModuleWritable(db, input.periodId, 'BONUS');
 
   // Kiểm tra trùng khoản thưởng (E-dltl-011)
   const seenItems = new Set<string>();
@@ -438,6 +455,7 @@ export async function applyBonus(db: PrismaClient, input: ApplyBonusInput) {
   const targetEmployees = await resolveTargetEmployees(db, input.scope, input.ma_pb, input.employeeIds);
 
   return db.$transaction(async (tx) => {
+    await khoaKyDeGhiDuLieu(tx, input.periodId, 'BONUS');
     await replaceScopedRecords(
       tx.bonusRecord,
       input.periodId,
@@ -487,7 +505,7 @@ export async function getPieceworkData(db: PrismaClient, query: ListModuleDataQu
 }
 
 export async function applyPiecework(db: PrismaClient, input: ApplyPieceworkInput) {
-  await assertPayrollPeriodWritable(db, input.periodId);
+  await assertPayrollModuleWritable(db, input.periodId, 'PIECEWORK');
 
   // Kiểm tra trùng sản phẩm (E-dltl-014)
   const seenProducts = new Set<string>();
@@ -508,6 +526,7 @@ export async function applyPiecework(db: PrismaClient, input: ApplyPieceworkInpu
   const catalogPriceMap = new Map(productCatalog.map((p) => [p.id, Number(p.unitPrice)]));
 
   return db.$transaction(async (tx) => {
+    await khoaKyDeGhiDuLieu(tx, input.periodId, 'PIECEWORK');
     await replaceScopedRecords(
       tx.pieceworkRecord,
       input.periodId,
@@ -563,7 +582,7 @@ export async function getCommissionData(db: PrismaClient, query: ListModuleDataQ
 }
 
 export async function applyCommission(db: PrismaClient, input: ApplyCommissionInput) {
-  await assertPayrollPeriodWritable(db, input.periodId);
+  await assertPayrollModuleWritable(db, input.periodId, 'COMMISSION');
 
   // Kiểm tra trùng khoản hoa hồng (E-dltl-016)
   const seenItems = new Set<string>();
@@ -583,6 +602,7 @@ export async function applyCommission(db: PrismaClient, input: ApplyCommissionIn
   const defaultRateMap = new Map(salaryItems.map((s) => [s.id, s.defaultRate ? Number(s.defaultRate) : 0]));
 
   return db.$transaction(async (tx) => {
+    await khoaKyDeGhiDuLieu(tx, input.periodId, 'COMMISSION');
     await replaceScopedRecords(
       tx.commissionRecord,
       input.periodId,
@@ -684,7 +704,7 @@ export async function getDiligenceData(db: PrismaClient, query: ListModuleDataQu
 }
 
 export async function recordDiligenceViolation(db: PrismaClient, input: RecordDiligenceInput) {
-  await assertPayrollPeriodWritable(db, input.periodId);
+  await assertPayrollModuleWritable(db, input.periodId, 'DILIGENCE');
 
   const violationDate = new Date(input.violationDate);
 
@@ -704,15 +724,18 @@ export async function recordDiligenceViolation(db: PrismaClient, input: RecordDi
     throw new PayrollError(PAYROLL_ERROR_CODES.E_DLTL_019, undefined, HttpStatus.BAD_REQUEST);
   }
 
-  return db.diligenceRecord.create({
-    data: {
-      periodId: input.periodId,
-      ma_nv: input.ma_nv,
-      violationTypeId: input.violationTypeId,
-      violationDate,
-      violationHours: input.violationHours ?? null,
-      note: input.note ?? null,
-    },
+  return db.$transaction(async (tx) => {
+    await khoaKyDeGhiDuLieu(tx, input.periodId, 'DILIGENCE');
+    return tx.diligenceRecord.create({
+      data: {
+        periodId: input.periodId,
+        ma_nv: input.ma_nv,
+        violationTypeId: input.violationTypeId,
+        violationDate,
+        violationHours: input.violationHours ?? null,
+        note: input.note ?? null,
+      },
+    });
   });
 }
 
@@ -720,9 +743,12 @@ export async function deleteDiligenceRecord(db: PrismaClient, id: string) {
   const record = await db.diligenceRecord.findUnique({ where: { id } });
   if (!record) throw new NotFoundError('Không tìm thấy bản ghi vi phạm chuyên cần.');
 
-  await assertPayrollPeriodWritable(db, record.periodId);
+  await assertPayrollModuleWritable(db, record.periodId, 'DILIGENCE');
 
-  return db.diligenceRecord.delete({ where: { id } });
+  return db.$transaction(async (tx) => {
+    await khoaKyDeGhiDuLieu(tx, record.periodId, 'DILIGENCE');
+    return tx.diligenceRecord.delete({ where: { id } });
+  });
 }
 
 // ==========================================
@@ -771,7 +797,7 @@ export async function getAdjustmentsData(db: PrismaClient, query: ListModuleData
 }
 
 export async function applyAdjustments(db: PrismaClient, input: ApplyAdjustmentsInput) {
-  await assertPayrollPeriodWritable(db, input.periodId);
+  await assertPayrollModuleWritable(db, input.periodId, 'ADJUSTMENT');
 
   // Kiểm tra trùng khoản bù trừ (E-dltl-022)
   const seenItems = new Set<string>();
@@ -785,6 +811,7 @@ export async function applyAdjustments(db: PrismaClient, input: ApplyAdjustments
   const targetEmployees = await resolveTargetEmployees(db, input.scope, input.ma_pb, input.employeeIds);
 
   return db.$transaction(async (tx) => {
+    await khoaKyDeGhiDuLieu(tx, input.periodId, 'ADJUSTMENT');
     await replaceScopedRecords(
       tx.salaryAdjustmentRecord,
       input.periodId,

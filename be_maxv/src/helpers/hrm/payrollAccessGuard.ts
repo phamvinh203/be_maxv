@@ -3,8 +3,9 @@ import { assertXemLuong, resolveTenantCtx } from '../resolveTenantDb';
 
 /**
  * Tenant client cho TOÀN BỘ nhóm Dữ liệu tính lương (`payroll-periods`, `payroll-catalogs`,
- * `payroll-data`, `payroll`) — đã chặn sẵn theo QUYỀN XEM DỮ LIỆU LƯƠNG (BR-hrm-059, ADR-007),
- * cùng khuôn với `dbCoQuyenLuong` của `hopDong.controller.ts`.
+ * `payroll-data`, `payroll`) và nhóm Thiết lập lương nhân viên (`employee-salaries`) — đã chặn sẵn
+ * theo QUYỀN XEM DỮ LIỆU LƯƠNG (BR-hrm-059, ADR-007), cùng khuôn với `dbCoQuyenLuong` của
+ * `hopDong.controller.ts`.
  *
  * Sửa RVW review-findings.md 2026-09-09 (kế thừa A-01 của Architect): cả 4 controller
  * (`payrollPeriods`, `catalogs`, `payrollInputs`, `payrollCalculation`) trước đây gọi thẳng

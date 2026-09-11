@@ -22,6 +22,8 @@ export async function hrmPayrollPeriodsRoutes(app: FastifyInstance) {
   app.post('/payroll-periods/:id/reopen', { preHandler: assertAdminOrOwner }, ctrl.reopen);
   app.post('/payroll-periods/:id/approve', { preHandler: assertAdminOrOwner }, ctrl.approve);
 
-  app.post('/payroll-periods/:id/mark-paid', ctrl.markPaid);
-  app.post('/payroll-periods/:id/archive', ctrl.archive);
+  // vbsec 2026-09-10 / quyết định 2026-09-11: đánh dấu "đã chi lương" (APPROVED -> PAID) và lưu trữ kỳ
+  // (PAID -> ARCHIVED) cũng là hành vi thẩm quyền tài chính như 3 action trên -> cùng guard.
+  app.post('/payroll-periods/:id/mark-paid', { preHandler: assertAdminOrOwner }, ctrl.markPaid);
+  app.post('/payroll-periods/:id/archive', { preHandler: assertAdminOrOwner }, ctrl.archive);
 }
