@@ -25,8 +25,18 @@ export function changeUserRole(id: string, role: Role): Promise<AdminUser> {
   return api.patch<AdminUser>(`/admin/users/${id}/role`, { role });
 }
 
-export function resetUserPassword(id: string): Promise<{ password: string }> {
-  return api.post<{ password: string }>(`/admin/users/${id}/reset-password`);
+/**
+ * Vô hiệu mật khẩu hiện tại + đăng xuất mọi phiên; máy chủ email cho người dùng hướng dẫn tự đặt lại bằng
+ * "Quên mật khẩu". KHÔNG trả mật khẩu (admin không được biết mật khẩu người dùng).
+ */
+export interface KetQuaDatLaiMatKhau {
+  email: string;
+  /** `false` = không gửi được email — admin tự báo người dùng dùng "Quên mật khẩu". */
+  daGuiEmail: boolean;
+}
+
+export function resetUserPassword(id: string): Promise<KetQuaDatLaiMatKhau> {
+  return api.post<KetQuaDatLaiMatKhau>(`/admin/users/${id}/reset-password`);
 }
 
 /**

@@ -51,7 +51,7 @@ export function useChangeUserRole() {
   });
 }
 
-// Reset mật khẩu không đổi danh sách -> không cần invalidate; trả password 1 lần.
+// Reset mật khẩu không đổi danh sách -> không cần invalidate; trả email + đã gửi hướng dẫn chưa.
 export function useResetPassword() {
   return useMutation({ mutationFn: (id: string) => resetUserPassword(id) });
 }

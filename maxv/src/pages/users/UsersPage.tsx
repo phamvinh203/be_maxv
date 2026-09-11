@@ -12,6 +12,7 @@ import { UsersTable } from '@/features/users/components/UsersTable';
 import { ChangeRoleDialog } from '@/features/users/components/ChangeRoleDialog';
 import { ResetPasswordDialog } from '@/features/users/components/ResetPasswordDialog';
 import { DeleteUserDialog } from '@/features/users/components/DeleteUserDialog';
+import type { KetQuaDatLaiMatKhau } from '@/features/users/api/usersApi';
 import {
   useUsers,
   useSetUserActive,
@@ -51,7 +52,7 @@ function UsersSection({
   const reset = useResetPassword();
   const meId = useAuth().user?.id;
   const [roleUser, setRoleUser] = useState<AdminUser | null>(null);
-  const [resetPw, setResetPw] = useState<string | null>(null);
+  const [resetKq, setResetKq] = useState<KetQuaDatLaiMatKhau | null>(null);
   const [deleteUser, setDeleteUser] = useState<AdminUser | null>(null);
 
   function handleToggle(u: AdminUser): void {
@@ -60,8 +61,14 @@ function UsersSection({
   }
 
   function handleReset(u: AdminUser): void {
-    if (!window.confirm(`Đặt lại mật khẩu cho "${u.hoTen}"?`)) return;
-    reset.mutate(u.id, { onSuccess: (d) => setResetPw(d.password) });
+    if (
+      !window.confirm(
+        `Đặt lại mật khẩu cho "${u.hoTen}"? Mật khẩu hiện tại sẽ không dùng được nữa và mọi phiên đăng nhập bị đăng xuất.`,
+      )
+    ) {
+      return;
+    }
+    reset.mutate(u.id, { onSuccess: setResetKq });
   }
 
   return (
@@ -86,10 +93,10 @@ function UsersSection({
           onClose={() => setRoleUser(null)}
         />
       )}
-      {resetPw && (
+      {resetKq && (
         <ResetPasswordDialog
-          password={resetPw}
-          onClose={() => setResetPw(null)}
+          ketQua={resetKq}
+          onClose={() => setResetKq(null)}
         />
       )}
       {deleteUser && (

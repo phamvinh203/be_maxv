@@ -1,60 +1,46 @@
-import { useState, type JSX } from 'react';
+import type { JSX } from 'react';
 import {
   Alert,
-  Box,
   Button,
   Dialog,
   DialogActions,
   DialogContent,
   DialogTitle,
-  IconButton,
   Stack,
-  Tooltip,
+  Typography,
 } from '@mui/material';
-import ContentCopyRoundedIcon from '@mui/icons-material/ContentCopyRounded';
+import type { KetQuaDatLaiMatKhau } from '../api/usersApi';
 
 interface Props {
-  password: string;
+  ketQua: KetQuaDatLaiMatKhau;
   onClose: () => void;
 }
 
-/** Hiện mật khẩu mới đúng 1 lần để admin gửi cho người dùng. */
-export function ResetPasswordDialog({ password, onClose }: Props): JSX.Element {
-  const [copied, setCopied] = useState(false);
-
-  function copy(): void {
-    void navigator.clipboard.writeText(password);
-    setCopied(true);
-  }
-
+/**
+ * Kết quả đặt lại mật khẩu. Máy chủ KHÔNG trả mật khẩu mới: mật khẩu cũ bị vô hiệu, mọi phiên bị đăng
+ * xuất, người dùng tự đặt mật khẩu mới bằng "Quên mật khẩu" (theo email hướng dẫn máy chủ gửi).
+ */
+export function ResetPasswordDialog({ ketQua, onClose }: Props): JSX.Element {
   return (
     <Dialog open onClose={onClose} fullWidth maxWidth="xs">
-      <DialogTitle>Mật khẩu mới</DialogTitle>
+      <DialogTitle>Đã đặt lại mật khẩu</DialogTitle>
       <DialogContent>
         <Stack spacing={2} sx={{ mt: 0.5 }}>
-          <Alert severity="warning">
-            Mật khẩu chỉ hiển thị một lần. Hãy sao chép và gửi cho người dùng.
-          </Alert>
-          <Stack direction="row" spacing={1} sx={{ alignItems: 'center' }}>
-            <Box
-              sx={{
-                flexGrow: 1,
-                p: 1.5,
-                borderRadius: 1.5,
-                bgcolor: 'action.hover',
-                fontFamily: 'ui-monospace, Consolas, monospace',
-                fontSize: 18,
-                letterSpacing: '0.04em',
-              }}
-            >
-              {password}
-            </Box>
-            <Tooltip title={copied ? 'Đã sao chép' : 'Sao chép'}>
-              <IconButton onClick={copy} color={copied ? 'success' : 'default'}>
-                <ContentCopyRoundedIcon />
-              </IconButton>
-            </Tooltip>
-          </Stack>
+          <Typography variant="body2">
+            Mật khẩu cũ của <b>{ketQua.email}</b> không còn dùng được và mọi phiên đăng nhập đã bị
+            đăng xuất.
+          </Typography>
+          {ketQua.daGuiEmail ? (
+            <Alert severity="success">
+              Đã gửi email hướng dẫn tới {ketQua.email}. Người dùng bấm &quot;Quên mật khẩu&quot; ở
+              trang đăng nhập để nhận mã và tự đặt mật khẩu mới.
+            </Alert>
+          ) : (
+            <Alert severity="warning">
+              Không gửi được email hướng dẫn. Hãy báo người dùng bấm &quot;Quên mật khẩu&quot; ở trang
+              đăng nhập, nhập {ketQua.email} để nhận mã và tự đặt mật khẩu mới.
+            </Alert>
+          )}
         </Stack>
       </DialogContent>
       <DialogActions>
