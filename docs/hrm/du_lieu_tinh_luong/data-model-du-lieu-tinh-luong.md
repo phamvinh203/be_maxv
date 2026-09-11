@@ -2,7 +2,7 @@
 type: architecture-data-model
 feature: hrm-du-lieu-tinh-luong
 status: in-review
-updated: 2026-09-10
+updated: 2026-09-11
 author: system-architect
 links:
   - docs/hrm/du_lieu_tinh_luong/srs-du-lieu-tinh-luong.md
@@ -719,3 +719,48 @@ Không đổi so với Mục 8:
 - **Hợp đồng API** (DTO đầy đủ, mã lỗi, endpoint mới): `api-contract-du-lieu-tinh-luong.md` Mục 8.
 - **Tester-QA (Phase A — đã có 44 ca tại `test-matrix-bang-luong-tong-hop.md`)**: 4 vùng bổ sung so với bộ đã viết — (1) biên trần bảo hiểm (`luong_bhxh` = 46.799.999 / 46.800.000 / 46.800.001 / 99.200.001, kiểm **riêng** từng loại chứ không kiểm tổng — phủ `AC-dltl-12…14`); (2) OT miễn thuế nhiều loại hệ số cùng lúc (`AC-dltl-17`) và `otRawHours = 0`; (3) rẽ nhánh 10% đúng ngưỡng 2.000.000 và với `loai_hd` **viết hoa / có khoảng trắng thừa** (cột là chữ tự do); (4) trần ăn ca với **nhiều** khoản cùng đánh `isMealAllowance` và nhân viên nghỉ nửa tháng (`AC-dltl-21…23`). Thêm 1 ca hồi quy bắt buộc: **khóa sổ một kỳ có đủ dữ liệu 8 phân hệ** — bắt lỗi `createMany` nếu Backend quên cột.
 - **Vùng thứ 5 — miễn thuế theo ô tick (Mục 11.3.1 + ADR-010 QĐ-9), QA ĐÃ VIẾT SẴN.** Tester-QA nhận quyết định `Q-1` song song và đã bổ sung **Nhóm 9** (`TC-blth-045…050`) vào `test-matrix-bang-luong-tong-hop.md`, dùng đúng tên trường `otherAllowanceTaxExemptAmount` và đúng quy tắc chống trừ trùng mà QĐ-9.3 chốt ⇒ **`GAP-QA-09` đóng, không phải sửa số liệu ca nào**, chỉ gỡ nhãn "CHƯA final". Ba ca **nên thêm** cho nhánh chưa phủ: (a) `taxTreatment = EXEMPT` nhưng `isTaxable = true` ⇒ **vẫn miễn** (phép OR, QĐ-9.2) · (b) `isMealAllowance = true` + `isTaxable = true` ⇒ **vẫn miễn tới trần** (QĐ-9.3) · (c) khoản `PERIODIC_BONUS` / `COMMISSION_PERCENTAGE` có `isTaxable = false` ⇒ **vẫn chịu thuế** (ranh giới phạm vi QĐ-9.1). Bộ 44 ca cũ **không phải sửa** — mặc định `isTaxable = true` cho ra đúng số cũ. Bất biến đáng thêm vào ca kiểm: `mealAllowanceAmount + otherAllowanceTaxExemptAmount ≤ allowanceInPeriodTotal`.
+
+---
+
+## 12. Chốt số từng bảng kê — `hrm_payroll_module_locks` (2026-09-11)
+
+Nghiệp vụ: SRS Mục 16 (`BR-dltl-030…034`). Hợp đồng API: `api-contract-du-lieu-tinh-luong.md` Mục 9.
+
+### 12.1. Thay đổi schema (tenant)
+
+```prisma
+enum PayrollModuleCode {
+  ATTENDANCE  OVERTIME  KPI  BONUS  ADJUSTMENT  PIECEWORK  COMMISSION  DILIGENCE
+  OTHER_INCOME  TAX_DEDUCTION  SALARY_PROFILE  SUPPORT_ALLOWANCE
+}
+
+model PayrollModuleLock {
+  id             String            @id @default(uuid()) @db.VarChar(64)
+  periodId       String            @db.VarChar(64)
+  module         PayrollModuleCode
+  lockedByUserId String            @db.VarChar(64)
+  lockedAt       DateTime          @default(now())
+  period PayrollPeriod @relation(fields: [periodId], references: [id], onDelete: Cascade)
+  @@unique([periodId, module])
+  @@map("hrm_payroll_module_locks")
+}
+// PayrollPeriod: thêm quan hệ ngược `moduleLocks PayrollModuleLock[]` (không thêm cột).
+```
+
+| Quyết định | Lý do |
+|---|---|
+| **Có dòng = đã chốt, không dòng = đang mở**; mở chốt là XÓA dòng | Trạng thái chỉ 2 giá trị, không cần cột `status`. Lịch sử ai chốt / mở chốt lúc nào đã có ở nhật ký hệ thống (`writeLog`) — không nhân đôi thành bảng lịch sử thứ hai (đúng hướng OQ-dltl-003) |
+| `@@unique([periodId, module])` | Chặn 2 người chốt trùng ở tầng DB; lượt sau đụng `P2002` được đổi thành `E-dltl-028` (409) |
+| `onDelete: Cascade` theo kỳ | Xóa kỳ Bản nháp thì khóa chốt đi theo, không mồ côi |
+| Enum thay chuỗi tự do | Mã lạ không lọt vào DB; thêm bảng kê mới = thêm giá trị enum + `sync:tenants` |
+| KHÔNG thêm cột "đã tính lương" vào `PayrollPeriod` | "Bảng lương a/b NV" đếm thẳng `PayrollSheetLine` của kỳ — nút "Tính lương" ghi đè các dòng này bằng CHÍNH `snapshotPayrollSheet` (cùng engine), khóa sổ lại chụp đè lần cuối |
+
+### 12.2. Di trú
+
+Chỉ thêm: `CREATE TYPE "PayrollModuleCode"` + `CREATE TABLE "hrm_payroll_module_locks"` + unique index + FK. Đã đo bằng `prisma migrate diff` trên 10/10 tenant local (2026-09-11): đúng 4 lệnh, **không có DROP** ⇒ `db push --accept-data-loss` an toàn cho bước này. Đã chạy `sync:tenants` (10/10) + `hrm:constraints` (10/10 đủ ràng buộc) trên môi trường dev/local. **Production chưa chạy** — cần xác nhận thời điểm, và phải chạy cùng lượt deploy mã (guard ghi `/payroll-data/*` tra bảng này).
+
+### 12.3. Ranh giới giao dịch
+
+- **Tính lương** (`calculatePayrollForPeriod`): chạy engine (`calculatePayrollPreview`, ~20 truy vấn) NGOÀI transaction; transaction chỉ còn pha ghi ngắn — `chuyenTrangThai` ghi có điều kiện lên dòng kỳ (`status ∈ KY_LUONG_CON_MO`) rồi `ghiDeBangLuong` (đường ghi duy nhất vào bảng, dùng chung với khóa sổ). Khóa dòng giữ tới commit nên khóa sổ chen giữa phải chờ; kỳ bị khóa sổ trong lúc tính → hụt điều kiện → 409 `E-dltl-026`, không đè bảng lương vừa chụp (sửa RVW-037: trước đây engine chạy trong transaction, giữ khóa dòng suốt lượt tính, dễ đụng timeout 5s mặc định).
+- **Chốt / mở chốt**: kiểm trạng thái kỳ rồi ghi 1 dòng — không khóa dòng kỳ. Ràng buộc duy nhất lo tranh chấp chốt-với-chốt (`lock-all` dùng `createManyAndReturn` nên báo đúng dòng thực chèn); tranh chấp chốt-với-khóa-sổ còn khe hở mili-giây như guard có sẵn (RVW-039 phần (2) chưa làm).
+- **Guard ghi 8 bảng kê** (`assertPayrollModuleWritable`): kiểm-rồi-ghi như `assertPayrollPeriodWritable` có từ trước (chấp nhận khe hở mili-giây giữa lượt kiểm và lượt ghi, cùng mức với guard khóa sổ hiện hành).

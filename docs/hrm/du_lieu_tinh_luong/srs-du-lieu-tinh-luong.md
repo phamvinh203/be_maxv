@@ -2,7 +2,7 @@
 type: srs
 feature: hrm-du-lieu-tinh-luong
 status: in-review
-updated: 2026-09-10
+updated: 2026-09-11
 author: business-analyst
 links:
   - docs/hrm/CONTEXT_SUMMARY.md
@@ -583,3 +583,82 @@ Tester-QA chạy song song đã viết `test-matrix-bang-luong-tong-hop.md` và 
 - **GAP-QA-05 (miễn thuế OT có áp cho HĐ thử việc/thời vụ không):** **CHỐT có áp dụng**, và trừ `otTaxExemptAmount` ra khỏi gross **TRƯỚC KHI** nhân 10% — xem công thức đã sửa ở BR-dltl-026 (Mục 15.3.1): `thuNhapKheKhauTru = grossIncome − otTaxExemptAmount`, dùng chung cho cả nhánh khấu trừ 10% lẫn nhánh lũy tiến. Đây cũng trực tiếp trả lời `TC-blth-029` (câu hỏi về `tinh_tncn = false`): cờ `activeContract.tinh_tncn ≠ true` **đè lên cả 2 cơ chế** (khấu trừ 10% lẫn biểu lũy tiến) — hợp đồng không tính TNCN thì `personalIncomeTax = 0` bất kể `loai_hd`.
 
 **Đề nghị QA:** cập nhật lại `test-matrix-bang-luong-tong-hop.md` Mục 0 (đóng GAP-QA-01/02/05) và số liệu Nhóm 1/Nhóm 5/Nhóm 6 theo 3 quyết định trên ở lượt làm việc kế tiếp; BA không tự sửa file của QA. `BR-dltl-028`/`BR-dltl-029` QA đề xuất (Mục "Traceability" của test matrix) được BA xác nhận **hợp lệ về nội dung** (BR-dltl-028 = công thức hybrid Mục 15.4, đã có; BR-dltl-029 = endpoint `support-allowances` Mục 15.6, đã có) nhưng BA **giữ nguyên đánh số hiện tại của SRS** (không đổi ID BR-dltl-024…027 đã chốt) — công thức 2 mã đó nay đã nằm sẵn trong Mục 15.4/15.6, không cần thêm ID BR mới trùng nội dung.
+
+---
+
+## 16. Màn "Chốt kỳ lương" — chốt số từng bảng kê (2026-09-11)
+
+### 16.1. Bối cảnh & phạm vi
+
+Chủ dự án yêu cầu (2026-09-11, kèm ảnh màn tham chiếu): dựng màn **Chốt kỳ lương** gồm 12 bảng kê của kỳ, mỗi bảng kê chốt số / mở chốt riêng, nút **Tính lương**, **Chốt số toàn kỳ**, **Hướng dẫn chốt kỳ lương**, cột **Lịch sử hoạt động**; đồng thời chuyển ô chọn tháng/năm kỳ lương và nút **Chốt kỳ lương T{tháng}/{năm}** ra góc phải thanh HRM (thay khối "Kỳ lương" to nằm trên đầu khu Dữ liệu tính lương / Bảng lương).
+
+> ID quy tắc bắt đầu từ **BR-dltl-030**: `BR-dltl-028`/`029` đã được test matrix Bảng lương tổng hợp dùng làm ID đề xuất (Mục 15.10) — không dùng lại để tránh trùng khi truy vết.
+
+| # | Bảng kê | Loại dữ liệu | Chốt số thì | Màn "Xem chi tiết" |
+|:-:|---|---|---|---|
+| 1 | Chấm công | Riêng của kỳ | Chặn ghi | Dữ liệu tính lương › Chấm công |
+| 2 | Tăng ca | Riêng của kỳ | Chặn ghi | Dữ liệu tính lương › Tăng ca |
+| 3 | KPI | Riêng của kỳ | Chặn ghi | Dữ liệu tính lương › KPI |
+| 4 | Thưởng | Riêng của kỳ | Chặn ghi | Dữ liệu tính lương › Thưởng |
+| 5 | Bù trừ | Riêng của kỳ | Chặn ghi | Dữ liệu tính lương › Ứng - bù trừ |
+| 6 | Sản lượng | Riêng của kỳ | Chặn ghi | Dữ liệu tính lương › Lương sản phẩm |
+| 7 | Lương phần trăm | Riêng của kỳ | Chặn ghi | Dữ liệu tính lương › Lương phần trăm |
+| 8 | Thu nhập ngoài bảng lương | Dùng chung nhiều kỳ | Chỉ xác nhận đã rà soát | Tờ khai thuế › Thu nhập ngoài lương *(màn chưa dựng)* |
+| 9 | Chuyên cần | Riêng của kỳ | Chặn ghi | Dữ liệu tính lương › Lương chuyên cần |
+| 10 | Giảm trừ thuế TNCN | Dùng chung nhiều kỳ | Chỉ xác nhận đã rà soát | Dữ liệu nhân viên › Người phụ thuộc |
+| 11 | Hồ sơ lương | Dùng chung nhiều kỳ | Chỉ xác nhận đã rà soát | Cài đặt lương › Set lương |
+| 12 | Khoản hỗ trợ | Dùng chung nhiều kỳ | Chỉ xác nhận đã rà soát | Bảng lương › Lương hỗ trợ |
+
+### 16.2. Biên bản quyết định của chủ dự án (2026-09-11)
+
+| # | Câu hỏi | Chốt |
+|:-:|---|---|
+| 1 | Chốt số 1 bảng kê có chặn sửa dữ liệu không? | **Chặn 8 bảng kê có dữ liệu riêng của kỳ**; 4 bảng kê dữ liệu dùng chung chỉ đánh dấu "đã rà soát" (khóa danh mục dùng chung sẽ chặn luôn các kỳ khác đang mở) |
+| 2 | Ai được chốt / mở chốt? | **Chốt**: ai có quyền xem/nhập lương. **Mở chốt**: chỉ chủ tài khoản — cùng mức với "Mở lại kỳ lương" |
+| 3 | Khóa sổ kỳ có bắt buộc chốt đủ 12/12 bảng kê? | **Không bắt buộc**, chỉ cảnh báo "còn N bảng kê chưa chốt". Kỳ đã khóa sổ thì mọi bảng kê coi như đã chốt theo kỳ |
+| 4 | Nút "Tính lương" làm gì? | **Chạy engine lương hiện có và lưu kết quả tạm của kỳ** (ghi đè mỗi lần bấm) để hiện "Bảng lương a/b NV" + ghi lịch sử |
+
+### 16.3. Business Rules
+
+| Mã | Tên quy tắc | Mô tả | Mã lỗi | Trạng thái | Bằng chứng `file:line` |
+|---|---|---|---|:---:|---|
+| BR-dltl-030 | Chốt số từng bảng kê | Bảng kê "Riêng của kỳ" đã chốt số ⇒ mọi thao tác ghi dữ liệu của bảng kê đó trong kỳ bị từ chối. Bảng kê "Dùng chung" chốt số chỉ ghi nhận đã rà soát. Chốt lại bảng kê đã chốt / mở chốt bảng kê đang mở ⇒ báo trạng thái vừa thay đổi | E-dltl-027, E-dltl-028 | ✅ | Guard `helpers/hrm/payrollPeriodLockGuard.ts:76`, gọi ở 10 đường ghi `payrollInputs.service.ts:151,256,306,352,427,490,566,687,723,774`; chốt/mở chốt `payrollClosing.service.ts:114,149` |
+| BR-dltl-031 | Thẩm quyền chốt / mở chốt | Chốt số, chốt toàn kỳ, tính lương: người có quyền xem lương. Mở chốt: chỉ chủ tài khoản | 403 | ✅ | `routes/hrm/du_lieu_tinh_luong/payrollClosing.route.ts:16` (`assertAdminOrOwner`), quyền lương qua `dbCoQuyenLuongPayroll` |
+| BR-dltl-032 | Quan hệ với khóa sổ kỳ | Khóa sổ không đòi chốt đủ bảng kê. Kỳ đã khóa sổ trở đi ⇒ 12 bảng kê hiện "đã chốt theo kỳ", không chốt / mở chốt / chốt toàn kỳ / tính lương được; muốn sửa phải "Mở lại kỳ lương" trước. Mở lại kỳ **giữ nguyên** các bảng kê đã chốt riêng | E-dltl-001 | ✅ | `payrollClosing.service.ts:70` (`lockSource` = `PERIOD`), `:102` (`assertKyConMoDeChot`) |
+| BR-dltl-033 | Tính lương tạm | Chạy đúng engine bảng lương (ADR-010) và lưu kết quả tạm của kỳ, ghi đè mỗi lần bấm. "Bảng lương a/b NV": a = số nhân viên đã có kết quả tính gần nhất, b = số nhân viên đang làm việc. Màn Bảng lương của kỳ còn mở vẫn tính trực tiếp; khóa sổ vẫn tính lại lần cuối rồi chụp | E-dltl-001, E-dltl-026 | ✅ | `payrollClosing.service.ts:204` |
+| BR-dltl-034 | Lịch sử hoạt động | Mọi thao tác chốt / mở chốt / chốt toàn kỳ / tính lương / khóa sổ / mở lại / duyệt được ghi nhật ký (ai, lúc nào, làm gì) và hiện ở cột Lịch sử hoạt động — 50 thao tác gần nhất của kỳ | — | ✅ | Ghi: `payrollClosing.controller.ts`, `payrollPeriods.controller.ts`; đọc: `payrollActivity.service.ts:81` |
+
+### 16.4. Mã lỗi mới
+
+| Mã lỗi | Thông điệp | HTTP | Cơ chế trả về |
+|---|---|:---:|---|
+| E-dltl-027 | Bảng kê này đã được chốt số cho kỳ lương, không thể thay đổi dữ liệu. Mở chốt bảng kê trước khi sửa. | 403 | PayrollError |
+| E-dltl-028 | Trạng thái chốt của bảng kê vừa thay đổi (chốt lại bảng kê đã chốt / mở chốt bảng kê đang mở) | 409 | PayrollError, câu thông báo nêu tên bảng kê |
+
+### 16.5. User Story & Acceptance Criteria
+
+**US-dltl-05**: Là kế toán lương, tôi muốn chốt số từng bảng kê ngay khi rà xong, để dữ liệu đã đối chiếu không bị sửa trong lúc các bảng kê khác vẫn đang nhập.
+
+- AC-dltl-29: Given kỳ đang Bản nháp và bảng kê Chấm công đang mở, When bấm "Chốt số liệu" trên thẻ Chấm công, Then thẻ chuyển "Đã chốt số" kèm giờ chốt, ô "Số bảng kê đã chốt số" tăng 1, và Lịch sử hoạt động có dòng "Chốt số liệu Chấm công".
+- AC-dltl-30: Given bảng kê Chấm công đã chốt số, When sửa một ô chấm công của kỳ đó, Then hệ thống từ chối với `E-dltl-027`; bảng kê Tăng ca chưa chốt vẫn ghi được bình thường.
+- AC-dltl-31: Given người dùng là nhân viên (không phải chủ tài khoản) có quyền lương, When bấm "Mở chốt", Then hệ thống từ chối (403) — nút trên màn bị khóa sẵn kèm giải thích.
+- AC-dltl-32: Given còn 11 bảng kê đang mở, When bấm "Chốt số toàn kỳ" và xác nhận, Then đúng 11 bảng kê đó được chốt, bảng kê đã chốt từ trước giữ nguyên giờ chốt cũ, lịch sử có 1 dòng "Chốt số toàn kỳ (11 bảng kê)".
+- AC-dltl-33: Given kỳ đã khóa sổ, When mở màn Chốt kỳ lương, Then 12 thẻ đều hiện "Đã chốt số" và mọi nút chốt / mở chốt / chốt toàn kỳ / tính lương đều không dùng được (máy chủ trả `E-dltl-001` nếu cố gọi).
+- AC-dltl-34: Given kỳ đang Bản nháp có 2 nhân viên đang làm việc, When bấm "Tính lương", Then ô "Bảng lương" hiện "2/2 NV" và lịch sử có dòng "Đã tính lương cho 2 nhân viên"; bấm lại lần nữa vẫn là 2/2 (ghi đè, không nhân đôi).
+- AC-dltl-35: Given kỳ còn 3 bảng kê chưa chốt, When bấm "Khóa sổ kỳ lương", Then hộp xác nhận liệt kê đủ 3 bảng kê đó nhưng vẫn cho khóa sổ.
+- AC-dltl-36: Given đang xem tháng 10/2026 chưa có kỳ lương, When nhìn góc phải thanh HRM, Then nút đổi thành "Tạo kỳ lương T10/2026"; bấm thì tạo kỳ Bản nháp và mở màn Chốt kỳ lương của kỳ vừa tạo.
+
+### 16.6. Vòng đời trạng thái của một bảng kê trong kỳ
+
+| Từ | Sự kiện | Điều kiện | Đến |
+|---|---|---|---|
+| Đang mở | Chốt số liệu / Chốt số toàn kỳ | Kỳ Bản nháp hoặc Chờ duyệt; có quyền lương | Đã chốt số |
+| Đã chốt số | Mở chốt | Kỳ Bản nháp hoặc Chờ duyệt; chủ tài khoản | Đang mở |
+| Đang mở / Đã chốt số | Khóa sổ kỳ | Như vòng đời kỳ | Đã chốt theo kỳ (chỉ hiển thị) |
+| Đã chốt theo kỳ | Mở lại kỳ lương | Chủ tài khoản, lý do ≥ 20 ký tự | Trở về trạng thái riêng trước khi khóa sổ |
+
+### 16.7. Ngoài phạm vi đợt này
+
+- Nút "Tra cứu MST" trên ảnh tham chiếu — tính năng khác, không làm.
+- Màn "Thu nhập ngoài bảng lương" (Tờ khai thuế) vẫn là màn chờ dựng; thẻ bảng kê 8 dẫn tới đó.
+- Phía giao diện, kỳ "Chờ duyệt" vẫn khóa nhập liệu (máy chủ cho ghi) — lệch có từ trước, xem Mục 6.2.

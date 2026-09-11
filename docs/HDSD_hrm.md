@@ -19,6 +19,8 @@ Vào phân hệ, bạn sẽ thấy một dải tab lớn ở trên cùng gồm 8
 | **Tờ khai thuế** | Đang trong quá trình xây dựng, chưa dùng được. |
 | **Hồ sơ lương** | Đang trong quá trình xây dựng, chưa dùng được. |
 
+Ở **góc phải** của dải tab luôn có ô chọn tháng kỳ lương `‹ 09/2026 › 📅` và nút xanh **Chốt kỳ lương T9/2026** — xem Mục 5.
+
 Hướng dẫn này đi lần lượt qua từng khu theo đúng thứ tự công việc thực tế: khai tổ chức và nhân viên trước, rồi tới cấu hình tham số, cài đặt lương, nhập liệu theo từng kỳ, và cuối cùng xem bảng lương ra kết quả.
 
 **Màn hình Dashboard** cho bạn cái nhìn tổng quan mỗi khi mở phân hệ, chia làm ba tầng:
@@ -263,15 +265,27 @@ Vào **HRM › Dữ liệu tính lương**. Đây là khu nhập liệu chi ti�
 
 ### Bắt buộc chọn Kỳ lương trước
 
-Ngay phía trên dải tab con, luôn có thanh **"Kỳ lương"** — đây là điều kiện bắt buộc trước khi nhập bất kỳ mục nào trong khu này (thanh này cũng xuất hiện y hệt ở khu "Bảng lương" ở Mục 6, và nhớ chung một kỳ đang chọn giữa hai khu).
+Kỳ lương chọn ở **góc phải dải tab HRM** — dùng chung cho mọi khu (Dữ liệu tính lương, Bảng lương, Chốt kỳ lương), đổi tháng ở đó là mọi khu đổi theo:
 
-- **Chọn kỳ lương đang có**: dùng ô dropdown liệt kê các kỳ đã tạo (ví dụ "Kỳ lương tháng 9/2026").
-- **Tạo kỳ lương mới**: bấm **Tạo kỳ mới**, chọn Tháng, Năm, Tên kỳ lương (tự gợi ý theo tháng/năm, sửa lại được), bấm **Tạo kỳ lương**.
-- **Trạng thái kỳ lương** hiện ngay cạnh ô chọn bằng nhãn màu: **Bản nháp** (đang mở, nhập liệu bình thường) → **Chờ duyệt** → **Đã khóa sổ** (khóa, không sửa được nữa) → **Đã duyệt** → **Đã chi trả** → **Lưu trữ**. Lưu ý: bước **Khóa sổ** có thể thực hiện thẳng từ Bản nháp (bỏ qua Chờ duyệt) hoặc từ Chờ duyệt — không bắt buộc phải trình duyệt trước mới khóa sổ được; nhưng **Duyệt kỳ lương chỉ thực hiện được khi kỳ đã ở đúng trạng thái Đã khóa sổ**, chưa khóa sổ thì chưa duyệt được.
-- Khi kỳ đang ở **Bản nháp**, có 2 nút: **Khóa sổ** (chốt số liệu ngay, chuyển thẳng sang Đã khóa sổ) và **Trình duyệt** (gửi kỳ sang trạng thái Chờ duyệt để người khác xét duyệt số liệu trước khi khóa sổ).
-- Khi kỳ đang **Chờ duyệt**, có 2 nút: **Từ chối** (trả kỳ về Bản nháp để sửa lại số liệu) và **Khóa sổ** (chốt số liệu, chuyển sang Đã khóa sổ).
-- Khi kỳ đã **Đã khóa sổ**, có 2 nút: **Mở lại kỳ lương** (bấm vào phải nhập **lý do giải trình tối thiểu 20 ký tự** — bắt buộc theo quy định kiểm toán — rồi mới mở lại được về Bản nháp để sửa tiếp) và **Duyệt kỳ lương** (chuyển kỳ sang Đã duyệt).
-- Khi kỳ **đã khóa sổ hoặc đang chờ duyệt**, toàn bộ màn hình nhập liệu bên dưới sẽ hiện cảnh báo màu vàng và **khóa lại, không cho sửa**. Muốn chỉnh lại số liệu: kỳ đang **Chờ duyệt** thì bấm **Từ chối** để trả về Bản nháp; kỳ đã **Đã khóa sổ** thì bấm **Mở lại kỳ lương** (kèm lý do ≥ 20 ký tự).
+- **Chọn tháng**: bấm mũi tên `‹` `›` để lùi/tiến một tháng, hoặc bấm biểu tượng lịch để chọn tháng/năm bất kỳ (tháng có chấm màu là tháng đã có kỳ lương).
+- **Tạo kỳ lương mới**: chọn tới tháng chưa có kỳ — nút xanh đổi thành **Tạo kỳ lương T{tháng}/{năm}**, bấm là tạo kỳ Bản nháp (tên tự đặt theo tháng/năm) và mở ngay màn Chốt kỳ lương.
+- **Chốt kỳ lương**: tháng đã có kỳ thì nút xanh **Chốt kỳ lương T{tháng}/{năm}** mở màn Chốt kỳ lương (xem mục con "Màn Chốt kỳ lương" dưới đây).
+- **Trạng thái kỳ lương**: **Bản nháp** (đang mở, nhập liệu bình thường) → **Chờ duyệt** → **Đã khóa sổ** (khóa, không sửa được nữa) → **Đã duyệt** → **Đã chi trả** → **Lưu trữ**. Bước **Khóa sổ** có thể làm thẳng từ Bản nháp hoặc từ Chờ duyệt; **Duyệt kỳ lương chỉ làm được khi kỳ đã Đã khóa sổ**. Các nút Trình duyệt / Từ chối / Khóa sổ / Mở lại kỳ lương / Duyệt kỳ lương nay nằm ở màn Chốt kỳ lương.
+- Khi kỳ **đã khóa sổ hoặc đang chờ duyệt**, toàn bộ màn hình nhập liệu sẽ hiện cảnh báo màu vàng và **khóa lại, không cho sửa**. Muốn chỉnh lại số liệu: kỳ đang **Chờ duyệt** thì bấm **Từ chối** để trả về Bản nháp; kỳ đã **Đã khóa sổ** thì chủ tài khoản bấm **Mở lại kỳ lương** (kèm **lý do giải trình tối thiểu 20 ký tự** — bắt buộc theo quy định kiểm toán).
+
+### Màn Chốt kỳ lương
+
+Mở bằng nút xanh **Chốt kỳ lương** ở góc phải dải tab. Màn gồm:
+
+- **Dòng đầu**: trạng thái kỳ, **Bảng lương a/b NV** (đã tính lương cho a nhân viên trên b nhân viên đang làm), **Số bảng kê đã chốt số x/12**, và 3 nút **Tính lương**, **Chốt số toàn kỳ**, **Hướng dẫn chốt kỳ lương**. Ngay dưới là các nút vòng đời kỳ (Trình duyệt, Khóa sổ kỳ lương, Từ chối, Mở lại kỳ lương, Duyệt kỳ lương — tùy trạng thái).
+- **12 thẻ bảng kê**: Chấm công, Tăng ca, KPI, Thưởng, Bù trừ, Sản lượng, Lương phần trăm, Thu nhập ngoài bảng lương, Chuyên cần, Giảm trừ thuế TNCN, Hồ sơ lương, Khoản hỗ trợ. Mỗi thẻ có nhãn **Đang mở** / **Đã chốt số** (kèm giờ chốt), nút **Xem chi tiết** (mở đúng màn nhập liệu) và nút **Chốt số liệu** / **Mở chốt**.
+  - Chốt số 8 bảng kê có dữ liệu riêng của kỳ (Chấm công, Tăng ca, KPI, Thưởng, Bù trừ, Sản lượng, Lương phần trăm, Chuyên cần) thì màn nhập liệu của bảng kê đó **khóa lại** — các bảng kê khác vẫn nhập bình thường.
+  - 4 bảng kê còn lại là dữ liệu dùng chung cho nhiều kỳ (người phụ thuộc, set lương...) — chốt số chỉ ghi nhận "đã rà soát cho kỳ này", không khóa sửa.
+  - **Mở chốt** chỉ chủ tài khoản làm được. Kỳ đã khóa sổ thì mọi thẻ hiện Đã chốt số; muốn mở chốt phải Mở lại kỳ lương trước.
+- **Tính lương**: chạy bảng lương tạm của kỳ; bấm lại khi vừa thêm nhân viên hoặc sửa dữ liệu. Khóa sổ vẫn tự tính lại lần cuối rồi chốt cứng.
+- **Chốt số toàn kỳ**: chốt một lần mọi bảng kê còn đang mở.
+- **Khóa sổ kỳ lương** không bắt buộc đã chốt đủ 12 bảng kê, nhưng hộp xác nhận sẽ liệt kê những bảng kê chưa chốt để bạn soát lại.
+- **Lịch sử hoạt động** (cột phải): ai chốt, mở chốt, tính lương, khóa sổ, mở lại, duyệt — lúc nào.
 
 ### Cách làm việc chung của 8 tab (trừ Chấm công)
 
@@ -365,7 +379,7 @@ Dùng cho tạm ứng lương, các khoản khấu trừ hoặc bù thêm ngoài
 
 ## 6. Bảng lương
 
-Vào **HRM › Bảng lương**, có thanh **Kỳ lương** giống hệt Mục 5 ở trên (dùng chung kỳ đang chọn với khu Dữ liệu tính lương), và 2 tab con: **Bảng lương** và **Lương hỗ trợ**.
+Vào **HRM › Bảng lương**, kỳ lương lấy theo ô tháng ở góc phải dải tab HRM (dùng chung với mọi khu, xem Mục 5), và 2 tab con: **Bảng lương** và **Lương hỗ trợ**.
 
 Đây là màn hình **chỉ xem kết quả**, mọi con số đã được máy chủ tự tính sẵn từ Hợp đồng, Cài đặt lương, Chấm công và toàn bộ dữ liệu đã nhập ở khu "Dữ liệu tính lương" — không có ô nhập tay nào ở đây.
 
@@ -387,7 +401,7 @@ Vào **HRM › Bảng lương**, có thanh **Kỳ lương** giống hệt Mục 
 
 **Chế độ hiển thị:** đổi ô "Chế độ" để xem theo GROSS hay NET tùy nhu cầu đối chiếu; đổi ô "Chi tiết" sang **"Rút gọn"** nếu chỉ cần xem các cột chính (ẩn bớt cột phụ, vẫn giữ đủ Thu nhập/Bảo hiểm/Bù trừ/Thuế/Thực lĩnh).
 
-**Tính lại lương / Tải lại số liệu:** khi kỳ đang **Bản nháp**, nút này ghi là "Tính lại lương" — bấm để tính lại ngay theo dữ liệu nguồn mới nhất (dùng sau khi vừa sửa chấm công, tăng ca... ở khu Dữ liệu tính lương). Khi kỳ **đã khóa sổ**, nút đổi thành "Tải lại số liệu" và bảng lương đọc từ **bản chốt cứng (snapshot) tại đúng lúc khóa sổ** — sẽ **không** tự tính lại dù dữ liệu nguồn có đổi sau đó. Có nhãn **"Đã khóa sổ — số liệu đã chốt"** màu vàng hiện cạnh tên kỳ để nhắc rõ điều này. Muốn sửa số liệu của một kỳ đã khóa sổ, phải quay lại thanh Kỳ lương bấm "Mở lại kỳ lương" (xem Mục 5) trước.
+**Tính lại lương / Tải lại số liệu:** khi kỳ đang **Bản nháp**, nút này ghi là "Tính lại lương" — bấm để tính lại ngay theo dữ liệu nguồn mới nhất (dùng sau khi vừa sửa chấm công, tăng ca... ở khu Dữ liệu tính lương). Khi kỳ **đã khóa sổ**, nút đổi thành "Tải lại số liệu" và bảng lương đọc từ **bản chốt cứng (snapshot) tại đúng lúc khóa sổ** — sẽ **không** tự tính lại dù dữ liệu nguồn có đổi sau đó. Có nhãn **"Đã khóa sổ — số liệu đã chốt"** màu vàng hiện cạnh tên kỳ để nhắc rõ điều này. Muốn sửa số liệu của một kỳ đã khóa sổ, chủ tài khoản phải vào màn Chốt kỳ lương bấm "Mở lại kỳ lương" (xem Mục 5) trước.
 
 **Xuất Excel:** bấm **Xuất Excel** để tải file đầy đủ 18 cột theo đúng đơn vị đồng.
 
@@ -421,5 +435,5 @@ Môi trường thử nghiệm hiện đã có sẵn một công ty mẫu, dựng
 2. Vào **Dữ liệu nhân viên**: xem cây 5 phòng ban, mở vài hồ sơ nhân viên để xem hợp đồng/người phụ thuộc/hồ sơ tài liệu đã có sẵn (theo Mục 2).
 3. Vào **Cấu hình mặc định**: xem các tham số đang set (bảo hiểm, thuế, ngày công, ca làm việc, lịch 11 ngày lễ đã tạo sẵn) — thử sửa thử một tham số rồi bấm Hoàn tác để không ảnh hưởng dữ liệu chung (theo Mục 3).
 4. Vào **Cài đặt lương**: xem danh mục khoản lương mẫu, cấu trúc lương công ty, và set lương của vài nhân viên đã có sẵn (theo Mục 4).
-5. Vào **Dữ liệu tính lương**, ở thanh Kỳ lương chọn kỳ tháng hiện tại (đang Bản nháp) — thử nhập chấm công, tăng ca, thưởng cho một vài nhân viên rồi bấm Áp dụng (theo Mục 5).
-6. Vào **Bảng lương**, vẫn ở kỳ tháng hiện tại, bấm "Tính lại lương" để thấy số liệu vừa nhập ở bước 5 phản ánh ngay vào bảng lương; sau đó đổi thanh Kỳ lương sang kỳ tháng trước (đã khóa sổ) để so sánh giao diện khi kỳ đã chốt — nhãn "Đã khóa sổ" hiện ra, nút đổi thành "Tải lại số liệu", và mọi khu Dữ liệu tính lương của kỳ đó chuyển sang khóa, chỉ đọc (theo Mục 6).
+5. Vào **Dữ liệu tính lương**, ở ô tháng góc phải dải tab chọn tháng hiện tại (đang Bản nháp) — thử nhập chấm công, tăng ca, thưởng cho một vài nhân viên rồi bấm Áp dụng (theo Mục 5).
+6. Vào **Bảng lương**, vẫn ở kỳ tháng hiện tại, bấm "Tính lại lương" để thấy số liệu vừa nhập ở bước 5 phản ánh ngay vào bảng lương; sau đó bấm `‹` ở ô tháng góc phải để lùi sang kỳ tháng trước (đã khóa sổ) để so sánh giao diện khi kỳ đã chốt — nhãn "Đã khóa sổ" hiện ra, nút đổi thành "Tải lại số liệu", và mọi khu Dữ liệu tính lương của kỳ đó chuyển sang khóa, chỉ đọc (theo Mục 6).
