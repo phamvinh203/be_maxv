@@ -24,12 +24,14 @@ updated: 2026-09-11
 - Vấn đề: duy nhất file này trong toàn app dùng value-import; 8 chỗ khác đều `import type` + `await import("exceljs")` lazy. `ToKhaiGtgt01Editor` import tĩnh file này nên mọi lần vào màn Tờ khai đều kéo ExcelJS dù không ai bấm Xuất.
 - Đề xuất fix: đổi thành `import type ExcelJS from "exceljs"` + `const { Workbook } = await import("exceljs")` trong hàm xuất (đã là `async`).
 - Trạng thái: OPEN
+  → FIXED [2026-09-11] — đổi sang `import type { Workbook } from "exceljs"` (khớp pattern `exportXlsx.ts` — named type import, không phải default `ExcelJS` namespace) + `const { Workbook: LopWorkbook } = await import("exceljs")` lazy trong `xuatToKhaiGtgt01` (khớp alias-pattern của `buTruExcel.ts` và 7 chỗ khác). `themSheetPhuLuc` đổi tham số `wb: ExcelJS.Workbook` → `wb: Workbook`. File: `hdđt_maxv/src/features/to_khai/xuatToKhaiExcel.ts`:1, 39, 109-111, tsc+eslint pass (0 lỗi/0 warning), commit "chưa commit" *(frontend-engineer)*
 
 ### RVW-T03 🟡 NON-BLOCKING — Đổi 1 ô "Kê khai"/"Chỉ tiêu tăng giảm" làm invalidate toàn bộ cache module tờ khai
 - Vị trí: `hdđt_maxv/src/features/to_khai/api/toKhaiQueries.ts`:67-75 · `components/OQuyetDinh.tsx`:29-37
 - Vấn đề: mỗi lần đổi select → `invalidateQueries({queryKey: toKhaiKeys.byCompany})` → refetch cả 2 bảng kê (mua+bán, có thể hàng nghìn dòng) + bản tờ khai. Sửa 20 dòng = 20 lượt tải lại toàn bộ.
 - Đề xuất fix: truyền thêm `ky` vào biến thể mutation, chỉ invalidate `toKhaiKeys.bangKe(companyId, ky, chieu)` + `gtgt01Keys.ban(companyId, ky)`.
 - Trạng thái: OPEN
+  → FIXED [2026-09-11] — thêm field `ky: Ky` vào `ToKhaiRow` (`ky.ts`) để mỗi dòng bảng kê tự mang theo kỳ đang xem; `BangKeMotChieu.tsx` gán `ky` khi build rows; `useSuaQuyetDinhMutation` nhận thêm `ky` trong biến thể mutation, `onSuccess` đổi từ `invalidateQueries(toKhaiKeys.byCompany)` sang `toKhaiKeys.bangKe(companyId, ky, chieu)` + `gtgt01Keys.ban(companyId, ky)`; `OQuyetDinh.tsx` truyền `row.ky` khi gọi `luu()`. File: `hdđt_maxv/src/features/to_khai/ky.ts`, `components/bang_ke/BangKeMotChieu.tsx`, `api/toKhaiQueries.ts`:67-81, `components/OQuyetDinh.tsx`:29-38, tsc+eslint pass (0 lỗi/0 warning), commit "chưa commit" *(frontend-engineer)*
 
 ### RVW-T04 🟢 SUGGESTION — File Excel đối soát thiếu hàng "A — chỉ tiêu [21]"
 - Vị trí: `xuatToKhaiExcel.ts`:136-156

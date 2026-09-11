@@ -59,6 +59,7 @@ export default function BangKeMotChieu({
       chiTieuTangGiam: row.chiTieuTangGiam,
       nam: String(ky.nam),
       kyKeKhai: nhan,
+      ky,
     }));
   }, [bangKe.data, direction, replacedBy, ky]);
 

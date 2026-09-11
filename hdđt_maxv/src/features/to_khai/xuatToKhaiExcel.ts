@@ -1,4 +1,4 @@
-import ExcelJS from "exceljs";
+import type { Workbook } from "exceljs";
 import { CELL_BORDER, HEADER_FILL, HEADER_HEIGHT } from "../hddt/xlsxStyle";
 import { HANG_GTGT01, maChiTieu } from "../_shared/to_khai/gtgt01Layout";
 import type { BanToKhai } from "./api/gtgt01";
@@ -36,7 +36,7 @@ function tenFile(ky: Ky): string {
  * Tách sheet riêng chứ không nối xuống dưới tờ khai chính: đây là hai biểu mẫu khác nhau, cơ quan
  * thuế nhận hai tờ, và người soát cũng đọc từng tờ một.
  */
-function themSheetPhuLuc(wb: ExcelJS.Workbook, ky: Ky, pl: NonNullable<BanToKhai["phuLuc"]>): void {
+function themSheetPhuLuc(wb: Workbook, ky: Ky, pl: NonNullable<BanToKhai["phuLuc"]>): void {
   const ws = wb.addWorksheet("PL 204-2025");
   const tieuDe = (cells: (string | number | null)[]) => {
     const row = ws.addRow(cells);
@@ -106,7 +106,9 @@ export async function xuatToKhaiGtgt01(
   ban: BanToKhai,
   donVi: { mst: string; tenCongTy: string },
 ): Promise<void> {
-  const wb = new ExcelJS.Workbook();
+  // Lazy-load exceljs (~1MB) — chỉ tải khi người dùng thực sự bấm Xuất, không nằm trong chunk route.
+  const { Workbook: LopWorkbook } = await import("exceljs");
+  const wb = new LopWorkbook();
   const ws = wb.addWorksheet("01-GTGT");
 
   // Hai dòng đầu để file rời khỏi máy vẫn tự nói được của công ty nào — cùng quy ước với

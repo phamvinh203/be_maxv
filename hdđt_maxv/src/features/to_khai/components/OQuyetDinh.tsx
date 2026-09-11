@@ -30,7 +30,7 @@ function useLuuQuyetDinh(row: ToKhaiRow) {
   const sua = useSuaQuyetDinhMutation();
   const luu = (quyetDinh: QuyetDinhKeKhai) =>
     sua.mutate(
-      { chieu: row.chieu, id: row.id, quyetDinh },
+      { chieu: row.chieu, id: row.id, quyetDinh, ky: row.ky },
       { onError: (err) => toast.error(getErrorMessage(err, "Không lưu được thay đổi.")) },
     );
   return { luu, dangLuu: sua.isPending };
