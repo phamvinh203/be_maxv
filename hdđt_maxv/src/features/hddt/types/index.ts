@@ -11,7 +11,10 @@ export interface CaptchaInfo {
 export interface LoginPayload {
   /** Mã số thuế — đóng vai trò username trên GDT */
   mst: string;
-  password: string;
+  /** Mật khẩu gõ tay. Bỏ trống khi `dungMatKhauDaLuu` — server tự dùng mật khẩu đã lưu. */
+  password?: string;
+  /** Đăng nhập bằng mật khẩu đã lưu của công ty đang chọn (mật khẩu không bao giờ về trình duyệt). */
+  dungMatKhauDaLuu?: boolean;
   /** Mã captcha người dùng gõ nhìn từ ảnh */
   captcha: string;
   /** `key` trả về từ getCaptcha */
@@ -23,9 +26,9 @@ export interface LoginResult {
   message?: string;
 }
 
-/** Mật khẩu cổng thuế đã lưu của công ty đang chọn (GET /gdt/credential); `null` = chưa lưu. */
+/** Công ty đang chọn đã lưu mật khẩu cổng thuế chưa (GET /gdt/credential) — server KHÔNG trả mật khẩu. */
 export interface GdtSavedPassword {
-  password: string | null;
+  hasSaved: boolean;
 }
 
 // ============================================================
