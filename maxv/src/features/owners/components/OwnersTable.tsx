@@ -17,7 +17,7 @@ import { tableCardSx, tableHeadRowSx } from '@/components/tableStyles';
 import { formatDate, formatLimit } from '@/lib/format';
 import { useOwners } from '@/features/owners/hooks/useOwners';
 import type { ListOwnersParams } from '@/features/owners/types/owner';
-import { MODULE_KEYS, MODULE_META } from '@/features/owners/modules';
+import { useModules } from '@/features/owners/modules';
 
 interface Props {
   params: ListOwnersParams & { page: number; pageSize: number };
@@ -51,6 +51,7 @@ export function OwnersTable({
 }: Props): JSX.Element {
   const navigate = useNavigate();
   const { data } = useOwners(params);
+  const { data: moduleList = [] } = useModules();
 
   return (
     <Paper elevation={0} sx={tableCardSx}>
@@ -62,9 +63,9 @@ export function OwnersTable({
               <TableCell>Gói</TableCell>
               <TableCell>MST (dùng / trần)</TableCell>
               <TableCell>Nhân viên (dùng / trần)</TableCell>
-              {MODULE_KEYS.map((k) => (
-                <TableCell key={k} align="center">
-                  {MODULE_META[k].nhanNgan}
+              {moduleList.map((m) => (
+                <TableCell key={m.key} align="center">
+                  {m.nhanNgan}
                 </TableCell>
               ))}
               <TableCell>Ngày tạo</TableCell>
@@ -108,13 +109,13 @@ export function OwnersTable({
                 <TableCell>
                   <Usage used={o.soNhanVien} limit={o.gioiHan.soNguoiToiDa} />
                 </TableCell>
-                {MODULE_KEYS.map((k) => (
-                  <TableCell key={k} align="center">
+                {moduleList.map((m) => (
+                  <TableCell key={m.key} align="center">
                     <Chip
                       size="small"
-                      label={o.modules[k] ? 'Bật' : 'Tắt'}
-                      color={o.modules[k] ? 'success' : 'default'}
-                      variant={o.modules[k] ? 'filled' : 'outlined'}
+                      label={o.modules[m.key] ? 'Bật' : 'Tắt'}
+                      color={o.modules[m.key] ? 'success' : 'default'}
+                      variant={o.modules[m.key] ? 'filled' : 'outlined'}
                     />
                   </TableCell>
                 ))}
@@ -126,7 +127,7 @@ export function OwnersTable({
             {data.data.length === 0 && (
               <TableRow>
                 <TableCell
-                  colSpan={5 + MODULE_KEYS.length}
+                  colSpan={5 + moduleList.length}
                   align="center"
                   sx={{ py: 6, color: 'text.secondary' }}
                 >

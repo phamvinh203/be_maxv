@@ -15,11 +15,7 @@ import {
   TextField,
   Typography,
 } from '@mui/material';
-import {
-  MODULE_KEYS,
-  MODULE_META,
-  type UserModules,
-} from '@/features/owners/modules';
+import { useModules, type UserModules } from '@/features/owners/modules';
 import {
   useCreatePlan,
   useUpdatePlan,
@@ -38,6 +34,7 @@ export function PlanFormDialog({ open, plan, onClose }: Props): JSX.Element {
   const isEdit = plan !== null;
   const pending = create.isPending || update.isPending;
   const isError = create.isError || update.isError;
+  const { data: moduleList = [] } = useModules();
 
   // Init trực tiếp từ plan; component được mount mới mỗi lần mở (key ở parent)
   // nên state luôn tươi — không cần useEffect đồng bộ.
@@ -183,24 +180,27 @@ export function PlanFormDialog({ open, plan, onClose }: Props): JSX.Element {
               không tick module nào thì người đăng ký mới vào sẽ thấy một thanh
               menu trống — nên tick ít nhất những module cho dùng thử.
             </Typography>
-            {MODULE_KEYS.map((k) => (
+            {moduleList.map((m) => (
               <FormControlLabel
-                key={k}
+                key={m.key}
                 control={
                   <Checkbox
-                    checked={features[k] === true}
+                    checked={features[m.key] === true}
                     onChange={(e) =>
-                      setFeatures((cu) => ({ ...cu, [k]: e.target.checked }))
+                      setFeatures((cu) => ({
+                        ...cu,
+                        [m.key]: e.target.checked,
+                      }))
                     }
                   />
                 }
                 label={
                   <Box>
                     <Typography sx={{ fontSize: 14 }}>
-                      {MODULE_META[k].nhanNgan}
+                      {m.nhanNgan}
                     </Typography>
                     <Typography sx={{ fontSize: 12, color: 'text.secondary' }}>
-                      {MODULE_META[k].moTa}
+                      {m.moTa}
                     </Typography>
                   </Box>
                 }
