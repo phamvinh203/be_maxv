@@ -44,7 +44,7 @@ export function TaiKhoanList(): JSX.Element {
     getId: (r) => r.tk,
     searchKeys: SEARCH_KEYS,
   });
-  const { selected, setSelected } = list;
+  const { selected, setSelectedId } = list;
 
   const [form, setForm] = useState<{
     open: boolean;
@@ -66,7 +66,7 @@ export function TaiKhoanList(): JSX.Element {
     del.mutate(selected.tk, {
       onSuccess: () => {
         setDeleteOpen(false);
-        setSelected(null);
+        setSelectedId(null);
       },
       onError: (err) => list.setActionError(getApiError(err, "Xóa thất bại.")),
     });

@@ -30,17 +30,19 @@ import { KhachHangFormDialog, type KhachHangMode } from "./KhachHangFormDialog";
 const SEARCH_KEYS = ["ma_kh", "ten_kh", "ma_so_thue"];
 
 export function KhachHangList(): JSX.Element {
+  // BE giờ phân trang server-side (mặc định 25/trang) — lấy trần 100 (KHACH_HANG_TRANG_TOI_DA
+  // của BE) rồi lọc/phân trang tiếp phía client như trước, tránh cụt danh sách còn 25 dòng.
   const { data, isLoading, isFetching, isError, error, refetch } =
-    useKhachHangList();
+    useKhachHangList({ pageSize: 100 });
   const del = useDeleteKhachHang();
 
-  const rows = useMemo(() => data ?? [], [data]);
+  const rows = useMemo(() => data?.items ?? [], [data]);
   const list = useCatalogList<KhachHang>({
     rows,
     getId: (r) => r.ma_kh,
     searchKeys: SEARCH_KEYS,
   });
-  const { selected, setSelected } = list;
+  const { selected, setSelectedId } = list;
 
   const [form, setForm] = useState<{
     open: boolean;
@@ -62,7 +64,7 @@ export function KhachHangList(): JSX.Element {
     del.mutate(selected.ma_kh, {
       onSuccess: () => {
         setDeleteOpen(false);
-        setSelected(null);
+        setSelectedId(null);
       },
       onError: (err) => list.setActionError(getApiError(err, "Xóa thất bại.")),
     });

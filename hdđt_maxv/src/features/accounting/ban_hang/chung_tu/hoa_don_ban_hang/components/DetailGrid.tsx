@@ -1,4 +1,4 @@
-import { useState, type JSX } from 'react';
+import { memo, useState, type JSX } from 'react';
 import {
   Box,
   IconButton,
@@ -21,6 +21,12 @@ import { applyQtyDeps, computeLine } from '@/features/accounting/ban_hang/chung_
 import { useThueRates } from '@/features/accounting/ban_hang/chung_tu/hoa_don_ban_hang/hooks/useThueRates';
 import type { LineForm } from '@/features/accounting/ban_hang/chung_tu/hoa_don_ban_hang/types';
 
+/** Chuyển chuỗi số kiểu VN ("1.234.567,89") sang chuỗi `Number()` parse được ("1234567.89"). */
+function parseVnNumber(raw: string): number {
+  const normalized = raw.replace(/\./g, '').replace(',', '.').replace(/[^\d.-]/g, '');
+  return Number(normalized);
+}
+
 /** Ô số có phân cách ngàn khi rời focus, hiện số thô khi đang gõ (kiểu maxv1). */
 function NumCell({
   value,
@@ -34,11 +40,15 @@ function NumCell({
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState('');
   const display = editing ? draft : fmtMoney(value);
+  // RVW-N06: dán "1.234.567" (đúng định dạng fmtMoney hiển thị) trước đây bị Number() ra NaN
+  // rồi ép về 0 im lặng — giữ NaN (không commit) + báo lỗi thay vì ghi đè dữ liệu sai.
+  const invalid = editing && draft.trim() !== '' && Number.isNaN(parseVnNumber(draft));
   return (
     <TextField
       variant="standard"
       value={display}
       disabled={disabled}
+      error={invalid}
       onFocus={(e) => {
         setEditing(true);
         setDraft(value ? String(value) : '');
@@ -48,19 +58,13 @@ function NumCell({
       onChange={(e) => {
         const raw = e.target.value;
         setDraft(raw);
-        onCommit(Number(raw.replace(/[^\d.-]/g, '')) || 0);
+        const n = parseVnNumber(raw);
+        if (!Number.isNaN(n)) onCommit(n);
       }}
       slotProps={{ input: { disableUnderline: disabled } }}
       sx={{ width: '100%', '& input': { fontSize: 12.5, textAlign: 'right', p: 0.25 } }}
     />
   );
-}
-
-interface Props {
-  lines: LineForm[];
-  ro: boolean;
-  onLineChange: (idx: number, patch: Partial<LineForm>) => void;
-  onRemove: (idx: number) => void;
 }
 
 /** Cột nhập được: [key, nhãn, kiểu, độ rộng]. Cột tính (Tiền/Chiết khấu) render riêng. */
@@ -108,33 +112,65 @@ const COLS_C: Col[] = [
   { key: 'tk_thue', label: 'Tài khoản thuế', kind: 'upper', w: 100 },
 ];
 
-/** Bảng nhập chi tiết dòng hàng bán (Tiền hàng & Chiết khấu tính tự động). */
-export function DetailGrid({ lines, ro, onLineChange, onRemove }: Props): JSX.Element {
-  /** Dòng đang mở dialog chọn phòng ban / hàng hóa (null = đóng). */
-  const [pickPbRow, setPickPbRow] = useState<number | null>(null);
-  const [pickVtRow, setPickVtRow] = useState<number | null>(null);
-  const [pickThueRow, setPickThueRow] = useState<number | null>(null);
-  /** Mã thuế -> thuế suất % (để tự tính Tiền thuế). */
-  const thueRates = useThueRates();
+const headCells = (cols: Col[]) =>
+  cols.map((c) => (
+    <TableCell key={c.key} align={c.kind === 'num' ? 'right' : 'left'} sx={{ minWidth: c.w }}>
+      {c.label}
+    </TableCell>
+  ));
 
-  /** Ô Mã thuế: nhập mã + icon chọn từ danh mục thuế; tự lấy thuế suất. */
-  const thueCell = (l: LineForm, idx: number): JSX.Element => (
+interface DetailRowProps {
+  idx: number;
+  line: LineForm;
+  ro: boolean;
+  canRemove: boolean;
+  thueRates: Map<string, number>;
+  thueLoading: boolean;
+  onLineChange: (idx: number, patch: Partial<LineForm>) => void;
+  onRemove: (idx: number) => void;
+  onPickPb: (idx: number) => void;
+  onPickVt: (idx: number) => void;
+  onPickThue: (idx: number) => void;
+}
+
+/** 1 dòng chi tiết — bọc React.memo (RVW-N12): props ổn định theo dòng nên gõ phím ở dòng
+ * khác (hoặc thêm/xóa dòng khác) không re-render dòng này. */
+const DetailRow = memo(function DetailRow({
+  idx,
+  line: l,
+  ro,
+  canRemove,
+  thueRates,
+  thueLoading,
+  onLineChange,
+  onRemove,
+  onPickPb,
+  onPickVt,
+  onPickThue,
+}: DetailRowProps): JSX.Element {
+  const cv = computeLine(l);
+  // RVW-N04: đang tải danh mục thuế -> disable (tránh gõ vào lúc chưa có gì so khớp);
+  // mã thuế gõ sai/không có trong danh mục -> báo lỗi thay vì âm thầm ra 0%.
+  const maThueInvalid = !thueLoading && l.ma_thue.trim() !== '' && !thueRates.has(l.ma_thue);
+
+  const thueCell = (): JSX.Element => (
     <TableCell key="ma_thue">
       <TextField
         variant="standard"
         value={l.ma_thue}
+        error={maThueInvalid}
         onChange={(e) => {
           const ma = e.target.value.toUpperCase();
           onLineChange(idx, { ma_thue: ma, thue_suat: thueRates.get(ma) ?? 0 });
         }}
-        disabled={ro}
+        disabled={ro || thueLoading}
         slotProps={{
           input: {
-            disableUnderline: ro,
+            disableUnderline: ro || thueLoading,
             endAdornment: !ro && (
               <InputAdornment position="end" sx={{ ml: 0 }}>
                 <Tooltip title="Chọn mã thuế">
-                  <IconButton size="small" sx={{ p: 0.25 }} onClick={() => setPickThueRow(idx)}>
+                  <IconButton size="small" sx={{ p: 0.25 }} onClick={() => onPickThue(idx)}>
                     <SearchIcon sx={{ fontSize: 15 }} />
                   </IconButton>
                 </Tooltip>
@@ -147,22 +183,13 @@ export function DetailGrid({ lines, ro, onLineChange, onRemove }: Props): JSX.El
     </TableCell>
   );
 
-  const headCells = (cols: Col[]) =>
-    cols.map((c) => (
-      <TableCell key={c.key} align={c.kind === 'num' ? 'right' : 'left'} sx={{ minWidth: c.w }}>
-        {c.label}
-      </TableCell>
-    ));
-
-  const inputCell = (l: LineForm, idx: number, c: Col): JSX.Element => (
+  const inputCell = (c: Col): JSX.Element => (
     <TableCell key={c.key}>
       {c.kind === 'num' ? (
         <NumCell
           value={Number(l[c.key]) || 0}
           disabled={ro}
-          onCommit={(n) =>
-            onLineChange(idx, applyQtyDeps({ ...l, [c.key]: n } as LineForm, c.key))
-          }
+          onCommit={(n) => onLineChange(idx, applyQtyDeps({ ...l, [c.key]: n } as LineForm, c.key))}
         />
       ) : (
         <TextField
@@ -183,8 +210,6 @@ export function DetailGrid({ lines, ro, onLineChange, onRemove }: Props): JSX.El
 
   /** Ô nhập mã kèm icon mở dialog chọn (dùng cho Mã hàng / Phòng ban). */
   const pickerCell = (
-    l: LineForm,
-    idx: number,
     field: 'ma_vt' | 'ma_pb',
     tip: string,
     onPick: (idx: number) => void,
@@ -221,18 +246,51 @@ export function DetailGrid({ lines, ro, onLineChange, onRemove }: Props): JSX.El
     </TableCell>
   );
 
-  type Computed = ReturnType<typeof computeLine>;
-
   /** Render 1 ô theo cột (picker cho Mã hàng/Phòng ban, read-only cho ô tính). */
-  const renderCell = (l: LineForm, idx: number, cv: Computed, c: Col): JSX.Element => {
-    if (c.key === 'ma_vt') return pickerCell(l, idx, 'ma_vt', 'Chọn hàng hóa', setPickVtRow);
-    if (c.key === 'ma_pb') return pickerCell(l, idx, 'ma_pb', 'Chọn phòng ban', setPickPbRow);
-    if (c.key === 'ma_thue') return thueCell(l, idx);
+  const renderCell = (c: Col): JSX.Element => {
+    if (c.key === 'ma_vt') return pickerCell('ma_vt', 'Chọn hàng hóa', onPickVt);
+    if (c.key === 'ma_pb') return pickerCell('ma_pb', 'Chọn phòng ban', onPickPb);
+    if (c.key === 'ma_thue') return thueCell();
     if (c.key === 'tien_khay_nt') return computedCell('tien_khay_nt', cv.tien_khay_nt);
     if (c.key === 'tien_no_nt') return computedCell('tien_no_nt', cv.tien_no_nt);
     if (c.key === 'thue_nt') return computedCell('thue_nt', cv.thue_nt);
-    return inputCell(l, idx, c);
+    return inputCell(c);
   };
+
+  return (
+    <TableRow hover>
+      <TableCell sx={{ color: 'text.secondary' }}>{idx + 1}</TableCell>
+      {COLS_A.map(renderCell)}
+      <TableCell align="right" sx={{ fontSize: 12.5, fontWeight: 600 }}>{fmtMoney(cv.tien_nt2)}</TableCell>
+      {COLS_B.map(renderCell)}
+      <TableCell align="right" sx={{ fontSize: 12.5, fontWeight: 600 }}>{fmtMoney(cv.ck_nt)}</TableCell>
+      {COLS_C.map(renderCell)}
+      {!ro && (
+        <TableCell>
+          <IconButton size="small" onClick={() => onRemove(idx)} disabled={!canRemove}>
+            <DeleteOutlineIcon fontSize="small" />
+          </IconButton>
+        </TableCell>
+      )}
+    </TableRow>
+  );
+});
+
+interface Props {
+  lines: LineForm[];
+  ro: boolean;
+  onLineChange: (idx: number, patch: Partial<LineForm>) => void;
+  onRemove: (idx: number) => void;
+}
+
+/** Bảng nhập chi tiết dòng hàng bán (Tiền hàng & Chiết khấu tính tự động). */
+export function DetailGrid({ lines, ro, onLineChange, onRemove }: Props): JSX.Element {
+  /** Dòng đang mở dialog chọn phòng ban / hàng hóa (null = đóng). */
+  const [pickPbRow, setPickPbRow] = useState<number | null>(null);
+  const [pickVtRow, setPickVtRow] = useState<number | null>(null);
+  const [pickThueRow, setPickThueRow] = useState<number | null>(null);
+  /** Mã thuế -> thuế suất % (để tự tính Tiền thuế). */
+  const { rates: thueRates, isLoading: thueLoading } = useThueRates();
 
   return (
     <>
@@ -250,26 +308,22 @@ export function DetailGrid({ lines, ro, onLineChange, onRemove }: Props): JSX.El
           </TableRow>
         </TableHead>
         <TableBody>
-          {lines.map((l, i) => {
-            const cv = computeLine(l);
-            return (
-              <TableRow key={i} hover>
-                <TableCell sx={{ color: 'text.secondary' }}>{i + 1}</TableCell>
-                {COLS_A.map((col) => renderCell(l, i, cv, col))}
-                <TableCell align="right" sx={{ fontSize: 12.5, fontWeight: 600 }}>{fmtMoney(cv.tien_nt2)}</TableCell>
-                {COLS_B.map((col) => renderCell(l, i, cv, col))}
-                <TableCell align="right" sx={{ fontSize: 12.5, fontWeight: 600 }}>{fmtMoney(cv.ck_nt)}</TableCell>
-                {COLS_C.map((col) => renderCell(l, i, cv, col))}
-                {!ro && (
-                  <TableCell>
-                    <IconButton size="small" onClick={() => onRemove(i)} disabled={lines.length <= 1}>
-                      <DeleteOutlineIcon fontSize="small" />
-                    </IconButton>
-                  </TableCell>
-                )}
-              </TableRow>
-            );
-          })}
+          {lines.map((l, i) => (
+            <DetailRow
+              key={l.id}
+              idx={i}
+              line={l}
+              ro={ro}
+              canRemove={lines.length > 1}
+              thueRates={thueRates}
+              thueLoading={thueLoading}
+              onLineChange={onLineChange}
+              onRemove={onRemove}
+              onPickPb={setPickPbRow}
+              onPickVt={setPickVtRow}
+              onPickThue={setPickThueRow}
+            />
+          ))}
         </TableBody>
       </Table>
     </Box>

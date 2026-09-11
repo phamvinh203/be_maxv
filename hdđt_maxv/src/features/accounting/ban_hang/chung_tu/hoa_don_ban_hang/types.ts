@@ -67,6 +67,8 @@ export interface HoaDonChiTiet {
 
 /** 1 dòng trong form (số là number để nhập/tính). */
 export interface LineForm {
+  /** id ổn định chỉ dùng client-side làm React key (RVW-N12) — không gửi lên API. */
+  id: string;
   ma_vt: string;
   ten_vt: string;
   dvt2: string;
@@ -159,16 +161,30 @@ export type HoaDonPayload = Omit<HoaDonForm, 'chi_tiet'> & {
 };
 
 export interface HoaDonListParams {
+  page?: number;
+  pageSize?: number;
+  /** Ô tìm chung: số CT / mã khách / tên khách / diễn giải. */
+  q?: string;
   so_ct?: string;
   ma_kh?: string;
   ten_kh?: string;
   ngay_ct?: string;
   trang_thai?: string;
+  nguoi_lap?: string;
 }
 
-const todayIso = (): string => new Date().toISOString().slice(0, 10);
+/** Response GET danh sách — BE phân trang server-side (khớp `hoaDonBanHang.service.ts`). */
+export interface HoaDonListResponse {
+  items: HoaDon[];
+  total: number;
+  page: number;
+  pageSize: number;
+}
 
-export const EMPTY_LINE: LineForm = {
+const todayIso = (): string => new Date().toLocaleDateString('sv-SE');
+
+/** Placeholder dùng nội bộ để spread — LUÔN tạo dòng mới qua `newLine()`, không spread trực tiếp. */
+const EMPTY_LINE_BASE: Omit<LineForm, 'id'> = {
   ma_vt: '',
   ten_vt: '',
   dvt2: '',
@@ -200,6 +216,9 @@ export const EMPTY_LINE: LineForm = {
   tk_vt: '',
 };
 
+/** Dòng chi tiết mới với id ổn định (React key — tránh re-render/nhảy dòng theo index, RVW-N12). */
+export const newLine = (): LineForm => ({ ...EMPTY_LINE_BASE, id: crypto.randomUUID() });
+
 export const emptyHoaDon = (): HoaDonForm => ({
   so_ct: '',
   so_seri: '',
@@ -219,7 +238,7 @@ export const emptyHoaDon = (): HoaDonForm => ({
   tk_thue_co: '',
   dien_giai: '',
   status: '2',
-  chi_tiet: [{ ...EMPTY_LINE }],
+  chi_tiet: [newLine()],
 });
 
 const num = (v: string | number | null | undefined): number =>
@@ -255,6 +274,7 @@ export function hoaDonToForm(d: HoaDon): HoaDonForm {
 /** Dòng chi tiết API -> dòng form. */
 export function chiTietToLine(d: HoaDonChiTiet): LineForm {
   return {
+    id: crypto.randomUUID(),
     ma_vt: d.ma_vt,
     ten_vt: d.ten_vt,
     dvt2: str(d.dvt2),

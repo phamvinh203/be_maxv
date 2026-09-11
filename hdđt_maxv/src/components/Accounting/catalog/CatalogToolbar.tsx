@@ -30,6 +30,10 @@ export interface CatalogMoreItem {
   icon: ReactNode;
   label: string;
   onClick: () => void;
+  /** RVW-TK-010: chức năng chưa làm — disable thay vì để bấm vào im lặng không làm gì. */
+  disabled?: boolean;
+  /** Tooltip khi disabled (vd "Sắp có"). */
+  disabledReason?: string;
 }
 
 interface Props {
@@ -125,20 +129,29 @@ export function CatalogToolbar({
             </IconButton>
           </Tooltip>
           <Menu anchorEl={moreEl} open={!!moreEl} onClose={closeMore}>
-            {moreItems.map((m) => (
-              <MenuItem
-                key={m.label}
-                onClick={() => {
-                  m.onClick();
-                  closeMore();
-                }}
-              >
-                <Box component="span" sx={{ mr: 1, display: 'inline-flex' }}>
-                  {m.icon}
-                </Box>
-                {m.label}
-              </MenuItem>
-            ))}
+            {moreItems.map((m) => {
+              const item = (
+                <MenuItem
+                  key={m.label}
+                  disabled={m.disabled}
+                  onClick={() => {
+                    m.onClick();
+                    closeMore();
+                  }}
+                >
+                  <Box component="span" sx={{ mr: 1, display: 'inline-flex' }}>
+                    {m.icon}
+                  </Box>
+                  {m.label}
+                </MenuItem>
+              );
+              if (!m.disabled || !m.disabledReason) return item;
+              return (
+                <Tooltip key={m.label} title={m.disabledReason} placement="left">
+                  <span>{item}</span>
+                </Tooltip>
+              );
+            })}
           </Menu>
         </>
       )}

@@ -8,6 +8,7 @@ import SettingsPage from "../pages/settings/SettingsPage";
 import DvcPage from "../pages/dich_vu_cong/DvcPage";
 import ToKhai from "../pages/to_khai/ToKhai";
 import AccountingModulesPage from "../pages/accounting/ModulesPage";
+import { AccountingErrorBoundary } from "../components/Accounting/AccountingErrorBoundary";
 import { defaultModulePath as defaultAccountingPath } from "../features/accounting/_shared/config";
 import KeToanDanhMucKHPage from "../pages/accounting/ban_hang/DanhMucKHPage";
 import KeToanHoaDonBanHangPage from "../pages/accounting/ban_hang/HoaDonBanHangPage";
@@ -78,6 +79,25 @@ const ACCOUNTING_BUILT_ROUTES: { path: string; Page: ComponentType }[] = [
   { path: "ton_kho/danh_muc/loai_vt", Page: KeToanLoaiVtPage },
   { path: "ton_kho/danh_muc/phan_nhom", Page: KeToanPhanNhomPage },
 ];
+
+/**
+ * RVW-N11: path của module Kế toán khai ở 2 nơi (`ACCOUNTING_BUILT_ROUTES` trên vs
+ * `_shared/config/*.tsx`) — lệch 1 ký tự giữa 2 bảng là menu đang bấm bỗng im lặng bắn
+ * về trang chủ qua route "*" dưới đây. Gộp `ModuleConfig` thành nguồn path DUY NHẤT (sinh
+ * route từ `MODULES` thay vì mảng tay) là fix triệt để nhưng đụng cả cách `ACCOUNTING_BUILT_ROUTES`
+ * lẫn cấu trúc `ModuleConfig` hiện tại — rủi ro/lan rộng hơn mức 1 finding non-blocking. Hạ
+ * mức xử lý: log rõ path lệch (dev-only) ngay khi catch-all bắt được, để phát hiện sớm
+ * thay vì chỉ thấy "bỗng dưng về trang chủ" không rõ vì sao.
+ */
+function NotFoundRedirect() {
+  if (import.meta.env.DEV) {
+    console.warn(
+      `[AppRouter] Không khớp route nào: "${window.location.pathname}" — kiểm tra path có đúng ` +
+        'với ACCOUNTING_BUILT_ROUTES (AppRouter.tsx) và _shared/config/*.tsx không (RVW-N11).',
+    );
+  }
+  return <Navigate to="/" replace />;
+}
 
 /** Route chỉ dành cho khách (login/register) — đã đăng nhập thì tự chuyển về trang chính. */
 function GuestOnlyRoute({ children }: { children: ReactNode }) {
@@ -174,7 +194,9 @@ export default function AppRouter() {
               element={
                 <ProtectedRoute>
                   <ModuleRoute module="accounting">
-                    <Page />
+                    <AccountingErrorBoundary>
+                      <Page />
+                    </AccountingErrorBoundary>
                   </ModuleRoute>
                 </ProtectedRoute>
               }
@@ -185,7 +207,9 @@ export default function AppRouter() {
             element={
               <ProtectedRoute>
                 <ModuleRoute module="accounting">
-                  <AccountingModulesPage />
+                  <AccountingErrorBoundary>
+                    <AccountingModulesPage />
+                  </AccountingErrorBoundary>
                 </ModuleRoute>
               </ProtectedRoute>
             }
@@ -292,7 +316,7 @@ export default function AppRouter() {
             </Route>
           </Route>
           {/* Bắt mọi path không khớp, tránh màn hình trắng khi gõ sai URL */}
-          <Route path="*" element={<Navigate to="/" replace />} />
+          <Route path="*" element={<NotFoundRedirect />} />
         </Route>
       </Routes>
     </BrowserRouter>

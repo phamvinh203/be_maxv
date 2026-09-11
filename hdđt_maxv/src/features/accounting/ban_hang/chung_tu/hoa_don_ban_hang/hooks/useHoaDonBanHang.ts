@@ -10,23 +10,31 @@ import {
   listHoaDon,
   updateHoaDon,
 } from '@/features/accounting/ban_hang/chung_tu/hoa_don_ban_hang/api/hoaDonBanHangApi';
-import type { HoaDonPayload } from '@/features/accounting/ban_hang/chung_tu/hoa_don_ban_hang/types';
+import type {
+  HoaDonListParams,
+  HoaDonPayload,
+} from '@/features/accounting/ban_hang/chung_tu/hoa_don_ban_hang/types';
 import { useAuth } from '@/features/auth/useAuth';
 
 // Mọi key đều gắn companyId — API theo tenant qua cookie, không tự đổi khi đổi công ty.
 export const hoaDonKeys = {
   all: ['hoa-don-ban-hang'] as const,
-  list: (companyId: string | null) => ['hoa-don-ban-hang', companyId, 'list'] as const,
+  list: (companyId: string | null, params: HoaDonListParams) =>
+    ['hoa-don-ban-hang', companyId, 'list', params] as const,
   chiTiet: (companyId: string | null, sttRec: string) =>
     ['hoa-don-ban-hang', companyId, 'chi-tiet', sttRec] as const,
 };
 
-export function useHoaDonList() {
+/** BE phân trang server-side — truyền `page/pageSize/q` để lấy đúng trang đang xem. */
+export function useHoaDonList(params: HoaDonListParams = {}) {
   const { isAuthenticated, currentCompanyId } = useAuth();
   return useQuery({
-    queryKey: hoaDonKeys.list(currentCompanyId),
-    queryFn: () => listHoaDon(),
-    placeholderData: (prev) => prev,
+    queryKey: hoaDonKeys.list(currentCompanyId, params),
+    queryFn: () => listHoaDon(params),
+    // RVW-N07: không giữ placeholder qua lần đổi công ty — tránh hiện data tenant cũ
+    // dưới tên công ty mới trong lúc chờ refetch.
+    placeholderData: (prev, prevQuery) =>
+      prevQuery?.queryKey[1] === currentCompanyId ? prev : undefined,
     enabled: isAuthenticated && !!currentCompanyId,
   });
 }

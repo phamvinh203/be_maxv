@@ -12,9 +12,14 @@ interface Options<T> {
 }
 
 /**
- * State + logic dùng chung cho mọi bảng danh mục: chọn 1 dòng, tìm kiếm
- * (debounce, tự về trang 1), lọc client-side, phân trang, và lỗi thao tác.
- * Phần bảng/cột và dialog do từng danh mục tự render.
+ * State + logic dùng chung cho mọi bảng danh mục: chọn 1 dòng (theo id, tự đồng bộ lại
+ * sau refetch — RVW-B03: KHÔNG giữ snapshot object cũ, tránh Sửa lần 2 nạp nhầm giá trị
+ * trước khi sửa), tìm kiếm (debounce, tự về trang 1), lọc client-side, phân trang, và lỗi
+ * thao tác. Phần bảng/cột và dialog do từng danh mục tự render.
+ *
+ * Màn có API phân trang server-side thật (HoaDonList, HangHoaList) chỉ dùng
+ * `selectedId/setSelectedId/isSelected/toggleSelect/search/page/rpp/actionError` của hook
+ * này (đều không phụ thuộc `rows` truyền vào) và tự derive `selected` từ dữ liệu đã fetch.
  */
 export function useCatalogList<T>({
   rows,
@@ -23,7 +28,7 @@ export function useCatalogList<T>({
   debounceMs = 300,
   defaultRpp = 25,
 }: Options<T>) {
-  const [selected, setSelected] = useState<T | null>(null);
+  const [selectedId, setSelectedId] = useState<string | null>(null);
   const [searchInput, setSearchInput] = useState('');
   const [search, setSearch] = useState('');
   const [page, setPage] = useState(0);
@@ -55,18 +60,25 @@ export function useCatalogList<T>({
     [filtered, page, rpp],
   );
 
+  const selected = useMemo(
+    () => (selectedId == null ? null : (rows.find((r) => getId(r) === selectedId) ?? null)),
+    [rows, getId, selectedId],
+  );
+
   const isSelected = (row: T): boolean =>
-    !!selected && getId(selected) === getId(row);
+    selectedId != null && getId(row) === selectedId;
   const toggleSelect = (row: T): void =>
-    setSelected((cur) => (cur && getId(cur) === getId(row) ? null : row));
+    setSelectedId((cur) => (cur === getId(row) ? null : getId(row)));
 
   return {
     selected,
-    setSelected,
+    selectedId,
+    setSelectedId,
     isSelected,
     toggleSelect,
     searchInput,
     setSearchInput,
+    search,
     page,
     setPage,
     rpp,

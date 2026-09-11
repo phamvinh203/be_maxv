@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type JSX } from 'react';
+import { useCallback, useEffect, useMemo, useState, type FormEvent, type JSX } from 'react';
 import {
   Alert,
   Box,
@@ -24,6 +24,7 @@ import {
   useCreateHoaDon,
   useUpdateHoaDon,
 } from '@/features/accounting/ban_hang/chung_tu/hoa_don_ban_hang/hooks/useHoaDonBanHang';
+import { useThueRates } from '@/features/accounting/ban_hang/chung_tu/hoa_don_ban_hang/hooks/useThueRates';
 import { nextSoCt } from '@/features/accounting/ban_hang/chung_tu/hoa_don_ban_hang/api/hoaDonBanHangApi';
 import { fmt } from '@/utils/format';
 import { computeTotals } from '@/features/accounting/ban_hang/chung_tu/hoa_don_ban_hang/calc';
@@ -34,8 +35,8 @@ import { HddtTab } from '@/features/accounting/ban_hang/chung_tu/hoa_don_ban_han
 import {
   chiTietToLine,
   emptyHoaDon,
-  EMPTY_LINE,
   hoaDonToForm,
+  newLine,
   type HoaDon,
   type HoaDonForm,
   type LineForm,
@@ -61,6 +62,7 @@ export function HoaDonFormDialog({ open, mode, current, onClose }: Props): JSX.E
   const ro = mode === 'view';
   const create = useCreateHoaDon();
   const update = useUpdateHoaDon();
+  const { rates: thueRates, isLoading: thueLoading } = useThueRates();
 
   const sttRec = mode !== 'new' && current ? current.stt_rec : null;
   const { data: chiTietData } = useChiTiet(open ? sttRec : null);
@@ -70,21 +72,34 @@ export function HoaDonFormDialog({ open, mode, current, onClose }: Props): JSX.E
   const [pickKh, setPickKh] = useState(false);
   const [tab, setTab] = useState(0);
 
-  // Mở form: nạp header, lấy số CT kế tiếp khi thêm mới.
+  // Mở form: nạp header, lấy số CT kế tiếp khi thêm mới hoặc copy (RVW-N02/N03).
   useEffect(() => {
     if (!open) return;
     // eslint-disable-next-line react-hooks/set-state-in-effect -- reset form khi dialog vừa mở, không phải đồng bộ liên tục
     setError('');
     setTab(0);
-    if (mode === 'new' || !current) {
-      const f = emptyHoaDon();
-      setForm(f);
+    let alive = true;
+
+    if (mode === 'new' || mode === 'copy') {
+      // Copy giữ nguyên dữ liệu nguồn (trừ số CT — phải lấy số mới, không thì BE trả 409).
+      const base = mode === 'copy' && current ? hoaDonToForm(current) : emptyHoaDon();
+      setForm(base);
       nextSoCt()
-        .then((r) => setForm((prev) => ({ ...prev, so_ct: r.so_ct })))
-        .catch(() => {});
-    } else {
+        .then((r) => {
+          if (!alive) return;
+          setForm((prev) => ({ ...prev, so_ct: r.so_ct }));
+        })
+        .catch((err: unknown) => {
+          if (!alive) return;
+          setError(getApiError(err, 'Không lấy được số chứng từ tiếp theo.'));
+        });
+    } else if (current) {
       setForm(hoaDonToForm(current));
     }
+
+    return () => {
+      alive = false;
+    };
   }, [open, mode, current]);
 
   // Nạp dòng chi tiết khi sửa/copy/xem.
@@ -92,35 +107,60 @@ export function HoaDonFormDialog({ open, mode, current, onClose }: Props): JSX.E
     if (!open || mode === 'new' || !chiTietData) return;
     const lines = chiTietData.map(chiTietToLine);
     // eslint-disable-next-line react-hooks/set-state-in-effect -- nạp chi tiết khi mở dialog sửa/copy/xem, không phải đồng bộ liên tục
-    setForm((prev) => ({ ...prev, chi_tiet: lines.length ? lines : [{ ...EMPTY_LINE }] }));
+    setForm((prev) => ({ ...prev, chi_tiet: lines.length ? lines : [newLine()] }));
   }, [open, mode, chiTietData]);
 
   function setField<K extends keyof HoaDonForm>(key: K, value: HoaDonForm[K]) {
     setForm((f) => ({ ...f, [key]: value }));
   }
 
-  function setLine(idx: number, patch: Partial<LineForm>) {
+  const setLine = useCallback((idx: number, patch: Partial<LineForm>) => {
     setForm((f) => ({
       ...f,
       chi_tiet: f.chi_tiet.map((l, i) => (i === idx ? { ...l, ...patch } : l)),
     }));
-  }
+  }, []);
 
-  const addLine = () =>
-    setForm((f) => ({ ...f, chi_tiet: [...f.chi_tiet, { ...EMPTY_LINE }] }));
-  const removeLine = (idx: number) =>
-    setForm((f) => ({
-      ...f,
-      chi_tiet: f.chi_tiet.length > 1 ? f.chi_tiet.filter((_, i) => i !== idx) : f.chi_tiet,
-    }));
+  const addLine = useCallback(
+    () => setForm((f) => ({ ...f, chi_tiet: [...f.chi_tiet, newLine()] })),
+    [],
+  );
+  const removeLine = useCallback(
+    (idx: number) =>
+      setForm((f) => ({
+        ...f,
+        chi_tiet: f.chi_tiet.length > 1 ? f.chi_tiet.filter((_, i) => i !== idx) : f.chi_tiet,
+      })),
+    [],
+  );
 
   const totals = useMemo(() => computeTotals(form.chi_tiet), [form.chi_tiet]);
 
   const pending = create.isPending || update.isPending;
 
-  function handleSave() {
+  function handleSubmit(e: FormEvent) {
+    e.preventDefault();
     if (ro) return;
     setError('');
+
+    // RVW-N05: dòng thiếu mã hàng trước đây bị .filter() loại âm thầm khi lưu — chặn ở đây,
+    // bắt user tự xóa dòng thừa hoặc điền mã hàng thay vì lưu hóa đơn rỗng.
+    if (form.chi_tiet.length === 0 || form.chi_tiet.some((l) => !l.ma_vt.trim())) {
+      setError('Có dòng chi tiết chưa chọn mã hàng — điền mã hàng hoặc xóa dòng đó trước khi lưu.');
+      setTab(0);
+      return;
+    }
+
+    // RVW-N04: mã thuế gõ sai/không có trong danh mục trước đây ra 0% VAT không cảnh báo.
+    if (!thueLoading) {
+      const badTax = form.chi_tiet.find((l) => l.ma_thue.trim() && !thueRates.has(l.ma_thue));
+      if (badTax) {
+        setError(`Mã thuế "${badTax.ma_thue}" không có trong danh mục thuế GTGT.`);
+        setTab(0);
+        return;
+      }
+    }
+
     const onError = (err: unknown) =>
       setError(getApiError(err, 'Lưu thất bại, vui lòng thử lại.'));
 
@@ -128,23 +168,21 @@ export function HoaDonFormDialog({ open, mode, current, onClose }: Props): JSX.E
     // thue_nt, tien_khay_nt, tien_no_nt) hay các tổng (t_tien_nt2, t_ck_nt...). Backend
     // tự tính lại toàn bộ từ so_luong/gia_nt2/tl_ck/thue_suat/ty_gia — không tin số tiền
     // do trình duyệt tính (mass-assignment: client có thể sửa payload để ghi khống doanh thu).
-    const chi_tiet = form.chi_tiet
-      .filter((l) => l.ma_vt.trim())
-      .map(
-        ({
-          ma_vt, dvt, dvt2, he_so2, ma_kho,
-          so_luong, gia_nt2, tl_ck, so_luong2, so_luong2_nl,
-          so_luong_giao, so_luong_hh, ty_le_hh, gia_khay_nt,
-          ma_thue, thue_suat, ma_du_an, ma_pb,
-          tk_dt, tk_ck, tk_gv, tk_thue, tk_vt,
-        }) => ({
-          ma_vt, dvt, dvt2, he_so2, ma_kho,
-          so_luong, gia_nt2, tl_ck, so_luong2, so_luong2_nl,
-          so_luong_giao, so_luong_hh, ty_le_hh, gia_khay_nt,
-          ma_thue, thue_suat, ma_du_an, ma_pb,
-          tk_dt, tk_ck, tk_gv, tk_thue, tk_vt,
-        }),
-      );
+    const chi_tiet = form.chi_tiet.map(
+      ({
+        ma_vt, dvt, dvt2, he_so2, ma_kho,
+        so_luong, gia_nt2, tl_ck, so_luong2, so_luong2_nl,
+        so_luong_giao, so_luong_hh, ty_le_hh, gia_khay_nt,
+        ma_thue, thue_suat, ma_du_an, ma_pb,
+        tk_dt, tk_ck, tk_gv, tk_thue, tk_vt,
+      }) => ({
+        ma_vt, dvt, dvt2, he_so2, ma_kho,
+        so_luong, gia_nt2, tl_ck, so_luong2, so_luong2_nl,
+        so_luong_giao, so_luong_hh, ty_le_hh, gia_khay_nt,
+        ma_thue, thue_suat, ma_du_an, ma_pb,
+        tk_dt, tk_ck, tk_gv, tk_thue, tk_vt,
+      }),
+    );
 
     const body = { ...form, chi_tiet };
 
@@ -162,7 +200,11 @@ export function HoaDonFormDialog({ open, mode, current, onClose }: Props): JSX.E
       onClose={onClose}
       slotProps={{ paper: { sx: { width: 'min(1200px, 98vw)', maxWidth: '100vw' } } }}
     >
-      <Box sx={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
+      <Box
+        component="form"
+        onSubmit={handleSubmit}
+        sx={{ display: 'flex', flexDirection: 'column', height: '100%' }}
+      >
         {/* Title */}
         <Stack
           direction="row"
@@ -260,7 +302,7 @@ export function HoaDonFormDialog({ open, mode, current, onClose }: Props): JSX.E
         {/* Footer */}
         <Stack direction="row" spacing={1} sx={{ p: 2, borderTop: 1, borderColor: 'divider', bgcolor: 'background.default' }}>
           {!ro && (
-            <Button variant="contained" onClick={handleSave} disabled={pending}>
+            <Button type="submit" variant="contained" disabled={pending}>
               {pending ? 'Đang lưu...' : 'Lưu'}
             </Button>
           )}

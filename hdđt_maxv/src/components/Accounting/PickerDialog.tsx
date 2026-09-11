@@ -57,6 +57,10 @@ interface Props<T> {
   onSearchChange?: (value: string) => void;
 }
 
+/** RVW-N13: trần số dòng render cùng lúc — danh mục lớn (vd hệ thống tài khoản chi tiết)
+ * không phân trang từ BE, render hết vài nghìn dòng khựng UI vài trăm ms. */
+const MAX_VISIBLE_ROWS = 200;
+
 /** Dialog chọn 1 bản ghi từ danh mục (lọc phía client). Dùng chung cho mọi picker. */
 export function PickerDialog<T>({
   open,
@@ -87,6 +91,9 @@ export function PickerDialog<T>({
     const q = search.trim().toLowerCase();
     return q ? rows.filter((r) => filter(r, q)) : rows;
   }, [rows, search, filter, isControlled]);
+
+  const visible = useMemo(() => filtered.slice(0, MAX_VISIBLE_ROWS), [filtered]);
+  const hiddenCount = filtered.length - visible.length;
 
   const pick = (r: T) => {
     onSelect(r);
@@ -141,7 +148,7 @@ export function PickerDialog<T>({
                   </TableCell>
                 </TableRow>
               )}
-              {filtered.map((r) => (
+              {visible.map((r) => (
                 <TableRow
                   key={getKey(r)}
                   hover
@@ -171,6 +178,11 @@ export function PickerDialog<T>({
           <Typography variant="caption" color="text.secondary">
             {selectHint}
           </Typography>
+          {hiddenCount > 0 && (
+            <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
+              Còn {hiddenCount} kết quả, gõ thêm để lọc.
+            </Typography>
+          )}
         </Box>
       </DialogContent>
     </Dialog>

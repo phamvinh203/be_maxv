@@ -1,24 +1,14 @@
 import { useMemo, useState, type JSX } from "react";
-import {
-  Alert,
-  Box,
-  Chip,
-  Stack,
-  Table,
-  TableBody,
-  TableCell,
-  TableContainer,
-  TableHead,
-  TablePagination,
-  TableRow,
-  Typography,
-} from "@mui/material";
 import EditIcon from "@mui/icons-material/Edit";
 import ContentCopyIcon from "@mui/icons-material/ContentCopy";
 import DeleteIcon from "@mui/icons-material/Delete";
 import { getApiError } from "@/lib/apiClient";
 import DeleteDialog from "@/components/Accounting/DeleteDialog";
-import { CatalogToolbar } from "@/components/Accounting/catalog/CatalogToolbar";
+import { CatalogTableShell } from "@/components/Accounting/catalog/CatalogTableShell";
+import {
+  statusColumn,
+  type CatalogColumn,
+} from "@/components/Accounting/catalog/catalogColumns";
 import { useCatalogList } from "@/components/Accounting/catalog/useCatalogList";
 import {
   useDeleteDvt,
@@ -28,6 +18,13 @@ import type { Dvt } from "@/features/accounting/ton_kho/danh_muc/dvt/types";
 import { DvtFormDialog, type DvtMode } from "./DvtFormDialog";
 
 const SEARCH_KEYS = ["dvt", "ten_dvt"];
+
+const COLUMNS: CatalogColumn<Dvt>[] = [
+  { label: "Mã ĐVT", bold: true, render: (r) => r.dvt },
+  { label: "ĐVT 2", render: (r) => r.dvt2 || "—" },
+  { label: "Tên đơn vị tính", render: (r) => r.ten_dvt },
+  statusColumn<Dvt>(),
+];
 
 export function DvtList(): JSX.Element {
   const { data, isLoading, isFetching, isError, error, refetch } = useDvtList();
@@ -39,7 +36,7 @@ export function DvtList(): JSX.Element {
     getId: (r) => r.dvt,
     searchKeys: SEARCH_KEYS,
   });
-  const { selected, setSelected } = list;
+  const { selected, setSelectedId } = list;
 
   const [form, setForm] = useState<{
     open: boolean;
@@ -61,26 +58,17 @@ export function DvtList(): JSX.Element {
     del.mutate(selected.dvt, {
       onSuccess: () => {
         setDeleteOpen(false);
-        setSelected(null);
+        setSelectedId(null);
       },
       onError: (err) => list.setActionError(getApiError(err, "Xóa thất bại.")),
     });
   }
 
   return (
-    <Box
-      sx={{
-        display: "flex",
-        flexDirection: "column",
-        height: "100%",
-        bgcolor: "background.default",
-      }}
-    >
-      <CatalogToolbar
+    <>
+      <CatalogTableShell<Dvt>
         addLabel="Thêm đơn vị tính"
         onAdd={() => openForm("new", null)}
-        searchValue={list.searchInput}
-        onSearchChange={list.setSearchInput}
         searchPlaceholder="Tìm mã / tên ĐVT…"
         onRefresh={() => void refetch()}
         actions={[
@@ -104,106 +92,18 @@ export function DvtList(): JSX.Element {
             onClick: () => setDeleteOpen(true),
           },
         ]}
-      />
-
-      {/* Info bar */}
-      <Stack
-        direction="row"
-        sx={{ alignItems: "center", px: 2, py: 0.5, gap: 1 }}
-      >
-        <Typography variant="body2" color="text.secondary">
-          Danh mục đơn vị tính
-        </Typography>
-        <Typography
-          variant="caption"
-          color="text.secondary"
-          sx={{ ml: "auto" }}
-        >
-          {isLoading ? "đang tải…" : `${list.filtered.length} đơn vị`}
-          {isFetching && !isLoading ? " · đang cập nhật…" : ""}
-        </Typography>
-      </Stack>
-
-      {(isError || list.actionError) && (
-        <Alert severity="error" sx={{ mx: 2, mb: 1, py: 0 }}>
-          {list.actionError || getApiError(error, "Không tải được danh sách.")}
-        </Alert>
-      )}
-
-      {/* Table */}
-      <TableContainer sx={{ flex: 1, minHeight: 0 }}>
-        <Table size="small" stickyHeader>
-          <TableHead>
-            <TableRow>
-              <TableCell>Mã ĐVT</TableCell>
-              <TableCell>ĐVT 2</TableCell>
-              <TableCell>Tên đơn vị tính</TableCell>
-              <TableCell align="center">Trạng thái</TableCell>
-            </TableRow>
-          </TableHead>
-          <TableBody>
-            {isLoading && (
-              <TableRow>
-                <TableCell
-                  colSpan={5}
-                  align="center"
-                  sx={{ py: 4, color: "text.secondary" }}
-                >
-                  Đang tải…
-                </TableCell>
-              </TableRow>
-            )}
-            {list.paged.map((r) => (
-              <TableRow
-                key={r.dvt}
-                hover
-                selected={list.isSelected(r)}
-                onClick={() => list.toggleSelect(r)}
-                onDoubleClick={() => openForm("edit", r)}
-                sx={{ cursor: "pointer", opacity: r.status === "0" ? 0.55 : 1 }}
-              >
-                <TableCell sx={{ fontWeight: 600 }}>{r.dvt}</TableCell>
-                <TableCell>{r.dvt2 || "—"}</TableCell>
-                <TableCell>{r.ten_dvt}</TableCell>
-                <TableCell align="center">
-                  <Chip
-                    size="small"
-                    label={r.status === "1" ? "Đang dùng" : "Ngừng"}
-                    color={r.status === "1" ? "success" : "default"}
-                    variant="outlined"
-                  />
-                </TableCell>
-              </TableRow>
-            ))}
-            {!isLoading && list.filtered.length === 0 && (
-              <TableRow>
-                <TableCell
-                  colSpan={5}
-                  align="center"
-                  sx={{ py: 6, color: "text.secondary" }}
-                >
-                  {list.searchInput
-                    ? "Không tìm thấy đơn vị tính phù hợp"
-                    : "Chưa có đơn vị tính nào"}
-                </TableCell>
-              </TableRow>
-            )}
-          </TableBody>
-        </Table>
-      </TableContainer>
-
-      <TablePagination
-        component="div"
-        count={list.filtered.length}
-        page={list.page}
-        onPageChange={(_, p) => list.setPage(p)}
-        rowsPerPage={list.rpp}
-        onRowsPerPageChange={(e) => {
-          list.setRpp(Number(e.target.value));
-          list.setPage(0);
-        }}
-        rowsPerPageOptions={[25, 50, 100]}
-        labelRowsPerPage="Số dòng/trang"
+        infoLabel="Danh mục đơn vị tính"
+        countSuffix="đơn vị"
+        columns={COLUMNS}
+        getRowKey={(r) => r.dvt}
+        onRowDoubleClick={(r) => openForm("edit", r)}
+        notFoundLabel="Không tìm thấy đơn vị tính phù hợp"
+        emptyLabel="Chưa có đơn vị tính nào"
+        list={list}
+        isLoading={isLoading}
+        isFetching={isFetching}
+        isError={isError}
+        error={error}
       />
 
       {/* Dialogs */}
@@ -225,6 +125,6 @@ export function DvtList(): JSX.Element {
         onConfirm={confirmDelete}
         onClose={() => setDeleteOpen(false)}
       />
-    </Box>
+    </>
   );
 }

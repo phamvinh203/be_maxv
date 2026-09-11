@@ -1,14 +1,16 @@
 import { api } from '@/lib/apiClient';
 import type {
-  KhachHang,
   KhachHangForm,
   KhachHangListParams,
+  KhachHangListResponse,
 } from '@/features/accounting/ban_hang/danh_muc/dm_KH/types';
 
 const BASE = '/ban-hang/khach-hang';
 
-export function listKhachHang(params?: KhachHangListParams): Promise<KhachHang[]> {
-  return api.get<KhachHang[]>(BASE, { params });
+export function listKhachHang(
+  params?: KhachHangListParams,
+): Promise<KhachHangListResponse> {
+  return api.get<KhachHangListResponse>(BASE, { params });
 }
 
 export function createKhachHang(body: KhachHangForm): Promise<{ ma_kh: string }> {

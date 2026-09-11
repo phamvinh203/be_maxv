@@ -50,14 +50,14 @@ export function useHangHoaDetail(maVt: string | null) {
   });
 }
 
-/** Danh mục lookup ít đổi -> cache lâu. */
-export function useLookups() {
+/** Danh mục lookup ít đổi -> cache lâu. RVW-TK-005: `enabled` để form gọi khi mở dialog. */
+export function useLookups(options?: { enabled?: boolean }) {
   const { isAuthenticated, currentCompanyId } = useAuth();
   return useQuery({
     queryKey: hangHoaKeys.lookups(currentCompanyId),
     queryFn: fetchLookups,
     staleTime: 5 * 60 * 1000,
-    enabled: isAuthenticated && !!currentCompanyId,
+    enabled: (options?.enabled ?? true) && isAuthenticated && !!currentCompanyId,
   });
 }
 

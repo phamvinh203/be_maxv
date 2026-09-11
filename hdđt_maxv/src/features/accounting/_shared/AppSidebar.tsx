@@ -6,8 +6,32 @@ interface Props {
   onSelect: (slug: string) => void;
 }
 
+// RVW-N10: mỗi trang Kế toán dựng lại toàn bộ cây (không dùng layout route + Outlet dùng
+// chung), nên AppSidebar unmount/mount lại mỗi lần điều hướng và mất state React thường.
+// Đổi kiến trúc sang layout route chạm tới 11 page wrapper + AppRouter (rủi ro/lan rộng hơn
+// mức cần cho đúng 1 finding non-blocking) — thay vào đó lưu trạng thái thu gọn ra
+// localStorage để nó sống sót qua remount, đây cũng là pattern sẵn có trong repo
+// (xem `theme/displaySettings.ts`).
+const EXPANDED_KEY = 'hddt_accounting_sidebar_expanded';
+
+function loadExpanded(): boolean {
+  try {
+    return localStorage.getItem(EXPANDED_KEY) !== '0';
+  } catch {
+    return true;
+  }
+}
+
+function saveExpanded(v: boolean): void {
+  try {
+    localStorage.setItem(EXPANDED_KEY, v ? '1' : '0');
+  } catch {
+    // localStorage không khả dụng (vd Safari private mode) — bỏ qua, chỉ mất persist.
+  }
+}
+
 export default function AppSidebar({ active, onSelect }: Props): JSX.Element {
-  const [expanded, setExpanded] = useState(true);
+  const [expanded, setExpanded] = useState(loadExpanded);
 
   return (
     <aside
@@ -27,7 +51,13 @@ export default function AppSidebar({ active, onSelect }: Props): JSX.Element {
       <button
         type="button"
         aria-label={expanded ? 'Thu gọn menu' : 'Mở rộng menu'}
-        onClick={() => setExpanded((v) => !v)}
+        onClick={() =>
+          setExpanded((v) => {
+            const next = !v;
+            saveExpanded(next);
+            return next;
+          })
+        }
         style={{
           width: '100%', height: 40, minHeight: 40, flexShrink: 0,
           display: 'flex', alignItems: 'center', justifyContent: 'center',

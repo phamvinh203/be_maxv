@@ -45,17 +45,26 @@ const STATUS: Record<
 };
 
 export function HoaDonList(): JSX.Element {
-  const { data, isLoading, isFetching, isError, error, refetch } =
-    useHoaDonList();
-  const del = useDeleteHoaDon();
-
-  const rows = useMemo(() => data ?? [], [data]);
+  // RVW-B01: BE phân trang server-side ({items,total,page,pageSize}), nên bảng này KHÔNG
+  // dùng list.selected/list.filtered/list.paged của useCatalogList (những cái đó derive từ
+  // `rows` truyền vào, mà rows thật chỉ có SAU khi fetch theo list.page/list.search bên
+  // dưới — truyền rows:[] ở đây chỉ để lấy phần state độc lập với rows: selectedId/
+  // setSelectedId/isSelected/toggleSelect/searchInput/search/page/rpp/actionError).
   const list = useCatalogList<HoaDon>({
-    rows,
+    rows: [],
     getId: (r) => r.stt_rec,
     searchKeys: SEARCH_KEYS,
   });
-  const { selected, setSelected } = list;
+
+  const { data, isLoading, isFetching, isError, error, refetch } =
+    useHoaDonList({ q: list.search, page: list.page + 1, pageSize: list.rpp });
+  const del = useDeleteHoaDon();
+
+  const rows = useMemo(() => data?.items ?? [], [data]);
+  const selected = useMemo(
+    () => rows.find((r) => r.stt_rec === list.selectedId) ?? null,
+    [rows, list.selectedId],
+  );
 
   const [form, setForm] = useState<{
     open: boolean;
@@ -77,7 +86,7 @@ export function HoaDonList(): JSX.Element {
     del.mutate(selected.stt_rec, {
       onSuccess: () => {
         setDeleteOpen(false);
-        setSelected(null);
+        list.setSelectedId(null);
       },
       onError: (err) => list.setActionError(getApiError(err, "Xóa thất bại.")),
     });
@@ -101,9 +110,11 @@ export function HoaDonList(): JSX.Element {
         onRefresh={() => void refetch()}
         actions={[
           {
+            // RVW-N08: hóa đơn đã ghi sổ (status "1") — không cho mở Sửa, BE trả 409
+            // "Hóa đơn đã ghi sổ" nhưng validateBody chạy trước service che mất message đúng.
             title: "Sửa",
             icon: <EditIcon fontSize="small" />,
-            disabled: !selected,
+            disabled: !selected || selected.status === "1",
             onClick: () => selected && openForm("edit", selected),
           },
           {
@@ -121,7 +132,7 @@ export function HoaDonList(): JSX.Element {
           {
             title: "Xóa",
             icon: <DeleteIcon fontSize="small" />,
-            disabled: !selected,
+            disabled: !selected || selected.status === "1",
             color: "error",
             onClick: () => setDeleteOpen(true),
           },
@@ -140,7 +151,7 @@ export function HoaDonList(): JSX.Element {
           color="text.secondary"
           sx={{ ml: "auto" }}
         >
-          {isLoading ? "đang tải…" : `${list.filtered.length} hóa đơn`}
+          {isLoading ? "đang tải…" : `${data?.total ?? 0} hóa đơn`}
           {isFetching && !isLoading ? " · đang cập nhật…" : ""}
         </Typography>
       </Stack>
@@ -182,7 +193,7 @@ export function HoaDonList(): JSX.Element {
                 </TableCell>
               </TableRow>
             )}
-            {list.paged.map((r) => {
+            {rows.map((r) => {
               const st = STATUS[r.status] ?? {
                 label: r.status,
                 color: "default" as const,
@@ -193,7 +204,7 @@ export function HoaDonList(): JSX.Element {
                   hover
                   selected={list.isSelected(r)}
                   onClick={() => list.toggleSelect(r)}
-                  onDoubleClick={() => openForm("edit", r)}
+                  onDoubleClick={() => openForm(r.status === "1" ? "view" : "edit", r)}
                   sx={{
                     cursor: "pointer",
                     opacity: r.status === "0" ? 0.55 : 1,
@@ -228,7 +239,7 @@ export function HoaDonList(): JSX.Element {
                 </TableRow>
               );
             })}
-            {!isLoading && list.filtered.length === 0 && (
+            {!isLoading && rows.length === 0 && (
               <TableRow>
                 <TableCell
                   colSpan={13}
@@ -247,7 +258,7 @@ export function HoaDonList(): JSX.Element {
 
       <TablePagination
         component="div"
-        count={list.filtered.length}
+        count={data?.total ?? 0}
         page={list.page}
         onPageChange={(_, p) => list.setPage(p)}
         rowsPerPage={list.rpp}

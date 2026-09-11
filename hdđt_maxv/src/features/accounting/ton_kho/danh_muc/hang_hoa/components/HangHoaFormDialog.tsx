@@ -2,6 +2,7 @@ import {
   useEffect,
   useState,
   type CSSProperties,
+  type FormEvent,
   type JSX,
   type ReactNode,
 } from "react";
@@ -154,7 +155,12 @@ export function HangHoaFormDialog({
   const isCreate = mode === "new" || mode === "copy";
   const needDetail = open && mode !== "new" && !!maVt;
 
-  const { data: lkData } = useLookups();
+  // RVW-TK-005: `enabled: open` — không bắn 8 request lookup khi dialog chưa mở.
+  const {
+    data: lkData,
+    isError: lkIsError,
+    refetch: refetchLookups,
+  } = useLookups({ enabled: open });
   const { data: detail } = useHangHoaDetail(needDetail ? maVt : null);
   const create = useCreateHangHoa();
   const update = useUpdateHangHoa();
@@ -174,7 +180,10 @@ export function HangHoaFormDialog({
       const f = toForm(detail);
       setForm(mode === "copy" ? { ...f, ma_vt: "" } : f);
     }
-  }, [open, mode, detail]);
+    // RVW-TK-011: deps chốt theo `maVt`/`detail?.ma_vt` (ổn định) thay vì cả object `detail`
+    // (đổi tham chiếu mỗi lần refetch) — tránh nạp đè nội dung đang gõ dở khi query chạy ngầm.
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- cố ý chỉ theo dõi maVt của detail, không phải cả object
+  }, [open, mode, maVt, detail?.ma_vt]);
 
   const set: Setter = (k, v) =>
     setForm((p) => ({ ...p, [k]: v }) as HangHoaForm);
@@ -182,9 +191,50 @@ export function HangHoaFormDialog({
   const pending = create.isPending || update.isPending;
   const lk = lkData ?? EMPTY_LOOKUPS;
 
-  function handleSave() {
+  function handleSubmit(e: FormEvent) {
+    e.preventDefault();
     if (ro) return;
     setError("");
+    // RVW-TK-003: dialog này không dùng `required` HTML (fields bắt buộc nằm rải ở nhiều tab,
+    // tab không active bị unmount nên native validation không chạy) — validate tay 3 trường
+    // bắt buộc trước khi gọi API, nhảy về đúng tab chứa lỗi.
+    if (!form.ma_vt.trim() || !form.ten_vt.trim()) {
+      setError("Vui lòng nhập đầy đủ Mã hàng và Tên hàng.");
+      return;
+    }
+    if (!form.dvt) {
+      setTab(0);
+      setError("Vui lòng chọn Đơn vị tính.");
+      return;
+    }
+    // RVW-TK-002: he_so2 là hệ số quy đổi ĐVT chính/ĐVT2 — mọi nghiệp vụ nhập/xuất/tồn/giá
+    // vốn sau này nhân/chia cho nó, hệ số 0 hoặc âm sẽ làm sai lệch toàn bộ số liệu. `min={0}`
+    // trên input chỉ chặn được thao tác kéo mũi tên/scroll, người dùng vẫn gõ tay số âm được
+    // nên phải chặn lại ở đây trước khi gọi API (BE hiện cũng chưa validate, xem ghi chú dưới).
+    if (form.dvt2 && form.he_so2 <= 0) {
+      setTab(0);
+      setError("Hệ số quy đổi ĐVT 2 phải lớn hơn 0.");
+      return;
+    }
+    // RVW-TK-009: các trường số ở tab "Khác" cho gõ tay số âm/ngược nhau — chặn ở đây vì
+    // `min={0}` trên input chỉ chặn nút mũi tên/scroll, không chặn gõ tay.
+    if (
+      form.so_ngay_sp < 0 ||
+      form.so_ngay_bh < 0 ||
+      form.sl_min < 0 ||
+      form.sl_max < 0 ||
+      form.volume < 0 ||
+      form.weight < 0
+    ) {
+      setTab(form.so_ngay_sp < 0 || form.so_ngay_bh < 0 ? 2 : 3);
+      setError("Các trường số lượng/thời gian không được âm.");
+      return;
+    }
+    if (form.sl_min > 0 && form.sl_max > 0 && form.sl_min > form.sl_max) {
+      setTab(3);
+      setError("Số lượng tồn tối thiểu phải nhỏ hơn hoặc bằng tối đa.");
+      return;
+    }
     const onError = (err: unknown) =>
       setError(getApiError(err, "Lưu thất bại, vui lòng thử lại."));
     if (isCreate) {
@@ -206,7 +256,9 @@ export function HangHoaFormDialog({
         paper: { sx: { width: "min(860px, 96vw)", maxWidth: "100vw" } },
       }}
     >
-      <div
+      {/* RVW-TK-003: <form> thay vì <div> — Enter trong ô nhập gọi handleSubmit, đồng bộ 7 dialog kia. */}
+      <form
+        onSubmit={handleSubmit}
         style={{
           background: "white",
           width: "100%",
@@ -230,6 +282,7 @@ export function HangHoaFormDialog({
         >
           <span style={{ fontWeight: 700, fontSize: 13 }}>{TITLES[mode]}</span>
           <button
+            type="button"
             onClick={onClose}
             style={{
               background: "none",
@@ -301,6 +354,7 @@ export function HangHoaFormDialog({
           {TABS.map((t, i) => (
             <button
               key={t}
+              type="button"
               onClick={() => setTab(i)}
               style={{
                 padding: "6px 14px",
@@ -323,14 +377,11 @@ export function HangHoaFormDialog({
 
         {/* Tab content */}
         <div style={{ flex: 1, overflowY: "auto", padding: "10px 16px" }}>
-          {tab === 0 && <TabThongTin form={form} set={set} ro={ro} lk={lk} />}
-          {tab === 1 && <TabTaiKhoan form={form} set={set} ro={ro} />}
-          {tab === 2 && <TabLo form={form} set={set} ro={ro} />}
-          {tab === 3 && <TabKhac form={form} set={set} ro={ro} />}
+          {/* RVW-TK-004: lỗi lưu đặt ở đầu vùng cuộn — luôn thấy được bất kể đang ở tab nào. */}
           {error && (
             <div
               style={{
-                marginTop: 8,
+                marginBottom: 8,
                 background: "#fff0f0",
                 border: "1px solid #f5c0c0",
                 color: "#c0392b",
@@ -342,6 +393,46 @@ export function HangHoaFormDialog({
               {error}
             </div>
           )}
+          {/* RVW-TK-006: 1/8 lookup lỗi khiến `Promise.all` fail hết, mọi dropdown rỗng — báo rõ + cho thử lại. */}
+          {lkIsError && (
+            <div
+              style={{
+                marginBottom: 8,
+                background: "#fff8e6",
+                border: "1px solid #f0d998",
+                color: "#8a6415",
+                fontSize: 12,
+                borderRadius: 3,
+                padding: "5px 10px",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
+                gap: 8,
+              }}
+            >
+              <span>Không tải được danh mục liên quan (đvt, kho, thuế…).</span>
+              <button
+                type="button"
+                onClick={() => refetchLookups()}
+                style={{
+                  border: "1px solid #d8b96a",
+                  background: "white",
+                  borderRadius: 3,
+                  padding: "2px 8px",
+                  fontSize: 12,
+                  cursor: "pointer",
+                  color: "#8a6415",
+                  flexShrink: 0,
+                }}
+              >
+                Thử lại
+              </button>
+            </div>
+          )}
+          {tab === 0 && <TabThongTin form={form} set={set} ro={ro} lk={lk} />}
+          {tab === 1 && <TabTaiKhoan form={form} set={set} ro={ro} />}
+          {tab === 2 && <TabLo form={form} set={set} ro={ro} />}
+          {tab === 3 && <TabKhac form={form} set={set} ro={ro} />}
         </div>
 
         {/* Footer */}
@@ -358,7 +449,7 @@ export function HangHoaFormDialog({
         >
           {!ro && (
             <button
-              onClick={handleSave}
+              type="submit"
               disabled={pending}
               style={{
                 padding: "5px 18px",
@@ -376,6 +467,7 @@ export function HangHoaFormDialog({
           )}
           {ro && onEdit && (
             <button
+              type="button"
               onClick={onEdit}
               style={{
                 padding: "5px 18px",
@@ -392,6 +484,7 @@ export function HangHoaFormDialog({
             </button>
           )}
           <button
+            type="button"
             onClick={onClose}
             style={{
               padding: "5px 14px",
@@ -406,7 +499,7 @@ export function HangHoaFormDialog({
             {ro ? "Đóng" : "Hủy"}
           </button>
         </div>
-      </div>
+      </form>
     </Drawer>
   );
 }
@@ -543,6 +636,7 @@ function TabThongTin({
                 <span style={{ fontSize: 12, color: "#666" }}>Hệ số:</span>
                 <input
                   type="number"
+                  min={0}
                   value={form.he_so2}
                   onChange={(e) => set("he_so2", Number(e.target.value) || 1)}
                   disabled={ro}
@@ -762,6 +856,7 @@ function TabLo({
         <FRow label="Vòng đời SP (ngày)">
           <input
             type="number"
+            min={0}
             value={form.so_ngay_sp}
             onChange={(e) => set("so_ngay_sp", Number(e.target.value) || 0)}
             disabled={ro}
@@ -771,6 +866,7 @@ function TabLo({
         <FRow label="TG bảo hành (ngày)">
           <input
             type="number"
+            min={0}
             value={form.so_ngay_bh}
             onChange={(e) => set("so_ngay_bh", Number(e.target.value) || 0)}
             disabled={ro}
@@ -821,6 +917,7 @@ function TabKhac({
         <FRow label="Số lượng tồn tối thiểu">
           <input
             type="number"
+            min={0}
             value={form.sl_min}
             onChange={(e) => set("sl_min", Number(e.target.value) || 0)}
             disabled={ro}
@@ -830,6 +927,7 @@ function TabKhac({
         <FRow label="Số lượng tồn tối đa">
           <input
             type="number"
+            min={0}
             value={form.sl_max}
             onChange={(e) => set("sl_max", Number(e.target.value) || 0)}
             disabled={ro}
@@ -840,6 +938,7 @@ function TabKhac({
           <div style={{ display: "flex", gap: 6 }}>
             <input
               type="number"
+              min={0}
               value={form.volume}
               onChange={(e) => set("volume", Number(e.target.value) || 0)}
               disabled={ro}
@@ -858,6 +957,7 @@ function TabKhac({
           <div style={{ display: "flex", gap: 6 }}>
             <input
               type="number"
+              min={0}
               value={form.weight}
               onChange={(e) => set("weight", Number(e.target.value) || 0)}
               disabled={ro}
