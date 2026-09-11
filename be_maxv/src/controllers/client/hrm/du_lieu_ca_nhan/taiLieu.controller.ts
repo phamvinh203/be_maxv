@@ -11,6 +11,7 @@ import { ConflictError, ForbiddenError } from '../../../../helpers/errors';
 import { MESSAGES } from '../../../../constants/messages';
 import { env } from '../../../../config/env';
 import { canAccessDonVi } from '../../../../helpers/access';
+import { sysPrisma } from '../../../../config/db.sys';
 import {
   docState,
   taoState,
@@ -18,6 +19,7 @@ import {
 } from '../../../../utils/du_lieu_ca_nhan/driveClient';
 import {
   GIOI_HAN_FILE_BYTE,
+  MIME_CHO_PHEP,
   dinhKemFile,
   goFile,
   luuKetNoiDrive,
@@ -165,7 +167,7 @@ export async function driveLienKet(req: FastifyRequest, reply: FastifyReply) {
     throw new ForbiddenError(MESSAGES.HRM.DRIVE_DOI_TAI_KHOAN_CHI_OWNER);
   }
 
-  const state = taoState(donViId);
+  const state = taoState(donViId, req.user.userId);
   reply.setCookie(DRIVE_STATE_COOKIE, state, cookieStateOptions());
   return sendOk(reply, { url: urlDangNhap(state) });
 }
@@ -193,6 +195,26 @@ function thoatHtml(s: string): string {
         "'": '&#39;',
       })[c] as string,
   );
+}
+
+/**
+ * Kiểm lại NGƯỜI xin vé ở thời điểm DÙNG vé (vbsec 2026-09-10) — callback miễn đăng nhập nên không có
+ * `req.user`, và vé sống tới 10 phút: trong lúc đó người xin có thể đã bị khóa / bị thu quyền vào công ty,
+ * hoặc công ty đã được chủ tài khoản nối Drive (nộp vé lúc đó là ĐỔI kho tài liệu cả công ty sang Drive
+ * của người xin — việc chỉ OWNER được làm, cùng quy tắc `driveLienKet`). Trả câu báo, được nối -> null.
+ */
+async function lyDoKhongDuocNoiDrive(donViId: string, userId: string): Promise<string | null> {
+  const nguoi = await sysPrisma.user.findUnique({
+    where: { id: userId },
+    select: { role: true, isActive: true },
+  });
+  if (!nguoi?.isActive || !(await canAccessDonVi(userId, nguoi.role, donViId))) {
+    return MESSAGES.COMPANY.NO_ACCESS;
+  }
+  if (nguoi.role !== 'OWNER' && (await trangThaiDrive(donViId)).da_ket_noi) {
+    return MESSAGES.HRM.DRIVE_DOI_TAI_KHOAN_CHI_OWNER;
+  }
+  return null;
 }
 
 /**
@@ -259,9 +281,16 @@ export async function driveCallback(req: FastifyRequest, reply: FastifyReply) {
     );
   }
 
-  const donViId = docState(state);
-  if (!donViId) {
+  const ve = docState(state);
+  if (!ve) {
     return dong(false, 'Phiên kết nối không hợp lệ hoặc đã hết hạn.');
+  }
+  const { donViId } = ve;
+
+  const lyDo = await lyDoKhongDuocNoiDrive(donViId, ve.userId);
+  if (lyDo) {
+    req.log.warn({ donViId, userId: ve.userId }, 'Callback Drive: người xin vé không còn được nối');
+    return dong(false, lyDo);
   }
 
   try {
@@ -347,6 +376,10 @@ export async function taiFileLenTaiLieu(
  * GET /api/v1/hrm/tai-lieu/:id/file/:fileId — trả một file scan về trình duyệt.
  * `inline` để ảnh/PDF xem ngay trong app, không phải tải xuống rồi mở bằng phần mềm khác.
  *
+ * CHỈ loại trong `MIME_CHO_PHEP` được `inline` (vbsec 2026-09-10): loại file là Drive báo về, mà file nằm
+ * trên Drive CỦA KHÁCH — đổi loại/thay nội dung lúc nào cũng được. `text/html`, `image/svg+xml`... mở
+ * inline là chạy script ngay trên origin API. Loại khác -> `application/octet-stream` + `attachment`.
+ *
  * `[QĐ #21]` Đường dẫn có thêm `:fileId` vì một giấy tờ nay giữ nhiều file. Việc kiểm file
  * thuộc đúng dòng giấy tờ nằm ở service (`timFileCuaTaiLieu`), đừng tra thẳng theo `fileId`.
  */
@@ -360,12 +393,13 @@ export async function xemFileTaiLieu(req: FastifyRequest, reply: FastifyReply) {
     fileId,
   );
 
+  const xemDuoc = MIME_CHO_PHEP.includes(mimeType);
   return (
     reply
-      .type(mimeType)
+      .type(xemDuoc ? mimeType : 'application/octet-stream')
       .header(
         'content-disposition',
-        `inline; filename*=UTF-8''${encodeURIComponent(tenFile)}`,
+        `${xemDuoc ? 'inline' : 'attachment'}; filename*=UTF-8''${encodeURIComponent(tenFile)}`,
       )
       // Đây là ảnh CCCD / hợp đồng của nhân viên. `no-store` để không nằm lại trong cache đĩa
       // của trình duyệt hay proxy trung gian sau khi người dùng đăng xuất; `nosniff` để trình

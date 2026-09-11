@@ -20,10 +20,14 @@ import { provisionTenant, tenantDbExists } from '../../services/shared/provision
  *
  * AN TOÀN: KHÔNG BAO GIỜ tạo mới nếu MST đã thuộc owner KHÁC — dừng và báo lỗi rõ ràng thay vì
  * âm thầm ghi đè (đúng yêu cầu "DỪNG LẠI khi có dữ liệu thật của người khác").
+ *
+ * Mật khẩu tài khoản seed lấy từ biến môi trường `SEED_OWNER_PASSWORD`, KHÔNG nằm trong mã nguồn; và
+ * tài khoản ĐÃ CÓ thì không bao giờ bị sửa (vbsec 2026-09-10). Trước đây mật khẩu cứng + "đồng bộ lại"
+ * (đặt lại mật khẩu, nâng OWNER, mở khóa): chạy nhầm vào DB không phải dev là chiếm được tài khoản đó
+ * bằng một mật khẩu ai đọc repo cũng biết.
  */
 
 export const SEED_OWNER_EMAIL = 'test1@gmail.com';
-export const SEED_OWNER_PASSWORD = '12345abc';
 export const SEED_MST = '0111142786';
 const SEED_COMPANY_NAME = 'CÔNG TY TNHH ĐẦU TƯ SẢN XUẤT VÀ XNK THÀNH CÔNG';
 const SEED_PLAN_MA = 'PRO MAX';
@@ -48,7 +52,12 @@ export async function ensureControlPlaneTestTenant(): Promise<ControlPlaneSeedRe
   }
 
   // ---------------------------------------------------------------- 1. Tài khoản OWNER
-  const correctHash = await hashPassword(SEED_OWNER_PASSWORD);
+  const matKhau = process.env.SEED_OWNER_PASSWORD;
+  if (!matKhau) {
+    throw new Error(
+      'Thiếu biến môi trường SEED_OWNER_PASSWORD (mật khẩu tài khoản OWNER của seed dev) — đặt trong .env rồi chạy lại.',
+    );
+  }
   let user = await sysPrisma.user.findUnique({ where: { email: SEED_OWNER_EMAIL } });
 
   if (!user) {
@@ -56,7 +65,7 @@ export async function ensureControlPlaneTestTenant(): Promise<ControlPlaneSeedRe
       data: {
         email: SEED_OWNER_EMAIL,
         hoTen: 'test1',
-        password: correctHash,
+        password: await hashPassword(matKhau),
         role: 'OWNER',
         status: 'ACTIVE',
         isActive: true,
@@ -64,21 +73,19 @@ export async function ensureControlPlaneTestTenant(): Promise<ControlPlaneSeedRe
     });
     console.log(`[control-plane] Đã tạo user OWNER mới: ${SEED_OWNER_EMAIL}`);
   } else {
-    const matchMatKhau = await verifyPassword(SEED_OWNER_PASSWORD, user.password);
-    const canSua: Record<string, unknown> = {};
-    if (!matchMatKhau) canSua.password = correctHash;
-    if (user.role !== 'OWNER') canSua.role = 'OWNER';
-    if (user.status !== 'ACTIVE') canSua.status = 'ACTIVE';
-    if (!user.isActive) canSua.isActive = true;
-
-    if (Object.keys(canSua).length > 0) {
-      user = await sysPrisma.user.update({ where: { id: user.id }, data: canSua });
-      console.log(
-        `[control-plane] Tài khoản ${SEED_OWNER_EMAIL} đã tồn tại — đồng bộ lại: ${Object.keys(canSua).join(', ')}.`,
+    // Tài khoản ĐÃ CÓ: chỉ đối chiếu, không sửa. Đặt lại mật khẩu / nâng OWNER / mở khóa một tài khoản
+    // có sẵn là việc của người vận hành, không phải của một script dev.
+    const lech: string[] = [];
+    if (!(await verifyPassword(matKhau, user.password))) lech.push('mật khẩu khác SEED_OWNER_PASSWORD');
+    if (user.role !== 'OWNER') lech.push(`vai trò đang là ${user.role}`);
+    if (user.status !== 'ACTIVE' || !user.isActive) lech.push('tài khoản đang bị khóa');
+    if (lech.length > 0) {
+      throw new Error(
+        `DỪNG LẠI: tài khoản ${SEED_OWNER_EMAIL} đã tồn tại nhưng ${lech.join(', ')}. ` +
+          'Seed không tự đặt lại mật khẩu, nâng quyền hay mở khóa tài khoản có sẵn — xử lý tay rồi chạy lại.',
       );
-    } else {
-      console.log(`[control-plane] Tài khoản ${SEED_OWNER_EMAIL} đã đúng chuẩn (mật khẩu/role/status), giữ nguyên.`);
     }
+    console.log(`[control-plane] Tài khoản ${SEED_OWNER_EMAIL} đã đúng chuẩn (mật khẩu/role/status), giữ nguyên.`);
   }
 
   // ---------------------------------------------------------------- 2. Công ty (DonVi)
@@ -110,7 +117,8 @@ export async function ensureControlPlaneTestTenant(): Promise<ControlPlaneSeedRe
 
   const dbTonTai = await tenantDbExists(dbName);
   if (!dbTonTai || donVi.status !== 'READY') {
-    await provisionTenant(donVi.id, SEED_MST);
+    // Seed dev: DB của chính MST seed (đã đối chiếu đúng owner ở trên) nên được dùng lại.
+    await provisionTenant(donVi.id, SEED_MST, { choPhepDbCoSan: true });
     donVi = await sysPrisma.donVi.findUniqueOrThrow({ where: { id: donVi.id } });
     console.log(`[control-plane] Đã provision (hoặc xác nhận lại) DB tenant "${dbName}".`);
   } else {
