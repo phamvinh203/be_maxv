@@ -9,10 +9,11 @@
  * CHỖ DỄ NHẦM:
  * - Máy chủ định danh nhân viên bằng chính `ma_nv` (không có id riêng) nên không cần ánh xạ gì —
  *   khác với ca làm việc / khoản lương phải tra mã → UUID.
- * - `useDuyetLuong` gọi endpoint duyệt HÀNG LOẠT (`POST .../approve`) bỏ trống `employeeIds` —
- *   máy chủ hiểu là duyệt TẤT CẢ bản đang chờ, đúng hành vi mock cũ. Máy chủ không có endpoint
- *   duyệt riêng từng người (`api-contract-cai-dat-luong.md` mục 3.4 mô tả sai, route đó không
- *   tồn tại), nhưng UI hiện tại cũng chỉ có nút duyệt hàng loạt nên không thiếu chức năng.
+ * - `useDuyetLuong(rows)` gọi endpoint duyệt HÀNG LOẠT (`POST .../approve`) với ĐÚNG các bản đang chờ
+ *   duyệt trong danh sách đang hiển thị, kèm phiên bản đã xem (`lan_thiet_lap`) — máy chủ không duyệt bản
+ *   đã bị sửa sau khi người duyệt xem (vbsec 2026-09-10 #40; trước đây gửi rỗng = duyệt TẤT CẢ). Máy chủ
+ *   không có endpoint duyệt riêng từng người (`api-contract-cai-dat-luong.md` mục 3.4 mô tả sai, route
+ *   đó không tồn tại), nhưng UI hiện tại cũng chỉ có nút duyệt hàng loạt nên không thiếu chức năng.
  * - `status` của máy chủ có 4 giá trị (`DRAFT/PENDING_APPROVAL/APPROVED/REJECTED`), FE chỉ có 3
  *   (`nhap/cho_duyet/da_duyet`). `REJECTED` rơi về `cho_duyet` (coi như "chưa xong") — không chỉ
  *   vì UI chưa có nút "từ chối", mà vì backend không có bất kỳ endpoint/service nào ghi trạng thái
@@ -35,6 +36,7 @@ import {
   type EmployeeSalaryListItemApi,
   type EmployeeSalaryListParams,
   type EmployeeSalaryStatusApi,
+  type ApproveSalariesApiResult,
 } from "./employeeSalariesApi";
 import type {
   LoaiHopDong,
@@ -183,16 +185,34 @@ export function useXoaSetLuong(): (maNv: string) => Promise<void> {
   );
 }
 
-/** Duyệt toàn bộ bản set lương đang chờ (bỏ trống `employeeIds`). Trả về số bản đã duyệt. */
-export function useDuyetLuong(): () => Promise<number> {
+/**
+ * Duyệt các bản set lương ĐANG CHỜ DUYỆT trong `rows` (danh sách đang hiển thị, theo bộ lọc đang chọn), gửi
+ * kèm phiên bản đã xem — bản bị sửa sau khi xem máy chủ bỏ qua (`skippedCount`). Không có bản nào chờ
+ * duyệt thì không gọi máy chủ.
+ */
+export function useDuyetLuong(): (
+  rows: readonly SetLuongRow[],
+) => Promise<ApproveSalariesApiResult> {
   const lamMoi = useLamMoi();
   const duyet = useMutation({
-    mutationFn: () => approveEmployeeSalaries(),
+    mutationFn: approveEmployeeSalaries,
     onSuccess: lamMoi,
   });
 
-  return useCallback(async () => {
-    const ketQua = await duyet.mutateAsync();
-    return ketQua.approvedCount;
-  }, [duyet]);
+  return useCallback(
+    async (rows: readonly SetLuongRow[]) => {
+      const items = rows
+        .filter((r) => r.trang_thai === "cho_duyet")
+        .map((r) => ({ employeeId: r.ma_nv, setupVersion: r.lan_thiet_lap }));
+      if (items.length === 0) {
+        return {
+          approvedCount: 0,
+          skippedCount: 0,
+          message: "Không có bản set lương nào đang chờ duyệt trong danh sách đang xem.",
+        };
+      }
+      return duyet.mutateAsync({ items });
+    },
+    [duyet],
+  );
 }

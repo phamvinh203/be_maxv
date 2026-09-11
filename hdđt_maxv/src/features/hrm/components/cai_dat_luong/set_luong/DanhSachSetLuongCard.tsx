@@ -30,7 +30,6 @@ import { ngayVn, nhan, tienVn } from "../../../_shared/format";
 import { usePhongBanList } from "../../../mock/hooks/phongBan";
 import {
   useDemSetLuong,
-  useSetLuongRows,
   useXoaSetLuong,
 } from "../../../api/cai_dat_luong/employeeSalariesQueries";
 import type { LoaiHopDong, SetLuongFilters, SetLuongRow } from "../../../types";
@@ -43,14 +42,14 @@ const MAU_TRANG_THAI = {
   da_duyet: "success",
 } as const;
 
-export default function DanhSachSetLuongCard() {
-  const [filters, setFilters] = useState<SetLuongFilters>({
-    q: "",
-    ma_pb: "",
-    loai_hd: "",
-    daSet: true,
-  });
-  const rows = useSetLuongRows(filters);
+interface Props {
+  /** Bộ lọc + danh sách do `SetLuongPanel` giữ — nút "Duyệt lương" ở đó duyệt đúng các dòng đang hiển thị. */
+  filters: SetLuongFilters;
+  onFiltersChange: (update: (cu: SetLuongFilters) => SetLuongFilters) => void;
+  rows: SetLuongRow[];
+}
+
+export default function DanhSachSetLuongCard({ filters, onFiltersChange, rows }: Props) {
   const dem = useDemSetLuong();
   const phongBan = usePhongBanList();
   const xoaSetLuong = useXoaSetLuong();
@@ -62,7 +61,7 @@ export default function DanhSachSetLuongCard() {
   const cayPhongBan = useMemo(() => sapXepCay(phongBan), [phongBan]);
 
   const dat = <K extends keyof SetLuongFilters>(khoa: K, giaTri: SetLuongFilters[K]) =>
-    setFilters((cu) => ({ ...cu, [khoa]: giaTri }));
+    onFiltersChange((cu) => ({ ...cu, [khoa]: giaTri }));
 
   const moDialog = (maNv: string, doc: boolean) => {
     setChiDoc(doc);
