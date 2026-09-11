@@ -1,15 +1,16 @@
 import { api } from '@/lib/apiClient';
 import type {
-  HoaDon,
   HoaDonChiTiet,
   HoaDonListParams,
+  HoaDonPage,
   HoaDonPayload,
 } from '@/features/ban_hang/chung_tu/hoa_don_ban_hang/types';
 
 const BASE = '/ban-hang/hoa-don-ban-hang';
 
-export function listHoaDon(params?: HoaDonListParams): Promise<HoaDon[]> {
-  return api.get<HoaDon[]>(BASE, { params });
+/** Một trang danh sách — server phân trang + lọc (không tải cả bảng về trình duyệt). */
+export function listHoaDon(params?: HoaDonListParams): Promise<HoaDonPage> {
+  return api.get<HoaDonPage>(BASE, { params });
 }
 
 export function getChiTiet(sttRec: string): Promise<HoaDonChiTiet[]> {

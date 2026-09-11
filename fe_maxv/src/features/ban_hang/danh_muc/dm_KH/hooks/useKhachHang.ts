@@ -9,18 +9,26 @@ import {
   listKhachHang,
   updateKhachHang,
 } from '@/features/ban_hang/danh_muc/dm_KH/api/khachHangApi';
-import type { KhachHangForm } from '@/features/ban_hang/danh_muc/dm_KH/types';
+import type {
+  KhachHangForm,
+  KhachHangListParams,
+} from '@/features/ban_hang/danh_muc/dm_KH/types';
 
 export const khachHangKeys = {
   all: ['khach-hang'] as const,
-  list: ['khach-hang', 'list'] as const,
+  list: (params: KhachHangListParams) => ['khach-hang', 'list', params] as const,
 };
 
-export function useKhachHangList() {
+/**
+ * Một trang danh sách theo `params`; `enabled` để dialog chọn chỉ nạp khi mở. Giữ trang cũ trên màn
+ * hình trong lúc nạp trang mới.
+ */
+export function useKhachHangList(params: KhachHangListParams, enabled = true) {
   return useQuery({
-    queryKey: khachHangKeys.list,
-    queryFn: () => listKhachHang(),
+    queryKey: khachHangKeys.list(params),
+    queryFn: () => listKhachHang(params),
     placeholderData: (prev) => prev,
+    enabled,
   });
 }
 
