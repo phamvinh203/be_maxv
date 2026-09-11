@@ -12,6 +12,7 @@ import {
   bocVeSsoTicketUrl,
   bocDanhSachCtuId,
   laTrangCanESigner,
+  cheBiMatGnt,
   type DseState,
 } from "./etaxGntHtml";
 
@@ -66,6 +67,31 @@ export class EtaxGntQuaNhieuRedirectError extends Error {
   constructor() {
     super(`Chuỗi điều hướng SSO vượt quá ${MAX_SSO_REDIRECTS} bước — có thể cổng đã đổi luồng.`);
     this.name = "EtaxGntQuaNhieuRedirectError";
+  }
+}
+
+export class EtaxGntDiaChiNgoaiCongThueError extends Error {
+  constructor() {
+    super("Chuỗi điều hướng SSO trỏ ra ngoài cổng thuế — đã dừng, không đi theo.");
+    this.name = "EtaxGntDiaChiNgoaiCongThueError";
+  }
+}
+
+/**
+ * Mọi bước của chuỗi SSO phải là HTTPS tới host thuộc `gdt.gov.vn` (vbsec 2026-09-10). Vé và từng bước
+ * điều hướng đều lấy từ response của cổng: không kiểm thì một response giả/bị chèn là đủ lái máy chủ gọi
+ * vào mạng nội bộ (SSRF), kèm TOÀN BỘ cookie phiên cổng thuế trong `session.cookies`.
+ */
+function laDiaChiCongThue(url: string): boolean {
+  try {
+    const u = new URL(url);
+    return (
+      u.protocol === "https:" &&
+      (u.port === "" || u.port === "443") &&
+      (u.hostname === "gdt.gov.vn" || u.hostname.endsWith(".gdt.gov.vn"))
+    );
+  } catch {
+    return false;
   }
 }
 
@@ -158,7 +184,7 @@ async function gntSend(url: string, session: EtaxGntSession, init: RequestInit):
     );
   } catch (err) {
     pacerReportRateLimited(session.donViId, "etax-gnt");
-    console.error(`[DEBUG-GNT] ${url} NÉM LỖI TẦNG FETCH: ${describeErrorChain(err)}`);
+    console.error(cheBiMatGnt(`[DEBUG-GNT] ${url} NÉM LỖI TẦNG FETCH: ${describeErrorChain(err)}`));
     throw err;
   }
 
@@ -189,6 +215,12 @@ const JS_REDIRECT_RE = /window\.location\.href\s*=\s*['"]([^'"]+)['"]/;
 async function gntSendTheoRedirect(url: string, session: EtaxGntSession): Promise<Response> {
   let currentUrl = url;
   for (let hop = 0; hop < MAX_SSO_REDIRECTS; hop++) {
+    if (!laDiaChiCongThue(currentUrl)) {
+      console.warn(
+        `[DEBUG-GNT] Dừng chuỗi SSO: bước ${hop} trỏ ra ngoài cổng thuế (${cheBiMatGnt(currentUrl).slice(0, 200)})`,
+      );
+      throw new EtaxGntDiaChiNgoaiCongThueError();
+    }
     // Referer CỐ ĐỊNH `DICHVUCONG_REFERER` cho MỌI hop của chuỗi này (override default
     // `session.referer` của `gntSend`) — xem docblock hằng số đó.
     const res = await gntSend(currentUrl, session, {
@@ -269,7 +301,7 @@ export async function ganPhienGnt(phien: DvcPhien, donViId: string): Promise<Eta
     // (spec mục 7.1). Không log ở nhánh thành công để khỏi in cookie/vé nhạy cảm mỗi lượt chạy.
     console.warn(
       `[DEBUG-GNT] Không bóc được vé SSO từ response bước A (POST sso/redirect-to-service). ` +
-        `Body (400 ký tự đầu): ${veBody.slice(0, 400)}`,
+        `Body (400 ký tự đầu): ${cheBiMatGnt(veBody).slice(0, 400)}`,
     );
     throw new EtaxGntKhongLayDuocVeSsoError();
   }
@@ -287,17 +319,19 @@ export async function ganPhienGnt(phien: DvcPhien, donViId: string): Promise<Eta
   if (!dse) {
     // Log URL cuối cùng dừng lại + status + MỌI đoạn quanh chuỗi "dse_" trong trang (thay vì cắt
     // đầu trang — trang thật dài, phần đầu toàn script theo dõi APM, form dse_* nằm sâu hơn nhiều).
-    const boQuanhDse = [...html.matchAll(/.{0,60}dse_[a-zA-Z]+.{0,80}/g)]
+    // Bóc đoạn quanh "dse_" từ bản ĐÃ CHE: cắt đoạn trước rồi mới che thì mẫu che có thể không còn khớp.
+    const htmlChe = cheBiMatGnt(html);
+    const boQuanhDse = [...htmlChe.matchAll(/.{0,60}dse_[a-zA-Z]+.{0,80}/g)]
       .slice(0, 20)
       .map((m) => m[0].replace(/\s+/g, " ").trim());
-    console.warn(
+    console.warn(cheBiMatGnt(
       `[DEBUG-GNT] Không bóc được dse_* từ trang hạ cánh sau SSO. ` +
         `URL cuối cùng: ${landing.url || "(không đọc được)"} — status: ${landing.status} — độ dài HTML: ${html.length}. ` +
         `Số chỗ chứa "dse_": ${boQuanhDse.length}. ` +
         (boQuanhDse.length > 0
           ? `Các đoạn quanh "dse_":\n${boQuanhDse.map((s, i) => `  [${i}] ${s}`).join("\n")}`
-          : `HTML (1500 ký tự đầu, không tìm thấy "dse_" nào): ${html.slice(0, 1500)}`),
-    );
+          : `HTML (1500 ký tự đầu, không tìm thấy "dse_" nào): ${htmlChe.slice(0, 1500)}`),
+    ));
     throw new EtaxGntKhongLayDuocVeSsoError();
   }
   session.dse = dse;
@@ -358,17 +392,19 @@ async function guiRequest(
   const dse = bocDseState(html);
   if (!dse) {
     const buoc = `${extra.dse_operationName ?? "?"}/${extra.dse_nextEventName ?? "?"}`;
-    const boQuanhDse = [...html.matchAll(/.{0,60}dse_[a-zA-Z]+.{0,80}/g)]
+    // Bóc đoạn quanh "dse_" từ bản ĐÃ CHE: cắt đoạn trước rồi mới che thì mẫu che có thể không còn khớp.
+    const htmlChe = cheBiMatGnt(html);
+    const boQuanhDse = [...htmlChe.matchAll(/.{0,60}dse_[a-zA-Z]+.{0,80}/g)]
       .slice(0, 20)
       .map((m) => m[0].replace(/\s+/g, " ").trim());
-    console.warn(
+    console.warn(cheBiMatGnt(
       `[DEBUG-GNT] Bước "${buoc}" không bóc được dse_* từ response. ` +
         `URL: ${res.url || "(không đọc được)"} — status: ${res.status} — độ dài HTML: ${html.length}. ` +
         `Body đã gửi: ${body.toString()}. ` +
         (boQuanhDse.length > 0
           ? `Các đoạn quanh "dse_":\n${boQuanhDse.map((s, i) => `  [${i}] ${s}`).join("\n")}`
-          : `HTML (1500 ký tự đầu, không tìm thấy "dse_" nào): ${html.slice(0, 1500)}`),
-    );
+          : `HTML (1500 ký tự đầu, không tìm thấy "dse_" nào): ${htmlChe.slice(0, 1500)}`),
+    ));
     throw new EtaxGntBuocPipelineThatBaiError(buoc);
   }
   return { html, dse };

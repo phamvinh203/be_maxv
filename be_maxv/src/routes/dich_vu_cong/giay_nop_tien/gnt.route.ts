@@ -4,19 +4,21 @@ import {
   taiFileGiayNopTien,
 } from "../../../controllers/client/dich_vu_cong/giay_nop_tien/gnt.controller";
 import { requireModule } from "../../../services/shared/modules.service";
+import { kiemCongTyDangChon } from "../../../helpers/dich_vu_cong/kiemCongTyDangChon";
 
 /** Route Giấy nộp tiền (eTax GNT) — sub-plugin của `gdt-dvc.route.ts`, đăng ký ở đó nên thừa hưởng
  * cùng prefix `/dvc`. Tách file riêng theo đúng quy ước "mọi file MỚI nằm trong `giay_nop_tien/`". */
 export default async function (fastify: FastifyInstance) {
-  const guard = [fastify.authenticate, requireModule("dvc")];
+  // Mảng MỚI cho từng route — cùng lý do ghi ở `gdt-dvc.route.ts` (@fastify/rate-limit push vào mảng).
+  const guard = () => [fastify.authenticate, requireModule("dvc"), kiemCongTyDangChon];
 
   fastify.get("/giay-nop-tien", {
-    preHandler: guard,
+    preHandler: guard(),
     handler: traCuuGiayNopTien,
   });
 
   fastify.get("/giay-nop-tien/file", {
-    preHandler: guard,
+    preHandler: guard(),
     handler: taiFileGiayNopTien,
   });
 }
