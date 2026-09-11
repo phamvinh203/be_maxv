@@ -123,13 +123,19 @@ export async function deleteKho(db: PrismaClient, key: string) {
     new NotFoundError(MESSAGES.TON_KHO.KHO_NOT_FOUND),
   );
 
-  const [usedVt, usedVitri] = await Promise.all([
+  const [usedVt, usedVitri, usedHoaDon] = await Promise.all([
     db.dmvt.count({ where: { ma_kho: key } }),
     db.dmvitri.count({ where: { ma_kho: key } }),
+    db.d81.count({ where: { ma_kho: key } }),
   ]);
   if (usedVt > 0) {
     throw new ConflictError(
       `Kho "${key}" đang được sử dụng trong hàng hóa, không thể xóa.`,
+    );
+  }
+  if (usedHoaDon > 0) {
+    throw new ConflictError(
+      `Kho "${key}" đã có trên hóa đơn bán hàng, không thể xóa.`,
     );
   }
   if (usedVitri > 0) {

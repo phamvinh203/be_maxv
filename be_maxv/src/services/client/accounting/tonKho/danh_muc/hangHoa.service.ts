@@ -1,6 +1,10 @@
 import type { Prisma, PrismaClient } from '../../../../../generated/tenant';
 import { ConflictError, NotFoundError } from '../../../../../helpers/errors';
-import { assertNotExists, findOrThrow } from '../../../../../helpers/crudGuards';
+import {
+  assertNotExists,
+  findOrThrow,
+  xoaNeuKhongConThamChieu,
+} from '../../../../../helpers/crudGuards';
 import { MESSAGES } from '../../../../../constants/messages';
 import type {
   DoiMaInput,
@@ -249,6 +253,12 @@ export async function deleteHangHoa(db: PrismaClient, maVt: string) {
       db.dmvt.findUnique({ where: { ma_vt: maVt }, select: { ma_vt: true } }),
     new NotFoundError(MESSAGES.TON_KHO.VT_NOT_FOUND),
   );
+  const daPhatSinh = new ConflictError(
+    `Mã hàng "${maVt}" đã phát sinh chứng từ, không thể xóa.`,
+  );
+
+  // d81 (dòng hóa đơn bán hàng) — trước đây bỏ sót: xóa hàng đang có trên hóa đơn để lại dòng mồ côi.
+  if ((await db.d81.count({ where: { ma_vt: maVt } })) > 0) throw daPhatSinh;
 
   // ct70 (chi tiết nhập/xuất kho) có thể chưa tồn tại -> chỉ kiểm tra khi có bảng.
   if (await tableExists(db, 'ct70')) {
@@ -256,15 +266,14 @@ export async function deleteHangHoa(db: PrismaClient, maVt: string) {
       `SELECT 1 AS ok FROM ct70 WHERE ma_vt = $1 LIMIT 1`,
       maVt,
     );
-    if (used.length > 0) {
-      throw new ConflictError(
-        `Mã hàng "${maVt}" đã phát sinh chứng từ, không thể xóa.`,
-      );
-    }
+    if (used.length > 0) throw daPhatSinh;
   }
 
-  // onDelete: Cascade -> dmqddvt tự xóa theo.
-  await db.dmvt.delete({ where: { ma_vt: maVt } });
+  // onDelete: Cascade -> dmqddvt tự xóa theo. Khóa ngoại d81 -> dmvt chặn lượt ghi chen giữa.
+  await xoaNeuKhongConThamChieu(
+    () => db.dmvt.delete({ where: { ma_vt: maVt } }),
+    daPhatSinh,
+  );
   return { ma_vt: maVt };
 }
 
@@ -296,6 +305,14 @@ export async function doiMaHangHoa(db: PrismaClient, input: DoiMaInput) {
     await tx.dmvt.update({
       where: { ma_vt: oldKey },
       data: { ma_vt: newKey, datetime2: new Date() },
+    });
+
+    // Dòng hóa đơn bán hàng theo mã mới — trước đây bỏ sót, đổi mã là dòng hóa đơn mồ côi mã cũ. Khóa
+    // ngoại d81 -> dmvt (ON UPDATE CASCADE) đã kéo theo nếu có; lệnh này giữ đúng cả khi ràng buộc bị
+    // `db push` gỡ mất và chưa áp lại (xem hrmTenantConstraints.ts) — có rồi thì cập nhật 0 dòng.
+    await tx.d81.updateMany({
+      where: { ma_vt: oldKey },
+      data: { ma_vt: newKey },
     });
 
     // Cập nhật các bảng tồn kho đầu kỳ nếu đã có (cdlo, cdlo2).

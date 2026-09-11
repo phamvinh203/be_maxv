@@ -117,9 +117,15 @@ export async function deleteViTri(
     new NotFoundError(MESSAGES.TON_KHO.VI_TRI_NOT_FOUND),
   );
 
-  const used = await db.dmvt.count({
-    where: { ma_kho: maKho, ma_vi_tri: maViTri },
-  });
+  const [used, usedHoaDon] = await Promise.all([
+    db.dmvt.count({ where: { ma_kho: maKho, ma_vi_tri: maViTri } }),
+    db.d81.count({ where: { ma_kho: maKho, ma_vi_tri: maViTri } }),
+  ]);
+  if (usedHoaDon > 0) {
+    throw new ConflictError(
+      `Vị trí "${maViTri}" đã có trên hóa đơn bán hàng, không thể xóa.`,
+    );
+  }
   if (used > 0) {
     throw new ConflictError(
       `Vị trí "${maViTri}" đang được sử dụng trong hàng hóa, không thể xóa.`,
