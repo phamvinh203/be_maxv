@@ -4,6 +4,7 @@ import cors from '@fastify/cors';
 import cookie from '@fastify/cookie';
 import rateLimit from '@fastify/rate-limit';
 import multipart from '@fastify/multipart';
+import { MULTIPART_OPTS } from './config/multipart';
 import { env } from './config/env';
 import requestContextPlugin from './plugins/requestContext.plugin';
 import prismaPlugin from './plugins/prisma.plugin';
@@ -60,10 +61,8 @@ export async function buildApp(
   await app.register(rateLimit, { max: 300, timeWindow: '1 minute' });
   // Nhận file scan hồ sơ nhân sự (multipart). Trần 10MB khớp `GIOI_HAN_FILE_BYTE` ở
   // taiLieuDrive.service — chặn ngay tại tầng đọc request để file quá cỡ không phải nạp hết
-  // vào RAM rồi mới bị từ chối.
-  await app.register(multipart, {
-    limits: { fileSize: 10 * 1024 * 1024, files: 1 },
-  });
+  // vào RAM rồi mới bị từ chối. Trần số trường/phần/header: xem config/multipart.ts.
+  await app.register(multipart, MULTIPART_OPTS);
   await app.register(errorHandlerPlugin); // ánh xạ lỗi nghiệp vụ -> HTTP status
   await app.register(prismaPlugin); // decorate app.sysPrisma + onClose disconnect
   await app.register(jwtPlugin); // @fastify/jwt + app.authenticate

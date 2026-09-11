@@ -9,6 +9,7 @@ import {
   resetPassword,
 } from '../controllers/client/auth.controller';
 import { STRICT_AUTH_LIMIT } from '../constants/rateLimits';
+import { chanCsrfTheoOrigin } from '../helpers/chanCsrfTheoOrigin';
 
 export async function authRoutes(app: FastifyInstance) {
   app.post('/register', STRICT_AUTH_LIMIT, register);
@@ -18,6 +19,7 @@ export async function authRoutes(app: FastifyInstance) {
   app.post('/reset-password', STRICT_AUTH_LIMIT, resetPassword);
   // Bootstrap FE khi tải trang: đọc phiên từ access cookie (401 nếu chưa đăng nhập).
   app.get('/me', { preHandler: [app.authenticate] }, me);
-  app.post('/refresh', refresh);
-  app.post('/logout', logout);
+  // Chỉ dựa vào cookie, không cần đăng nhập trước -> chặn gọi chéo site (xem chanCsrfTheoOrigin).
+  app.post('/refresh', { preHandler: chanCsrfTheoOrigin }, refresh);
+  app.post('/logout', { preHandler: chanCsrfTheoOrigin }, logout);
 }

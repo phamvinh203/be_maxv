@@ -10,11 +10,14 @@ import {
   listInvites,
   setAccess,
 } from '../controllers/client/company.controller';
+import { gioiHanTheoNguoiDung } from '../constants/rateLimits';
 
 export async function companyRoutes(app: FastifyInstance) {
   // Chỉ owner đã đăng nhập mới được tạo công ty/MST (nhân viên không được).
+  // Mỗi lượt = CREATE DATABASE + `prisma db push` trên Postgres dùng chung -> giới hạn theo owner.
   app.post('/', {
     preHandler: [app.authenticate, app.requireRole('OWNER')],
+    ...gioiHanTheoNguoiDung(5, '10 minutes'),
     handler: createCompany,
   });
 
@@ -39,12 +42,15 @@ export async function companyRoutes(app: FastifyInstance) {
   // Owner xóa VĨNH VIỄN công ty của chính mình — DROP luôn DB tenant (xem destroyCompany).
   app.delete('/:id', {
     preHandler: [app.authenticate, app.requireRole('OWNER')],
+    ...gioiHanTheoNguoiDung(5, '10 minutes'),
     handler: deleteCompany,
   });
 
   // Chỉ owner đã đăng nhập và đã có công ty mới được mời user.
+  // Mỗi lời mời gửi mail cho MỌI admin qua SMTP dùng chung -> giới hạn theo owner.
   app.post('/invite', {
     preHandler: [app.authenticate, app.requireRole('OWNER')],
+    ...gioiHanTheoNguoiDung(20, '1 hour'),
     handler: inviteUser,
   });
 

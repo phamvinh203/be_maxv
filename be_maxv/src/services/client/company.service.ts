@@ -1,8 +1,12 @@
 import { sysPrisma } from '../../config/db.sys';
-import { tenantSlug } from '../../utils/dbName';
+import { tenantDbName, tenantSlug } from '../../utils/dbName';
 import { dropTenant, provisionTenant } from '../shared/provisioning.service';
 import { createTrialSubscription } from '../shared/subscription.service';
-import { assertMstLimit, assertUserLimit } from '../shared/limits.service';
+import {
+  assertMstLimit,
+  assertUserLimit,
+  khoaHanMuc,
+} from '../shared/limits.service';
 import { writeLog } from '../shared/syslog.service';
 import { findOrThrow } from '../../helpers/crudGuards';
 import { sendMail } from '../shared/mailer.service';
@@ -33,38 +37,10 @@ export async function registerCompany(input: RegisterCompanyArgs) {
   const { ownerId, tenCongTy, maSoThue, diaChi, sdt, loaiHinhKinhDoanh } =
     input;
 
-  // Đếm MST hiện có + kiểm tra MST trùng (kèm email chủ tài khoản đã đăng ký MST đó, để báo cụ thể).
-  const [existingCount, mstExists] = await Promise.all([
-    sysPrisma.donVi.count({ where: { ownerId } }),
-    sysPrisma.donVi.findUnique({
-      where: { maSoThue },
-      select: { owner: { select: { email: true } } },
-    }),
-  ]);
-
-  if (mstExists) {
-    throw new ConflictError(MESSAGES.COMPANY.MST_TAKEN(mstExists.owner.email));
-  }
-  await assertMstLimit(ownerId, existingCount); // trần MST (override ?? gói)
-
-  const donVi = await sysPrisma.donVi.create({
-    data: {
-      ownerId,
-      maSoThue,
-      slug: tenantSlug(maSoThue),
-      tenDonVi: tenCongTy,
-      diaChi,
-      sdt,
-      loaiHinhKinhDoanh,
-      status: 'PROVISIONING',
-    },
-  });
-
-  // Cấp DB riêng cho MST.
-  const dbName = await provisionTenant(donVi.id, maSoThue);
-
-  // Lưới an toàn: đảm bảo tài khoản có thuê bao (idempotent, no-op nếu đã có).
-  if (existingCount === 0) {
+  // Lưới an toàn cho tài khoản đăng ký trước khi có gói dùng thử: CHƯA có công ty nào thì cấp gói dùng thử
+  // (idempotent, no-op nếu đã có) — và phải cấp TRƯỚC bước kiểm trần, vì kiểm trần giờ chặn owner không
+  // có gói (limits.service.ts). Cấp lỗi (hay race với lượt song song) thì kiểm trần tự quyết theo DB.
+  if ((await sysPrisma.donVi.count({ where: { ownerId } })) === 0) {
     await createTrialSubscription(ownerId).catch((err) =>
       console.error(
         `[registerCompany] createTrialSubscription lỗi cho owner ${ownerId}:`,
@@ -72,6 +48,44 @@ export async function registerCompany(input: RegisterCompanyArgs) {
       ),
     );
   }
+
+  // Đếm -> kiểm trần gói -> tạo don_vi phải là MỘT bước nguyên tử cho từng owner (khoaHanMuc), không
+  // thì request song song cùng qua kiểm tra và cùng tạo công ty + cấp DB tenant (vượt gói, vắt kiệt
+  // server Postgres dùng chung). Cấp DB (chậm) chạy SAU commit để không giữ khóa lâu.
+  const { donVi } = await sysPrisma.$transaction(async (tx) => {
+    await khoaHanMuc(tx, 'mst', ownerId);
+
+    // Đếm MST hiện có + kiểm tra MST trùng (kèm email chủ tài khoản đã đăng ký MST đó, để báo cụ thể).
+    const existingCount = await tx.donVi.count({ where: { ownerId } });
+    const mstExists = await tx.donVi.findUnique({
+      where: { maSoThue },
+      select: { owner: { select: { email: true } } },
+    });
+
+    if (mstExists) {
+      throw new ConflictError(
+        MESSAGES.COMPANY.MST_TAKEN(mstExists.owner.email),
+      );
+    }
+    await assertMstLimit(ownerId, existingCount); // trần MST (override ?? gói)
+
+    const donVi = await tx.donVi.create({
+      data: {
+        ownerId,
+        maSoThue,
+        slug: tenantSlug(maSoThue),
+        tenDonVi: tenCongTy,
+        diaChi,
+        sdt,
+        loaiHinhKinhDoanh,
+        status: 'PROVISIONING',
+      },
+    });
+    return { donVi };
+  });
+
+  // Cấp DB riêng cho MST.
+  const dbName = await provisionTenant(donVi.id, maSoThue);
 
   await writeLog({
     hanhDong: 'CREATE_COMPANY',
@@ -178,9 +192,10 @@ export async function destroyCompany(
 
   assertMstConfirmed(confirmMst, company.maSoThue);
 
-  // dbName rỗng khi provisioning chưa xong (PROVISIONING/FAILED) — không có DB nào để xóa.
-  // dropTenant tự gỡ pool tenant trước khi DROP (xem provisioning.service.ts).
-  if (company.dbName) await dropTenant(company.dbName);
+  // dbName rỗng khi provisioning chưa xong (PROVISIONING/FAILED) nhưng DB vật lý có thể ĐÃ được tạo
+  // trước khi hỏng — vẫn DROP theo tên suy từ MST (IF EXISTS), không để lại DB mồ côi cho owner sau
+  // đăng ký lại cùng MST. dropTenant tự gỡ pool tenant trước khi DROP (xem provisioning.service.ts).
+  await dropTenant(company.dbName ?? tenantDbName(company.maSoThue));
 
   await sysPrisma.donVi.delete({ where: { id } });
 
@@ -238,39 +253,47 @@ export async function inviteUserToCompany(input: InviteEmployeeInput) {
     throw new ForbiddenError(MESSAGES.COMPANY.NO_ACCESS);
   }
 
-  const [employeeCount, owner, existingUser, pendingInvite] = await Promise.all(
-    [
-      sysPrisma.user.count({ where: { ownerId } }),
-      sysPrisma.user.findUnique({
-        where: { id: ownerId },
-        select: { hoTen: true },
-      }),
-      sysPrisma.user.findUnique({ where: { email } }),
-      sysPrisma.inviteRequest.findFirst({
-        where: { ownerId, email, status: 'PENDING' },
-      }),
-    ],
-  );
+  const owner = await sysPrisma.user.findUnique({
+    where: { id: ownerId },
+    select: { hoTen: true },
+  });
 
-  // 1 email = 1 tài khoản: email đã có user -> không mời làm nhân viên tài khoản khác.
-  if (existingUser) {
-    throw new ConflictError(MESSAGES.COMPANY.EMAIL_ALREADY_MEMBER);
-  }
-  if (pendingInvite) {
-    throw new ConflictError(MESSAGES.COMPANY.INVITE_ALREADY_PENDING);
-  }
-  await assertUserLimit(ownerId, employeeCount); // trần nhân viên (override ?? gói)
+  // Kiểm trần + tạo lời mời trong MỘT bước nguyên tử theo owner (khoaHanMuc — cùng khóa với lúc admin
+  // duyệt). Lời mời ĐANG CHỜ cũng chiếm ghế: không đếm thì owner gói 1 ghế nộp bao nhiêu lời mời cũng
+  // được, admin duyệt hết là vượt gói.
+  const invite = await sysPrisma.$transaction(async (tx) => {
+    await khoaHanMuc(tx, 'nhan_vien', ownerId);
 
-  const invite = await sysPrisma.inviteRequest.create({
-    data: {
-      ownerId,
-      email,
-      hoTen,
-      chucVu,
-      donViIds,
-      role: 'OWNER_EMPLOYEE',
-      requestedById,
-    },
+    const employeeCount = await tx.user.count({ where: { ownerId } });
+    const pendingCount = await tx.inviteRequest.count({
+      where: { ownerId, status: 'PENDING' },
+    });
+    const existingUser = await tx.user.findUnique({ where: { email } });
+    const pendingInvite = await tx.inviteRequest.findFirst({
+      where: { ownerId, email, status: 'PENDING' },
+    });
+
+    // 1 email = 1 tài khoản: email đã có user -> không mời làm nhân viên tài khoản khác.
+    if (existingUser) {
+      throw new ConflictError(MESSAGES.COMPANY.EMAIL_ALREADY_MEMBER);
+    }
+    if (pendingInvite) {
+      throw new ConflictError(MESSAGES.COMPANY.INVITE_ALREADY_PENDING);
+    }
+    // trần nhân viên (override ?? gói)
+    await assertUserLimit(ownerId, employeeCount + pendingCount);
+
+    return tx.inviteRequest.create({
+      data: {
+        ownerId,
+        email,
+        hoTen,
+        chucVu,
+        donViIds,
+        role: 'OWNER_EMPLOYEE',
+        requestedById,
+      },
+    });
   });
 
   // Báo admin là yêu cầu bắt buộc — mail lỗi thì hủy luôn lời mời vừa tạo.

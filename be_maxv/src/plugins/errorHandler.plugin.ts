@@ -118,6 +118,27 @@ export default fp(
         }
       }
 
+      /**
+       * Lỗi 4xx do chính Fastify / plugin ném ra (rate limit 429, body quá lớn 413, sai content-type
+       * 415, JSON hỏng 400...) — lỗi phía client, GIỮ NGUYÊN mã. Không có nhánh này thì chúng rơi xuống
+       * 500 "Lỗi máy chủ nội bộ": client tưởng máy chủ hỏng, còn log thì đầy lỗi giả.
+       */
+      const { statusCode, message } = err as {
+        statusCode?: unknown;
+        message?: unknown;
+      };
+      if (typeof statusCode === 'number' && statusCode >= 400 && statusCode < 500) {
+        return reply.status(statusCode).send({
+          success: false,
+          message:
+            statusCode === HttpStatus.TOO_MANY_REQUESTS
+              ? MESSAGES.COMMON.TOO_MANY_REQUESTS
+              : typeof message === 'string'
+                ? message
+                : MESSAGES.COMMON.BAD_REQUEST,
+        });
+      }
+
       req.log.error(err);
       return reply
         .status(HttpStatus.INTERNAL_SERVER_ERROR)
