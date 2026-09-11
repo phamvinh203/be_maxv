@@ -833,3 +833,397 @@ Phần lõi đúng quyết định của chủ dự án và đúng hợp đồng
 - `RVW-037` 🟡 — tách pha tính khỏi khóa dòng + timeout tường minh + giới hạn theo người dùng trước khi mở cho tenant đông nhân viên.
 - Quy trình: phiên này đi thẳng từ yêu cầu chủ dự án sang code ("ngoài luồng 3 Amigos"); chưa có `test-matrix`/`test-cases`/`test-report` nào phủ `AC-dltl-29…36`, và `CONTEXT_SUMMARY.md` dòng 29 tự ghi "chưa qua Tester-QA Phase B, chưa kiểm giao diện trên trình duyệt đã đăng nhập". Review này KHÔNG thay thế QA Phase B — đề nghị tester-qa chạy 8 AC trên tenant mẫu đã seed trước khi bàn giao người dùng cuối.
 - Carry-forward vẫn `OPEN`, không đánh số lại: `A-05` (nay gắn với RVW-037), `RVW-022b`/`ISSUE-blth-004`, `RVW-027`, `RVW-029`…`RVW-035`.
+
+---
+
+# Audit toàn bộ `hdđt_maxv/src/features/hrm` — 2026-09-11
+
+> Đợt audit ad-hoc toàn bộ `hdđt_maxv/src` (493 file, chia 9 nhóm review song song); 4/9 nhóm thuộc HRM, gộp vào đây. Để tránh trùng với dải `RVW-001`…`RVW-044` đã dùng ở trên mà không phải renumber thủ công ~90 finding, mỗi nhóm dùng 1 dải ID riêng (`RVW-5xx` / `RVW-7xx` / `RVW-Axx` / `NB-`/`S-`) — **không trùng, không cần đối chiếu chéo**. Từ nay ID mới của HRM tiếp tục từ dải cao nhất đã dùng bên dưới (`RVW-720`).
+
+## Review 2026-09-11 — Nhóm 5/9 (core logic: api + calculations + types + _shared) — Verdict: ❌ Request changes
+
+> Phạm vi: `features/hrm/api/**` (37 file), `calculations/**` (10 file), `types/**`, `_shared/**` (53 file tổng). Công thức lương/thuế/BHXH đã chuyển hết sang `be_maxv` (ADR-010); lớp này chỉ gom dữ liệu + đổi tên trường. Cả 2 blocking đều thuộc loại "mảnh nghiệp vụ sót lại ở FE đã lệch khỏi nguồn sự thật BE".
+
+### RVW-501 🔴 BLOCKING — `cong_tac`/`nghi_phep` tính 0 công ở FE nhưng 1.0 công ở BE
+- Vị trí: `features/hrm/_shared/constants.ts`:322-323 · `calculations/du_lieu_tinh_luong/chamCong.ts`:142
+- Vấn đề: `LOAI_CONG` khai `tinhCong:false, congMacDinh:0` cho `cong_tac`/`nghi_phep`; `congCuaO()` trả 0. BE (`payrollInputs.service.ts`:142-149, `ATTENDANCE_FIXED_VALUE`) coi 2 loại này là 1.0 công (hưởng 100% lương). Nhân viên công tác 5 ngày + nghỉ phép 2 ngày trong tháng 26 công → màn Chấm công hiện 19/26 (đỏ), phiếu lương vẫn trả 26/26 — mâu thuẫn trực tiếp trước mắt người chốt lương.
+- Đề xuất fix: bỏ `tinhCong`/`congMacDinh` khỏi `LOAI_CONG`, lấy hệ số công từ 1 bảng chép đúng `ATTENDANCE_FIXED_VALUE` (kèm comment trỏ về BE), hoặc đọc `workDayValue` BE đã trả thay vì tự quy đổi.
+- Trạng thái: OPEN
+  → FIXED [2026-09-11] — `_shared/constants.ts`:322-323 sửa `congMacDinh` của `cong_tac`/`nghi_phep` từ 0 thành 1 (khớp `ATTENDANCE_FIXED_VALUE` BE) kèm comment trỏ về `payrollInputs.service.ts`; `calculations/du_lieu_tinh_luong/chamCong.ts`:139-147 sửa `congCuaO()` bỏ early-return 0 khi `!tinhCong` (nguyên nhân gốc — trước đây early-return khiến `congMacDinh` mới đặt vẫn không có tác dụng), giờ chỉ dùng nhánh giờ-thực-tế khi `tinhCong` true, còn lại luôn trả `congMacDinh`. Không đổi `nghi_le`/`om`/`khong_luong`/`khac` (ngoài phạm vi finding). tsc+eslint pass, commit "chưa commit" *(frontend-engineer)*
+
+### RVW-502 🔴 BLOCKING — `unitPrice`/`penaltyRate` khai `number` nhưng BE trả CHUỖI (Decimal)
+- Vị trí: `api/du_lieu_tinh_luong/payrollCatalogsApi.ts`:62, 108 → `payrollCatalogsQueries.ts`:156, 259
+- Vấn đề: `be_maxv/prisma/tenant/schema.prisma`:1577,1643 khai `Decimal`; `catalogs.service.ts` trả thẳng row Prisma (không `Number()` như 3 service anh em khác đã làm). Hệ quả đã hiện thực: `BangChuyenCanCard.tsx`:58 `tong + loai.muc_tru` với `tong=0` (number) + `muc_tru="200000"` (string) = `"0200000"` (nối chuỗi) — chip "Tổng trừ" màn Lương chuyên cần sai.
+- Đề xuất fix: `Number(r.unitPrice)`/`Number(r.penaltyRate)` tại 2 điểm ánh xạ trên (đúng khuôn `hopDongQueries.ts`:96 đã làm); fix triệt để hơn ở BE (`catalogs.service.ts` thêm `Number()`).
+- Trạng thái: OPEN
+  → FIXED [2026-09-11] — `api/du_lieu_tinh_luong/payrollCatalogsQueries.ts`: `sanPhamVeKieuFe()` (`don_gia: Number(r.unitPrice)`) và `chuyenCanVeKieuFe()` (`muc_tru: Number(r.penaltyRate)`), đúng khuôn `hopDongQueries.ts`:96. Không sửa BE (ngoài phạm vi FE task). tsc+eslint pass, commit "chưa commit" *(frontend-engineer)*
+
+### RVW-503 🟡 NON-BLOCKING — Công thức trừ chuyên cần bị nhân đôi ở component, thiếu bất biến chặn sàn BR-dltl-016
+- Vị trí: `components/du_lieu_tinh_luong/chuyen_can/BangChuyenCanCard.tsx`:54-62 · contract ở `api/du_lieu_tinh_luong/payrollInputsApi.ts`:353-357
+- Vấn đề: docblock ghi rõ "FE KHÔNG cần tự tính lại", nhưng component vẫn tự cộng `muc_tru * so_gio` không có `Math.min(tongPhat, donGia)` mà BE áp — preview có thể hiện mức trừ lớn hơn đơn giá (không bao giờ xảy ra lúc chốt).
+- Đề xuất fix: dùng `DiligenceSummaryApi.tongTru/thanhTien` cho dòng đã lưu; dòng đang soạn thì áp cùng công thức kẹp sàn, đặt trong `calculations/du_lieu_tinh_luong/chuyenCan.ts`.
+- Trạng thái: OPEN
+
+### RVW-504 🟡 NON-BLOCKING — `strict`/`strictNullChecks` không bật cho toàn bộ `hdđt_maxv`
+- Vị trí: `hdđt_maxv/tsconfig.app.json`:1-29
+- Vấn đề: mọi union `| null` trong `types/index.ts` (896 dòng) chỉ là trang trí, compiler không chặn `null.xxx`. RVW-502 là ví dụ trực tiếp — bật strict thì lỗi đó đỏ ngay trong IDE.
+- Đề xuất fix: bật `strict:true` (tối thiểu `strictNullChecks`), dọn lỗi theo từng feature, 1 chủ sở hữu duy nhất tránh sửa song song với nhóm khác.
+- Trạng thái: OPEN
+
+### RVW-505 🟡 NON-BLOCKING — `normalizePayrollLine` biến trường thiếu thành `NaN` âm thầm
+- Vị trí: `api/du_lieu_tinh_luong/payrollCalculationApi.ts`:194
+- Vấn đề: `Number(raw[field])` với `raw[field]` là `undefined` (snapshot cũ engine v1 thiếu trường) → `NaN` chảy vào `tongBangLuong()`, cả 3 thẻ tổng đầu Dashboard thành `NaN`, không ném lỗi.
+- Đề xuất fix: `const v = Number(raw[field] ?? 0); line[field] = Number.isFinite(v) ? v : 0;` + `console.warn` 1 lần khi gặp trường thiếu.
+- Trạng thái: OPEN
+
+### RVW-506 🟡 NON-BLOCKING — Dashboard mở = tối đa 6 lần tính lương toàn công ty
+- Vị trí: `api/dashboard/dashboardQueries.ts`:145-147 (`useXuHuongLuong`)
+- Vấn đề: `useQueries` bắn `GET /payroll/sheet-lines` cho từng kỳ trong khung 6 tháng; kỳ nháp tính live toàn bộ pipeline 10 bước cho mọi nhân viên chỉ để vẽ biểu đồ xu hướng.
+- Đề xuất fix: đề nghị Architect thêm endpoint tổng hợp `GET /payroll/summary?from=&to=`; trước mắt chỉ query kỳ đã khóa + kỳ hiện tại.
+- Trạng thái: OPEN
+
+### RVW-507 🟡 NON-BLOCKING — Gán nhanh phòng ban là 2N request tuần tự, không có tiến độ
+- Vị trí: `api/du_lieu_nhan_vien/nhanVienQueries.ts`:477-489
+- Vấn đề: 200 nhân viên = 400 round-trip nối đuôi, chỉ báo tiến độ khi có lỗi. Chọn "toàn công ty" là đơ vài phút.
+- Đề xuất fix: thêm callback `onTien(daXong, tong)` theo khuôn `useTaiNhieuFileLen` (`taiLieuQueries.ts`:309) đã có sẵn trong chính feature.
+- Trạng thái: OPEN
+
+### RVW-508 🟡 NON-BLOCKING — `useCauHinh()` trả hệ số pháp luật mặc định trong lúc đang tải
+- Vị trí: `api/cau_hinh_mac_dinh/cauHinhQueries.ts`:281-287
+- Vấn đề: chưa có data thì trả `cauHinhMacDinhGoc()` — chỉ khóa nút Lưu, không khóa phần đọc; màn Tăng ca hiện hệ số 150/200% mặc định rồi nhảy sang hệ số thật của công ty.
+- Đề xuất fix: nơi hiển thị số quy đổi dùng `useTrangThaiCauHinh().daCoDuLieu` để render skeleton.
+- Trạng thái: OPEN
+
+### RVW-509 🟡 NON-BLOCKING — `soGioCa` trả `NaN` với giờ sai định dạng
+- Vị trí: `_shared/format.ts`:44-48, 56-62
+- Vấn đề: `phutTrongNgay("ab:cd")` trả `NaN`; `Math.max(0, NaN)` vẫn là `NaN` (không phải 0) — chảy ra bản xem trước form ca làm việc.
+- Đề xuất fix: kiểm `Number.isFinite` cho cả 2 phần giờ:phút, không hợp lệ thì return 0.
+- Trạng thái: OPEN
+
+### RVW-510 🟡 NON-BLOCKING — `chiSo()` nuốt dấu âm và không chặn tràn
+- Vị trí: `_shared/format.ts`:27-30
+- Vấn đề: `text.replace(/\D/g,"")` bỏ cả dấu `-` → gõ `-5000000` ra `5000000` (đảo dấu im lặng); không trần nên dán 21 chữ số vượt `MAX_SAFE_INTEGER`.
+- Đề xuất fix: kẹp trần `Math.min(so, Number.MAX_SAFE_INTEGER)`, quyết định rõ chính sách dấu âm trong docblock.
+- Trạng thái: OPEN
+
+### RVW-511 🟡 NON-BLOCKING — `hopDongTuApi` hardcode lương = 0 kèm comment lỗi thời
+- Vị trí: `api/du_lieu_nhan_vien/nhanVienQueries.ts`:134-136
+- Vấn đề: comment "bảng lương vẫn chạy mock" đã lỗi thời (mock đã xóa 2026-09-10); `luong_chinh:0, luong_bhxh:0` nghĩa là "0 đồng" thay vì "không biết", kiểu `HopDong` không cho `null` nên không phân biệt được.
+- Đề xuất fix: xóa comment sai; đổi 2 trường sang `number | null`.
+- Trạng thái: OPEN
+
+### RVW-512 🟡 NON-BLOCKING — Ngày lễ lặp hằng năm: 29/02 và áp ngược cho năm trước khi tạo
+- Vị trí: `calculations/du_lieu_tinh_luong/chamCong.ts`:49-53
+- Vấn đề: `nl.ngay.slice(5) === iso.slice(5)` — lễ 29/02 không khớp năm không nhuận; lễ tạo năm 2026 vẫn áp cho tháng 2025 khi xem lại kỳ cũ, ảnh hưởng hệ số tăng ca 300%/390%.
+- Đề xuất fix: thêm chặn `nl.ngay.slice(0,4) <= iso.slice(0,4)` cho nhánh lặp; xử lý 29/02 tường minh.
+- Trạng thái: OPEN
+
+### RVW-513 🟡 NON-BLOCKING — Tải toàn bộ tài liệu/người phụ thuộc công ty rồi lọc ở client
+- Vị trí: `api/du_lieu_nhan_vien/taiLieuQueries.ts`:94-103 · `nguoiPhuThuocQueries.ts`:98-109
+- Vấn đề: không phân trang, trái nguyên tắc chính `taiHetTrang.ts`:15-16 đã ghi ("danh sách nghiệp vụ phải lọc/phân trang ở máy chủ").
+- Đề xuất fix: khóa cache theo `ma_nv` như `hrmHopDongKeys` đã làm, truyền `ma_nv` lên server (param đã có sẵn).
+- Trạng thái: OPEN
+
+### 🟢 Suggestion (nhóm 5, gộp gọn)
+- `chamCong.ts`:130 `ghiDe[khoa]!` nói dối kiểu — `null` là trạng thái nghiệp vụ hợp lệ, dùng `Object.hasOwn`.
+- `payrollInputsApi.ts`:125-129 `deleteOvertimeData` tự nối query string thay vì `{params}` như hàm anh em.
+- `dashboardQueries.ts`:149-159 `theoId`/`diem` không `useMemo` như 4 hook khác cùng file.
+- `_shared/thangKyLuong.ts`:21-27 hai quy ước số thứ tự tháng khác nhau trong cùng 1 file 52 dòng — bẫy cho người sau.
+- `calculations/dashboard/tongQuan.ts`:294-305 `gopPhanDuoi<T>` hardcode nhãn "Khác (n phòng ban)" dù khai generic.
+
+**Security findings (nhóm 5):** sạch — không `console.*` lộ lương/STK, không `localStorage`/`sessionStorage` cho dữ liệu nhạy cảm, không `any`/`@ts-ignore`. Cache lương khóa theo `(companyId, ma_nv)` đúng (vá BUG-HRM-25). Ghi đè trắng 3 khóa ngân hàng khi thiếu quyền thay vì gửi `null` — phòng thủ đúng chuẩn.
+
+**Performance findings (nhóm 5):** RVW-506 (Dashboard 6× full payroll calc) nặng nhất, RVW-507 (2N request tuần tự), RVW-513 (tải toàn công ty lọc client). Không có N+1 thật ở 8 phân hệ nhập liệu; `useInvalidateInputs` đã thu hẹp đúng phạm vi.
+
+**Final recommendation:** ❌ Request changes — RVW-501 (công thức chấm công lệch BE) và RVW-502 (Decimal-as-string bỏ sót) là 2 điểm nguy hiểm nhất của module. Ưu tiên: 501 → 502 → 503 (cùng chủ đề "đừng giữ 2 nguồn sự thật") → 504.
+
+---
+
+## Review 2026-09-11 — Nhóm 7/9 (dữ liệu tính lương — 52 file) — Verdict: ❌ Request changes
+
+> Phạm vi: `features/hrm/components/du_lieu_tinh_luong/**` (kpi, thuong, bu_tru, luong_san_pham, luong_phan_tram, tang_ca, chuyen_can, cham_cong...). Kiến trúc tách lớp sạch — mọi công thức nằm ở `calculations/`, không có dòng nào tự tính lại (không duplicate với nhóm 5). Cả 2 blocking đều nằm trên đường "Áp dụng" của form nhập liệu hàng loạt.
+
+### RVW-701 🔴 BLOCKING — Dòng chưa khai xong vẫn gửi lên server → cả batch bị 400; riêng Chuyên cần thì xóa dữ liệu cũ trước rồi mới fail → mất dữ liệu thật
+- Vị trí: `kpi/KpiPanel.tsx`:104-109 · `thuong/ThuongPanel.tsx`:96-99 · `bu_tru/BuTruPanel.tsx`:109-112 · `luong_san_pham/LuongSanPhamPanel.tsx`:103-107 · `luong_phan_tram/LuongPhanTramPanel.tsx`:102-106 · `tang_ca/TangCaPanel.tsx`:109-111 · `chuyen_can/ChuyenCanPanel.tsx`:115-151
+- Vấn đề: nút "Áp dụng" chỉ kiểm `mau.length===0`, không kiểm dòng có hợp lệ không (BE từ chối `ma_kpi:""`, `muc_tieu<=0`, `so_gio<=0`...). Với 6 màn thường thì cả batch bị 400 không rõ dòng nào sai. Riêng **Chuyên cần**: `apDungChoMotNguoi` gọi `xoaChoMotNguoi(maNv)` xóa sạch bản ghi vi phạm hiện có RỒI mới ghi mới — dòng đầu tiên không hợp lệ là nhân viên đầu tiên đã bị xóa hết dữ liệu cũ, không ghi lại được, không rollback.
+- Đề xuất fix: mỗi Panel tính `hopLe = mau.every(...)` và `disabled={... || !hopLe}` + đánh `error` lên đúng ô thiếu; `ChuyenCanPanel.handleApDung` validate toàn bộ `mau` TRƯỚC vòng lặp, trước cả lời gọi xóa đầu tiên; `TangCaPanel.tsx`:109 mở rộng filter thành `.filter(d => d.loai!=="" && d.so_gio>0)`.
+- Trạng thái: OPEN
+  → FIXED [2026-09-11] — thêm `hopLe = mau.every(...)` + `!hopLe` vào `disabled` nút "Áp dụng" cho 6 Panel: `KpiPanel.tsx` (`ma_kpi!=="" && muc_tieu>0`, khớp E-dltl-008 + "Mục tiêu KPI phải lớn hơn 0"), `ThuongPanel.tsx` (`ma_khoan!==""`, amount>=0 đã đảm bảo bởi `TienField`/`chiSo()` không cho âm), `BuTruPanel.tsx` (`ma_bt!=="" && so_tien>0`, khớp "Số tiền bù trừ phải lớn hơn 0"), `LuongSanPhamPanel.tsx` (`ma_sp!==""`), `LuongPhanTramPanel.tsx` (`ma_khoan!==""`), `ChuyenCanPanel.tsx` (`ma_cc!=="" && ngay!==""`, gộp chung fix với RVW-702 bên dưới). Đối chiếu field bắt buộc với `be_maxv/src/validators/hrm/du_lieu_tinh_luong/inputs.validator.ts` (chỉ đọc). Thêm `error`/`helperText` cho ô còn thiếu cảnh báo: `BangChiTieuKpiCard.tsx` (muc_tieu<=0), `BangBuTruCard.tsx` (so_tien<=0) — các select mã (ma_kpi/ma_khoan/ma_bt/ma_sp/ma_cc) đã có `error={!dong.x}` sẵn từ trước. `TangCaPanel.tsx`:108-113 mở rộng filter silent-drop đã có sẵn (`loai!==""`) thành `loai!=="" && so_gio>0` (khớp "Số giờ tăng ca phải lớn hơn 0", E-dltl-007) + thêm `error`/`helperText` cho ô `so_gio` trong `BangTangCaCard.tsx`. tsc+eslint pass, commit "chưa commit" *(frontend-engineer)*
+
+### RVW-702 🔴 BLOCKING — Chuyên cần: lỗi giữa chừng vòng lặp không nêu tên người đang hỏng, không rollback
+- Vị trí: `chuyen_can/ChuyenCanPanel.tsx`:131-151, 115-129
+- Vấn đề: vòng lặp tuần tự `for (const row of rows)`; lỗi ở người thứ k → người đó đã xóa cũ + ghi mới 1 phần; thông báo chỉ nói "Đã áp {xong}/{rows.length}" — không nêu tên người đang hỏng dở, không ai biết phải kiểm tra ai. Dữ liệu vi phạm chuyên cần quyết định tiền bị trừ — mất mà không ghi lại = nhân viên nhận đủ chuyên cần dù có vi phạm.
+- Đề xuất fix: bắt lỗi bên trong vòng lặp, nêu rõ `row.ho_ten (row.ma_nv)` trong toast lỗi. Fix gốc: đề nghị BE thêm endpoint `replace` theo nhân viên (xóa+ghi trong 1 transaction).
+- Trạng thái: OPEN
+  → FIXED [2026-09-11] — `ChuyenCanPanel.tsx`: `handleApDung` (dòng ~131-160) nay validate `hopLe` (guard `if (!hopLe) { toast.error(...); return; }`) TRƯỚC vòng lặp, trước cả lời gọi xóa đầu tiên (fix chung với RVW-701 cho module này); `try/catch` chuyển vào BÊN TRONG `for (const row of rows)` — lỗi giữa chừng nêu rõ `Dừng ở ${row.ho_ten} (${row.ma_nv}) — đã áp xong ${xong}/${rows.length}` thay vì chỉ đếm số đã xong. Chưa làm fix gốc BE (endpoint `replace` transaction) — ngoài phạm vi FE task, để lại cho backend-engineer nếu cần. tsc+eslint pass, commit "chưa commit" *(frontend-engineer)*
+
+### RVW-703 🟡 NON-BLOCKING — Ô nhập số không chặn âm/quá ngưỡng/số lẻ ở trường bắt buộc nguyên (7 ô)
+- Vị trí: `kpi/BangChiTieuKpiCard.tsx`:162,174,195 · `tang_ca/BangTangCaCard.tsx`:150 · `luong_san_pham/BangSanPhamCard.tsx`:162-164 · `luong_phan_tram/BangPhanTramCard.tsx`:159 · `chuyen_can/BangChuyenCanCard.tsx`:159
+- Vấn đề: `slotProps.htmlInput.min=0` không chặn gõ tay (không có `<form>` submit). Đường nhập Excel đã chặn (`buTruExcel.ts`:207, `luongSanPhamExcel.ts`:211) — chỉ đường gõ tay hở.
+- Đề xuất fix: helper `soDuong(v) = Math.max(0, Number(v)||0)` dùng chung cho 7 ô; thêm `Math.min(100,...)` cho `ty_le`, `Math.round` cho `trong_so`.
+- Trạng thái: OPEN
+
+### RVW-704 🟡 NON-BLOCKING — Bảng chấm công không ảo hóa/phân trang; tính lại toàn ma trận sau mỗi lần sửa 1 ô
+- Vị trí: `cham_cong/ChamCongPanel.tsx`:254-352, 111-119, 103-109
+- Vấn đề: 200 nhân viên × 31 ngày ≈ 8.400 `TableCell` + 6.200 `ButtonBase`; `dong` phụ thuộc `ghiDe` đổi tham chiếu sau MỖI lần ghi ô → tính lại toàn bộ ma trận sau mỗi click.
+- Đề xuất fix: `TablePagination` ~50 nhân viên/trang (theo mẫu `accounting/**List.tsx` đã dùng); tách `<TableRow>` mỗi nhân viên bọc `memo`.
+- Trạng thái: OPEN
+
+### RVW-705 🟡 NON-BLOCKING — "Áp dụng chuyên cần" tạo O(N²M) request mạng
+- Vị trí: `api/du_lieu_tinh_luong/payrollInputsQueries.ts`:203-217 (`useRecordDiligence`/`useDeleteDiligenceRecord`) + `chuyen_can/ChuyenCanPanel.tsx`:118-126
+- Vấn đề: mỗi `mutateAsync` trong vòng lặp kích `invalidateQueries` → refetch ngay. 100 NV × 3 dòng ≈ 400 ghi + 400 GET danh sách đầy đủ (mỗi GET O(số NV)).
+- Đề xuất fix: gọi thẳng hàm tầng api (không qua hook mutation) trong vòng lặp, `invalidate` một lần trong `finally`.
+- Trạng thái: OPEN
+
+### RVW-706 🟡 NON-BLOCKING — `soO` nhân bản 7 lần với 4 biến thể; ở KPI/Lương sản phẩm xóa nhầm dấu chấm thập phân
+- Vị trí: `kpi/kpiExcel.ts`:47-53 · `luong_san_pham/luongSanPhamExcel.ts`:37-47 · `bu_tru`/`thuong`/`luong_phan_tram`/`tang_ca`/`chuyen_can` (mỗi module 1 bản)
+- Vấn đề: ô text chứa `1.5` ở cột "Mục tiêu" KPI → `.replace(/\./g,"")` → `15` (sai 10 lần); `2.5` ở "Số lượng" → `25`. Chỉ xảy ra khi ô là text (dán/định dạng Text), không cảnh báo.
+- Đề xuất fix: 2 hàm rõ nghĩa vào `_shared/excel.ts` — `soTien()` (bỏ dấu chấm) và `soThapPhan()` (giữ dấu chấm) — mỗi cột gọi đúng loại.
+- Trạng thái: OPEN
+
+### RVW-707 🟡 NON-BLOCKING — Nháp bảng nhập mất im lặng khi đổi kỳ lương/rời tab/F5
+- Vị trí: 7 Panel (`KpiPanel.tsx`:76-80 và tương tự ở 6 file kia)
+- Vấn đề: `mau` chỉ sống trong `useState`; chip cảnh báo "có nội dung chưa áp dụng" chỉ hiển thị thụ động, không chặn gì.
+- Đề xuất fix: `beforeunload` chặn F5/đóng tab khi `mau.length>0`; nâng cao hơn thì lưu nháp `sessionStorage` theo `${periodId}:${module}`.
+- Trạng thái: OPEN
+
+### RVW-708 🟡 NON-BLOCKING — Ô tìm kiếm nhân viên không debounce
+- Vị trí: `ThanhLocKyLuong.tsx`:50-53, 84 → `useNhanVienKyLuong.ts`:29-56
+- Vấn đề: mỗi keystroke → filter + `sort(localeCompare)` toàn bộ nhân viên + dựng Map + render lại toàn bảng.
+- Đề xuất fix: debounce 250ms cho riêng ô `q` (state cục bộ trong `ThanhLocKyLuong`).
+- Trạng thái: OPEN
+
+### RVW-709 🟡 NON-BLOCKING — Cột "Tổng giờ năm" hiện giờ kỳ này nhưng vẫn tô cảnh báo theo ngưỡng năm
+- Vị trí: `tang_ca/TangCaPanel.tsx`:91-93, 51-54 · `DanhSachTangCaCard.tsx`:131-139
+- Vấn đề: ghi chú đầu file đã thừa nhận API không trả lũy kế năm, nhưng UI vẫn dán nhãn "Tổng giờ năm" và tô theo ngưỡng năm — ô luôn xanh, không cảnh báo vượt trần OT thật (rủi ro pháp lý).
+- Đề xuất fix: đổi nhãn "Giờ OT kỳ này", bỏ tô theo ngưỡng năm tới khi có lũy kế thật.
+- Trạng thái: OPEN
+
+### RVW-710 🟡 NON-BLOCKING — `QuanLyTangCaDialog` ghi đè toàn bộ cấu hình mặc định công ty bằng snapshot lúc mở dialog
+- Vị trí: `tang_ca/QuanLyTangCaDialog.tsx`:61-66, 71-82
+- Vấn đề: dialog chỉ sửa 6 hệ số + 3 ngưỡng nhưng `PUT` cả object `CauHinhMacDinh` — người khác sửa biểu thuế trong lúc dialog mở sẽ bị đè mất (last-write-wins).
+- Đề xuất fix: merge tại thời điểm lưu (đọc lại `daLuu` ngay trước khi gửi) thay vì lúc mở.
+- Trạng thái: OPEN
+
+### RVW-711 🟡 NON-BLOCKING — Dữ liệu nhân viên ngoài bộ lọc bị ẩn khỏi bảng nhưng vẫn tính vào lương
+- Vị trí: `useNhanVienKyLuong.ts`:66-73, 27
+- Vấn đề: nhân viên nghỉ việc/khác phòng ban nhưng đã áp KPI/thưởng/bù trừ trong kỳ → không hiện ở bảng nào, không có cách xem/xóa qua màn này dù vẫn vào bảng lương.
+- Đề xuất fix: dòng cảnh báo tổng hợp dưới bảng khi có dữ liệu ngoài phạm vi lọc.
+- Trạng thái: OPEN
+
+### RVW-712 🟡 NON-BLOCKING — 7 Panel trùng ~85% (~2.100 dòng), 7 file Excel trùng khung
+- Vị trí: `kpi/KpiPanel.tsx` (312d) · `tang_ca/TangCaPanel.tsx` (315d) · `thuong/ThuongPanel.tsx` (295d) · `bu_tru/BuTruPanel.tsx` (317d) · `luong_san_pham/LuongSanPhamPanel.tsx` (311d) · `luong_phan_tram/LuongPhanTramPanel.tsx` (310d) · `chuyen_can/ChuyenCanPanel.tsx` (361d)
+- Vấn đề: RVW-701 và RVW-706 là chính xác kiểu lỗi "phải vá 6-7 nơi" mà duplicate này gây ra — không phải nitpick, chi phí đã hiện hình.
+- Đề xuất fix: tách `ThanhCongCuBangNhap` cho thanh nút/dialog dùng chung (~90 dòng × 7 file), chưa cần generic hóa cả Panel.
+- Trạng thái: OPEN
+
+### RVW-713 🟡 NON-BLOCKING — `taiVe` trùng byte-for-byte 7 lần dù `lib/downloadFile.ts::luuVeMay` đã có sẵn
+- Vị trí: `kpi/kpiExcel.ts`:55-67 và 6 file Excel anh em (tất cả md5 giống hệt) — cùng lớp với RVW-A05 (nhóm 6, tổng 9 bản trùng trong toàn HRM)
+- Đề xuất fix: xóa 7 bản `taiVe`, gọi `luuVeMay` từ `@/lib/downloadFile`; đưa `toTieuDe`/`chuoiO`/`HEADER_FILL`/`TIEN_FMT` vào `_shared/excel.ts`.
+- Trạng thái: OPEN
+
+### 🟢 Suggestion (nhóm 7, gộp gọn)
+- `setMau([])` trong `useEffect` + `eslint-disable` lặp 7 lần — thay bằng `key={selectedPeriodId}` ở page wrapper để React tự unmount/mount.
+- `PayrollPeriodContext.tsx`:22 regex nhận cả `2026-99`/`2026-00` từ localStorage — thêm kiểm `thang 1-12`.
+- `docFile*` (7 file Excel) không giới hạn số dòng/dung lượng file nhập — thêm trần 5.000 dòng / 10MB.
+- Ô số không cho để trống (`value={x===0?"":x}`) — xóa hết ô lại hiện `0`.
+- Cột "Thành tiền" ở `thuong/BangKhoanThuongCard.tsx`:157 đổi tiêu đề thành "Tổng quỹ (× N người)" cho tự giải thích.
+- Bố cục cột Excel là "hợp đồng giữa xuất và nhập" không có test bảo vệ — thêm 1 test round-trip nhỏ mỗi module.
+
+**Security findings (nhóm 7):** sạch — query key gắn `companyId` + `periodId` đầy đủ; `useBangKeChiDoc` ghi rõ server mới là bên chặn thật (403 `E-dltl-027`); không `dangerouslySetInnerHTML`/`eval`/secret hardcode. Rủi ro duy nhất mang màu security là self-DoS khi nạp Excel quá lớn (đã ghi ở suggestion).
+
+**Performance findings (nhóm 7):** RVW-705 (O(N²M) mạng) nặng nhất, sau đó RVW-704 (ma trận chấm công không ảo hóa) và RVW-708 (tìm kiếm không debounce). Điểm tốt: `exceljs` lazy-load đúng lúc ở cả 7 file, `useInvalidateInputs` đã thu hẹp phạm vi.
+
+**Final recommendation:** ❌ Request changes — RVW-701/702 đều xoay quanh đường "Áp dụng", trong đó Chuyên cần là chỗ **duy nhất có thể mất dữ liệu thật** (xóa trước khi ghi, không validate, không rollback). Sửa xong 2 mục là đủ merge; ưu tiên tiếp theo: RVW-703 (rẻ) → RVW-705/704 (đúng màn nhập liệu lớn nhất) → RVW-707.
+
+---
+
+## Review 2026-09-11 — Nhóm 6/9 (components: bang_luong, cai_dat_luong, cau_hinh_mac_dinh, chot_ky_luong, dashboard, ho_so_luong, huong_dan, nguoi_phu_thuoc, nhan_vien, phong_ban, to_khai_thue — 87 file) — Verdict: ⚠️ Approve with comments
+
+> Không có 🔴 Blocking. Không có `console.log`/`localStorage`/`dangerouslySetInnerHTML`/`window.open` trong toàn bộ phạm vi. Vấn đề tập trung ở: (a) file Excel bảng lương thiếu/mập mờ khi đối chiếu chứng từ chi lương, (b) form nhân sự không validate client-side, (c) duplication có hệ thống.
+
+### RVW-A01 🟡 NON-BLOCKING — File Excel bảng lương KHÔNG có cột Mã nhân viên
+- Vị trí: `bang_luong/cotBangLuong.ts`:28-36 · `bang_luong/bangLuongExcel.ts`:106-116
+- Vấn đề: doc-comment của chính file nói file này "đi kèm chứng từ chi lương, thiếu mã NV là không đối chiếu được". Trên web có bù bằng caption `ma_nv` dưới tên, file xuất ra thì không — 2 người trùng tên (phổ biến ở VN) không ghép được dòng lương với phiếu chi.
+- Đề xuất fix: thêm cột `ma_nv` đầu bảng (`COT_BANG_LUONG[0]`), đổi `dinhTrai`/`xSplit` cho khớp.
+- Trạng thái: OPEN
+
+### RVW-A02 🟡 NON-BLOCKING — Cột "Các khoản bù trừ": dòng có dấu, dòng tổng và Excel thì không
+- Vị trí: `bang_luong/BangLuongTable.tsx`:182-193 vs 252 · `bang_luong/bangLuongExcel.ts`:114, 122-126
+- Vấn đề: mỗi dòng hiện `+`/`−` theo dấu, dòng "Tổng cộng" và Excel in trần không dấu — cùng 1 con số mang 2 nghĩa ngược nhau ở 2 chỗ trên cùng bảng.
+- Đề xuất fix: chọn 1 quy ước, áp cả 3 chỗ (khuyến nghị: đổi dấu ngay ở tầng ánh xạ `bangLuongQueries.ts`:106, âm = trừ).
+- Trạng thái: OPEN
+
+### RVW-A03 🟡 NON-BLOCKING — Cột thu nhập sheet chính không cộng ra đúng "Thu nhập", không có chỉ dẫn sang sheet phụ
+- Vị trí: `bang_luong/bangLuongExcel.ts`:87-133 vs 42-72
+- Vấn đề: sheet chính chỉ 5/7 cột thu nhập (thiếu `luong_phan_tram`, `chuyen_can`); người nhận file cộng lệch với "Thu nhập" sẽ nghĩ sai số hoặc tự "sửa".
+- Đề xuất fix: 1 dòng ghi chú ở row 2 trỏ sang sheet "Chi tiết thu nhập".
+- Trạng thái: OPEN
+
+### RVW-A04 🟡 NON-BLOCKING — Xuất Excel chạy trên main thread, không có phản hồi tiến trình
+- Vị trí: `bang_luong/bangLuongExcel.ts`:111-133 · `luongHoTroExcel.ts`:81-120
+- Vấn đề: dựng cell + nén zip đồng bộ, vài trăm–nghìn nhân viên đứng hình 1-3s; nút chỉ `disabled`, không đổi nhãn/spinner.
+- Đề xuất fix: `startIcon={<CircularProgress/>}` + nhãn "Đang xuất…" theo mẫu `TaiLieuFormDialog.tsx`:387.
+- Trạng thái: OPEN
+
+### RVW-A05 🟡 NON-BLOCKING — `taiVe()` copy-paste trong khi `lib/downloadFile.ts` đã có sẵn
+- Vị trí: `bang_luong/bangLuongExcel.ts`:17-29 · `luongHoTroExcel.ts`:15-27 — trùng 10 lần trong toàn HRM (8 bản còn lại ở `du_lieu_tinh_luong/*Excel.ts`, xem RVW-713)
+- Đề xuất fix: gọi `luuVeMay` từ `@/lib/downloadFile`; gom `toTieuDe` + 3 hằng vào `components/bang_luong/excelChung.ts`.
+- Trạng thái: OPEN
+
+### RVW-A06 🟡 NON-BLOCKING — Không phân trang/ảo hóa ở mọi bảng, lọc client trên toàn dataset
+- Vị trí: `nhan_vien/NhanVienTable.tsx`:186-252 · `nguoi_phu_thuoc/NguoiPhuThuocTable.tsx`:123-152 · `bang_luong/BangLuongTable.tsx`:115-208 · `phong_ban/PhongBanTable.tsx`:141-206 · `cai_dat_luong/KhoanLuongTable.tsx`:74-128 · `cai_dat_luong/set_luong/DanhSachSetLuongCard.tsx`:173-254
+- Vấn đề: `grep TablePagination|react-window` = 0 kết quả. Công ty 500-2000 NV (kịch bản thật) sẽ giật khi gõ tìm kiếm.
+- Đề xuất fix: debounce ô tìm (~250ms) + `<TablePagination>` cho `NhanVienTable`/`BangLuongTable`.
+- Trạng thái: OPEN
+
+### RVW-A07 🟡 NON-BLOCKING — `BangLuongTable` tính lại cột + tổng mỗi lần render
+- Vị trí: `bang_luong/BangLuongTable.tsx`:52-53
+- Vấn đề: `cotTheoMuc`/`tongTheoCot` chạy `18×N` phép cộng ở mọi render (kể cả hover); `LuongHoTroPanel.tsx`:63-76 đã `useMemo` đúng, 2 bên không nhất quán.
+- Đề xuất fix: bọc `useMemo` cho cả 2.
+- Trạng thái: OPEN
+
+### RVW-A08 🟡 NON-BLOCKING — Form nhân sự không validate trường bắt buộc trước khi submit (7 dialog)
+- Vị trí: `nhan_vien/NhanVienDialog.tsx`:97-133 · `nguoi_phu_thuoc/NguoiPhuThuocFormDialog.tsx`:66-77 · `nhan_vien/HopDongFormDialog.tsx`:64-80 · `cai_dat_luong/KhoanLuongFormDialog.tsx`:75-86 · `phong_ban/PhongBanFormDialog.tsx`:56-70 · `cau_hinh_mac_dinh/ca_lam_viec/CaLamViecFormDialog.tsx`:62-82 · `cau_hinh_mac_dinh/ngay_le/NgayLeFormDialog.tsx`:75-86
+- Vấn đề: `required` trên MUI TextField không có tác dụng khi không có `<form>` bọc — bấm Lưu ô trống tốn 1 round-trip rồi nhận lỗi Zod 400 chung chung. `HopDongFormDialog.tsx`:66-68 đã tự nhận vấn đề này và chỉ tự chặn cho 2 ô lương.
+- Đề xuất fix: mở rộng pattern `soatLuongHopDong` → `soatHopDong` cho các trường còn lại, 1 guard 1 dòng mỗi dialog trước khi gửi.
+- Trạng thái: OPEN
+
+### RVW-A09 🟡 NON-BLOCKING — Không validate định dạng CCCD/SĐT/MST/ngày sinh
+- Vị trí: `nhan_vien/tabs/ThongTinTab.tsx`:113-167 · `nguoi_phu_thuoc/NguoiPhuThuocForm.tsx`:59-84
+- Vấn đề: TextField trần, không `inputMode`, không chặn ký tự chữ. CCCD/MST sai sẽ theo dữ liệu ra tờ khai thuế TNCN — phát hiện muộn, ở cơ quan thuế. Ngày sinh tương lai làm `SinhNhatCard` (cột tuổi) ra số âm.
+- Đề xuất fix: `inputMode:"numeric"` + `maxLength` cho CCCD/SĐT/MST; `max={homNay()}` cho ngày sinh; cảnh báo mềm (`helperText`), KHÔNG chặn submit (hồ sơ cũ có thể lệch chuẩn).
+- Trạng thái: OPEN
+
+### RVW-A10 🟡 NON-BLOCKING — 8 CRUD dialog dùng chung khung nhưng chép tay 8 lần
+- Vị trí: `HopDongFormDialog.tsx`, `TaiLieuFormDialog.tsx`, `NguoiPhuThuocFormDialog.tsx`, `KhoanLuongFormDialog.tsx`, `PhongBanFormDialog.tsx`, `CaLamViecFormDialog.tsx`, `NgayLeFormDialog.tsx`, `SetLuongNhanVienDialog.tsx`
+- Vấn đề: chính vì lặp 8 lần mà RVW-A08 xảy ra (chỗ có validate, chỗ không, phải mở từng file mới biết).
+- Đề xuất fix: 1 hook ~25 dòng `useFormDialog<T>({open, khoiTao, luu, soat?, thongBao})`.
+- Trạng thái: OPEN
+
+### RVW-A11 🟡 NON-BLOCKING — 6 component Nav gần như giống hệt nhau
+- Vị trí: `DanhMucNav.tsx` · `bang_luong/BangLuongNav.tsx` · `cai_dat_luong/CaiDatLuongNav.tsx` · `cau_hinh_mac_dinh/CauHinhNav.tsx` · `ho_so_luong/HoSoLuongNav.tsx` · `to_khai_thue/ToKhaiThueNav.tsx`
+- Vấn đề: khác nhau đúng 3 thứ (prefix path, mảng `MAN_HINH`, có/không `NutHuongDan`); phần còn lại copy nguyên văn 6 lần. Cùng 1 pattern `startsWith` tra nhãn tab đã gây bug ở nhóm 8 (NB-3 dưới đây).
+- Đề xuất fix: `components/TabNavHrm.tsx` nhận `{base, items, huongDan?}`.
+- Trạng thái: OPEN
+
+### RVW-A12 🟡 NON-BLOCKING — `SoField` nằm trong `cau_hinh_mac_dinh/` nhưng 3 module dùng
+- Vị trí: `cau_hinh_mac_dinh/SoField.tsx` — importers: `cai_dat_luong/KhoanLuongFormDialog.tsx`:25, `du_lieu_tinh_luong/tang_ca/QuanLyTangCaDialog.tsx`:19
+- Vấn đề: vi phạm quy ước "≥2 feature dùng → hạ tầng dùng chung, để phẳng ở root" trong `.claude/CLAUDE.md`. `TienField.tsx` (song sinh) đã đúng vị trí ở `components/` root.
+- Đề xuất fix: `git mv` sang `components/SoField.tsx`, sửa 6 import (dò cả `typeof import()`/`mock.module`).
+- Trạng thái: OPEN
+
+### RVW-A13 🟡 NON-BLOCKING — HRM import hook từ feature `hddt`
+- Vị trí: `dashboard/charts/BieuDoCot.tsx`:6 → `../../../../hddt/hooks/useElementHeight`
+- Vấn đề: coupling chéo feature duy nhất trong HRM (ngoài `auth`/`lib` hợp lệ). Export dùng là `useElementWidth` nhưng tên file nói "Height".
+- Đề xuất fix: chuyển sang `src/hooks/useKichThuocPhanTu.ts` (nội dung hoàn toàn generic).
+- Trạng thái: OPEN
+
+### RVW-A14 🟡 NON-BLOCKING — Màu hex hardcode thay vì theme palette (28 chỗ)
+- Vị trí: `chot_ky_luong/bangKe.ts`:36,40-73 · `TheBangKe.tsx`:19-20 · `LichSuHoatDong.tsx`:22-27 · `ChotKyLuongHeader.tsx`:56,59
+- Vấn đề: cố định, không đổi theo `theme.palette.mode`, trong khi `dashboard/charts/mauBieuDo.ts` đã làm đúng cách (đọc theme, có bảng sáng/tối). Dự án có dark mode — 12 thẻ bảng kê + timeline sẽ chói/mất tương phản ở chế độ tối.
+- Đề xuất fix: đổi sang token theme (`error.main`, `info.main`...); 12 màu định danh riêng thì gom bảng sáng/tối như `mauBieuDo.ts`.
+- Trạng thái: OPEN
+
+### RVW-A15 🟡 NON-BLOCKING — Cột dính trái bảng lương hardcode `left: 200`
+- Vị trí: `bang_luong/BangLuongTable.tsx`:61-69
+- Vấn đề: cột 1 chỉ có `minWidth:200`, tên tiếng Việt dài hơn 200px là chuyện thường → cột 2 chồng lên cột 1 khi cuộn ngang.
+- Đề xuất fix: bỏ `left:200`, dùng `maxWidth:200` + `textOverflow:ellipsis`.
+- Trạng thái: OPEN
+
+### RVW-A16 🟡 NON-BLOCKING — Dialog trả `null` khi dữ liệu chưa về, không phân biệt loading với đã xóa
+- Vị trí: `nhan_vien/chi_tiet/NhanVienChiTietDialog.tsx`:66 · `cai_dat_luong/set_luong/SetLuongNhanVienDialog.tsx`:85
+- Vấn đề: `if (!nhanVien) return null` chạy cả khi đang `isLoading` — mạng chậm thì bấm "Xem chi tiết" màn hình đứng yên, không spinner không dialog.
+- Đề xuất fix: tách 2 ca — `isLoading` render `<Dialog><Skeleton/></Dialog>`, chỉ `return null` khi `!isLoading && !nhanVien`.
+- Trạng thái: OPEN
+
+### RVW-A17 🟡 NON-BLOCKING — `SoField` nhận số âm dù khai `min:0`
+- Vị trí: `cau_hinh_mac_dinh/SoField.tsx`:36,40
+- Vấn đề: `min:0` chỉ chặn nút stepper, không chặn gõ tay `-5` (không có `<form>`, xem RVW-A08). Field này giữ tỷ lệ BHXH/BHYT/BHTN, hệ số tăng ca, thuế suất từng bậc.
+- Đề xuất fix: `onChange(Math.max(0, Number(v)||0))`.
+- Trạng thái: OPEN
+
+### 🟢 Suggestion (nhóm 6, gộp gọn)
+- `nhanKy.replace(/\W+/g,"-")` thiếu cờ `u` — nuốt hết dấu tiếng Việt trong tên file Excel xuất ra.
+- Component `CoKhong` (check xanh/gạch xám) viết 3 lần y hệt — gom `components/CoKhong.tsx`.
+- `gioHienTai()` trùng nguyên văn ở `BangLuongPanel.tsx`/`LuongHoTroPanel.tsx`.
+- `LuongHoTroPanel.tsx` viết bảng inline trong khi tab anh em tách hẳn `BangLuongTable.tsx` — nên tách `LuongHoTroTable.tsx` cho đối xứng.
+- `GanNhanhDialog.tsx` dùng mảng + `includes` trong vòng lặp (O(n²)) — đổi `Set<string>`.
+- `TinhHinhNhanSuCard.tsx`/`ChiPhiPhongBanCard.tsx` dùng TÊN phòng ban làm React key — 2 phòng cùng tên ở 2 chi nhánh sẽ trùng key, đổi sang mã phòng ban.
+- `DanhMucNav.tsx` là nav duy nhất ở `components/` root, 5 nav khác nằm trong folder module — chuyển vào `du_lieu_nhan_vien/`.
+- `LichSuHoatDong.tsx`:110 chip hiện `hd.type` thô (`LOCK`/`EDIT`...) giữa UI tiếng Việt — `KIEU_HOAT_DONG` đã là Record sẵn, thêm field `nhan`.
+- `SetLuongPanel.tsx`:50 `JSON.stringify` so sánh chạy mỗi render — bọc `useMemo`.
+- `luongHoTroExcel.ts`:115 `xSplit:2` không khớp bảng trên màn hình (dính 1 cột) — sửa `xSplit:1`.
+- `BieuDoCot.tsx`:201-211 `key={d}` là cả chuỗi path SVG — dùng chỉ số đoạn.
+- `TaiLieuFormDialog.tsx`:297 `accept` chỉ lọc hộp chọn file, chưa kiểm `f.type` cùng chỗ kiểm size.
+
+**Security findings (nhóm 6):** sạch tuyệt đối — grep `console.*`/`localStorage`/`document.cookie`/`dangerouslySetInnerHTML`/`eval(` = 0 kết quả trong 87 file. Phân quyền xem lương bám sát server (BE xóa hẳn trường khỏi response, không chỉ ẩn UI). Thao tác không hoàn tác đều có `XacNhanXoaDialog`; mở lại kỳ đã khóa bắt buộc lý do ≥20 ký tự (khớp BR-dltl-001).
+
+**Performance findings (nhóm 6):** RVW-A06 (không phân trang, cao nhất) → RVW-A04 (xuất Excel main-thread) → RVW-A07 (thiếu memo). `exceljs` đã lazy-load đúng ở cả 2 file Excel.
+
+**Final recommendation:** ⚠️ Approve with comments — không blocking, có thể merge. RVW-A01/A02/A03 (Excel bảng lương) nên fix trước khi lên production vì đi kèm chứng từ chi lương thật. RVW-A08/A09 (validate form nhân sự) nên vào sprint kế tiếp vì CCCD/MST sai chảy tiếp sang tờ khai thuế.
+
+---
+
+## Review 2026-09-11 — Nhóm 8/9 (pages/hrm/** — 29 file) — Verdict: ⚠️ Approve with comments
+
+> Lớp page HRM sạch về tách lớp: 0 business logic trong 29 file (trừ 2 page placeholder dùng `useLocation` tra nhãn tab), guard route (`ProtectedRoute`+`ModuleRoute module="hrm"`) phủ đủ cả 29 page. Không có 🔴 Blocking.
+
+### NB-1 🟡 NON-BLOCKING — Không có ErrorBoundary: 1 lỗi render trong panel HRM là trắng cả app
+- Vị trí: `pages/hrm/HrmPage.tsx`:33-35 (quanh `<Outlet/>`) — `grep -rn "ErrorBoundary\|Suspense" src` = 0 kết quả toàn frontend
+- Vấn đề: `HrmPage` là điểm hợp nhất duy nhất của 29 màn HRM nhưng không bọc boundary; throw bất kỳ trong cây con unmount tới tận `createRoot` → trắng cả app, mất header/nav. App dùng `<BrowserRouter>` declarative nên `errorElement` của React Router v7 không dùng được.
+- Đề xuất fix: 1 class ErrorBoundary ~20 dòng (không cần thêm dependency), bọc `<Outlet/>` tại `HrmPage.tsx`:33-35.
+- Trạng thái: OPEN
+
+### NB-2 🟡 NON-BLOCKING — 29 page import tĩnh: toàn bộ HRM (192 file/34.465 dòng) nằm trong 1 chunk 2,68MB
+- Vị trí: `pages/hrm/**` ↔ `routes/AppRouter.tsx`:25-53 — cùng nguyên nhân với RVW-C03 (`docs/core-infra/review-findings.md`)
+- Bằng chứng đo được: `dist/assets/index-BLh5qane.js` = 2.680.871 bytes, không `manualChunks`, không `React.lazy` nào trong `src`.
+- Đề xuất fix: `lazy()` cho `HrmPage` + 7 layout khu + `<Suspense fallback={<FullScreenLoader/>}>` quanh `<Outlet/>` — 8 dòng, cắt cả cây HRM ra chunk riêng mà không cần đụng 18 page lá.
+- Trạng thái: OPEN
+
+### NB-3 🟡 NON-BLOCKING — `startsWith` tra nhãn tab: bẫy khớp nhầm khi thêm tab có path là tiền tố
+- Vị trí: `ho_so_luong/HoSoLuongChuaDungPage.tsx`:12-15 · `to_khai_thue/ToKhaiThueChuaDungPage.tsx`:12-15 (cùng pattern lặp ở `HrmNav.tsx`:47-48, `HoSoLuongNav.tsx`:13, `ToKhaiThueNav.tsx`:13 — 5 bản sao, xem RVW-A11)
+- Vấn đề: `pathname.startsWith(...)` + `find` trả phần tử ĐẦU TIÊN có path là tiền tố, không phải khớp đúng. Chưa sai (chưa có cặp path tiền tố nhau) nhưng thêm tab mới kiểu `phieu-luong-chi-tiet` (sau `phieu-luong`) là hiện nhãn màn cũ, im lặng.
+- Đề xuất fix: truyền thẳng object tab từ bảng route qua props, bỏ hẳn `useLocation`+`find`.
+- Trạng thái: OPEN
+
+### NB-4 🟡 NON-BLOCKING — 5 route `to-khai-thue` khai tay trong khi nav sinh từ bảng — thêm tab thứ 6 là văng khỏi HRM
+- Vị trí: `routes/AppRouter.tsx`:250-272 (khai tay) vs :285-291 (khu `ho-so-luong` map từ bảng — đúng cách)
+- Vấn đề: thêm 1 tab vào `to_khai_thue/tabs.ts` → tab hiện ngay nhưng route không khớp → rơi catch-all → `Navigate to="/"` → người dùng bị đá khỏi HRM không thông báo.
+- Đề xuất fix: copy pattern `ho-so-luong` (`.map()` sinh route), kết hợp cùng lúc với NB-3.
+- Trạng thái: OPEN
+
+### S-1 🟢 SUGGESTION — 7 layout khu giống nhau từng ký tự, chỉ khác component Nav
+- Vị trí: `bang_luong/BangLuongPage.tsx`, `cai_dat_luong/CaiDatLuongPage.tsx`, `cau_hinh_mac_dinh/CauHinhPage.tsx`, `du_lieu_nhan_vien/DanhMucPage.tsx`, `du_lieu_tinh_luong/DuLieuLuongPage.tsx`, `ho_so_luong/HoSoLuongPage.tsx`, `to_khai_thue/ToKhaiThuePage.tsx`
+- Đề xuất fix: `KhuLayout({nav})` — xóa được 7 file, thêm 1 file 8 dòng.
+
+### S-2 🟢 SUGGESTION — 18 page passthrough 5 dòng không mang giá trị
+- Vị trí: `DashboardPage.tsx` + 17 file khác dạng `export default function XPage() { return <XPanel/>; }`
+- Đề xuất fix: nếu làm NB-2 (lazy per-màn) thì giữ làm seam; nếu không thì xóa cả 18, route trỏ thẳng `element={<XPanel/>}`.
+
+### S-3 🟢 SUGGESTION — Slug route lệch tên thư mục page ở 3/8 khu
+- `danh-muc` → `du_lieu_nhan_vien/` · `cau-hinh` → `cau_hinh_mac_dinh/` · `du-lieu-luong` → `du_lieu_tinh_luong/`
+- Đề xuất fix: đổi tên thư mục hoặc slug cho khớp — chọn 1 hướng, miễn 8/8 khớp.
+
+### S-4 🟢 SUGGESTION — `DanhMucNav` nằm lạc ở gốc `components/` — trùng RVW-A11.
+
+### S-5 🟢 SUGGESTION — Comment `/* */` sai cú pháp JSX ở `AppRouter.tsx`:193-196 — trùng RVW-C-tương-tự ở core-infra, thuần cosmetic (không render, không crash).
+
+**Security findings (nhóm 8):** sạch — không rò lỗ hổng trong lớp page. Guard phủ đủ 29/29 page. Quan sát chuyển tiếp cho nhóm feature: quyền xem lương không thể hiện ở tầng route (`/hrm/bang-luong` mở được với người không có quyền, chỉ ẩn UI/toast) — không rò dữ liệu (BE chặn 403) nhưng 3 màn phản hồi 3 kiểu khác nhau cho cùng 1 tình huống "không có quyền", nên thống nhất 1 `QuyenLuongRoute`.
+
+**Performance findings (nhóm 8):** chỉ NB-2 (bundle) có số đo cụ thể. `exceljs` lazy-load đúng ở `bangLuongExcel.ts`. Không có re-render hazard ở lớp page (0 props/callback inline xuống panel).
+
+**Final recommendation:** ⚠️ Approve with comments — không blocking. Ưu tiên: NB-1 (ErrorBoundary, rẻ nhất giá trị cao nhất) → NB-3+NB-4+S-1/S-2 (làm chung 1 lượt, kết quả ròng là xóa ~8 file/~40 dòng) → NB-2 (phối hợp với core-infra vì cùng đụng `AppRouter`) → S-3/S-4/S-5.
+
+---
+
+## Tổng hợp đợt audit 2026-09-11 (4 nhóm HRM)
+
+| Nhóm | Phạm vi | Verdict | Blocking |
+|---|---|---|---|
+| 5/9 | core logic (api/calculations) | ❌ Request changes | RVW-501, RVW-502 |
+| 6/9 | components (trừ dữ liệu tính lương) | ⚠️ Approve with comments | 0 |
+| 7/9 | dữ liệu tính lương | ❌ Request changes | RVW-701, RVW-702 |
+| 8/9 | pages | ⚠️ Approve with comments | 0 |
+
+**4 blocking cần backend/frontend-engineer xử lý trước, theo thứ tự đề nghị:** RVW-702 (mất dữ liệu thật, Chuyên cần) → RVW-701 (cùng màn, validate trước Áp dụng) → RVW-501 (công thức chấm công lệch BE — có thể do BE mới đổi `ATTENDANCE_FIXED_VALUE` mà FE chưa theo kịp, cần đối chiếu với `be_maxv` review nếu có) → RVW-502 (Decimal-as-string).
