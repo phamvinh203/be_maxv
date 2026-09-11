@@ -49,6 +49,9 @@ model User {
   // OTP đặt lại mật khẩu đã phát cho user này
   passwordResetOtps PasswordResetOtp[]
 
+  // Các phiên đăng nhập (refresh token) của user này
+  refreshSessions RefreshSession[]
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -306,4 +309,30 @@ model PasswordResetOtp {
   // Truy vấn chính: tìm OTP còn sống mới nhất của 1 user.
   @@index([userId, createdAt])
   @@map("password_reset_otps")
+}
+
+// ---------------- Phiên đăng nhập (refresh token) ----------------
+
+/// Một lần đăng nhập trên một trình duyệt. Refresh token mang `sid` (id phiên) + `jti` (mã lượt);
+/// server giữ `jti` HIỆN HÀNH của phiên để đăng xuất thu hồi được phiên, và biết khi một refresh token
+/// CŨ (đã bị xoay) bị dùng lại — dấu hiệu token đã lộ -> hủy cả phiên.
+model RefreshSession {
+  id     String @id @default(uuid())
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  /// jti của refresh token đang hiệu lực — đổi mỗi lần làm mới.
+  jti       String
+  /// jti ngay trước lượt xoay gần nhất + lúc xoay: vài giây ân hạn khi nhiều tab cùng làm mới bằng
+  /// một token (không phải dùng lại do lộ).
+  jtiTruoc  String?
+  xoayLuc   DateTime?
+  /// Hết hạn khi không làm mới trong `refreshTtl` — mỗi lần làm mới gia hạn thêm.
+  expiresAt DateTime
+  /// Khác null = đã thu hồi (đăng xuất, hoặc phát hiện dùng lại token cũ).
+  revokedAt DateTime?
+  createdAt DateTime  @default(now())
+
+  @@index([userId])
+  @@map("refresh_sessions")
 }

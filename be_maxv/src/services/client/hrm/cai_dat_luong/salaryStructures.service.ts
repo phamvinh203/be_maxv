@@ -131,6 +131,11 @@ export async function saveSalaryStructure(
     : null;
 
   return await db.$transaction(async (tx) => {
+    // Mọi lượt lưu cơ cấu chạy LẦN LƯỢT (vbsec 2026-09-10): tìm-bản-đang-áp-dụng rồi sửa/tạo là
+    // kiểm-rồi-ghi — hai lượt cùng lúc khi chưa có bản nào cùng tạo -> 2 cơ cấu `isActive`; cùng sửa
+    // một bản thì `deleteMany` + `createMany` đan nhau -> dòng khoản lương nhân đôi.
+    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext('salary_structure:luu'))`;
+
     // Tìm cấu trúc hiện hành
     let current = await tx.salaryStructure.findFirst({
       where: { isActive: true },

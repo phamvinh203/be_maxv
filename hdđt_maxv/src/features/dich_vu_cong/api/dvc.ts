@@ -27,8 +27,12 @@ export interface DvcLoginPayload {
   key: string;
   /** Tên đăng nhập cổng DVC, thường dạng `<MST>-ql`. */
   tenDN: string;
-  /** Mật khẩu THÔ — BE tự mã hóa base64 theo dạng cổng quy định. */
-  matKhau: string;
+  /**
+   * Mật khẩu THÔ — BE tự mã hóa base64 theo dạng cổng quy định. Bỏ trống khi `dungMatKhauDaLuu`.
+   */
+  matKhau?: string;
+  /** Đăng nhập bằng mật khẩu đã lưu cùng `tenDN` này (mật khẩu không bao giờ về trình duyệt). */
+  dungMatKhauDaLuu?: boolean;
   captcha: string;
 }
 
@@ -39,10 +43,13 @@ export interface DvcLoginResult {
   data: unknown;
 }
 
-/** Tài khoản + mật khẩu DVC đã lưu (đã giải mã) của công ty đang chọn — `null` = chưa lưu. */
+/**
+ * Tài khoản DVC đã lưu của công ty đang chọn: tên đăng nhập (`null` = chưa lưu) + đã lưu mật khẩu
+ * chưa. Server KHÔNG trả mật khẩu.
+ */
 export interface DvcCredential {
   username: string | null;
-  password: string | null;
+  hasSavedPassword: boolean;
 }
 
 /**
@@ -74,9 +81,9 @@ export async function loginDvc(body: DvcLoginPayload): Promise<DvcLoginResult> {
 }
 
 /**
- * GET /api/v1/dvc/credential → tài khoản + MẬT KHẨU đã lưu (đã giải mã) của công ty đang chọn,
- * để điền sẵn dialog đăng nhập. `{ username: null, password: null }` nếu chưa từng đăng nhập
- * DVC thành công cho công ty này.
+ * GET /api/v1/dvc/credential → `{ username, hasSavedPassword }` của công ty đang chọn, để điền sẵn tên
+ * đăng nhập. `{ username: null, hasSavedPassword: false }` nếu chưa từng đăng nhập DVC thành công cho
+ * công ty này. Đăng nhập bằng mật khẩu đã lưu thì gửi `dungMatKhauDaLuu: true` (xem `loginDvc`).
  *
  * Dùng: `DialogLoginDVC` (điền sẵn khi mở dialog).
  */

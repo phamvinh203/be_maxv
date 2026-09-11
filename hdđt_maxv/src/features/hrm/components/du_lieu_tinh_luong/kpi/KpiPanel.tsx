@@ -24,6 +24,8 @@ import { nhan } from "../../../_shared/format";
 import { useChiTieuKpiIdByCode, useChiTieuKpiList } from "../../../api/du_lieu_tinh_luong/payrollCatalogsQueries";
 import { useApplyKpi, useKpiDataList } from "../../../api/du_lieu_tinh_luong/payrollInputsQueries";
 import { useCurrentPayrollPeriod } from "../useCurrentPayrollPeriod";
+import { useBangKeChiDoc } from "../useBangKeChiDoc";
+import CanhBaoChiDoc from "../CanhBaoChiDoc";
 import { mergeNhanVienKyLuongWithData, useNhanVienKyLuong } from "../useNhanVienKyLuong";
 import type { DongKpi, KpiNhanVienRow, LocNhanVienKyLuong, PhamViApDung } from "../../../types";
 import XacNhanXoaDialog from "../../XacNhanXoaDialog";
@@ -46,7 +48,8 @@ import { docFileKpi, taiFileMauKpi, xuatKpiExcel } from "./kpiExcel";
  * phạm vi và ba ô lọc chỉ là cách chọn nhanh "áp cho ai" phía trình duyệt.
  */
 export default function KpiPanel() {
-  const { selectedPeriodId, isReadOnly } = useCurrentPayrollPeriod();
+  const { selectedPeriodId } = useCurrentPayrollPeriod();
+  const { isReadOnly, bangKeDaChot } = useBangKeChiDoc("KPI");
   const periodId = selectedPeriodId ?? "";
 
   const danhMuc = useChiTieuKpiList();
@@ -155,9 +158,7 @@ export default function KpiPanel() {
   return (
     <Stack spacing={2.5}>
       {isReadOnly && (
-        <Alert severity="warning">
-          Kỳ lương đang chọn đã khóa sổ/chờ duyệt — không thể sửa hoặc áp dụng KPI mới.
-        </Alert>
+        <CanhBaoChiDoc bangKeDaChot={bangKeDaChot} hanhDong="không thể sửa hoặc áp dụng KPI mới" />
       )}
 
       <Paper variant="outlined" sx={{ p: 2 }}>

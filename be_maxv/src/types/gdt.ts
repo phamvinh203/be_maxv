@@ -6,7 +6,10 @@ export interface CaptchaResponse {
 export interface LoginRequest {
   /** Mã số thuế — đóng vai trò `username` trên GDT */
   mst: string;
+  /** Mật khẩu gõ tay. Bỏ trống khi `dungMatKhauDaLuu` — backend tự dùng mật khẩu đã lưu. */
   password: string;
+  /** Đăng nhập bằng mật khẩu đã lưu của công ty đang chọn (mật khẩu không về trình duyệt). */
+  dungMatKhauDaLuu?: boolean;
   /** Nội dung captcha người dùng gõ (`cvalue`) */
   captcha: string;
   /** `key` trả về từ /captcha (`ckey`) */

@@ -2,6 +2,8 @@ import { useLocation, useNavigate } from "react-router-dom";
 import Box from "@mui/material/Box";
 import Tabs from "@mui/material/Tabs";
 import Tab from "@mui/material/Tab";
+import NutHuongDan from "../huong_dan/NutHuongDan";
+import { HUONG_DAN_DU_LIEU_TINH_LUONG } from "../huong_dan/noiDung";
 import { MAN_HINH_DU_LIEU_LUONG } from "./tabs";
 
 /** Tab con bên trong khu "Dữ liệu tính lương". */
@@ -15,8 +17,9 @@ export default function DuLieuLuongNav() {
     )?.path ?? false;
 
   return (
-    <Box sx={{ borderBottom: 1, borderColor: "divider" }}>
+    <Box sx={{ borderBottom: 1, borderColor: "divider", display: "flex", alignItems: "center", gap: 2 }}>
       <Tabs
+        sx={{ flex: 1, minWidth: 0 }}
         value={hienTai}
         onChange={(_, value: string) => navigate(`/hrm/du-lieu-luong/${value}`)}
         variant="scrollable"
@@ -35,6 +38,7 @@ export default function DuLieuLuongNav() {
           />
         ))}
       </Tabs>
+      <NutHuongDan huongDan={HUONG_DAN_DU_LIEU_TINH_LUONG} />
     </Box>
   );
 }

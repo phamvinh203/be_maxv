@@ -89,8 +89,25 @@ export const employeeSalaryListQuerySchema = z
     hasSalary: data.daSet ?? data.hasSalary ?? true,
   }));
 
+/**
+ * Duyệt set lương theo ĐÚNG phiên bản người duyệt đã xem (vbsec 2026-09-10 #40, chủ dự án chốt 2026-09-11):
+ * nút "Duyệt lương" gửi các dòng đang chờ duyệt ĐANG HIỂN THỊ kèm `setupVersion`; máy chủ chỉ duyệt dòng còn
+ * đúng phiên bản đó — ai sửa lương sau khi người duyệt mở màn hình thì bản mới không bị duyệt theo. Không còn
+ * kiểu "bỏ trống = duyệt tất cả" (#39).
+ */
 export const approveSalariesSchema = z.object({
-  employeeIds: z.array(z.string().trim().min(1)).optional(),
+  items: z
+    .array(
+      z.object({
+        employeeId: z.string().trim().min(1),
+        setupVersion: z.number().int().positive(),
+      }),
+    )
+    .min(1, 'Chưa có bản set lương nào để duyệt.')
+    .max(5000)
+    .refine((ds) => new Set(ds.map((d) => d.employeeId)).size === ds.length, {
+      message: 'Trùng nhân viên trong danh sách duyệt.',
+    }),
 });
 
 export type SetEmployeeSalaryInput = z.infer<typeof setEmployeeSalarySchema>;

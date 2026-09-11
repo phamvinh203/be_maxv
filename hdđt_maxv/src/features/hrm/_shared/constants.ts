@@ -425,8 +425,8 @@ export function moTaChieuBuTru(chieu: ChieuBuTru) {
 }
 
 /**
- * Nhãn + màu chip của 6 trạng thái kỳ lương — MỘT nguồn cho ô chọn kỳ (`KyLuongSelector`) và
- * Dashboard, để cùng một kỳ không mang hai tên ở hai màn.
+ * Nhãn + màu chip của 6 trạng thái kỳ lương — MỘT nguồn cho góc chọn kỳ (`chot_ky_luong/GocKyLuong`),
+ * màn Chốt kỳ lương và Dashboard, để cùng một kỳ không mang hai tên ở hai màn.
  */
 export const TRANG_THAI_KY: Record<
   PayrollPeriodStatusApi,

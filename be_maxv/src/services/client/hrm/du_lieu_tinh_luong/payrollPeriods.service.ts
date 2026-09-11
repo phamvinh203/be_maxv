@@ -1,4 +1,8 @@
-import type { PrismaClient, PayrollPeriodStatus } from '../../../../generated/tenant';
+import type {
+  Prisma,
+  PrismaClient,
+  PayrollPeriodStatus,
+} from '../../../../generated/tenant';
 import { ConflictError, BadRequestError } from '../../../../helpers/errors';
 import { PayrollError } from '../../../../helpers/hrm/payrollErrors';
 import { PAYROLL_ERROR_CODES } from '../../../../constants/hrm/payrollErrors';
@@ -116,6 +120,36 @@ export async function deletePayrollPeriod(db: PrismaClient, id: string) {
   });
 }
 
+type PayrollPeriodClient = Pick<PrismaClient, 'payrollPeriod'>;
+
+/**
+ * Ghi chuyển trạng thái CÓ ĐIỀU KIỆN: chỉ khi kỳ VẪN ở một trong các trạng thái nguồn. Kiểm tra trước đó
+ * (để báo lỗi rõ ràng) đọc một bản chụp có thể đã cũ — thao tác chen giữa lượt đọc và lượt ghi (vd
+ * `reject` đúng lúc `lock`) mà ghi `where: { id }` trơn thì đè mất trạng thái vừa chốt. Không khớp -> 409.
+ *
+ * Gọi trong transaction thì phép ghi này còn là KHÓA DÒNG kỳ lương tới khi commit — nút "Tính lương"
+ * (`payrollClosing.service.ts`) dùng đúng hàm này để không ghi đè bảng lương vừa chụp lúc khóa sổ.
+ */
+export async function chuyenTrangThai(
+  db: PayrollPeriodClient,
+  id: string,
+  tuTrangThai: readonly PayrollPeriodStatus[],
+  data: Prisma.PayrollPeriodUpdateManyMutationInput,
+) {
+  const { count } = await db.payrollPeriod.updateMany({
+    where: { id, status: { in: [...tuTrangThai] } },
+    data,
+  });
+  if (count === 0) {
+    throw new PayrollError(
+      PAYROLL_ERROR_CODES.E_DLTL_026,
+      'Trạng thái kỳ lương vừa được người khác thay đổi, vui lòng tải lại rồi thử lại.',
+      HttpStatus.CONFLICT,
+    );
+  }
+  return db.payrollPeriod.findUniqueOrThrow({ where: { id } });
+}
+
 export async function submitPayrollPeriod(db: PrismaClient, id: string) {
   const period = await getPayrollPeriodStatusOrThrow(db, id);
 
@@ -123,10 +157,7 @@ export async function submitPayrollPeriod(db: PrismaClient, id: string) {
     throw new BadRequestError('Chỉ có thể gửi đối soát kỳ lương từ trạng thái DRAFT.');
   }
 
-  return db.payrollPeriod.update({
-    where: { id },
-    data: { status: 'PENDING_REVIEW' },
-  });
+  return chuyenTrangThai(db, id, ['DRAFT'], { status: 'PENDING_REVIEW' });
 }
 
 export async function rejectPayrollPeriod(db: PrismaClient, id: string) {
@@ -136,10 +167,7 @@ export async function rejectPayrollPeriod(db: PrismaClient, id: string) {
     throw new BadRequestError('Chỉ có thể từ chối đối soát kỳ lương từ trạng thái PENDING_REVIEW.');
   }
 
-  return db.payrollPeriod.update({
-    where: { id },
-    data: { status: 'DRAFT' },
-  });
+  return chuyenTrangThai(db, id, ['PENDING_REVIEW'], { status: 'DRAFT' });
 }
 
 /**
@@ -159,17 +187,18 @@ export async function lockPayrollPeriod(db: PrismaClient, id: string, userId: st
   }
 
   return db.$transaction(async (tx) => {
-    // Chốt snapshot 18 cột
+    // CHIẾM trạng thái TRƯỚC khi chụp snapshot (ghi có điều kiện, giữ khóa dòng tới khi commit): lượt
+    // khóa trùng / reject / reopen chen vào đều dừng ở đây hoặc phải chờ, không chụp snapshot lần 2.
+    const daKhoa = await chuyenTrangThai(tx, id, ['DRAFT', 'PENDING_REVIEW'], {
+      status: 'LOCKED',
+      lockedByUserId: userId,
+      lockedAt: new Date(),
+    });
+
+    // Chốt snapshot 18 cột (lỗi -> cả transaction hủy, kỳ về lại trạng thái cũ)
     await snapshotPayrollSheet(tx as unknown as PrismaClient, id, period);
 
-    return tx.payrollPeriod.update({
-      where: { id },
-      data: {
-        status: 'LOCKED',
-        lockedByUserId: userId,
-        lockedAt: new Date(),
-      },
-    });
+    return daKhoa;
   });
 }
 
@@ -187,13 +216,10 @@ export async function reopenPayrollPeriod(db: PrismaClient, id: string) {
     throw new BadRequestError('Chỉ có thể mở lại kỳ lương đã ở trạng thái LOCKED.');
   }
 
-  return db.payrollPeriod.update({
-    where: { id },
-    data: {
-      status: 'DRAFT',
-      lockedByUserId: null,
-      lockedAt: null,
-    },
+  return chuyenTrangThai(db, id, ['LOCKED'], {
+    status: 'DRAFT',
+    lockedByUserId: null,
+    lockedAt: null,
   });
 }
 
@@ -204,13 +230,10 @@ export async function approvePayrollPeriod(db: PrismaClient, id: string, userId:
     throw new BadRequestError('Chỉ có thể phê duyệt kỳ lương khi đã khóa sổ (LOCKED).');
   }
 
-  return db.payrollPeriod.update({
-    where: { id },
-    data: {
-      status: 'APPROVED',
-      approvedByUserId: userId,
-      approvedAt: new Date(),
-    },
+  return chuyenTrangThai(db, id, ['LOCKED'], {
+    status: 'APPROVED',
+    approvedByUserId: userId,
+    approvedAt: new Date(),
   });
 }
 
@@ -221,10 +244,7 @@ export async function markPaidPayrollPeriod(db: PrismaClient, id: string) {
     throw new BadRequestError('Chỉ có thể đánh dấu đã thanh toán khi kỳ lương đã được APPROVED.');
   }
 
-  return db.payrollPeriod.update({
-    where: { id },
-    data: { status: 'PAID' },
-  });
+  return chuyenTrangThai(db, id, ['APPROVED'], { status: 'PAID' });
 }
 
 export async function archivePayrollPeriod(db: PrismaClient, id: string) {
@@ -234,8 +254,5 @@ export async function archivePayrollPeriod(db: PrismaClient, id: string) {
     throw new BadRequestError('Chỉ có thể lưu trữ kỳ lương khi đã PAID.');
   }
 
-  return db.payrollPeriod.update({
-    where: { id },
-    data: { status: 'ARCHIVED' },
-  });
+  return chuyenTrangThai(db, id, ['PAID'], { status: 'ARCHIVED' });
 }

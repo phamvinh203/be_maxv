@@ -28,7 +28,7 @@ interface Props {
 
 /**
  * Trình duyệt kỳ lương ngay từ Dashboard (DRAFT → PENDING_REVIEW, cùng `POST .../submit` với nút
- * "Trình duyệt" ở `KyLuongSelector`).
+ * "Trình duyệt" ở màn Chốt kỳ lương — `chot_ky_luong/VongDoiKyLuong`).
  *
  * Hiện tổng bảng lương TRƯỚC khi bấm để người trình biết mình đang gửi đi con số nào — trình mù
  * một kỳ chưa kiểm là thứ thao tác nhanh không được khuyến khích. Muốn soát từng dòng thì nút
@@ -96,7 +96,7 @@ export default function TrinhLuongDialog({ open, ky, onClose }: Props) {
         </Button>
         <Button
           variant="outlined"
-          onClick={() => moKy(DUONG_DAN.bangLuong, ky?.id)}
+          onClick={() => moKy(DUONG_DAN.bangLuong, ky)}
           disabled={!ky || trinh.isPending}
           sx={{ textTransform: "none" }}
         >

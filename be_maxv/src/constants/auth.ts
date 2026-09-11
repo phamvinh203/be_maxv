@@ -32,3 +32,14 @@ export const OTP_MAX_ATTEMPTS = 5;
  * nên riêng ngưỡng này mới chặn được việc đổi IP để dội mail vào hộp thư nạn nhân.
  */
 export const OTP_MAX_PER_HOUR = 3;
+
+// ---------------- Khóa đăng nhập sai ----------------
+
+/**
+ * Số lần đăng nhập sai liên tiếp cho MỘT email trước khi tạm khóa. Rate limit của Fastify tính
+ * theo IP, nên chỉ ngưỡng theo email này mới chặn được việc xoay IP để đoán mật khẩu 1 tài khoản.
+ */
+export const LOGIN_MAX_FAILS = 5;
+
+/** Thời gian tạm khóa đăng nhập (phút), cũng là cửa sổ đếm lần sai. */
+export const LOGIN_LOCK_MINUTES = 15;

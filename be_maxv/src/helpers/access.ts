@@ -10,16 +10,21 @@ import type { Prisma } from '../generated/sys';
  * Dùng chung cho: canAccessDonVi (1 MST), listAccessibleCompanies (tất cả),
  * và resolveTenantDb (chọn DB tenant) — thêm role mới chỉ sửa 1 chỗ.
  */
-// Owner xóa công ty giờ là XÓA CỨNG (destroyCompany: DROP DB + xóa bản ghi) nên không còn code nào
-// gán ARCHIVED. Giữ bộ lọc cho dữ liệu cũ đã ARCHIVED trước khi đổi: vẫn ẩn khỏi list/switch/resolveTenantDb.
-const NOT_ARCHIVED = { status: { not: 'ARCHIVED' } } as const;
+// Công ty ở hai trạng thái này bị ẩn khỏi list/switch/resolveTenantDb — nghĩa là không ai vào được:
+//   - SUSPENDED: admin "tạm khóa truy cập" (adminSuspendCompany). Đây là chỗ DUY NHẤT thực thi lệnh khóa;
+//     admin mở khóa (về READY) là công ty hiện lại, dữ liệu còn nguyên.
+//   - ARCHIVED: dữ liệu cũ của luồng soft-delete trước đây. Owner xóa công ty giờ là XÓA CỨNG
+//     (destroyCompany: DROP DB + xóa bản ghi) nên không còn code nào gán ARCHIVED.
+const CON_TRUY_CAP_DUOC = {
+  status: { notIn: ['SUSPENDED', 'ARCHIVED'] },
+} satisfies Prisma.DonViWhereInput;
 
 export function accessibleDonViWhere(
   userId: string,
   role: string,
 ): Prisma.DonViWhereInput | null {
-  if (role === 'OWNER') return { ownerId: userId, ...NOT_ARCHIVED };
-  if (role === 'OWNER_EMPLOYEE') return { access: { some: { userId } }, ...NOT_ARCHIVED };
+  if (role === 'OWNER') return { ownerId: userId, ...CON_TRUY_CAP_DUOC };
+  if (role === 'OWNER_EMPLOYEE') return { access: { some: { userId } }, ...CON_TRUY_CAP_DUOC };
   return null;
 }
 

@@ -2,7 +2,19 @@
  * Toàn bộ chuỗi thông báo tiếng Việt gom một chỗ.
  * Dễ rà soát, sửa đổi, và sau này tách i18n.
  */
-import { OTP_LENGTH } from './auth';
+import { LOGIN_LOCK_MINUTES, LOGIN_MAX_FAILS, OTP_LENGTH } from './auth';
+
+/**
+ * Che email khi phải nhắc tới tài khoản của NGƯỜI KHÁC: "ketoantruong@victimcorp.vn" -> "ke***@v***.vn".
+ * Đủ để chủ thật nhận ra email của mình, không đủ để người lạ tra MST công khai ra email khách hàng.
+ */
+function cheEmail(email: string): string {
+  const [ten, mien = ''] = email.split('@');
+  const dauCham = mien.lastIndexOf('.');
+  const tenMien = dauCham > 0 ? mien.slice(0, dauCham) : mien;
+  const duoi = dauCham > 0 ? mien.slice(dauCham) : '';
+  return `${ten.slice(0, 2)}***@${tenMien.slice(0, 1)}***${duoi}`;
+}
 
 export const MESSAGES = {
   COMMON: {
@@ -13,6 +25,8 @@ export const MESSAGES = {
     RECORD_GONE: 'Bản ghi không còn tồn tại, vui lòng tải lại danh sách',
     STILL_REFERENCED:
       'Dữ liệu đang được sử dụng ở nơi khác, không thể thực hiện',
+    TOO_MANY_REQUESTS: 'Bạn thao tác quá nhiều lần, vui lòng thử lại sau ít phút',
+    BAD_REQUEST: 'Yêu cầu không hợp lệ',
   },
 
   AUTH: {
@@ -21,6 +35,8 @@ export const MESSAGES = {
     FORBIDDEN: 'Bạn không có quyền thực hiện thao tác này',
     // Gộp 1 message cho cả email sai lẫn mật khẩu sai (chống dò tài khoản)
     INVALID_CREDENTIALS: 'Email hoặc mật khẩu không đúng',
+    // Trả cho cả email không tồn tại (cũng bị đếm) — không để lộ email nào có tài khoản.
+    LOGIN_LOCKED: `Đăng nhập sai quá ${LOGIN_MAX_FAILS} lần. Vui lòng thử lại sau ${LOGIN_LOCK_MINUTES} phút`,
     ACCOUNT_INACTIVE: 'Tài khoản chưa được kích hoạt',
     REFRESH_INVALID: 'Phiên đăng nhập hết hạn, vui lòng đăng nhập lại',
     LOGOUT_OK: 'Đã đăng xuất',
@@ -39,7 +55,7 @@ export const MESSAGES = {
     USER_NOT_FOUND: 'Người dùng không tồn tại',
     USER_HAS_COMPANY: 'Người dùng này đã có công ty',
     MST_TAKEN: (email: string) =>
-      `Mã số thuế đã được đăng ký tại email: ${email}`,
+      `Mã số thuế đã được đăng ký tại email: ${cheEmail(email)}`,
     NOT_FOUND: 'Công ty không tồn tại',
     RETRY_NOT_FAILED: 'Chỉ cấp lại DB được cho công ty ở trạng thái FAILED',
     SUSPEND_NOT_READY: 'Chỉ tạm khóa được công ty đang hoạt động (READY)',
@@ -48,6 +64,8 @@ export const MESSAGES = {
     MST_MISMATCH: 'Mã số thuế xác nhận không khớp với công ty cần xóa',
     TENANT_DB_MISSING:
       'DB tenant không tồn tại (đã bị xóa hoặc cấp chưa xong). Đã đánh dấu FAILED — hãy cấp lại DB.',
+    TENANT_DB_EXISTS:
+      'Dữ liệu cũ của mã số thuế này chưa được dọn nên chưa cấp được DB mới. Vui lòng liên hệ quản trị viên.',
     EMAIL_ALREADY_MEMBER: 'Email này đã thuộc một công ty khác',
     INVITE_ALREADY_PENDING: 'Email này đã có lời mời đang chờ duyệt',
     INVITE_NOTIFY_FAILED:
@@ -65,6 +83,10 @@ export const MESSAGES = {
     CANNOT_CHANGE_OWN_ROLE: 'Không thể đổi vai trò của chính bạn',
     CANNOT_CHANGE_ADMIN:
       'Không thể đổi vai trò tài khoản quản trị hệ thống (thực hiện qua DB)',
+    CANNOT_TOGGLE_ADMIN:
+      'Không thể khóa/mở tài khoản quản trị hệ thống (thực hiện qua DB)',
+    CANNOT_RESET_ADMIN_PASSWORD:
+      'Không thể đặt lại mật khẩu tài khoản quản trị hệ thống (thực hiện qua DB)',
     CANNOT_DELETE_SELF: 'Không thể xóa chính tài khoản của bạn',
     CANNOT_DELETE_ADMIN:
       'Không thể xóa tài khoản quản trị hệ thống (thực hiện qua DB)',
@@ -72,6 +94,8 @@ export const MESSAGES = {
   },
 
   SUBSCRIPTION: {
+    NO_SUBSCRIPTION:
+      'Tài khoản chưa có gói thuê bao — liên hệ quản trị viên để được cấp gói trước khi thêm công ty hoặc nhân viên.',
     PLAN_NOT_FOUND: 'Gói dịch vụ không tồn tại',
     PLAN_CODE_TAKEN: 'Mã gói đã tồn tại',
     PLAN_IN_USE:
@@ -109,6 +133,7 @@ export const MESSAGES = {
   BAN_HANG: {
     KHACH_HANG_NOT_FOUND: 'Không tìm thấy khách hàng',
     HOA_DON_NOT_FOUND: 'Không tìm thấy hóa đơn bán hàng',
+    HOA_DON_DA_GHI_SO: 'Chứng từ đã ghi sổ, không sửa hoặc xóa được.',
   },
 
   HRM: {

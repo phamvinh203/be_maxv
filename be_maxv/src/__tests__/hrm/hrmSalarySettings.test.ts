@@ -315,6 +315,8 @@ test('SALARY_STRUCTURE: lưu cấu trúc lương khung trong transaction và map
     },
     $transaction: async (fn: any) => {
       const tx = {
+        // Khóa advisory của `saveSalaryStructure` (mọi lượt lưu cơ cấu chạy lần lượt) — ở đây chỉ 1 lượt.
+        $executeRaw: async () => 1,
         salaryStructure: {
           findFirst: async () => null, // chưa có -> tạo mới
           create: async ({ data }: any) => {
@@ -524,8 +526,15 @@ test('EMPLOYEE_SALARY: set lương thành công tăng setupVersion, chuyển PEN
               },
             ],
           }),
+          // Như Prisma: `{ increment }` cộng vào giá trị đang lưu (service tăng setupVersion nguyên tử).
           update: async ({ data }: any) => {
-            existingSalary = { ...existingSalary, ...data };
+            const v = data.setupVersion;
+            existingSalary = {
+              ...existingSalary,
+              ...data,
+              setupVersion:
+                v && typeof v === 'object' ? existingSalary.setupVersion + v.increment : (v ?? existingSalary.setupVersion),
+            };
             return existingSalary;
           },
         },
@@ -569,7 +578,16 @@ test('EMPLOYEE_SALARY: duyệt lương hàng loạt (approve) cập nhật APPRO
     },
   } as any;
 
-  const res = await approveEmployeeSalaries(mockDb, {}, 'approver-123');
+  const res = await approveEmployeeSalaries(
+    mockDb,
+    {
+      items: [
+        { employeeId: 'NV0001', setupVersion: 1 },
+        { employeeId: 'NV0002', setupVersion: 1 },
+      ],
+    },
+    'approver-123',
+  );
   assert.equal(res.approvedCount, 2);
   assert.equal(updatedData.status, 'APPROVED');
   assert.equal(updatedData.approvedByUserId, 'approver-123');

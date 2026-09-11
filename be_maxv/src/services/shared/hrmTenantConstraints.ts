@@ -1,5 +1,5 @@
 import { Client } from 'pg';
-import { tenantUrl } from '../../utils/dbName';
+import { assertTenDbTenant, tenantUrl } from '../../utils/dbName';
 
 /**
  * RÀNG BUỘC HRM Ở TẦNG CƠ SỞ DỮ LIỆU TENANT — nguồn SQL DUY NHẤT.
@@ -30,11 +30,10 @@ import { tenantUrl } from '../../utils/dbName';
  *    nên tenant mới sinh ra hoàn toàn không có ràng buộc nào. `applyTenantConstraints` được gọi
  *    ngay sau `pushTenantSchema` trong cùng luồng cấp DB.
  *
- * ⚠️ CHƯA ĐO: `prisma db push` có xóa index/constraint tạo tay hay không. Prisma quản lý index
- * và unique theo `schema.prisma` nên thứ nó không biết **có thể** bị drop ở lần push kế tiếp
- * (`EXCLUDE`/`FUNCTION` khả năng cao được giữ, nhưng đây là suy luận chưa đo). Vì vậy quy ước
- * vận hành là: **chạy `npm run hrm:constraints` sau MỖI lần `npm run sync:tenants`.** Script
- * idempotent nên chạy thừa không hại gì.
+ * ⚠️ ĐO 2026-09-11 (Prisma 7.8, Postgres 18): `prisma db push` **GỠ khóa ngoại tạo tay** nhưng **GIỮ
+ * unique index biểu thức** tạo tay. `EXCLUDE`/`FUNCTION` chưa đo. Vì vậy quy ước vận hành là:
+ * **chạy `npm run hrm:constraints` sau MỖI lần `npm run sync:tenants`** — với khóa ngoại thì đây là bắt
+ * buộc, không phải phòng xa. Script idempotent nên chạy thừa không hại gì.
  */
 
 /**
@@ -170,6 +169,18 @@ const CAU_IDEMPOTENT: { ten: string; sql: string }[] = [
     ten: 'drop unique cu hrm_nguoi_phu_thuoc(ma_nv, mst) - nhanh INDEX',
     sql: `DROP INDEX IF EXISTS "hrm_nguoi_phu_thuoc_ma_nv_mst_key"`,
   },
+  {
+    // KHÔNG thuộc HRM — hóa đơn bán hàng (vbsec 2026-09-10): số chứng từ duy nhất theo đơn vị cơ sở.
+    // Đặt ở đây vì đây là chỗ DUY NHẤT chạy SQL tay sau mỗi lần `db push` (provisioning + script).
+    // Lớp phòng thủ thứ hai sau khóa advisory ở `hoaDonBanHang.service.ts` (`khoaVaKiemTrungSoCt`).
+    //   - Không `@@unique` trong schema.prisma: cùng lý do M-07, tenant còn số trùng là `db push` vỡ.
+    //   - `COALESCE(ma_dvcs, '')` thay cho `NULLS NOT DISTINCT` (chỉ có từ Postgres 15): unique thường
+    //     coi các NULL là KHÁC nhau nên hóa đơn không có đơn vị cơ sở sẽ lọt. Khớp khóa advisory
+    //     (`ma_dvcs ?? ''`) — NULL và rỗng cùng là "không có đơn vị cơ sở".
+    ten: 'unique m81(ma_dvcs, so_ct)',
+    sql: `CREATE UNIQUE INDEX IF NOT EXISTS "m81_ma_dvcs_so_ct_key"
+          ON "m81" (COALESCE("ma_dvcs", ''), "so_ct")`,
+  },
 ];
 
 /**
@@ -202,6 +213,37 @@ const CAU_ADD_CONSTRAINT: { ten: string; sql: string }[] = [
             "mst" WITH =,
             hrm_ky_npt("dk_tu_thang", "dk_tu_nam", "dk_den_thang", "dk_den_nam") WITH &&
           ) WHERE ("mst" IS NOT NULL)`,
+  },
+  /*
+   * KHÔNG thuộc HRM — khóa ngoại danh mục của chứng từ bán hàng (vbsec 2026-09-10, hangHoa.service.ts:254):
+   * "đếm tham chiếu rồi xóa" ở tầng ứng dụng không chặn được lượt ghi chen giữa, lại bỏ sót d81/m81.
+   *   - `NOT VALID`: tenant đang có dòng mồ côi (xóa khi chưa có khóa) vẫn áp được; chỉ dòng MỚI / dòng
+   *     đổi mã tham chiếu mới bị kiểm. Không xóa dữ liệu cũ nào.
+   *   - `ON UPDATE CASCADE`: đổi mã danh mục (`doiMaHangHoa`) kéo theo chứng từ.
+   *   - Xóa danh mục đang được dùng -> 23503 (mặc định NO ACTION; KHÔNG `RESTRICT` vì nó báo 23001 mà
+   *     Prisma không quy về P2003) — service đổi thành 409.
+   *   - Không khai trong schema.prisma: Prisma tạo khóa ngoại dạng VALID -> `db push` vỡ trên tenant có
+   *     dòng mồ côi. ⚠️ ĐÃ ĐO 2026-09-11: `db push` GỠ khóa ngoại tạo tay (giữ unique index biểu thức)
+   *     — nên BẮT BUỘC chạy lại `npm run hrm:constraints` sau mỗi `npm run sync:tenants`.
+   */
+  {
+    ten: 'fk d81(ma_vt) -> dmvt',
+    sql: `ALTER TABLE "d81" ADD CONSTRAINT "d81_ma_vt_dmvt_fk"
+          FOREIGN KEY ("ma_vt") REFERENCES "dmvt" ("ma_vt")
+          ON UPDATE CASCADE NOT VALID`,
+  },
+  {
+    ten: 'fk m81(ma_kh) -> dmkh',
+    sql: `ALTER TABLE "m81" ADD CONSTRAINT "m81_ma_kh_dmkh_fk"
+          FOREIGN KEY ("ma_kh") REFERENCES "dmkh" ("ma_kh")
+          ON UPDATE CASCADE NOT VALID`,
+  },
+  {
+    // Tạo vị trí đã kiểm kho tồn tại (`viTriKho.service.ts`), nên khóa này không đổi hành vi nhập liệu.
+    ten: 'fk dmvitri(ma_kho) -> dmkho',
+    sql: `ALTER TABLE "dmvitri" ADD CONSTRAINT "dmvitri_ma_kho_dmkho_fk"
+          FOREIGN KEY ("ma_kho") REFERENCES "dmkho" ("ma_kho")
+          ON UPDATE CASCADE NOT VALID`,
   },
 ];
 
@@ -251,6 +293,7 @@ export interface KetQuaApRangBuoc {
 export async function applyTenantConstraints(
   dbName: string,
 ): Promise<KetQuaApRangBuoc> {
+  assertTenDbTenant(dbName);
   const client = new Client({ connectionString: tenantUrl(dbName) });
   await client.connect();
   const ketQua: KetQuaApRangBuoc = {
@@ -384,13 +427,22 @@ WHERE a.mst IS NOT NULL
   AND ${sqlKyNpt('a.')} && ${sqlKyNpt('b.')}
 ORDER BY a.mst`;
 
+/** Hóa đơn bán hàng trùng (đơn vị cơ sở, số chứng từ) — chặn ràng buộc `m81_ma_dvcs_so_ct_key`. */
+export const SQL_QUET_SO_CT_TRUNG = `
+SELECT COALESCE(ma_dvcs, '') AS ma_dvcs, so_ct,
+       count(*) AS so_dong, array_agg(stt_rec ORDER BY datetime0) AS stt_rec
+FROM m81
+GROUP BY COALESCE(ma_dvcs, ''), so_ct
+HAVING count(*) > 1
+ORDER BY 1, 2`;
+
 export interface MucRaSoat {
   ma: string;
   ten: string;
   sql: string;
 }
 
-/** Bốn mục rà soát của đợt P0, theo đúng thứ tự cần dọn. */
+/** Bốn mục rà soát của đợt P0 (HRM) + số chứng từ bán hàng trùng, theo đúng thứ tự cần dọn. */
 export const MUC_RA_SOAT: MucRaSoat[] = [
   {
     ma: 'luong-0',
@@ -411,6 +463,11 @@ export const MUC_RA_SOAT: MucRaSoat[] = [
     ma: 'npt-trung-mst',
     ten: 'Nguoi phu thuoc trung ma so thue, ky giao nhau (BR-hrm-030)',
     sql: SQL_QUET_NPT_TRUNG_MST,
+  },
+  {
+    ma: 'so-ct-trung',
+    ten: 'Hoa don ban hang trung (don vi co so, so chung tu)',
+    sql: SQL_QUET_SO_CT_TRUNG,
   },
 ];
 

@@ -35,8 +35,9 @@ export async function loginGdt(body: LoginPayload): Promise<LoginResult> {
 }
 
 /**
- * GET /api/v1/gdt/credential → { password } — mật khẩu cổng thuế đã lưu (đã giải mã) của công ty
- * đang chọn; `null` nếu chưa lưu. Dùng: `DialogLoginHddt` (điền sẵn vào ô mật khẩu khi mở dialog).
+ * GET /api/v1/gdt/credential → { hasSaved } — công ty đang chọn đã lưu mật khẩu cổng thuế chưa. Server
+ * không trả mật khẩu: đăng nhập bằng mật khẩu đã lưu thì gửi `dungMatKhauDaLuu: true` (xem `loginGdt`).
+ * Dùng: `DialogLoginHddt` (cho phép để trống ô mật khẩu khi đã lưu).
  */
 export async function getGdtSavedPassword(): Promise<GdtSavedPassword> {
   return apiFetch<GdtSavedPassword>("/gdt/credential");

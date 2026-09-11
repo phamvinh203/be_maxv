@@ -120,8 +120,9 @@ export function assertModuleAllowed(modules: UserModules, module: ModuleKey): vo
 export function requireModule(module: ModuleKey) {
   return async (req: FastifyRequest): Promise<void> => {
     // ADMIN luôn có tất cả module (giống nhánh tatCaModule() trong moduleCuaUser) — khỏi tốn 2
-    // lượt DB để đi vòng tới cùng kết luận. Role đọc thẳng từ JWT là đủ tin, cùng mức tin cậy
-    // với requireRole() ở jwt.plugin.ts (route admin cũng chỉ soi req.user.role, không tra lại DB).
+    // lượt DB để đi vòng tới cùng kết luận. Role đọc thẳng từ JWT là đủ ở ĐÂY: ADMIN không có phạm vi
+    // tenant nào (`accessibleDonViWhere` trả null -> resolveTenantDb chặn), qua cửa module cũng không
+    // mở được dữ liệu công ty. Route quản trị thật thì `requireRole` nạp lại từ DB.
     if (req.user.role === 'ADMIN') return;
 
     const user = await sysPrisma.user.findUnique({

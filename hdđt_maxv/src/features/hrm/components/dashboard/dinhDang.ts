@@ -1,6 +1,6 @@
 /** Hàm hiển thị riêng của Dashboard — thuần, chỉ đổi cách trình bày con số đã có. */
 
-import type { ThangNam } from "../../calculations/dashboard/tongQuan";
+import type { ThangNam } from "../../_shared/thangKyLuong";
 import { tienVn } from "../../_shared/format";
 
 export function soVn(so: number, soLe = 1): string {

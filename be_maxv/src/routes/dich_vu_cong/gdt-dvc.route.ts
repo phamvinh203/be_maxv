@@ -23,6 +23,8 @@ import {
   xuatXml,
 } from "../../controllers/client/dich_vu_cong/gdt-dvc.controller";
 import { requireModule } from "../../services/shared/modules.service";
+import { kiemCongTyDangChon } from "../../helpers/dich_vu_cong/kiemCongTyDangChon";
+import { gioiHanTheoNguoiDung } from "../../constants/rateLimits";
 import gntRoutes from "./giay_nop_tien/gnt.route";
 
 /**
@@ -35,110 +37,119 @@ import gntRoutes from "./giay_nop_tien/gnt.route";
  * luôn nằm trong app đã đăng nhập nên yêu cầu này không cản trở gì.
  */
 export default async function (fastify: FastifyInstance) {
-  const guard = [fastify.authenticate, requireModule("dvc")];
+  // MẢNG MỚI cho từng route: @fastify/rate-limit gắn hook bằng cách `push` thẳng vào mảng preHandler
+  // của route có giới hạn riêng — dùng chung một mảng thì giới hạn của route này lây sang mọi route
+  // đăng ký sau nó (vd /ho-so dính trần 20/phút của /captcha).
+  const guard = () => [fastify.authenticate, requireModule("dvc"), kiemCongTyDangChon];
 
+  // Mỗi lượt mở phiên cổng mới (2 request + OCR) -> giới hạn theo người dùng.
   fastify.get("/captcha", {
-    preHandler: guard,
+    preHandler: guard(),
+    ...gioiHanTheoNguoiDung(20, "1 minute"),
     handler: captcha,
   });
 
   fastify.get("/tchs/captcha", {
-    preHandler: guard,
+    preHandler: guard(),
+    ...gioiHanTheoNguoiDung(20, "1 minute"),
     handler: tchsCaptcha,
   });
 
   fastify.get("/ho-so", {
-    preHandler: guard,
+    preHandler: guard(),
     handler: traCuuHoSo,
   });
 
   fastify.get("/ho-so/file", {
-    preHandler: guard,
+    preHandler: guard(),
     handler: taiFileHoSo,
   });
 
   fastify.get("/ho-so/to-khai-chi-tiet", {
-    preHandler: guard,
+    preHandler: guard(),
     handler: chiTietToKhai,
   });
 
   fastify.get("/ho-so/xuat-gtgt01", {
-    preHandler: guard,
+    preHandler: guard(),
     handler: xuatGtgt01,
   });
 
   fastify.get("/ho-so/xuat-qtt05", {
-    preHandler: guard,
+    preHandler: guard(),
     handler: xuatQtt05,
   });
 
   fastify.get("/ho-so/xuat-tncn05", {
-    preHandler: guard,
+    preHandler: guard(),
     handler: xuatTncn05,
   });
 
   fastify.get("/ho-so/xuat-tndn03", {
-    preHandler: guard,
+    preHandler: guard(),
     handler: xuatTndn03,
   });
 
   fastify.get("/ho-so/xuat-khac", {
-    preHandler: guard,
+    preHandler: guard(),
     handler: xuatKhac,
   });
 
   fastify.get("/ho-so/xuat-xml", {
-    preHandler: guard,
+    preHandler: guard(),
     handler: xuatXml,
   });
 
   fastify.get("/ho-so/tai-lieu-dkem", {
-    preHandler: guard,
+    preHandler: guard(),
     handler: taiLieuDinhKem,
   });
 
   fastify.get("/ho-so/thong-bao", {
-    preHandler: guard,
+    preHandler: guard(),
     handler: danhSachThongBao,
   });
 
   fastify.get("/ho-so/thong-bao/file", {
-    preHandler: guard,
+    preHandler: guard(),
     handler: taiThongBao,
   });
 
+  // Chặn dùng server làm proxy (captcha đã giải sẵn) để dò mật khẩu cổng thuế.
   fastify.post("/login", {
-    preHandler: guard,
+    preHandler: guard(),
+    ...gioiHanTheoNguoiDung(10, "10 minutes"),
     handler: login,
   });
 
   fastify.get("/credential", {
-    preHandler: guard,
+    preHandler: guard(),
     handler: getCredential,
   });
 
   fastify.post("/dong-bo", {
-    preHandler: guard,
+    preHandler: guard(),
+    ...gioiHanTheoNguoiDung(10, "10 minutes"),
     handler: dongBo,
   });
 
   fastify.get("/dong-bo/tien-do", {
-    preHandler: guard,
+    preHandler: guard(),
     handler: tienDoDongBo,
   });
 
   fastify.get("/dong-bo/lich-su", {
-    preHandler: guard,
+    preHandler: guard(),
     handler: lichSuDongBo,
   });
 
   fastify.delete("/dong-bo/lich-su/:id", {
-    preHandler: guard,
+    preHandler: guard(),
     handler: xoaLichSuDongBo,
   });
 
   fastify.delete("/dong-bo/lich-su", {
-    preHandler: guard,
+    preHandler: guard(),
     handler: xoaTatCaLichSuDongBo,
   });
 

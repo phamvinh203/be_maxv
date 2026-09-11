@@ -8,7 +8,7 @@ import {
   useTangCaDashboard,
   type KyLuongDashboard,
 } from "../../api/dashboard/dashboardQueries";
-import { nhanThang, thangCuaKy } from "../../calculations/dashboard/tongQuan";
+import { nhanThang, thangCuaKy } from "../../_shared/thangKyLuong";
 import ThanhNgang from "./charts/ThanhNgang";
 import { DUONG_DAN, useMoManKyLuong } from "./dieuHuong";
 import { soGio, soVn } from "./dinhDang";
@@ -91,7 +91,7 @@ export default function TangCaCard({ ky }: { ky: KyLuongDashboard }) {
         kyXem && !ky.biTuChoi ? (
           <Button
             size="small"
-            onClick={() => moKy(DUONG_DAN.tangCa, kyXem.id)}
+            onClick={() => moKy(DUONG_DAN.tangCa, kyXem)}
             sx={{ textTransform: "none" }}
           >
             Nhập tăng ca

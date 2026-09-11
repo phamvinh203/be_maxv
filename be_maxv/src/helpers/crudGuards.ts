@@ -23,3 +23,20 @@ export async function findOrThrow<T>(
   if (!row) throw err;
   return row;
 }
+
+/**
+ * Chạy lệnh xóa; bị KHÓA NGOẠI chặn (bản ghi vẫn còn được chứng từ tham chiếu — Prisma P2003) thì ném
+ * `err` thay cho lỗi Prisma. Kiểm "đếm tham chiếu" trước đó chỉ để có câu báo lỗi rõ; khóa ngoại ở DB
+ * (hrmTenantConstraints.ts) mới là thứ chặn được lượt ghi chen vào giữa lượt đếm và lượt xóa.
+ */
+export async function xoaNeuKhongConThamChieu<T>(
+  xoa: () => Promise<T>,
+  err: Error,
+): Promise<T> {
+  try {
+    return await xoa();
+  } catch (e) {
+    if ((e as { code?: unknown })?.code === 'P2003') throw err;
+    throw e;
+  }
+}

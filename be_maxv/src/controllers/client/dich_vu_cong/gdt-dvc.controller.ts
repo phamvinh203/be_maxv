@@ -7,9 +7,19 @@ import { accessibleDonViWhere } from "../../../helpers/access";
 import { resolveTenantDb, resolveTenantDbName } from "../../../helpers/resolveTenantDb";
 // Dùng lại module crypto của HĐĐT: file đó CỐ Ý không đụng Prisma/HĐĐT gì (chỉ AES-256-GCM
 // thuần trên chuỗi), nên tái dùng được cho cột `dvcPassword*` mà không cần chép lại.
-import { decryptGdtPassword, encryptGdtPassword } from "../../../services/client/hddt/gdtCredential";
+import {
+  decryptGdtPassword,
+  encryptGdtPassword,
+  nguCanhMatKhauDvc,
+} from "../../../services/client/hddt/gdtCredential";
 import { layChiTietToKhai } from "../../../services/client/dich_vu_cong/toKhaiXml";
 import * as DvcGnt from "../../../services/client/dich_vu_cong/giay_nop_tien/dvc-gnt-dong-bo.service";
+import { thongDiepLoiAnToan } from "../../../helpers/thongDiepLoi";
+import { validateQuery } from "../../../utils/validate";
+import {
+  dvcKhoangNgayQuerySchema,
+  dvcTraCuuHoSoQuerySchema,
+} from "../../../validators/dich_vu_cong/traCuu.validator";
 
 type KetQuaDocCache<T> = { ok: true; giaTri: T } | { ok: false; message: string };
 
@@ -111,7 +121,10 @@ export async function tchsCaptcha(
  * Body chưa qua kiểm tra. Dùng lại `DvcLoginRequest` của service thay vì khai lại hình
  * dạng lần hai — thêm trường thì chỉ phải sửa một chỗ, không lo rơi field lúc chép tay.
  */
-type DvcLoginBody = Partial<DvcService.DvcLoginRequest>;
+type DvcLoginBody = Partial<DvcService.DvcLoginRequest> & {
+  /** Đăng nhập bằng mật khẩu đã lưu của công ty đang chọn (mật khẩu không về trình duyệt). */
+  dungMatKhauDaLuu?: boolean;
+};
 
 /**
  * Công ty đang chọn (theo `req.user.donViId`) kèm MST + credential DVC đã lưu (nếu có), có kiểm
@@ -164,8 +177,9 @@ function mstTuTenDangNhapDvc(tenDN: string): string | null {
 }
 
 /**
- * Mật khẩu DVC đã giải mã của công ty đang chọn — `null` khi chưa lưu đủ 3 cột `dvcPassword*` hoặc
- * chưa cấu hình khóa mã hóa (`decryptGdtPassword` tự trả `null`).
+ * Mật khẩu DVC đã giải mã của công ty đang chọn — `null` khi chưa lưu đủ tên đăng nhập + 3 cột
+ * `dvcPassword*` hoặc chưa cấu hình khóa mã hóa (`decryptGdtPassword` tự trả `null`). Blob gắn với
+ * công ty + tên đăng nhập (`nguCanhMatKhauDvc`) nên thiếu tên đăng nhập là không giải mã được.
  *
  * Gom một chỗ vì `getCredential` (điền sẵn form) và `taiKhoanDvcDaLuu` (tự đăng nhập ngầm) đều cần
  * đúng thao tác này: hai bên khác nhau ở chỗ CHẤP NHẬN GÌ khi thiếu, không phải ở cách giải mã.
@@ -173,12 +187,22 @@ function mstTuTenDangNhapDvc(tenDN: string): string | null {
 function matKhauDvcDaGiaiMa(
   active: Awaited<ReturnType<typeof activeCompanyForDvc>>,
 ): string | null {
-  if (!active?.dvcPasswordCipher || !active.dvcPasswordIv || !active.dvcPasswordTag) return null;
-  return decryptGdtPassword({
-    cipher: active.dvcPasswordCipher,
-    iv: active.dvcPasswordIv,
-    tag: active.dvcPasswordTag,
-  });
+  if (
+    !active?.dvcUsername ||
+    !active.dvcPasswordCipher ||
+    !active.dvcPasswordIv ||
+    !active.dvcPasswordTag
+  ) {
+    return null;
+  }
+  return decryptGdtPassword(
+    {
+      cipher: active.dvcPasswordCipher,
+      iv: active.dvcPasswordIv,
+      tag: active.dvcPasswordTag,
+    },
+    nguCanhMatKhauDvc(active.id, active.dvcUsername),
+  );
 }
 
 /**
@@ -254,23 +278,22 @@ export async function voiPhienTuPhucHoi<T>(
 }
 
 /**
- * GET /dvc/credential (authenticated) — trả tài khoản + MẬT KHẨU đã lưu (đã giải mã) của công
- * ty đang chọn, để FE điền sẵn vào dialog đăng nhập DVC. `{ username: null, password: null }`
- * nếu chưa lưu / chưa cấu hình khóa mã hóa (`isEncryptionConfigured()` false thì `decryptGdtPassword`
- * đã tự trả `null`, không cần kiểm riêng ở đây).
+ * GET /dvc/credential (authenticated) — tên đăng nhập DVC đã lưu của công ty đang chọn + đã lưu mật
+ * khẩu chưa: `{ username, hasSavedPassword }`. `username: null` nếu chưa từng đăng nhập thành công.
  *
  * `username` trả THẲNG giá trị đã lưu, không suy từ MST: quy ước "<MST>-ql" chỉ là fallback bên
  * FE (`DvcPage.tenDangNhapDvc`) cho lần đầu CHƯA từng đăng nhập — đằng này là tên thật đã đăng
  * nhập thành công, có thể khác quy ước.
  *
- * LƯU Ý BẢO MẬT: endpoint gửi MẬT KHẨU THẬT về trình duyệt (đã đăng nhập app + đúng quyền công
- * ty đang chọn) — cùng thiết kế `GET /gdt/credential` bên `hddt/gdt.controller.ts`.
+ * KHÔNG trả mật khẩu (vbsec 2026-09-10): trước đây gửi mật khẩu DVC/eTax thật về trình duyệt cho mọi
+ * nhân viên có quyền vào công ty. Đăng nhập bằng mật khẩu đã lưu đi qua cờ `dungMatKhauDaLuu` (xem
+ * `login`) — backend tự giải mã, cùng cách `GET /gdt/credential` bên `hddt/gdt.controller.ts`.
  */
 export async function getCredential(request: FastifyRequest, reply: FastifyReply) {
   const active = await activeCompanyForDvc(nguoiDungCuaRequest(request));
   return reply.send({
     username: active?.dvcUsername ?? null,
-    password: matKhauDvcDaGiaiMa(active),
+    hasSavedPassword: !!active?.dvcUsername && matKhauDvcDaGiaiMa(active) !== null,
   });
 }
 
@@ -291,13 +314,18 @@ export async function getCredential(request: FastifyRequest, reply: FastifyReply
  * giữa chừng một thao tác khác (xem `session.credential`/`tuDangNhapLai` trong
  * `gdt-dvc.service.ts`) — tối đa 3 lượt, dừng ngay nếu cổng báo rõ sai tài khoản/mật khẩu, để
  * tránh đúng rủi ro khóa tài khoản do vòng lặp tự động gõ sai liên tiếp.
+ *
+ * `dungMatKhauDaLuu: true` + không gửi `matKhau` -> backend tự giải mã mật khẩu đã lưu (vbsec
+ * 2026-09-10: mật khẩu không về trình duyệt, xem `getCredential`). Chỉ dùng với ĐÚNG tên đăng nhập đã
+ * lưu cùng nó — không để mật khẩu đã lưu thành chìa khóa thử vào tài khoản khác.
  */
 export async function login(
   request: FastifyRequest<{ Body: DvcLoginBody }>,
   reply: FastifyReply,
 ) {
   const body = request.body;
-  if (!body?.key || !body?.tenDN || !body?.matKhau || !body?.captcha) {
+  const dungDaLuu = body?.dungMatKhauDaLuu === true && !body?.matKhau;
+  if (!body?.key || !body?.tenDN || (!body?.matKhau && !dungDaLuu) || !body?.captcha) {
     return reply.status(400).send({ message: "Vui lòng nhập đầy đủ thông tin." });
   }
   const phien = phienDvc(request, body.key);
@@ -305,23 +333,35 @@ export async function login(
     return reply.status(400).send({ message: "Chưa chọn công ty để đăng nhập cổng Dịch vụ công." });
   }
 
+  const active = await activeCompanyForDvc(nguoiDungCuaRequest(request));
+  const matKhau = dungDaLuu
+    ? active?.dvcUsername && active.dvcUsername === body.tenDN
+      ? matKhauDvcDaGiaiMa(active)
+      : null
+    : body.matKhau;
+  if (!matKhau) {
+    return reply.status(400).send({
+      message: "Chưa có mật khẩu đã lưu cho tài khoản này, vui lòng nhập mật khẩu.",
+    });
+  }
+
   try {
     const result = await DvcService.login({
       ...phien,
       tenDN: body.tenDN,
-      matKhau: body.matKhau,
+      matKhau,
       captcha: body.captcha,
     });
 
+    // Chỉ lưu khi người dùng GÕ mật khẩu (dùng bản đã lưu thì không có gì mới để lưu).
     // Guard theo MST rút từ `tenDN`: chỉ CHẶN lưu khi rõ ràng thuộc MST KHÁC công ty đang chọn
     // (tránh ghi đè nhầm mật khẩu công ty khác lên công ty đang chọn — người dùng có thể tự sửa
     // ô tên đăng nhập trước khi bấm). Không rõ quy ước (`mstTuTen === null`) thì vẫn lưu, vì tên
     // đăng nhập cổng DVC không đảm bảo luôn đúng "<MST>-ql". Lỗi lưu KHÔNG làm hỏng đăng nhập
     // (kết quả đã có trong tay), chỉ là lần sau không dùng lại được.
-    const active = await activeCompanyForDvc(nguoiDungCuaRequest(request));
     const mstTuTen = mstTuTenDangNhapDvc(body.tenDN);
-    if (active && (mstTuTen === null || mstTuTen === active.maSoThue)) {
-      const blob = encryptGdtPassword(body.matKhau);
+    if (!dungDaLuu && active && (mstTuTen === null || mstTuTen === active.maSoThue)) {
+      const blob = encryptGdtPassword(matKhau, nguCanhMatKhauDvc(active.id, body.tenDN));
       if (blob) {
         await sysPrisma.donVi
           .update({
@@ -362,21 +402,16 @@ export async function traCuuHoSo(
   request: FastifyRequest<{ Querystring: DvcTraCuuHoSoQuery }>,
   reply: FastifyReply,
 ) {
-  const q = request.query;
+  const q = validateQuery(dvcTraCuuHoSoQuerySchema, request.query);
   const tenantDb = await resolveTenantDb(request);
 
   try {
-    const bang = await DvcDongBo.timHoSoDaDongBo(tenantDb, {
-      tuNgay: q?.tuNgay,
-      denNgay: q?.denNgay,
-      maHoSo: q?.maHoSo,
-      maToKhai: q?.maToKhai,
-    });
+    const bang = await DvcDongBo.timHoSoDaDongBo(tenantDb, q);
     return reply.send(bang);
   } catch (err) {
     request.log.error(err);
     return reply.status(400).send({
-      message: err instanceof Error ? err.message : "Tra cứu hồ sơ thất bại.",
+      message: thongDiepLoiAnToan(err, "Tra cứu hồ sơ thất bại."),
     });
   }
 }
@@ -391,17 +426,15 @@ function xuatHandler<Row>(
     request: FastifyRequest<{ Querystring: DvcXuatKhoangNgayQuery }>,
     reply: FastifyReply,
   ) {
-    const q = request.query;
+    const q = validateQuery(dvcKhoangNgayQuerySchema, request.query);
     const tenantDb = await resolveTenantDb(request);
 
     try {
-      const rows = await layDs(tenantDb, { tuNgay: q?.tuNgay, denNgay: q?.denNgay });
+      const rows = await layDs(tenantDb, q);
       return reply.send(rows);
     } catch (err) {
       request.log.error(err);
-      return reply.status(400).send({
-        message: err instanceof Error ? err.message : loiMacDinh,
-      });
+      return reply.status(400).send({ message: thongDiepLoiAnToan(err, loiMacDinh) });
     }
   };
 }
@@ -515,7 +548,7 @@ export async function lichSuDongBo(request: FastifyRequest, reply: FastifyReply)
   } catch (err) {
     request.log.error(err);
     return reply.status(500).send({
-      message: err instanceof Error ? err.message : "Không đọc được lịch sử đồng bộ.",
+      message: thongDiepLoiAnToan(err, "Không đọc được lịch sử đồng bộ."),
     });
   }
 }
@@ -540,7 +573,7 @@ export async function xoaLichSuDongBo(
   } catch (err) {
     request.log.error(err);
     return reply.status(500).send({
-      message: err instanceof Error ? err.message : "Không xóa được dòng lịch sử đồng bộ.",
+      message: thongDiepLoiAnToan(err, "Không xóa được dòng lịch sử đồng bộ."),
     });
   }
 }
@@ -554,7 +587,7 @@ export async function xoaTatCaLichSuDongBo(request: FastifyRequest, reply: Fasti
   } catch (err) {
     request.log.error(err);
     return reply.status(500).send({
-      message: err instanceof Error ? err.message : "Không xóa được lịch sử đồng bộ.",
+      message: thongDiepLoiAnToan(err, "Không xóa được lịch sử đồng bộ."),
     });
   }
 }

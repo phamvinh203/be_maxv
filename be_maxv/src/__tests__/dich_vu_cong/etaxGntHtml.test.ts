@@ -10,8 +10,8 @@ import {
 
 const HTML_MAU = `
 <form name="dsForm" method="post" action="/etaxnnt/Request">
-  <input type="hidden" name="dse_sessionId" value="jEZhKJuTYtSk8eEa1CbVjEa">
-  <input type="hidden" name="dse_processorId" value="DXFNHBFHBXEIHKEQIPDTJPDCCZDTAOHJIPAQBGIV">
+  <input type="hidden" name="dse_sessionId" value="GIA_SESSION_ID_TEST_0001">
+  <input type="hidden" name="dse_processorId" value="GIA_PROCESSOR_ID_TEST_KHONG_PHAI_PHIEN_THAT">
   <input type="hidden" name="dse_processorState" value="viewQueryPage">
   <input type="hidden" name="dse_pageId" value="22">
   <input type="hidden" name="dse_operationName" value="corpQueryTaxProc">
@@ -21,8 +21,8 @@ const HTML_MAU = `
 test("bocDseState đọc đủ 6 field từ input ẩn", () => {
   const state = bocDseState(HTML_MAU);
   assert.deepEqual(state, {
-    sessionId: "jEZhKJuTYtSk8eEa1CbVjEa",
-    processorId: "DXFNHBFHBXEIHKEQIPDTJPDCCZDTAOHJIPAQBGIV",
+    sessionId: "GIA_SESSION_ID_TEST_0001",
+    processorId: "GIA_PROCESSOR_ID_TEST_KHONG_PHAI_PHIEN_THAT",
     processorState: "viewQueryPage",
     pageId: "22",
     operationName: "corpQueryTaxProc",
@@ -38,7 +38,7 @@ test("bocDseState đọc được với processorId rỗng khi trang ở trạng
     "",
   );
   assert.deepEqual(bocDseState(html), {
-    sessionId: "jEZhKJuTYtSk8eEa1CbVjEa",
+    sessionId: "GIA_SESSION_ID_TEST_0001",
     processorId: "",
     processorState: "viewQueryPage",
     pageId: "22",
@@ -53,8 +53,8 @@ test("bocDseState đọc được với operationName/nextEventName rỗng khi t
     "",
   );
   assert.deepEqual(bocDseState(html), {
-    sessionId: "jEZhKJuTYtSk8eEa1CbVjEa",
-    processorId: "DXFNHBFHBXEIHKEQIPDTJPDCCZDTAOHJIPAQBGIV",
+    sessionId: "GIA_SESSION_ID_TEST_0001",
+    processorId: "GIA_PROCESSOR_ID_TEST_KHONG_PHAI_PHIEN_THAT",
     processorState: "viewQueryPage",
     pageId: "22",
     operationName: "",

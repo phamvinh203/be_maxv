@@ -7,11 +7,9 @@
  * Nguồn: `api/du_lieu_tinh_luong/payrollCalculationQueries.ts` — tab "Bảng lương" đọc
  * `GET /payroll/sheet-lines` (tự chuyển live/snapshot theo trạng thái kỳ, ĐÚNG nguyên tắc "khóa sổ
  * = snapshot bất biến"), tab "Lương hỗ trợ" đọc `GET /payroll/support-allowances` (LUÔN tính live,
- * chưa có snapshot — xem cảnh báo ở `useLuongHoTroRows`). Kỳ lương lấy từ CÙNG `PayrollPeriodContext` đã dùng ở khu
- * "Dữ liệu tính lương" (`components/du_lieu_tinh_luong/PayrollPeriodContext.tsx`) —
- * `BangLuongPage` tự bọc một `PayrollPeriodProvider` riêng (cây state độc lập) nhưng dùng CHUNG
- * khóa `localStorage` `hrm_selected_payroll_period_id`, nên kỳ đã chọn ở khu kia tự động là kỳ
- * mặc định ở đây — KHÔNG phải dựng cơ chế chọn kỳ mới cho riêng "Bảng lương".
+ * chưa có snapshot — xem cảnh báo ở `useLuongHoTroRows`). Kỳ lương lấy từ `PayrollPeriodContext`
+ * (`components/du_lieu_tinh_luong/PayrollPeriodContext.tsx`) — MỘT provider bọc cả khu HRM ở
+ * `HrmPage`, chọn qua ô tháng ở góc phải thanh HRM — KHÔNG dựng cơ chế chọn kỳ riêng cho "Bảng lương".
  *
  * HAI CẠM BẪY khi map field — api-contract-du-lieu-tinh-luong.md Mục 8.1.1 (đánh dấu ⭐):
  * 1. `gio_tang_ca` <- `otRawHours` (giờ GỐC). TUYỆT ĐỐI KHÔNG dùng `otConvertedHours` (đã nhân hệ

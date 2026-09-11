@@ -15,9 +15,12 @@ import MoreTimeRounded from "@mui/icons-material/MoreTimeRounded";
 import SendRounded from "@mui/icons-material/SendRounded";
 import { getApiError } from "@/lib/apiClient";
 import { tenKyMacDinh, TRANG_THAI_KY } from "../../_shared/constants";
-import { thangCua } from "../../calculations/dashboard/tongQuan";
+import { thangCua } from "../../_shared/thangKyLuong";
 import type { KyLuongDashboard } from "../../api/dashboard/dashboardQueries";
-import { useCreatePayrollPeriod } from "../../api/du_lieu_tinh_luong/payrollPeriodsQueries";
+import {
+  useCreatePayrollPeriod,
+  type PayrollPeriodApiItem,
+} from "../../api/du_lieu_tinh_luong/payrollPeriodsQueries";
 import { DUONG_DAN, useMoManKyLuong } from "./dieuHuong";
 import TheDashboard from "./TheDashboard";
 import TrinhLuongDialog from "./TrinhLuongDialog";
@@ -57,7 +60,7 @@ export default function ThaoTacNhanh({ homNay, ky, onThemNhanVien }: Props) {
     : `Chưa có kỳ tháng ${thang}/${nam} — bấm để tạo`;
 
   const moManNhapLieu = (man: ManCanKy) => {
-    if (ky.kyThangNay) moKy(man.duongDan, ky.kyThangNay.id);
+    if (ky.kyThangNay) moKy(man.duongDan, ky.kyThangNay);
     else setCanTaoKy(man);
   };
 
@@ -110,9 +113,9 @@ export default function ThaoTacNhanh({ homNay, ky, onThemNhanVien }: Props) {
         nam={nam}
         thang={thang}
         onClose={() => setCanTaoKy(null)}
-        onDaTao={(id, man) => {
+        onDaTao={(kyMoi, man) => {
           setCanTaoKy(null);
-          moKy(man.duongDan, id);
+          moKy(man.duongDan, kyMoi);
         }}
       />
       <TrinhLuongDialog open={moTrinh} ky={ky.kyNenTrinh} onClose={() => setMoTrinh(false)} />
@@ -188,7 +191,7 @@ function TaoKyThangNayDialog({
   nam: number;
   thang: number;
   onClose: () => void;
-  onDaTao: (id: string, man: ManCanKy) => void;
+  onDaTao: (ky: PayrollPeriodApiItem, man: ManCanKy) => void;
 }) {
   const taoKy = useCreatePayrollPeriod();
 
@@ -197,7 +200,7 @@ function TaoKyThangNayDialog({
     try {
       const ky = await taoKy.mutateAsync({ month: thang, year: nam, name: tenKyMacDinh(thang, nam) });
       toast.success(`Đã tạo kỳ lương tháng ${thang}/${nam}.`);
-      onDaTao(ky.id, man);
+      onDaTao(ky, man);
     } catch (err) {
       toast.error(getApiError(err));
     }

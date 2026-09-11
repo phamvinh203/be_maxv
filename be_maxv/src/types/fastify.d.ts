@@ -7,6 +7,10 @@ interface JwtPayload {
   role: string;
   // Bản token — xem TokenPayload ở helpers/authTokens.ts.
   tokenVersion: number;
+  // Id phiên đăng nhập phía server — vắng ở token ký trước khi có phiên (xem authTokens.ts).
+  sid?: string;
+  // Chỉ refresh token: mã lượt hiện hành của phiên (xoay mỗi lần làm mới).
+  jti?: string;
 }
 
 declare module 'fastify' {

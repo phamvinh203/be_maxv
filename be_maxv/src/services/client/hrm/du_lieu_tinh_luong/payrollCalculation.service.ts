@@ -6,6 +6,7 @@ import {
 import {
   getPayrollPeriodOrThrow,
   getPayrollPeriodStatusOrThrow,
+  kyLuongConMo,
 } from '../../../../helpers/hrm/payrollPeriodLockGuard';
 import { groupByMaNv } from '../../../../utils/du_lieu_tinh_luong/payrollAggregation.util';
 // RVW-025 (review-findings.md 2026-09-10) — `id = SINGLETON_ID` là bản ghi duy nhất của Cấu hình
@@ -665,7 +666,9 @@ export async function calculatePayrollPreview(
 }
 
 /**
- * Chốt snapshot vào bảng hrm_payroll_sheet_lines khi khóa sổ kỳ lương.
+ * Ghi đè toàn bộ dòng `hrm_payroll_sheet_lines` của kỳ bằng kết quả engine — đường ghi DUY NHẤT
+ * vào bảng này, dùng chung cho khóa sổ (`snapshotPayrollSheet`) và nút "Tính lương" của màn Chốt
+ * kỳ lương (`payrollClosing.service.ts`). Gọi trong transaction của nơi gọi.
  *
  * 🔴 `calculatePayrollPreview()` trả về NGUYÊN object đưa thẳng vào `createMany` — mọi field trả
  * về BẮT BUỘC khớp đúng cột đã khai ở `prisma/tenant/schema.prisma` model `PayrollSheetLine`
@@ -673,35 +676,37 @@ export async function calculatePayrollPreview(
  * `Unknown argument` và khóa sổ GÃY HOÀN TOÀN, trong khi `GET /payroll/calculate` vẫn chạy bình
  * thường — lỗi chỉ lộ ra lúc kế toán bấm "Khóa sổ".
  */
+export async function ghiDeBangLuong(
+  db: PrismaClient,
+  periodId: string,
+  lines: Awaited<ReturnType<typeof calculatePayrollPreview>>,
+) {
+  await db.payrollSheetLine.deleteMany({ where: { periodId } });
+  if (lines.length > 0) {
+    await db.payrollSheetLine.createMany({ data: lines });
+  }
+}
+
+/** Chốt snapshot vào bảng hrm_payroll_sheet_lines khi khóa sổ kỳ lương. */
 export async function snapshotPayrollSheet(
   db: PrismaClient,
   periodId: string,
   preloadedPeriod?: { year: number; month: number; startDate: Date; endDate: Date },
 ) {
   const calculatedLines = await calculatePayrollPreview(db, periodId, preloadedPeriod);
-
-  // Xóa snapshot cũ nếu có và ghi lại toàn bộ trong transaction
-  await db.payrollSheetLine.deleteMany({
-    where: { periodId },
-  });
-
-  if (calculatedLines.length > 0) {
-    await db.payrollSheetLine.createMany({
-      data: calculatedLines,
-    });
-  }
-
+  await ghiDeBangLuong(db, periodId, calculatedLines);
   return calculatedLines;
 }
 
 /**
- * Lấy bảng lương snapshot đóng băng từ hrm_payroll_sheet_lines
+ * Bảng lương của kỳ. Kỳ đã khóa sổ → đọc bản chụp đóng băng lúc khóa sổ. Kỳ còn mở → LUÔN tính
+ * trực tiếp: `hrm_payroll_sheet_lines` của kỳ còn mở chỉ là kết quả tạm của nút "Tính lương" (dùng để
+ * đếm "Bảng lương a/b NV"), KHÔNG được đọc làm số liệu lương.
  */
 export async function getPayrollSheetLines(db: PrismaClient, periodId: string) {
   const period = await getPayrollPeriodStatusOrThrow(db, periodId);
 
-  // Nếu kỳ chưa khóa (DRAFT hoặc PENDING_REVIEW), trả về tính toán thời gian thực (Live Preview)
-  if (period.status === 'DRAFT' || period.status === 'PENDING_REVIEW') {
+  if (kyLuongConMo(period.status)) {
     return calculatePayrollPreview(db, periodId);
   }
 

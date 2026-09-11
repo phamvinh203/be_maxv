@@ -26,10 +26,12 @@ import { hashPassword } from '../../utils/password';
 import { tenantSlug, tenantDbName } from '../../utils/dbName';
 import { provisionTenant, dropTenant } from '../../services/shared/provisioning.service';
 import { getTenantDb } from '../../helpers/tenantClient';
+import { batBuocDbKiemThu, matKhauNgauNhien } from '../_hoTro/dbKiemThu';
 
 // ---------------------------------------------------------------- dữ liệu cố định của bộ test
 
-const PW = 'QaHrm1234';
+// Sinh mới mỗi lượt chạy — không để mật khẩu tài khoản test nằm trong repo (vbsec 2026-09-10).
+const PW = matKhauNgauNhien();
 const OWNER_EMAIL = 'qa.hrm.owner@test.local';
 const STAFF_EMAIL = 'qa.hrm.staff@test.local';
 const MST_A = '9970000001';
@@ -146,6 +148,7 @@ async function layVe(email: string, donViId: string): Promise<string> {
 }
 
 before(async () => {
+  batBuocDbKiemThu();
   app = await buildApp({ logger: false });
   await app.ready();
   await cleanup();

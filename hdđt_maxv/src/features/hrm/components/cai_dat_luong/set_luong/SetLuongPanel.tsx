@@ -5,15 +5,19 @@ import Paper from "@mui/material/Paper";
 import Stack from "@mui/material/Stack";
 import Button from "@mui/material/Button";
 import Chip from "@mui/material/Chip";
+import Tooltip from "@mui/material/Tooltip";
 import DownloadRounded from "@mui/icons-material/DownloadRounded";
 import UploadFileRounded from "@mui/icons-material/UploadFileRounded";
 import FileDownloadRounded from "@mui/icons-material/FileDownloadRounded";
 import HowToRegRounded from "@mui/icons-material/HowToRegRounded";
 import SaveRounded from "@mui/icons-material/SaveRounded";
 import { getErrorMessage } from "../../../../../lib/errors";
-import { useDuyetLuong } from "../../../api/cai_dat_luong/employeeSalariesQueries";
+import {
+  useDuyetLuong,
+  useSetLuongRows,
+} from "../../../api/cai_dat_luong/employeeSalariesQueries";
 import { useCauTrucLuong, useLuuCauTrucLuong } from "../../../api/cai_dat_luong/salaryStructuresQueries";
-import type { CauTrucLuong } from "../../../types";
+import type { CauTrucLuong, SetLuongFilters } from "../../../types";
 import CauTrucLuongCard from "./CauTrucLuongCard";
 import DanhSachSetLuongCard from "./DanhSachSetLuongCard";
 
@@ -24,6 +28,15 @@ export default function SetLuongPanel() {
   const daLuu = useCauTrucLuong();
   const luuCauTruc = useLuuCauTrucLuong();
   const duyetLuong = useDuyetLuong();
+  // Bộ lọc + danh sách đặt ở ĐÂY (không trong `DanhSachSetLuongCard`): nút "Duyệt lương" phải duyệt đúng các
+  // dòng người duyệt đang thấy, kèm phiên bản đã xem (vbsec 2026-09-10 #40).
+  const [filters, setFilters] = useState<SetLuongFilters>({
+    q: "",
+    ma_pb: "",
+    loai_hd: "",
+    daSet: true,
+  });
+  const rows = useSetLuongRows(filters);
 
   const [nhap, setNhap] = useState<CauTrucLuong>(daLuu);
   const [dangLuu, setDangLuu] = useState(false);
@@ -50,10 +63,10 @@ export default function SetLuongPanel() {
 
   const handleDuyet = async () => {
     try {
-      const so = await duyetLuong();
-      toast.success(
-        so > 0 ? `Đã duyệt ${so} bản set lương.` : "Không có bản set lương nào đang chờ duyệt.",
-      );
+      const kq = await duyetLuong(rows);
+      if (kq.approvedCount === 0) toast.info(kq.message);
+      else if (kq.skippedCount > 0) toast.warning(kq.message);
+      else toast.success(kq.message);
     } catch (err) {
       toast.error(getErrorMessage(err, "Không duyệt được lương."));
     }
@@ -89,14 +102,16 @@ export default function SetLuongPanel() {
             >
               Xuất Excel
             </Button>
-            <Button
-              variant="outlined"
-              startIcon={<HowToRegRounded />}
-              onClick={handleDuyet}
-              sx={{ textTransform: "none" }}
-            >
-              Duyệt lương
-            </Button>
+            <Tooltip title="Duyệt các bản đang chờ duyệt trong danh sách bên dưới (theo bộ lọc đang chọn)">
+              <Button
+                variant="outlined"
+                startIcon={<HowToRegRounded />}
+                onClick={handleDuyet}
+                sx={{ textTransform: "none" }}
+              >
+                Duyệt lương
+              </Button>
+            </Tooltip>
             <Button
               variant="contained"
               startIcon={<SaveRounded />}
@@ -122,7 +137,7 @@ export default function SetLuongPanel() {
       </Paper>
 
       <CauTrucLuongCard values={nhap} onChange={setNhap} />
-      <DanhSachSetLuongCard />
+      <DanhSachSetLuongCard filters={filters} onFiltersChange={setFilters} rows={rows} />
     </Stack>
   );
 }

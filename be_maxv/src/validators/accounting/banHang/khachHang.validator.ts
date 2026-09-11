@@ -19,7 +19,20 @@ export const khachHangBodySchema = z.object({
 export const khachHangUpdateSchema = khachHangBodySchema.omit({ ma_kh: true });
 
 /** Query danh sách (lọc theo ma_kh / ten_kh / dia_chi / ma_so_thue). */
+/** Số dòng tối đa mỗi trang danh sách khách hàng (màn danh mục 25/50/100, dialog chọn 50). */
+export const KHACH_HANG_TRANG_TOI_DA = 100;
+
+/** Query danh sách — CÓ phân trang (vbsec 2026-09-10: trước đây trả toàn bộ bảng dmkh). */
 export const khachHangListQuerySchema = z.object({
+  page: z.coerce.number().int().min(1).default(1),
+  pageSize: z.coerce
+    .number()
+    .int()
+    .min(1)
+    .max(KHACH_HANG_TRANG_TOI_DA)
+    .default(25),
+  /** Ô tìm chung: mã / tên / mã số thuế khách hàng. */
+  q: z.string().trim().max(100).optional().default(''),
   ma_kh: z.string().trim().optional().default(''),
   ten_kh: z.string().trim().optional().default(''),
   dia_chi: z.string().trim().optional().default(''),

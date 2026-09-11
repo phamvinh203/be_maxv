@@ -221,6 +221,12 @@ function createMockTenantDb(options: MockTenantDbOptions = {}) {
 
   const db: any = {
     $transaction: async (fn: any) => fn(db),
+    // Guard khóa kỳ trong giao dịch ghi (`khoaKyDeGhiDuLieu`/`khoaKyDeChotSo`):
+    // SELECT status FROM "hrm_payroll_periods" WHERE id = $1 FOR SHARE|UPDATE — tham số đầu là id kỳ.
+    $queryRaw: async (_sql: TemplateStringsArray, ...values: unknown[]) => {
+      const p = periods.find((x) => x.id === values[0]);
+      return p ? [{ status: p.status }] : [];
+    },
     // RVW-025 (review-findings.md 2026-09-10): engine đổi từ `findFirst()` sang
     // `findUnique({ where: { id: SINGLETON_ID } })` — mock phải có cả hai để không vỡ.
     generalSetting: {
@@ -296,6 +302,21 @@ function createMockTenantDb(options: MockTenantDbOptions = {}) {
         const row = periods.find((p) => p.id === where.id);
         if (!row) throw new Error('Not found');
         Object.assign(row, data, { updatedAt: new Date() });
+        return row;
+      },
+      // Chuyển trạng thái kỳ lương ghi CÓ ĐIỀU KIỆN (`where: { id, status: { in } }`) — áp đúng điều
+      // kiện như Postgres, trả `{ count }`.
+      updateMany: async ({ where, data }: any) => {
+        const row = periods.find(
+          (p) => p.id === where.id && (!where.status?.in || where.status.in.includes(p.status)),
+        );
+        if (!row) return { count: 0 };
+        Object.assign(row, data, { updatedAt: new Date() });
+        return { count: 1 };
+      },
+      findUniqueOrThrow: async ({ where }: any) => {
+        const row = periods.find((p) => p.id === where.id);
+        if (!row) throw new Error('Not found');
         return row;
       },
       delete: async ({ where }: any) => {
@@ -504,6 +525,12 @@ function createMockTenantDb(options: MockTenantDbOptions = {}) {
       createMany: async ({ data }: any) => {
         sheetLines.push(...data);
       },
+    },
+    // BR-dltl-030 — mọi đường ghi `/payroll-data/*` nay qua `assertPayrollModuleWritable`, tra khóa
+    // chốt bảng kê. Fixture này không chốt bảng kê nào ⇒ hành vi các test hiện có giữ nguyên.
+    // Chốt/mở chốt bảng kê có bộ test riêng: `hrmPayrollClosing.test.ts`.
+    payrollModuleLock: {
+      findUnique: async () => null,
     },
   };
 

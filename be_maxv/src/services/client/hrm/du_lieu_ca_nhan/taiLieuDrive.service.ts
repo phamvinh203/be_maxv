@@ -13,6 +13,7 @@ import {
   decryptGdtPassword,
   encryptGdtPassword,
   isEncryptionConfigured,
+  nguCanhTokenDrive,
 } from '../../hddt/gdtCredential';
 import {
   DriveChuaCauHinhError,
@@ -108,7 +109,7 @@ export async function luuKetNoiDrive(
   });
 
   const ketQua = await doiMaLayToken(code);
-  const blob = encryptGdtPassword(ketQua.refreshToken);
+  const blob = encryptGdtPassword(ketQua.refreshToken, nguCanhTokenDrive(donViId));
   if (!blob) {
     throw new ConflictError(
       'Không mã hóa được token Google, chưa lưu kết nối.',
@@ -207,11 +208,14 @@ async function layTokenDonVi(donViId: string): Promise<TokenDonVi> {
     throw new ConflictError(MESSAGES.HRM.DRIVE_CHUA_KET_NOI);
   }
 
-  const refreshToken = decryptGdtPassword({
-    cipher: dv.driveRefreshTokenCipher,
-    iv: dv.driveRefreshTokenIv,
-    tag: dv.driveRefreshTokenTag,
-  });
+  const refreshToken = decryptGdtPassword(
+    {
+      cipher: dv.driveRefreshTokenCipher,
+      iv: dv.driveRefreshTokenIv,
+      tag: dv.driveRefreshTokenTag,
+    },
+    nguCanhTokenDrive(donViId),
+  );
   if (!refreshToken) {
     // Giải mã hỏng = đổi khóa env hoặc dữ liệu lỗi; coi như chưa kết nối để người dùng nối lại.
     throw new ConflictError(MESSAGES.HRM.DRIVE_CAN_KET_NOI_LAI);
@@ -325,6 +329,29 @@ export function thuTuKeTiep(files: readonly CoThuTu[]): number {
   return files.reduce((max, f) => Math.max(max, f.thu_tu + 1), 0);
 }
 
+const PNG_DAU = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+/** Brand ISO-BMFF (hộp `ftyp`) của ảnh HEIF/HEIC mà điện thoại chụp ra. */
+const HEIC_BRAND = new Set(['heic', 'heix', 'hevc', 'hevx', 'heim', 'heis', 'mif1', 'msf1']);
+
+/**
+ * Loại file ĐO từ chữ ký đầu nội dung (magic bytes) — chỉ nhận ra đúng các loại trong `MIME_CHO_PHEP`,
+ * còn lại `null`. MIME trình duyệt gửi kèm chỉ là lời KHAI (đổi đuôi `.html` thành `.png` là xong), nên
+ * nội dung phải khớp lời khai mới nhận (vbsec 2026-09-10). PDF: đặc tả cho phép rác trước `%PDF-`, trình
+ * đọc chấp nhận trong 1024 byte đầu.
+ */
+export function mimeTheoNoiDung(b: Buffer): string | null {
+  if (b.length >= 3 && b[0] === 0xff && b[1] === 0xd8 && b[2] === 0xff) return 'image/jpeg';
+  if (b.length >= 8 && b.subarray(0, 8).equals(PNG_DAU)) return 'image/png';
+  if (b.length >= 12 && b.toString('latin1', 0, 4) === 'RIFF' && b.toString('latin1', 8, 12) === 'WEBP') {
+    return 'image/webp';
+  }
+  if (b.length >= 12 && b.toString('latin1', 4, 8) === 'ftyp' && HEIC_BRAND.has(b.toString('latin1', 8, 12))) {
+    return 'image/heic';
+  }
+  if (b.subarray(0, 1024).includes('%PDF-')) return 'application/pdf';
+  return null;
+}
+
 /**
  * Trần 20 file mỗi dòng giấy tờ — E-hrm-065 (409), BR-hrm-037.
  * Gọi TRƯỚC khi tải lên Drive: từ chối sau khi đã upload là để lại file mồ côi cho khách.
@@ -400,8 +427,13 @@ async function timTaiLieuKemFile(db: PrismaClient, id: string) {
  * mới, nên căn cước hai mặt không bao giờ giữ được cả hai — muốn bỏ một file thì gỡ đích danh
  * (`goFile`).
  *
- * Thứ tự các phép kiểm là cố ý: cỡ file → MIME → trần 20 file, **tất cả trước khi gọi Google**.
- * Từ chối sau khi đã upload là để lại file mồ côi trên Drive CỦA KHÁCH mà mình không còn con trỏ.
+ * Thứ tự các phép kiểm là cố ý: cỡ file → MIME (khai + đo từ nội dung) → trần 20 file, **tất cả
+ * trước khi gọi Google**. Từ chối sau khi đã upload là để lại file mồ côi trên Drive CỦA KHÁCH mà mình
+ * không còn con trỏ.
+ *
+ * Trần 20 file được đếm LẠI trong giao dịch có khóa theo giấy tờ ngay lúc ghi con trỏ: phép đếm trước
+ * khi upload chỉ để từ chối sớm — hai lượt tải song song cùng thấy 19 thì cùng qua (vbsec 2026-09-10).
+ * Lượt thua (hoặc ghi DB hỏng) gỡ file vừa tải khỏi Drive. `thu_tu` cũng tính trong khóa nên không trùng.
  */
 export async function dinhKemFile(
   db: PrismaClient,
@@ -421,6 +453,11 @@ export async function dinhKemFile(
       `Chỉ nhận ảnh (JPG, PNG, WEBP, HEIC) hoặc PDF — file gửi lên là "${file.mimeType}".`,
     );
   }
+  if (mimeTheoNoiDung(file.noiDung) !== file.mimeType) {
+    throw new ConflictError(
+      `Nội dung file không phải "${file.mimeType}" như đã khai — chỉ nhận ảnh (JPG, PNG, WEBP, HEIC) hoặc PDF thật.`,
+    );
+  }
   assertConChoChoFile(tl.files.length);
 
   const tok = await layTokenDonVi(donViId);
@@ -435,32 +472,50 @@ export async function dinhKemFile(
     noiDung: file.noiDung,
   });
 
-  const idFile = randomUUID();
-  await db.hrm_tai_lieu_file.create({
-    data: {
-      id: idFile,
-      tai_lieu_id: idTaiLieu,
-      drive_file_id: daTai.id,
-      ten_file: daTai.ten,
-      mime_type: daTai.mimeType,
-      kich_thuoc: daTai.kichThuoc,
-      thu_tu: thuTuKeTiep(tl.files),
-    },
-  });
-  // Chạm `datetime2` của dòng cha để màn danh sách biết giấy tờ vừa có thay đổi. KHÔNG đụng
-  // bốn cột con trỏ cũ — chúng đã ngừng dùng (xem ghi chú ở `schema.prisma`).
-  await db.hrm_tai_lieu.update({
-    where: { id: idTaiLieu },
-    data: { datetime2: new Date() },
-  });
+  let ghi: { idFile: string; soFile: number };
+  try {
+    ghi = await db.$transaction(async (tx) => {
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`hrm_tai_lieu_file:${idTaiLieu}`}))`;
+      const hienCo = await tx.hrm_tai_lieu_file.findMany({
+        where: { tai_lieu_id: idTaiLieu },
+        select: { thu_tu: true },
+      });
+      assertConChoChoFile(hienCo.length);
+
+      const idFile = randomUUID();
+      await tx.hrm_tai_lieu_file.create({
+        data: {
+          id: idFile,
+          tai_lieu_id: idTaiLieu,
+          drive_file_id: daTai.id,
+          ten_file: daTai.ten,
+          mime_type: daTai.mimeType,
+          kich_thuoc: daTai.kichThuoc,
+          thu_tu: thuTuKeTiep(hienCo),
+        },
+      });
+      // Chạm `datetime2` của dòng cha để màn danh sách biết giấy tờ vừa có thay đổi. KHÔNG đụng
+      // bốn cột con trỏ cũ — chúng đã ngừng dùng (xem ghi chú ở `schema.prisma`).
+      await tx.hrm_tai_lieu.update({
+        where: { id: idTaiLieu },
+        data: { datetime2: new Date() },
+      });
+      return { idFile, soFile: hienCo.length + 1 };
+    });
+  } catch (err) {
+    // Không ghi được con trỏ -> file vừa tải thành mồ côi trên Drive của khách: gỡ ngay (cố gắng hết
+    // mức; hỏng thì vẫn ném lỗi gốc, lỗi gỡ không che mất lý do thật).
+    await xoaFile(accessToken, daTai.id).catch(() => undefined);
+    throw err;
+  }
 
   return {
-    id: idFile,
+    id: ghi.idFile,
     tai_lieu_id: idTaiLieu,
     ten_file: daTai.ten,
     mime_type: daTai.mimeType,
     kich_thuoc: daTai.kichThuoc,
-    so_file: tl.files.length + 1,
+    so_file: ghi.soFile,
   };
 }
 

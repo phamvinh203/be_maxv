@@ -21,12 +21,19 @@ interface DongKy {
  * Mock tối thiểu của DB: đủ đi qua đúng đường đọc/gán kỳ, không cần Postgres thật.
  *
  * - `kyChot`: các kỳ đang ở trạng thái chốt (`danhDauKy` đọc trước tiên để chặn/chừa);
+ * - `kyChotSauLuotDauTien`: danh sách kỳ chốt từ lượt đọc thứ hai trở đi — mô phỏng "Chốt" bấm
+ *   trong lúc lượt kê khai đang quét hóa đơn;
  * - `giuBoi`: kỳ chốt đang giữ sẵn hóa đơn `tt-1` — mô phỏng tờ đã nằm ở kỳ đã nộp.
  */
 function taoDbGia(
   ngayUngVien: Date[],
-  { kyChot = [], giuBoi = null }: { kyChot?: DongKy[]; giuBoi?: DongKy | null } = {},
+  {
+    kyChot = [],
+    kyChotSauLuotDauTien,
+    giuBoi = null,
+  }: { kyChot?: DongKy[]; kyChotSauLuotDauTien?: DongKy[]; giuBoi?: DongKy | null } = {},
 ) {
+  let soLanDocKyChot = 0;
   const rawCalls: RawCall[] = [];
   const executeCalls: RawCall[] = [];
   const upsertIds: string[] = [];
@@ -62,7 +69,12 @@ function taoDbGia(
       findMany: async () =>
         giuBoi === null ? [] : [{ hoa_don_id: hoaDonThayThe.id, ...giuBoi }],
     },
-    tokhai_gtgt01: { findMany: async () => kyChot },
+    tokhai_gtgt01: {
+      findMany: async () => {
+        soLanDocKyChot += 1;
+        return soLanDocKyChot > 1 && kyChotSauLuotDauTien ? kyChotSauLuotDauTien : kyChot;
+      },
+    },
   } as unknown as PrismaClient;
 
   return { db, rawCalls, executeCalls, upsertIds };
@@ -135,6 +147,35 @@ test("hóa đơn đang thuộc kỳ chốt khác: giữ nguyên ở đó và nê
   );
   // Và nói rõ vì sao kỳ mới thiếu tờ đó, kèm tên kỳ đang giữ.
   assert.equal(ketQua.giuKyChot, 2); // một tờ mỗi chiều
+  assert.deepEqual(ketQua.kyChotDangGiu, ["T12/2025"]);
+});
+
+/*
+ * vbsec 2026-09-10 (MEDIUM, cùng nhóm toKhaiGtgt01.service.ts:225): danh sách kỳ chốt chỉ đọc MỘT lần
+ * trước lượt quét hóa đơn (N+1 truy vấn, có thể kéo dài). "Chốt" bấm trong lúc quét thì lượt ghi phía sau
+ * vẫn gỡ/gán hóa đơn của kỳ vừa chốt — bảng kê lệch khỏi số đã nộp mà không ai thấy.
+ */
+
+test("kỳ đang kê khai bị chốt trong lúc quét: dừng trước khi ghi, bảng kê không bị đụng", async () => {
+  const { db, executeCalls, upsertIds } = taoDbGia([new Date("2026-01-10T00:00:00+07:00")], {
+    kyChotSauLuotDauTien: [KY_Q1_2026_ROW],
+  });
+
+  await assert.rejects(() => danhDauKy(db, KY_Q1_2026), /đã chốt/);
+  assert.equal(executeCalls.length, 0);
+  assert.equal(upsertIds.length, 0);
+});
+
+test("kỳ khác bị chốt trong lúc quét: hóa đơn nó đang giữ vẫn được chừa lại", async () => {
+  const { db, upsertIds } = taoDbGia([new Date("2026-01-10T00:00:00+07:00")], {
+    kyChotSauLuotDauTien: [KY_T12_2025_ROW],
+    giuBoi: KY_T12_2025_ROW,
+  });
+
+  const ketQua = await danhDauKy(db, KY_Q1_2026);
+
+  assert.equal(upsertIds.length, 0);
+  assert.equal(ketQua.giuKyChot, 2);
   assert.deepEqual(ketQua.kyChotDangGiu, ["T12/2025"]);
 });
 

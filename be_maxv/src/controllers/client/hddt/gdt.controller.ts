@@ -5,12 +5,14 @@ import {
   resolveTenantDbName,
   resolveTenantInfo,
 } from "../../../helpers/resolveTenantDb";
-import { renderPdfFromHtml } from "../../../helpers/pdfRenderer";
+import { PdfRenderBusyError, renderPdfFromHtml } from "../../../helpers/pdfRenderer";
+import { thongDiepLoiAnToan } from "../../../helpers/thongDiepLoi";
 import { sysPrisma } from "../../../config/db.sys";
 import { accessibleDonViWhere } from "../../../helpers/access";
 import {
   decryptGdtPassword,
   encryptGdtPassword,
+  nguCanhMatKhauGdt,
   type EncryptedBlob,
 } from "../../../services/client/hddt/gdtCredential";
 import {
@@ -55,6 +57,41 @@ async function activeCompanyCredential(request: FastifyRequest): Promise<{
   return { id: dv.id, maSoThue: dv.maSoThue, storedBlob };
 }
 
+/**
+ * Trần khoảng ngày cho endpoint kéo khối lớn trong MỘT request (vbsec 2026-09-10): `/saved-details` (JSON
+ * chi tiết của từng hóa đơn) và 2 endpoint CHẠY CHẶN cũ (gọi cổng thuế theo từng tháng của khoảng). 366 =
+ * trọn 1 năm nhuận. `/saved` (danh sách nhẹ — nút "Sao lưu dữ liệu" cố ý đọc 2000..2100) và các lượt CHẠY
+ * NỀN (có pacer, bấm Dừng được) không trần, chỉ kiểm ngày hợp lệ.
+ */
+const KHOANG_NGAY_TOI_DA = 366;
+
+/** `yyyy-MM-dd` là ngày có thật (loại 2026-02-30) -> số ngày kể từ epoch; còn lại -> null. */
+function soNgayYmd(s: unknown): number | null {
+  const m = typeof s === "string" ? /^(\d{4})-(\d{2})-(\d{2})$/.exec(s) : null;
+  if (!m) return null;
+  const [nam, thang, ngay] = [Number(m[1]), Number(m[2]) - 1, Number(m[3])];
+  const d = new Date(Date.UTC(nam, thang, ngay));
+  if (d.getUTCFullYear() !== nam || d.getUTCMonth() !== thang || d.getUTCDate() !== ngay) return null;
+  return d.getTime() / 86_400_000;
+}
+
+/**
+ * Kiểm khoảng ngày client gửi: đủ 2 đầu, đúng `yyyy-MM-dd` và là ngày có thật, từ ≤ đến, và (khi có
+ * `toiDaNgay`) không dài quá trần. Trả thông điệp cho 400, hợp lệ -> null. Ngày sai trước đây lọt xuống
+ * `vnDayStart` thành Invalid Date rồi Prisma ném -> 500.
+ */
+function loiKhoangNgay(tuNgay: unknown, denNgay: unknown, toiDaNgay?: number): string | null {
+  if (!tuNgay || !denNgay) return "Thiếu khoảng ngày (tuNgay/denNgay)";
+  const tu = soNgayYmd(tuNgay);
+  const den = soNgayYmd(denNgay);
+  if (tu === null || den === null) return "Ngày không hợp lệ (định dạng yyyy-MM-dd)";
+  if (tu > den) return "Từ ngày phải trước hoặc bằng đến ngày";
+  if (toiDaNgay !== undefined && den - tu + 1 > toiDaNgay) {
+    return `Khoảng ngày tối đa ${toiDaNgay} ngày cho mỗi lần — vui lòng chia nhỏ khoảng ngày.`;
+  }
+  return null;
+}
+
 /** Token đăng nhập GDT gửi qua header riêng `X-Gdt-Token` (Authorization đã dành cho JWT app). */
 function extractGdtToken(request: FastifyRequest): string | undefined {
   const header = request.headers["x-gdt-token"];
@@ -79,29 +116,48 @@ export async function captcha(
 }
 
 /**
- * POST /gdt/login (authenticated) — đăng nhập cổng thuế. Đăng nhập THÀNH CÔNG thì tự MÃ HÓA LƯU mật
- * khẩu cho công ty đang chọn (khi MST khớp + đã cấu hình khóa) để lần sau điền sẵn. Không có bước
+ * POST /gdt/login (authenticated) — đăng nhập cổng thuế. Đăng nhập THÀNH CÔNG bằng mật khẩu GÕ TAY thì
+ * tự MÃ HÓA LƯU mật khẩu cho công ty đang chọn (khi MST khớp + đã cấu hình khóa). Không có bước
  * "ghi nhớ": mỗi lần đăng nhập đúng là cập nhật lại mật khẩu đã lưu (đổi mật khẩu cổng thuế -> lần
  * đăng nhập đúng kế tiếp tự ghi đè bản cũ).
+ *
+ * `dungMatKhauDaLuu: true` + không gửi `password` -> backend tự giải mã mật khẩu đã lưu để đăng nhập
+ * (vbsec 2026-09-10: mật khẩu không bao giờ về trình duyệt, xem `getGdtCredential`). Chỉ dùng cho ĐÚNG
+ * MST của công ty đang chọn — không để mật khẩu đã lưu thành chìa khóa thử vào MST khác.
  */
 export async function login(
   request: FastifyRequest<{ Body: LoginRequest }>,
   reply: FastifyReply
 ) {
   const body = request.body;
-  if (!body?.mst || !body?.password || !body?.captcha || !body?.key) {
+  const dungDaLuu = body?.dungMatKhauDaLuu === true && !body?.password;
+  if (!body?.mst || (!body?.password && !dungDaLuu) || !body?.captcha || !body?.key) {
     return reply.status(400).send({ message: "Vui lòng nhập đầy đủ thông tin." });
   }
 
-  try {
-    const result = await GDTService.login(body);
+  const active = await activeCompanyCredential(request);
+  let password = body.password;
+  if (dungDaLuu) {
+    const daLuu =
+      active?.storedBlob && body.mst === active.maSoThue
+        ? decryptGdtPassword(active.storedBlob, nguCanhMatKhauGdt(active.id))
+        : null;
+    if (!daLuu) {
+      return reply.status(400).send({
+        message: "Chưa có mật khẩu đã lưu cho mã số thuế này, vui lòng nhập mật khẩu.",
+      });
+    }
+    password = daLuu;
+  }
 
-    // Đăng nhập OK -> lưu/cập nhật mật khẩu đã mã hóa cho công ty đang chọn (nếu MST khớp + có khóa).
-    // MST khớp: tránh ghi mật khẩu của MST khác đè lên công ty đang chọn. Lỗi lưu / thiếu khóa KHÔNG
-    // làm hỏng đăng nhập (token đã có trong tay), chỉ là lần sau không điền sẵn được.
-    const active = await activeCompanyCredential(request);
-    if (active && body.mst === active.maSoThue) {
-      const blob = encryptGdtPassword(body.password);
+  try {
+    const result = await GDTService.login({ ...body, password });
+
+    // Đăng nhập OK bằng mật khẩu gõ tay -> lưu/cập nhật bản mã hóa cho công ty đang chọn (nếu MST khớp
+    // + có khóa). MST khớp: tránh ghi mật khẩu của MST khác đè lên công ty đang chọn. Lỗi lưu / thiếu
+    // khóa KHÔNG làm hỏng đăng nhập (token đã có trong tay), chỉ là lần sau phải gõ lại.
+    if (!dungDaLuu && active && body.mst === active.maSoThue) {
+      const blob = encryptGdtPassword(password, nguCanhMatKhauGdt(active.id));
       if (blob) {
         await sysPrisma.donVi
           .update({
@@ -126,22 +182,26 @@ export async function login(
     // -> nó sẽ gọi /auth/refresh (thành công vì phiên app còn hạn) rồi GỬI LẠI request đăng nhập với
     // captcha đã bị dùng, thành 2 lượt gọi cổng thuế cho 1 lần bấm. 400 = sai captcha/thông tin GDT.
     return reply.status(400).send({
-      message: err instanceof Error ? err.message : "Đăng nhập GDT thất bại",
+      message: thongDiepLoiAnToan(err, "Đăng nhập GDT thất bại"),
     });
   }
 }
 
 /**
- * GET /gdt/credential (authenticated) — trả MẬT KHẨU đã lưu (đã giải mã) của công ty đang chọn để
- * FE điền sẵn vào ô mật khẩu; `{ password: null }` nếu chưa lưu / chưa cấu hình khóa. Không cần token GDT.
+ * GET /gdt/credential (authenticated) — công ty đang chọn đã lưu mật khẩu cổng thuế chưa:
+ * `{ hasSaved }`. Không cần token GDT.
  *
- * LƯU Ý BẢO MẬT: endpoint này gửi MẬT KHẨU THẬT về trình duyệt (đã đăng nhập app + đúng quyền công
- * ty đang chọn) để điền sẵn — đúng theo thiết kế "điền thẳng mật khẩu vào ô".
+ * KHÔNG trả mật khẩu (vbsec 2026-09-10): trước đây gửi mật khẩu thật về trình duyệt để điền sẵn — mọi
+ * người có quyền vào công ty (kể cả nhân viên) đọc được mật khẩu cổng thuế của doanh nghiệp. Giờ FE hiện
+ * "đã lưu" và đăng nhập bằng cờ `dungMatKhauDaLuu` (xem `login`). "Đã lưu" = giải mã được thật (khóa đổi /
+ * dữ liệu hỏng thì coi như chưa lưu).
  */
 export async function getGdtCredential(request: FastifyRequest, reply: FastifyReply) {
   const active = await activeCompanyCredential(request);
-  const password = active?.storedBlob ? decryptGdtPassword(active.storedBlob) : null;
-  return reply.send({ password });
+  const hasSaved =
+    !!active?.storedBlob &&
+    decryptGdtPassword(active.storedBlob, nguCanhMatKhauGdt(active.id)) !== null;
+  return reply.send({ hasSaved });
 }
 
 /**
@@ -161,11 +221,8 @@ async function handleGdtInvoices(
   }
 
   const { tuNgay, denNgay } = request.query;
-  if (!tuNgay || !denNgay) {
-    return reply.status(400).send({
-      message: "Thiếu khoảng ngày (tuNgay/denNgay)",
-    });
-  }
+  const loiNgay = loiKhoangNgay(tuNgay, denNgay, KHOANG_NGAY_TOI_DA);
+  if (loiNgay) return reply.status(400).send({ message: loiNgay });
 
   // Ngoài try/catch riêng: lỗi quyền/tenant (403/404) cần trả đúng mã (qua error-handler
   // chung), không bị nuốt thành 500 của khối gọi GDT bên dưới. resolveTenantDb lỗi -> dừng
@@ -200,12 +257,12 @@ async function handleGdtInvoices(
     );
 
     return reply.status(500).send({
-      message:
-        err instanceof Error
-          ? err.message
-          : direction === "purchase"
-            ? "Không lấy được danh sách hóa đơn đầu vào"
-            : "Không lấy được danh sách hóa đơn đầu ra",
+      message: thongDiepLoiAnToan(
+        err,
+        direction === "purchase"
+          ? "Không lấy được danh sách hóa đơn đầu vào"
+          : "Không lấy được danh sách hóa đơn đầu ra",
+      ),
     });
   }
 }
@@ -227,11 +284,8 @@ async function handleSavedInvoices(
   direction: "purchase" | "sold",
   query: PurchaseInvoiceQuery | SoldInvoiceQuery,
 ) {
-  if (!query.tuNgay || !query.denNgay) {
-    return reply.status(400).send({
-      message: "Thiếu khoảng ngày (tuNgay/denNgay)",
-    });
-  }
+  const loiNgay = loiKhoangNgay(query.tuNgay, query.denNgay);
+  if (loiNgay) return reply.status(400).send({ message: loiNgay });
 
   // Ngoài try/catch: lỗi quyền/tenant (403/404) cần trả đúng mã (qua error-handler chung),
   // không bị nuốt thành 500 của khối đọc DB bên dưới.
@@ -246,7 +300,7 @@ async function handleSavedInvoices(
 
     return reply.status(500).send({
       message:
-        err instanceof Error ? err.message : "Không đọc được hóa đơn đã lưu",
+        thongDiepLoiAnToan(err, "Không đọc được hóa đơn đã lưu"),
     });
   }
 }
@@ -275,9 +329,8 @@ async function handleSavedDetails(
   direction: "purchase" | "sold",
   query: PurchaseInvoiceQuery | SoldInvoiceQuery,
 ) {
-  if (!query.tuNgay || !query.denNgay) {
-    return reply.status(400).send({ message: "Thiếu khoảng ngày (tuNgay/denNgay)" });
-  }
+  const loiNgay = loiKhoangNgay(query.tuNgay, query.denNgay, KHOANG_NGAY_TOI_DA);
+  if (loiNgay) return reply.status(400).send({ message: loiNgay });
 
   const tenantDb = await resolveTenantDb(request);
 
@@ -287,7 +340,7 @@ async function handleSavedDetails(
   } catch (err) {
     request.log.error(err);
     return reply.status(500).send({
-      message: err instanceof Error ? err.message : "Không đọc được chi tiết đã lưu",
+      message: thongDiepLoiAnToan(err, "Không đọc được chi tiết đã lưu"),
     });
   }
 }
@@ -317,9 +370,8 @@ async function handleDetailComplete(
   direction: "purchase" | "sold",
   query: PurchaseInvoiceQuery | SoldInvoiceQuery,
 ) {
-  if (!query.tuNgay || !query.denNgay) {
-    return reply.status(400).send({ message: "Thiếu khoảng ngày (tuNgay/denNgay)" });
-  }
+  const loiNgay = loiKhoangNgay(query.tuNgay, query.denNgay);
+  if (loiNgay) return reply.status(400).send({ message: loiNgay });
 
   const tenantDb = await resolveTenantDb(request);
 
@@ -329,7 +381,7 @@ async function handleDetailComplete(
   } catch (err) {
     request.log.error(err);
     return reply.status(500).send({
-      message: err instanceof Error ? err.message : "Không kiểm tra được trạng thái chi tiết",
+      message: thongDiepLoiAnToan(err, "Không kiểm tra được trạng thái chi tiết"),
     });
   }
 }
@@ -364,15 +416,19 @@ export async function renderInvoicePdf(
   // Kích thước thực do `bodyLimit` của route (5MB) chặn TRƯỚC handler (theo byte) — không tự đếm ở đây.
 
   try {
-    const pdf = await renderPdfFromHtml(html);
+    const pdf = await renderPdfFromHtml(html, request.user.userId);
     return reply
       .header("Content-Type", "application/pdf")
       .header("Content-Disposition", 'inline; filename="hoa-don.pdf"')
       .send(pdf);
   } catch (err) {
+    // Hàng đợi render đầy: không phải sự cố máy chủ — 429 để FE báo người dùng thử lại.
+    if (err instanceof PdfRenderBusyError) {
+      return reply.status(429).send({ message: err.message });
+    }
     request.log.error(err);
     return reply.status(500).send({
-      message: err instanceof Error ? err.message : "Không tạo được PDF",
+      message: thongDiepLoiAnToan(err, "Không tạo được PDF"),
     });
   }
 }
@@ -459,7 +515,7 @@ export async function exportInvoiceXml(
     // Cũng không dùng 403/404: `resolveTenantDb` đã dùng hai mã đó cho lỗi quyền/tenant.
     const status = GDTService.classifyGdtError(err) === "auth" ? 409 : 502;
     return reply.status(status).send({
-      message: err instanceof Error ? err.message : "Không tải được XML gốc từ cổng thuế",
+      message: thongDiepLoiAnToan(err, "Không tải được XML gốc từ cổng thuế"),
     });
   }
 }
@@ -495,7 +551,7 @@ export async function savedInvoiceDetailById(
   } catch (err) {
     request.log.error(err);
     return reply.status(500).send({
-      message: err instanceof Error ? err.message : "Không đọc được chi tiết đã lưu",
+      message: thongDiepLoiAnToan(err, "Không đọc được chi tiết đã lưu"),
     });
   }
 }
@@ -531,7 +587,7 @@ export async function relatedInvoiceChain(
   } catch (err) {
     request.log.error(err);
     return reply.status(500).send({
-      message: err instanceof Error ? err.message : "Không đọc được hóa đơn liên quan",
+      message: thongDiepLoiAnToan(err, "Không đọc được hóa đơn liên quan"),
     });
   }
 }
@@ -590,7 +646,7 @@ export async function downloadOneInvoiceDetail(
     // ghi bền dấu lỗi (best-effort) để dòng vẫn hiện "Lỗi" sau khi nạp lại/reload.
     await GDTService.markInvoiceDetailError(tenantDb, direction, id).catch(() => {});
     return reply.status(500).send({
-      message: err instanceof Error ? err.message : "Không tải được chi tiết hóa đơn",
+      message: thongDiepLoiAnToan(err, "Không tải được chi tiết hóa đơn"),
     });
   }
 }
@@ -616,10 +672,8 @@ async function handleStartDetailRun(
       message: "Thiếu token đăng nhập GDT (header X-Gdt-Token)",
     });
   }
-  const { tuNgay, denNgay } = request.query;
-  if (!tuNgay || !denNgay) {
-    return reply.status(400).send({ message: "Thiếu khoảng ngày (tuNgay/denNgay)" });
-  }
+  const loiNgay = loiKhoangNgay(request.query.tuNgay, request.query.denNgay);
+  if (loiNgay) return reply.status(400).send({ message: loiNgay });
 
   // Ngoài try/catch: lỗi quyền/tenant (403/404) trả đúng mã qua error-handler chung.
   // Dùng dbName (không phải client) vì lượt chạy nền dài — engine tự getTenantDb lại để giữ pool sống.
@@ -714,10 +768,8 @@ async function handleStartUpdateRun(
     });
   }
 
-  const { tuNgay, denNgay } = request.query;
-  if (!tuNgay || !denNgay) {
-    return reply.status(400).send({ message: "Thiếu khoảng ngày (tuNgay/denNgay)" });
-  }
+  const loiNgay = loiKhoangNgay(request.query.tuNgay, request.query.denNgay);
+  if (loiNgay) return reply.status(400).send({ message: loiNgay });
 
   // dbName (không phải client): lượt nền chạy lâu -> service tự getTenantDb lại để giữ pool sống.
   // maSoThue: guard chống ghi nhầm data MST khác vào DB tenant đang chọn.
@@ -794,9 +846,8 @@ export async function syncInvoices(
   }
 
   const { tuNgay, denNgay, direction, loai } = request.body ?? {};
-  if (!tuNgay || !denNgay) {
-    return reply.status(400).send({ message: "Thiếu khoảng ngày (tuNgay/denNgay)" });
-  }
+  const loiNgay = loiKhoangNgay(tuNgay, denNgay, KHOANG_NGAY_TOI_DA);
+  if (loiNgay) return reply.status(400).send({ message: loiNgay });
   if (!VALID_DIRECTIONS.includes(direction) || !VALID_KINDS.includes(loai)) {
     return reply.status(400).send({ message: "Tham số direction/loai không hợp lệ" });
   }
@@ -827,7 +878,7 @@ export async function syncInvoices(
       err instanceof Error ? `${err.name}: ${err.message}` : err,
     );
     return reply.status(500).send({
-      message: err instanceof Error ? err.message : "Không đồng bộ được hóa đơn",
+      message: thongDiepLoiAnToan(err, "Không đồng bộ được hóa đơn"),
     });
   }
 }
@@ -849,9 +900,8 @@ export async function startSyncRun(
   }
 
   const { tuNgay, denNgay, direction, loai } = request.body ?? {};
-  if (!tuNgay || !denNgay) {
-    return reply.status(400).send({ message: "Thiếu khoảng ngày (tuNgay/denNgay)" });
-  }
+  const loiNgay = loiKhoangNgay(tuNgay, denNgay);
+  if (loiNgay) return reply.status(400).send({ message: loiNgay });
   if (!VALID_DIRECTIONS.includes(direction) || !VALID_KINDS.includes(loai)) {
     return reply.status(400).send({ message: "Tham số direction/loai không hợp lệ" });
   }
@@ -910,7 +960,7 @@ export async function syncHistory(request: FastifyRequest, reply: FastifyReply) 
   } catch (err) {
     request.log.error(err);
     return reply.status(500).send({
-      message: err instanceof Error ? err.message : "Không đọc được lịch sử đồng bộ",
+      message: thongDiepLoiAnToan(err, "Không đọc được lịch sử đồng bộ"),
     });
   }
 }
@@ -923,7 +973,7 @@ export async function clearSyncData(request: FastifyRequest, reply: FastifyReply
   } catch (err) {
     request.log.error(err);
     return reply.status(500).send({
-      message: err instanceof Error ? err.message : "Không xóa được dữ liệu đã đồng bộ",
+      message: thongDiepLoiAnToan(err, "Không xóa được dữ liệu đã đồng bộ"),
     });
   }
 }
@@ -948,7 +998,7 @@ export async function deleteSyncLog(
   } catch (err) {
     request.log.error(err);
     return reply.status(500).send({
-      message: err instanceof Error ? err.message : "Không xóa được dòng lịch sử đồng bộ",
+      message: thongDiepLoiAnToan(err, "Không xóa được dòng lịch sử đồng bộ"),
     });
   }
 }
@@ -961,7 +1011,7 @@ export async function systemStats(request: FastifyRequest, reply: FastifyReply) 
   } catch (err) {
     request.log.error(err);
     return reply.status(500).send({
-      message: err instanceof Error ? err.message : "Không đọc được thống kê",
+      message: thongDiepLoiAnToan(err, "Không đọc được thống kê"),
     });
   }
 }

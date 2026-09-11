@@ -151,3 +151,26 @@ const CTU_ID_RE = /data-id="(\d+)"/g;
 export function bocDanhSachCtuId(html: string): string[] {
   return [...html.matchAll(CTU_ID_RE)].map((m) => m[1]!);
 }
+
+/** Field `dse_*` định danh PHIÊN eTax — có giá trị là đủ tiếp tục phiên cổng thuế của doanh nghiệp. */
+const DSE_BI_MAT = "(?:sessionId|processorId)";
+const CHE = "***";
+
+/**
+ * Che bí mật phiên eTax trước khi ghi log `[DEBUG-GNT]` (vbsec 2026-09-10): giá trị `dse_sessionId` /
+ * `dse_processorId` (body form đã gửi, input ẩn trong HTML cổng — thuộc tính `name`/`value` theo cả hai
+ * thứ tự) và phần tham số sau `vnconnect=SSOTHUE` của vé SSO. Tên field giữ nguyên để log vẫn đọc được.
+ */
+export function cheBiMatGnt(text: string): string {
+  return text
+    .replace(new RegExp(`(dse_${DSE_BI_MAT}=)[^&\\s"'<>]*`, "gi"), `$1${CHE}`)
+    .replace(
+      new RegExp(`(<input[^>]*name="dse_${DSE_BI_MAT}"[^>]*value=")[^"]*`, "gi"),
+      `$1${CHE}`,
+    )
+    .replace(
+      new RegExp(`(<input[^>]*value=")[^"]*("[^>]*name="dse_${DSE_BI_MAT}")`, "gi"),
+      `$1${CHE}$2`,
+    )
+    .replace(/(vnconnect=SSOTHUE)[^"'\s<>]*/gi, `$1${CHE}`);
+}

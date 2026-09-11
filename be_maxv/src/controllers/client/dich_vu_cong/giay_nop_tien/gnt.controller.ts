@@ -2,6 +2,9 @@ import { FastifyReply, FastifyRequest } from "fastify";
 import * as DvcGnt from "../../../../services/client/dich_vu_cong/giay_nop_tien/dvc-gnt-dong-bo.service";
 import * as EtaxGnt from "../../../../services/client/dich_vu_cong/giay_nop_tien/gdt-etax-gnt.service";
 import { resolveTenantDb } from "../../../../helpers/resolveTenantDb";
+import { thongDiepLoiAnToan } from "../../../../helpers/thongDiepLoi";
+import { validateQuery } from "../../../../utils/validate";
+import { gntTraCuuQuerySchema } from "../../../../validators/dich_vu_cong/traCuu.validator";
 import {
   phienDvc,
   voiPhienTuPhucHoi,
@@ -15,20 +18,15 @@ export async function traCuuGiayNopTien(
   request: FastifyRequest<{ Querystring: DvcGnt.TimGntBoLoc }>,
   reply: FastifyReply,
 ) {
-  const q = request.query;
+  const q = validateQuery(gntTraCuuQuerySchema, request.query);
   const tenantDb = await resolveTenantDb(request);
   try {
-    const bang = await DvcGnt.timGiayNopTienDaDongBo(tenantDb, {
-      tuNgay: q?.tuNgay,
-      denNgay: q?.denNgay,
-      maGiaoDich: q?.maGiaoDich,
-      soGnt: q?.soGnt,
-    });
+    const bang = await DvcGnt.timGiayNopTienDaDongBo(tenantDb, q);
     return reply.send(bang);
   } catch (err) {
     request.log.error(err);
     return reply.status(400).send({
-      message: err instanceof Error ? err.message : "Tra cứu Giấy nộp tiền thất bại.",
+      message: thongDiepLoiAnToan(err, "Tra cứu Giấy nộp tiền thất bại."),
     });
   }
 }

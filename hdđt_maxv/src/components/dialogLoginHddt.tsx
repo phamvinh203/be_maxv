@@ -71,14 +71,14 @@ export default function DialogLoginHddt({
   const loginMutation = useMutation({ mutationFn: loginGdt });
   const submitting = loginMutation.isPending;
 
-  // Mật khẩu cổng thuế đã lưu (server suy theo MST công ty đang chọn = `initialUsername`) — điền
-  // sẵn vào ô mật khẩu khi mở dialog.
+  // Công ty đang chọn (MST = `initialUsername`) đã lưu mật khẩu cổng thuế chưa. Server KHÔNG trả mật
+  // khẩu: đã lưu thì cho phép để trống ô mật khẩu, lúc đăng nhập gửi `dungMatKhauDaLuu` để server tự
+  // dùng. Chỉ áp dụng khi tên đăng nhập vẫn là đúng MST đó (server cũng chặn MST khác).
   const queryClient = useQueryClient();
   const activeMst = initialUsername ?? "";
   const savedPwQuery = useGdtSavedPasswordQuery(activeMst, open);
-  const savedPassword = savedPwQuery.data?.password ?? null;
-  // Chỉ điền sẵn 1 lần mỗi lần mở, để không đè lên khi người dùng đã sửa tay.
-  const didPrefillRef = useRef(false);
+  const coMatKhauDaLuu =
+    !!savedPwQuery.data?.hasSaved && !!activeMst && username.trim() === activeMst;
 
   // Ẩn ảnh captcha cũ khi lấy captcha lỗi — tránh người dùng nhập theo phiên đã hỏng.
   const captchaSrc = useMemo(
@@ -108,16 +108,7 @@ export default function DialogLoginHddt({
     setCaptchaInput("");
     setError("");
     setDone(false);
-    didPrefillRef.current = false;
   }, [open, initialUsername]);
-
-  // ĐIỀN SẴN mật khẩu đã lưu khi mở dialog (một lần/lần mở). Query trả về sau bước reset ở trên nên
-  // đặt ở effect riêng; dùng functional set để không đè lên nếu người dùng đã kịp gõ mật khẩu khác.
-  useEffect(() => {
-    if (!open || didPrefillRef.current || !savedPassword) return;
-    didPrefillRef.current = true;
-    setPassword((prev) => (prev ? prev : savedPassword));
-  }, [open, savedPassword]);
 
   // TỰ ĐIỀN MÃ CAPTCHA: mỗi khi có ảnh SVG mới (`captcha.content` đổi — lúc mở dialog hoặc bấm
   // refresh), giải mã ngay từ SVG bằng `solveCaptcha` rồi đổ vào ô nhập. Giải không ra (trả null,
@@ -151,24 +142,31 @@ export default function DialogLoginHddt({
 
   /**
    * Validate + gọi loginGdt; thành công báo lên qua onLoginSuccess, thất bại thì lấy captcha mới.
-   * Server tự lưu/cập nhật mật khẩu khi đăng nhập thành công, nên FE chỉ cần làm mới cache mật khẩu
-   * đã lưu để lần mở sau điền đúng bản mới nhất. Dùng: submit form (nút "Đăng nhập" hoặc phím Enter).
+   * Ô mật khẩu để trống mà công ty đã lưu mật khẩu -> gửi `dungMatKhauDaLuu` thay cho mật khẩu.
+   * Server tự lưu/cập nhật mật khẩu khi đăng nhập thành công bằng mật khẩu gõ tay, nên FE chỉ cần làm
+   * mới cờ "đã lưu". Dùng: submit form (nút "Đăng nhập" hoặc phím Enter).
    */
   const handleSubmit = (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     if (submitting || done) return;
     setError("");
-    if (!username || !password || !captchaInput || !captcha?.key) {
+    const dungMatKhauDaLuu = !password && coMatKhauDaLuu;
+    if (!username || (!password && !dungMatKhauDaLuu) || !captchaInput || !captcha?.key) {
       setError("Vui lòng nhập đầy đủ thông tin.");
       return;
     }
     const mst = username.trim();
     loginMutation.mutate(
-      { mst, password, captcha: captchaInput.trim(), key: captcha.key },
+      {
+        mst,
+        ...(dungMatKhauDaLuu ? { dungMatKhauDaLuu: true } : { password }),
+        captcha: captchaInput.trim(),
+        key: captcha.key,
+      },
       {
         onSuccess: (res) => {
           setDone(true);
-          // Server vừa lưu/cập nhật mật khẩu -> làm mới cache để lần mở sau điền đúng bản mới nhất.
+          // Server vừa lưu/cập nhật mật khẩu -> làm mới cờ "đã lưu" cho lần mở sau.
           void queryClient.invalidateQueries({ queryKey: gdtSavedPasswordKey(mst) });
           if (res.token) onLoginSuccess?.(res.token, mst);
         },
@@ -246,6 +244,7 @@ export default function DialogLoginHddt({
               fullWidth
               autoFocus={!!initialUsername}
               autoComplete="current-password"
+              placeholder={coMatKhauDaLuu ? "••••••••" : undefined}
               slotProps={{
                 input: {
                   endAdornment: (

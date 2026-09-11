@@ -67,12 +67,20 @@ export interface SetEmployeeSalaryApiBody {
   khoan: Record<string, number>;
 }
 
+/** Một bản set lương người duyệt đang xem — máy chủ chỉ duyệt nếu bản đó còn đúng phiên bản này. */
+export interface BanSetLuongDaXem {
+  employeeId: string;
+  setupVersion: number;
+}
+
 export interface ApproveSalariesApiBody {
-  employeeIds?: string[];
+  items: BanSetLuongDaXem[];
 }
 
 export interface ApproveSalariesApiResult {
   approvedCount: number;
+  /** Bản gửi lên nhưng không duyệt: đã bị sửa sau khi xem (phiên bản đổi) hoặc không còn chờ duyệt. */
+  skippedCount: number;
   message: string;
 }
 
@@ -111,9 +119,12 @@ export function deleteEmployeeSalary(
   return api.del<{ message: string }>(`${BASE}/${encodeURIComponent(employeeId)}`);
 }
 
-/** Bỏ trống (hoặc mảng rỗng) `employeeIds` là duyệt TẤT CẢ bản đang chờ duyệt. */
+/**
+ * Duyệt ĐÚNG các bản đang xem, kèm phiên bản đã xem (vbsec 2026-09-10 #40). Máy chủ bỏ qua bản đã bị sửa
+ * sau khi xem — không còn kiểu "gửi rỗng = duyệt tất cả" (máy chủ trả 400).
+ */
 export function approveEmployeeSalaries(
-  body?: ApproveSalariesApiBody,
+  body: ApproveSalariesApiBody,
 ): Promise<ApproveSalariesApiResult> {
-  return api.post<ApproveSalariesApiResult>(`${BASE}/approve`, body ?? {});
+  return api.post<ApproveSalariesApiResult>(`${BASE}/approve`, body);
 }

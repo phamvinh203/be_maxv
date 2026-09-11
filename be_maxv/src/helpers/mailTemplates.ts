@@ -58,27 +58,52 @@ export function welcomeEmail(input: {
   };
 }
 
+/** Hướng dẫn tự đặt mật khẩu — dùng chung cho mọi email mà người nhận chưa có (hoặc vừa mất) mật khẩu. */
+const HUONG_DAN_DAT_MAT_KHAU = [
+  'Để đặt mật khẩu, hãy mở trang đăng nhập MaxV, bấm "Quên mật khẩu", nhập email trên để nhận mã xác thực rồi tự đặt mật khẩu mới.',
+  'MaxV không bao giờ gửi mật khẩu qua email.',
+];
+
 /**
- * Email báo nhân viên đã được admin duyệt, kèm mật khẩu đăng nhập.
+ * Email báo nhân viên đã được admin duyệt.
  *
- * CÓ CHỨA MẬT KHẨU — khác `welcomeEmail`, và đây là chủ ý: mật khẩu do hệ thống sinh
- * (`generatePassword`) nên email này là kênh DUY NHẤT người nhận biết được nó. Vì vậy
- * caller phải rollback việc tạo user nếu gửi thất bại. Đừng "sửa" bằng cách bỏ mật khẩu
- * ra khỏi email mà không đổi luồng cấp mật khẩu.
- * Dùng: `approveInvite` (services/admin/adminInvite.service.ts).
+ * KHÔNG chứa mật khẩu (vbsec 2026-09-10): tài khoản tạo với mật khẩu không ai biết
+ * (`bamMatKhauKhongAiBiet`), người nhận tự đặt bằng "Quên mật khẩu" — mật khẩu gửi dạng rõ nằm vĩnh viễn
+ * trong hộp thư, bị chuyển tiếp/đọc trộm là mất tài khoản.
+ * Dùng: `adminApproveInvite` (services/admin/adminInvite.service.ts).
  */
 export function inviteApprovedEmail(input: {
   email: string;
-  password: string;
   congTy: MailCongTy[];
 }): MailContent {
   return {
     subject: 'Tài khoản nhân viên của bạn đã được duyệt',
     text: [
+      'Tài khoản nhân viên MaxV của bạn đã được duyệt.',
       `Công ty được cấp: ${formatCongTy(input.congTy)}`,
       `Email đăng nhập: ${input.email}`,
-      `Mật khẩu: ${input.password}`,
-      'Vui lòng đăng nhập và đổi mật khẩu ngay lần đầu sử dụng.',
+      '',
+      ...HUONG_DAN_DAT_MAT_KHAU,
+    ].join('\n'),
+  };
+}
+
+/**
+ * Email báo người dùng: quản trị viên vừa đặt lại (vô hiệu) mật khẩu — hướng dẫn tự đặt mật khẩu mới.
+ * KHÔNG chứa mật khẩu, xem `inviteApprovedEmail`.
+ * Dùng: `adminResetPassword` (services/admin/adminUser.service.ts).
+ */
+export function adminResetPasswordEmail(input: { hoTen: string; email: string }): MailContent {
+  return {
+    subject: 'Mật khẩu tài khoản MaxV của bạn đã được đặt lại',
+    text: [
+      `Xin chào ${input.hoTen},`,
+      '',
+      'Quản trị viên MaxV vừa đặt lại mật khẩu tài khoản của bạn: mật khẩu cũ không còn dùng được và mọi phiên đăng nhập đã bị đăng xuất.',
+      `Email đăng nhập: ${input.email}`,
+      '',
+      ...HUONG_DAN_DAT_MAT_KHAU,
+      'Nếu bạn không yêu cầu việc này, hãy liên hệ quản trị viên ngay.',
     ].join('\n'),
   };
 }

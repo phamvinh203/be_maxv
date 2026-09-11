@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useCallback } from "react";
 import { useAuth } from "@/features/auth/useAuth";
 import { hrmPayrollPeriodKeys, hrmPayrollCalculationKeys } from "../hrmKeys";
+import { useQuyenXemLuong } from "../du_lieu_nhan_vien/quyenLuongQueries";
 import {
   approvePayrollPeriod,
   archivePayrollPeriod,
@@ -17,6 +18,7 @@ import {
   updatePayrollPeriod,
   type CreatePayrollPeriodBody,
   type ListPayrollPeriodsParams,
+  type PayrollPeriodApiItem,
   type ReopenPayrollPeriodBody,
   type UpdatePayrollPeriodBody,
 } from "./payrollPeriodsApi";
@@ -40,6 +42,29 @@ export function usePayrollPeriodList(
   });
 }
 
+const KHONG_CO_KY: PayrollPeriodApiItem[] = [];
+
+/**
+ * Danh sách kỳ lương, CHỈ gọi khi đã biết phiên có quyền lương. Lúc danh sách nhân viên còn đang
+ * tải, `useQuyenXemLuong` báo "chua_ro" và coi là ĐƯỢC — bắn ngay thì người không có quyền ăn một
+ * 403 (thêm một lần retry) vô ích. Tải xong mà vẫn "chua_ro" (công ty chưa có nhân viên nào) thì để
+ * máy chủ chốt. Dùng chung cho góc chọn kỳ trên thanh HRM (`PayrollPeriodProvider`) và Dashboard —
+ * cùng khóa cache nên hai nơi không bắn hai lượt.
+ */
+export function useDanhSachKyLuongTheoQuyen() {
+  const quyen = useQuyenXemLuong();
+  const duocGoi = quyen.daXacDinh && !quyen.biTuChoi;
+  const { data, isLoading, isError, error } = usePayrollPeriodList(undefined, { enabled: duocGoi });
+  return {
+    periods: data ?? KHONG_CO_KY,
+    // Chưa biết quyền cũng là đang tải — query bị hoãn nên `isLoading` của nó báo false.
+    isLoading: !quyen.biTuChoi && (!duocGoi || isLoading),
+    isError,
+    error,
+    biTuChoi: quyen.biTuChoi,
+  };
+}
+
 export function usePayrollPeriodDetail(id: string | null) {
   const { currentCompanyId, isAuthenticated } = useAuth();
   return useQuery({
@@ -49,11 +74,17 @@ export function usePayrollPeriodDetail(id: string | null) {
   });
 }
 
+/**
+ * Trả về promise chờ nhóm `hrm-payroll-periods` (danh sách kỳ, màn Chốt kỳ lương) nạp lại xong —
+ * TanStack đợi promise của `onSuccess` rồi mới cho `mutateAsync` về, nên nơi gọi đọc được ngay kỳ vừa
+ * tạo/đổi (không có khoảnh khắc "tháng này chưa có kỳ" mà nút "Tạo kỳ lương" lại bấm được). Nhóm
+ * tính lương chỉ đánh dấu cũ, không chờ — tính lại lương toàn công ty có thể lâu.
+ */
 function useInvalidatePayroll() {
   const qc = useQueryClient();
-  return useCallback(() => {
-    void qc.invalidateQueries({ queryKey: hrmPayrollPeriodKeys.all });
+  return useCallback(async () => {
     void qc.invalidateQueries({ queryKey: hrmPayrollCalculationKeys.all });
+    await qc.invalidateQueries({ queryKey: hrmPayrollPeriodKeys.all });
   }, [qc]);
 }
 

@@ -1,4 +1,5 @@
-import { FastifyInstance } from "fastify";
+import { FastifyInstance, type FastifyRequest } from "fastify";
+import { ForbiddenError } from "../../helpers/errors";
 import {
   captcha,
   login,
@@ -37,17 +38,41 @@ import {
   downloadOriginalInvoice,
   getNhaCungCapTraCuu,
 } from "../../controllers/client/hddt/traCuuGoc.controller";
+import { gioiHanTheoNguoiDung } from "../../constants/rateLimits";
+
+/**
+ * Thao tác HỦY HÀNG LOẠT dữ liệu của công ty — chỉ chủ tài khoản (hoặc quản trị hệ thống). Nhóm HĐĐT
+ * không có guard module/vai trò nào khác (vbsec 2026-09-10): thiếu guard này thì mọi nhân viên xóa được
+ * toàn bộ hóa đơn đã lưu của công ty.
+ */
+async function chiChuTaiKhoan(req: FastifyRequest) {
+  const role = req.user?.role;
+  if (role !== "OWNER" && role !== "ADMIN") {
+    throw new ForbiddenError("Chỉ chủ tài khoản mới xóa được toàn bộ hóa đơn đã lưu của công ty.");
+  }
+}
 
 export default async function (
   fastify: FastifyInstance
 ) {
-  fastify.get("/captcha", captcha);
+  // Phải đăng nhập app: mỗi lượt mở kết nối ra cổng hoadondientu — để công khai là cho người lạ dùng
+  // server MAXV dội cổng thuế (GDT chặn IP chung của MỌI khách). Màn đăng nhập HĐĐT vốn nằm trong app.
+  fastify.get("/captcha", {
+    preHandler: [fastify.authenticate],
+    ...gioiHanTheoNguoiDung(20, "1 minute"),
+    handler: captcha,
+  });
   // Login cần JWT app: để biết công ty (MST) đang chọn mà dùng/lưu mật khẩu cổng thuế đã lưu ở
   // server. Dialog đăng nhập GDT luôn nằm trong app đã đăng nhập nên yêu cầu này không phá luồng cũ.
-  fastify.post("/login", { preHandler: [fastify.authenticate], handler: login });
+  // Giới hạn theo người dùng: chặn dùng server làm proxy (captcha đã giải sẵn) đoán mật khẩu cổng HĐĐT.
+  fastify.post("/login", {
+    preHandler: [fastify.authenticate],
+    ...gioiHanTheoNguoiDung(10, "10 minutes"),
+    handler: login,
+  });
 
-  // Mật khẩu cổng thuế đã lưu của công ty đang chọn — trả bản đã giải mã để FE điền sẵn vào ô mật
-  // khẩu khi mở dialog. Chỉ cần JWT app (đọc DonVi theo quyền), không cần X-Gdt-Token.
+  // Công ty đang chọn đã lưu mật khẩu cổng thuế chưa (không trả mật khẩu). Chỉ cần JWT app (đọc
+  // DonVi theo quyền), không cần X-Gdt-Token.
   fastify.get("/credential", {
     preHandler: [fastify.authenticate],
     handler: getGdtCredential,
@@ -211,7 +236,7 @@ export default async function (
     handler: syncHistory,
   });
   fastify.delete("/sync/data", {
-    preHandler: [fastify.authenticate],
+    preHandler: [fastify.authenticate, chiChuTaiKhoan],
     handler: clearSyncData,
   });
   // Xóa 1 dòng lịch sử đồng bộ (CHỈ bản ghi log, không đụng hóa đơn đã lưu) — nút xóa từng dòng.

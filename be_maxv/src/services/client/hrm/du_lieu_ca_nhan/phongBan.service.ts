@@ -63,7 +63,7 @@ async function sinhMaPhongBan(
  * Dùng chung cho create/update; riêng chống vòng lặp chỉ update mới cần (xem `assertKhongVongLap`).
  */
 async function assertPhongBanMeHopLe(
-  db: PrismaClient,
+  db: Prisma.TransactionClient,
   maPb: string,
   maPbMe: string,
 ): Promise<void> {
@@ -87,7 +87,7 @@ async function assertPhongBanMeHopLe(
  * liệu cũ lỡ đã có vòng (không thì vòng while chạy vô tận).
  */
 async function assertKhongVongLap(
-  db: PrismaClient,
+  db: Prisma.TransactionClient,
   maPb: string,
   maPbMe: string,
 ): Promise<void> {
@@ -190,29 +190,43 @@ export async function createPhongBan(
   return { ma_pb: maPb };
 }
 
+/**
+ * Khóa (trong giao dịch) cho mọi thao tác đổi HÌNH DẠNG cây phòng ban — đổi trực thuộc, xóa. Kiểm vòng
+ * lặp / kiểm "còn con" rồi mới ghi là kiểm-rồi-ghi: không khóa thì hai người đổi trực thuộc chéo nhau cùng
+ * lúc (A dưới B, B dưới A) đều thấy hợp lệ rồi cùng ghi -> vòng A -> B -> A (vbsec 2026-09-10). Một khóa
+ * chung cho cả cây của công ty: danh mục nhỏ, đổi cây hiếm, không đáng khóa chi tiết hơn.
+ */
+async function khoaDoiCay(tx: Prisma.TransactionClient): Promise<void> {
+  await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext('hrm_phong_ban:cay'))`;
+}
+
 /** PUT cập nhật (không đổi khóa — xem ghi chú ở phongBanUpdateSchema). */
 export async function updatePhongBan(
   db: PrismaClient,
   maPb: string,
   body: PhongBanUpdateInput,
 ) {
-  await findOrThrow(
-    () =>
-      db.hrm_phong_ban.findFirst({
-        where: { ma_pb: maPb, da_xoa: false },
-        select: { ma_pb: true },
-      }),
-    new NotFoundError(MESSAGES.HRM.PHONG_BAN_NOT_FOUND),
-  );
+  await db.$transaction(async (tx) => {
+    if (body.ma_pb_me) await khoaDoiCay(tx);
 
-  if (body.ma_pb_me) {
-    await assertPhongBanMeHopLe(db, maPb, body.ma_pb_me);
-    await assertKhongVongLap(db, maPb, body.ma_pb_me);
-  }
+    await findOrThrow(
+      () =>
+        tx.hrm_phong_ban.findFirst({
+          where: { ma_pb: maPb, da_xoa: false },
+          select: { ma_pb: true },
+        }),
+      new NotFoundError(MESSAGES.HRM.PHONG_BAN_NOT_FOUND),
+    );
 
-  await db.hrm_phong_ban.update({
-    where: { ma_pb: maPb },
-    data: { ...body, datetime2: new Date() },
+    if (body.ma_pb_me) {
+      await assertPhongBanMeHopLe(tx, maPb, body.ma_pb_me);
+      await assertKhongVongLap(tx, maPb, body.ma_pb_me);
+    }
+
+    await tx.hrm_phong_ban.update({
+      where: { ma_pb: maPb },
+      data: { ...body, datetime2: new Date() },
+    });
   });
   return { ma_pb: maPb };
 }
@@ -223,6 +237,16 @@ export async function updatePhongBan(
  * Vẫn chặn nếu còn phòng ban trực thuộc hoặc còn nhân viên (chỉ đếm bản ghi CHƯA xóa).
  */
 export async function deletePhongBan(db: PrismaClient, maPb: string) {
+  // Cùng khóa đổi cây với `updatePhongBan`: không thì một lượt đặt phòng ban này làm cha của phòng
+  // khác chen giữa bước đếm "còn con" và bước xóa -> phòng con trỏ vào cha đã xóa.
+  await db.$transaction(async (tx) => {
+    await khoaDoiCay(tx);
+    await xoaMemPhongBan(tx, maPb);
+  });
+  return { ma_pb: maPb };
+}
+
+async function xoaMemPhongBan(db: Prisma.TransactionClient, maPb: string): Promise<void> {
   await findOrThrow(
     () =>
       db.hrm_phong_ban.findFirst({
@@ -265,5 +289,4 @@ export async function deletePhongBan(db: PrismaClient, maPb: string) {
     where: { ma_pb: maPb },
     data: { da_xoa: true, datetime2: new Date() },
   });
-  return { ma_pb: maPb };
 }

@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import Fastify from 'fastify';
 import { Prisma } from '../../generated/tenant';
 import errorHandlerPlugin from '../../plugins/errorHandler.plugin';
+import { ForbiddenError } from '../../helpers/errors';
 
 /**
  * KIỂM THỬ TÍCH HỢP HTTP (Fastify Inject)
@@ -28,6 +29,11 @@ let hrmEmployeeSalariesRoutes: typeof import('../../routes/hrm/cai_dat_luong/emp
 /** Đọc bởi bản mock của `resolveTenantDb` — mỗi `buildTestApp()` trỏ lại biến này về db riêng của nó. */
 let dbChoRequestHienTai: unknown;
 
+// BR-hrm-059: cờ quyền xem lương mô phỏng cho `resolveTenantCtx` mock (cùng khuôn A-01 của
+// `hrmPayrollInputData.test.ts`) — mọi test mặc định `true`, test kiểm chứng guard tự đặt `false`
+// rồi phải trả lại `true`.
+let xemLuongChoRequestHienTai = true;
+
 // RVW-018 (review-findings.md 2026-09-10) — spy cho `writeLog` (services/shared/syslog.service),
 // cùng khuôn với `hrmPayrollInputData.test.ts` "Bug#8": tránh gọi `sysPrisma` thật (control plane)
 // trong test, vừa cho phép assert đúng hành động đã ghi.
@@ -42,7 +48,20 @@ before(async () => {
   mock.module('../../helpers/resolveTenantDb', {
     // `exports` (tên mới) chưa có trong @types/node@22 đang cài — dùng `namedExports` (deprecated ở
     // runtime Node 24 nhưng vẫn hoạt động đúng) để qua tsc mà không phải ép kiểu.
-    namedExports: { resolveTenantDb: async () => dbChoRequestHienTai },
+    namedExports: {
+      resolveTenantDb: async () => dbChoRequestHienTai,
+      resolveTenantCtx: async () => ({
+        db: dbChoRequestHienTai,
+        dbName: 'test-db',
+        maSoThue: '0000000000',
+        xemLuong: xemLuongChoRequestHienTai,
+      }),
+      assertXemLuong: (ctx: { xemLuong: boolean }) => {
+        if (!ctx.xemLuong) {
+          throw new ForbiddenError('Không có quyền xem dữ liệu lương.');
+        }
+      },
+    },
   });
   mock.module('../../services/shared/syslog.service', {
     namedExports: {
@@ -278,6 +297,11 @@ function createMockTenantDb() {
     },
     $transaction: async (fn: any) => {
       const tx = {
+        // Khóa advisory của `saveSalaryStructure` (mọi lượt lưu cơ cấu chạy lần lượt).
+        $executeRaw: async () => 1,
+        // Lưu cấu trúc lương (`saveSalaryStructure`) chạy trong transaction — dùng chung kho mock ở trên.
+        salaryStructure: mockDb.salaryStructure,
+        salaryStructureItem: mockDb.salaryStructureItem,
         employeeSalary: {
           findUnique: async ({ where }: any) => {
             let found = null;
@@ -641,11 +665,107 @@ test('HTTP POST /employee-salaries/approve: duyệt lương trả về 200 OK', 
   const res = await app.inject({
     method: 'POST',
     url: '/employee-salaries/approve',
-    payload: {},
+    payload: { items: [{ employeeId: 'NV0001', setupVersion: 1 }] },
   });
 
   assert.equal(res.statusCode, 200);
   const body = res.json();
   assert.equal(body.success, true);
   assert.ok(body.data.message.includes('duyệt'));
+
+  // Không còn "bỏ trống = duyệt tất cả" (vbsec #39/#40): phải gửi đúng các bản đã xem kèm phiên bản.
+  const rong = await app.inject({ method: 'POST', url: '/employee-salaries/approve', payload: {} });
+  assert.equal(rong.statusCode, 400);
+});
+
+test('Duyệt set lương chỉ OWNER/ADMIN: nhân viên CÓ quyền xem lương vẫn bị chặn 403, không tự duyệt lương mình vừa đặt', async () => {
+  // Quyết định 2026-09-10 (vbsec, phần treo từ lỗi CAO [2][3]): `xemLuong` cho phép đọc + đặt lương,
+  // nhưng DUYỆT là bước kiểm soát — người đặt không được tự duyệt. Cùng guard với duyệt / khóa sổ kỳ
+  // lương (`payrollPeriods.route.ts`) và lưu cấu trúc lương.
+  const appNv = await buildTestApp('OWNER_EMPLOYEE');
+  const dat = await appNv.inject({
+    method: 'PUT',
+    url: '/employee-salaries/NV0001',
+    payload: { items: [{ salaryItemId: 'KL01', amount: 90000000 }] },
+  });
+  assert.equal(dat.statusCode, 200);
+
+  const duyet = await appNv.inject({
+    method: 'POST',
+    url: '/employee-salaries/approve',
+    payload: { items: [{ employeeId: 'NV0001', setupVersion: 1 }] },
+  });
+  assert.equal(duyet.statusCode, 403);
+  const ds = await appNv.inject({ method: 'GET', url: '/employee-salaries?hasSalary=true' });
+  const nv = ds.json().data.find((r: { ma_nv: string }) => r.ma_nv === 'NV0001');
+  assert.notEqual(nv?.status, 'APPROVED');
+
+  const appOwner = await buildTestApp('OWNER');
+  const duyetOwner = await appOwner.inject({
+    method: 'POST',
+    url: '/employee-salaries/approve',
+    payload: { items: [{ employeeId: 'NV0001', setupVersion: 1 }] },
+  });
+  assert.equal(duyetOwner.statusCode, 200);
+});
+
+test('BR-hrm-059: cả nhóm /employee-salaries trả 403 khi thiếu quyền xem lương, và không ghi được gì', async () => {
+  // Trước khi sửa (vbsec 2026-09-10): controller gọi `resolveTenantDb` trơn nên OWNER_EMPLOYEE bị tắt
+  // cờ `xemLuong` vẫn đọc được lương + số tài khoản của cả công ty, tự đặt lương rồi tự duyệt.
+  const app = await buildTestApp('OWNER_EMPLOYEE');
+
+  xemLuongChoRequestHienTai = false;
+  try {
+    const cacLuotGoi = [
+      { method: 'GET', url: '/employee-salaries' },
+      { method: 'GET', url: '/employee-salaries/counts' },
+      { method: 'GET', url: '/employee-salaries/NV0001' },
+      {
+        method: 'PUT',
+        url: '/employee-salaries/NV0001',
+        payload: { items: [{ salaryItemId: 'KL01', amount: 90000000 }] },
+      },
+      { method: 'DELETE', url: '/employee-salaries/NV0001' },
+      {
+        method: 'POST',
+        url: '/employee-salaries/approve',
+        payload: { items: [{ employeeId: 'NV0001', setupVersion: 1 }] },
+      },
+    ] as const;
+
+    for (const luot of cacLuotGoi) {
+      const res = await app.inject(luot);
+      assert.equal(res.statusCode, 403, `${luot.method} ${luot.url} phải bị chặn 403`);
+    }
+  } finally {
+    xemLuongChoRequestHienTai = true; // KHÔNG để rò rỉ sang các test sau
+  }
+
+  // Lượt PUT bị chặn ở trên không được để lại bản set lương nào.
+  const resSau = await app.inject({ method: 'GET', url: '/employee-salaries?hasSalary=false' });
+  assert.equal(resSau.statusCode, 200);
+  const nv = resSau.json().data.find((r: { ma_nv: string }) => r.ma_nv === 'NV0001');
+  assert.equal(nv.daSet, false);
+});
+
+test('Cấu trúc lương: PUT /salary-structures/current chặn OWNER_EMPLOYEE (403), không đổi cấu trúc; OWNER lưu được', async () => {
+  // `taxTreatment: 'EXEMPT'` biến một khoản thành miễn thuế TNCN cho cả công ty — cùng mức nhạy cảm
+  // với `isTaxable` của /salary-items (RVW-018) nên phải cùng guard `assertAdminOrOwner`.
+  const payload = {
+    effectiveFrom: '2026-01-01',
+    note: 'Đổi lương cơ bản thành miễn thuế',
+    items: [{ salaryItemId: 'KL01', taxTreatment: 'EXEMPT' }],
+  };
+
+  const appDenied = await buildTestApp('OWNER_EMPLOYEE');
+  const resDenied = await appDenied.inject({ method: 'PUT', url: '/salary-structures/current', payload });
+  assert.equal(resDenied.statusCode, 403);
+
+  const resSauKhiChan = await appDenied.inject({ method: 'GET', url: '/salary-structures/current' });
+  assert.equal(resSauKhiChan.json().data.ghi_chu, 'Cấu trúc lương chuẩn 2026');
+
+  const appAllowed = await buildTestApp('OWNER');
+  const resOk = await appAllowed.inject({ method: 'PUT', url: '/salary-structures/current', payload });
+  assert.equal(resOk.statusCode, 200);
+  assert.equal(resOk.json().data.ghi_chu, 'Đổi lương cơ bản thành miễn thuế');
 });

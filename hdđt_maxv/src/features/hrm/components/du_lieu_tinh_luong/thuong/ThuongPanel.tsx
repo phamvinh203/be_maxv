@@ -25,6 +25,8 @@ import { tongTienThuong } from "../../../calculations/du_lieu_tinh_luong/thuong"
 import { useKhoanThuongList, useKhoanLuongIdByCode } from "../../../api/cai_dat_luong/salaryItemsQueries";
 import { useApplyBonus, useBonusDataList } from "../../../api/du_lieu_tinh_luong/payrollInputsQueries";
 import { useCurrentPayrollPeriod } from "../useCurrentPayrollPeriod";
+import { useBangKeChiDoc } from "../useBangKeChiDoc";
+import CanhBaoChiDoc from "../CanhBaoChiDoc";
 import { mergeNhanVienKyLuongWithData, useNhanVienKyLuong } from "../useNhanVienKyLuong";
 import type { DongThuong, LocNhanVienKyLuong, PhamViApDung, ThuongNhanVienRow } from "../../../types";
 import XacNhanXoaDialog from "../../XacNhanXoaDialog";
@@ -42,7 +44,8 @@ import { docFileThuong, taiFileMauThuong, xuatThuongExcel } from "./thuongExcel"
  * danh sách nhìn thấy chính là danh sách sẽ bị ghi.
  */
 export default function ThuongPanel() {
-  const { selectedPeriodId, isReadOnly } = useCurrentPayrollPeriod();
+  const { selectedPeriodId } = useCurrentPayrollPeriod();
+  const { isReadOnly, bangKeDaChot } = useBangKeChiDoc("BONUS");
   const periodId = selectedPeriodId ?? "";
 
   const danhMuc = useKhoanThuongList();
@@ -143,9 +146,7 @@ export default function ThuongPanel() {
   return (
     <Stack spacing={2.5}>
       {isReadOnly && (
-        <Alert severity="warning">
-          Kỳ lương đang chọn đã khóa sổ/chờ duyệt — không thể sửa hoặc áp dụng thưởng mới.
-        </Alert>
+        <CanhBaoChiDoc bangKeDaChot={bangKeDaChot} hanhDong="không thể sửa hoặc áp dụng thưởng mới" />
       )}
 
       <Paper variant="outlined" sx={{ p: 2 }}>

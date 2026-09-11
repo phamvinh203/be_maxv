@@ -1,10 +1,5 @@
-import { exec } from 'node:child_process';
-import { promisify } from 'node:util';
-import path from 'node:path';
 import { sysPrisma } from '../config/db.sys';
-import { tenantUrl } from '../utils/dbName';
-
-const execAsync = promisify(exec);
+import { dayTenantSchema } from '../services/shared/provisioning.service';
 
 /**
  * Đồng bộ tenant schema hiện tại lên TẤT CẢ DB công ty đã cấp.
@@ -25,7 +20,6 @@ async function main(): Promise<void> {
     return;
   }
 
-  const schemaPath = path.join('prisma', 'tenant', 'schema.prisma');
   console.log(`Đồng bộ schema cho ${companies.length} tenant...\n`);
 
   let ok = 0;
@@ -33,9 +27,9 @@ async function main(): Promise<void> {
   for (const c of companies) {
     const dbName = c.dbName as string;
     try {
-      await execAsync(
-        `npx prisma db push --schema=${schemaPath} --url="${tenantUrl(dbName)}" --accept-data-loss`,
-      );
+      // Cùng đường với provisioning: không qua shell, URL DB (có mật khẩu) đi qua biến môi trường,
+      // lỗi ném ra đã che mật khẩu — in `err.message` ra terminal không còn lộ gì.
+      await dayTenantSchema(dbName);
       console.log(`  ✓ ${dbName} (MST ${c.maSoThue}, ${c.status})`);
       ok++;
     } catch (err) {

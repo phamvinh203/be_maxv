@@ -74,7 +74,9 @@ export default function HrmNav() {
             iconPosition="start"
             sx={{
               minHeight: 44,
-              px: 2.5,
+              // Gọn hơn 2.5 cũ: góc phải thanh này còn ô chọn tháng + nút "Chốt kỳ lương" — 8 tab phải
+              // đủ chỗ cùng một hàng với góc đó trên màn 1600px mà không phải cuộn ngang.
+              px: 1.5,
               borderRadius: 999,
               textTransform: "none",
               fontWeight: 600,

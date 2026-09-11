@@ -118,9 +118,10 @@ export default function DialogLoginDVC({
   const loadingCaptcha = captchaQuery.isFetching;
 
   /**
-   * Tài khoản + mật khẩu đã lưu từ lượt đăng nhập ĐÚNG gần nhất (nếu có) — điền sẵn để người
-   * dùng chỉ còn phải bấm Đăng nhập. `staleTime: 0` như `captchaQuery`: đọc lại mỗi lần mở
-   * dialog để không hiện nhầm mật khẩu cũ nếu công ty đang chọn vừa đổi trong lúc dialog đóng.
+   * Tài khoản đã lưu từ lượt đăng nhập ĐÚNG gần nhất (nếu có): điền sẵn tên đăng nhập; đã lưu mật khẩu
+   * thì cho để trống ô mật khẩu — server tự dùng mật khẩu đã lưu (`dungMatKhauDaLuu`), mật khẩu không
+   * về trình duyệt. `staleTime: 0` như `captchaQuery`: đọc lại mỗi lần mở dialog để không dùng nhầm
+   * tài khoản cũ nếu công ty đang chọn vừa đổi trong lúc dialog đóng.
    *
    * Khóa theo MST, KHÔNG dùng `useId()` như `captchaQuery`: captcha là tài nguyên DÙNG-MỘT-LẦN
    * (khóa riêng từng instance để hai dialog mở cùng lúc không đè phiên của nhau), còn credential
@@ -135,9 +136,14 @@ export default function DialogLoginDVC({
     staleTime: 0,
   });
   const credential = credentialQuery.data;
+  // Mật khẩu đã lưu đi cùng ĐÚNG tên đăng nhập đã lưu — người dùng sửa ô tên thì phải gõ mật khẩu
+  // (server cũng chặn tên khác).
+  const coMatKhauDaLuu =
+    !!credential?.hasSavedPassword &&
+    !!credential.username &&
+    username.trim() === credential.username;
   // Chỉ điền sẵn 1 lần mỗi lần mở, để không đè lên khi người dùng đã sửa tay (kể cả nếu
-  // TanStack Query refetch lại giữa chừng, vd `refetchOnWindowFocus`) — cùng cơ chế
-  // `didPrefillRef` bên `dialogLoginHddt.tsx`.
+  // TanStack Query refetch lại giữa chừng, vd `refetchOnWindowFocus`).
   const didPrefillRef = useRef(false);
   const queryClient = useQueryClient();
 
@@ -183,17 +189,14 @@ export default function DialogLoginDVC({
   }, [captcha?.key, captcha?.answer]);
 
   /**
-   * TỰ ĐIỀN TÀI KHOẢN + MẬT KHẨU đã lưu (nếu có), CHỈ MỘT LẦN mỗi lần mở (`didPrefillRef`) —
-   * tách khỏi effect reset ở trên vì lý do y hệt effect captcha: dữ liệu này tới KHÔNG đồng bộ
-   * với `open` (phải chờ round-trip API), gộp chung effect reset thì lúc `credential` về sau sẽ
-   * không có dịp ghi vào ô nữa.
+   * TỰ ĐIỀN TÊN ĐĂNG NHẬP đã lưu (nếu có), CHỈ MỘT LẦN mỗi lần mở (`didPrefillRef`) — tách khỏi
+   * effect reset ở trên vì lý do y hệt effect captcha: dữ liệu này tới KHÔNG đồng bộ với `open`
+   * (phải chờ round-trip API), gộp chung effect reset thì lúc `credential` về sau sẽ không có dịp
+   * ghi vào ô nữa.
    *
-   * Mật khẩu: idiom `prev || X` như `dialogLoginHddt.tsx` — ô luôn bắt đầu rỗng nên chỉ điền
-   * khi còn trống, không đè lên nếu người dùng đã kịp gõ.
-   * Tên đăng nhập: KHÔNG dùng được cùng idiom — ô này bắt đầu đã có sẵn giá trị ĐOÁN
-   * (`initialUsername`, effect reset ở trên điền), `prev || X` sẽ không bao giờ thắng được giá
-   * trị đoán để thay bằng tên đăng nhập THẬT đã lưu. Chỉ ghi đè khi ô vẫn còn nguyên giá trị
-   * đoán (người dùng chưa sửa tay).
+   * Ô này bắt đầu đã có sẵn giá trị ĐOÁN (`initialUsername`, effect reset ở trên điền), nên chỉ ghi
+   * đè bằng tên đăng nhập THẬT đã lưu khi ô vẫn còn nguyên giá trị đoán (người dùng chưa sửa tay).
+   * Mật khẩu KHÔNG điền sẵn: server không trả về nữa (xem `coMatKhauDaLuu`).
    */
   useEffect(() => {
     if (!open || didPrefillRef.current || !credential) return;
@@ -204,10 +207,6 @@ export default function DialogLoginDVC({
       // eslint-disable-next-line react-hooks/set-state-in-effect
       setUsername((prev) => (prev === doan ? tenThat : prev));
     }
-    if (credential.password) {
-      const matKhauThat = credential.password;
-      setPassword((prev) => prev || matKhauThat);
-    }
   }, [open, credential, initialUsername]);
 
   const handleSubmit = (e: FormEvent<HTMLFormElement>) => {
@@ -215,7 +214,8 @@ export default function DialogLoginDVC({
     if (submitting) return;
     setError("");
 
-    if (!username || !password || !captchaInput || !captcha?.key) {
+    const dungMatKhauDaLuu = !password && coMatKhauDaLuu;
+    if (!username || (!password && !dungMatKhauDaLuu) || !captchaInput || !captcha?.key) {
       setError("Vui lòng nhập đầy đủ thông tin.");
       return;
     }
@@ -224,7 +224,7 @@ export default function DialogLoginDVC({
       {
         key: captcha.key,
         tenDN: username.trim(),
-        matKhau: password,
+        ...(dungMatKhauDaLuu ? { dungMatKhauDaLuu: true } : { matKhau: password }),
         captcha: captchaInput.trim(),
       },
       {
@@ -243,8 +243,8 @@ export default function DialogLoginDVC({
           }
 
           // BE vừa lưu/cập nhật credential khi đăng nhập không có cờ lỗi (xem `login` ở
-          // gdt-dvc.controller.ts) -> làm mới cache mật khẩu đã lưu để lần mở sau (hoặc phiên
-          // hiện tại nếu dialog không unmount) điền đúng bản mới nhất — cùng cách
+          // gdt-dvc.controller.ts) -> làm mới cache tài khoản đã lưu để lần mở sau (hoặc phiên
+          // hiện tại nếu dialog không unmount) dùng đúng bản mới nhất — cùng cách
           // `dialogLoginHddt.tsx` làm sau khi đăng nhập HĐĐT thành công.
           if (mst) void queryClient.invalidateQueries({ queryKey: dvcCredentialKey(mst) });
 
@@ -321,6 +321,7 @@ export default function DialogLoginDVC({
               fullWidth
               autoFocus={daCoTenDangNhap}
               autoComplete="current-password"
+              placeholder={coMatKhauDaLuu ? "••••••••" : undefined}
               slotProps={{
                 input: {
                   endAdornment: (

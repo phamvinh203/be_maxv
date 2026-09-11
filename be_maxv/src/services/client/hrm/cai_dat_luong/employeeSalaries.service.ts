@@ -355,7 +355,10 @@ export async function setEmployeeSalary(
       salaryRecord = await tx.employeeSalary.update({
         where: { ma_nv: employee.ma_nv },
         data: {
-          setupVersion,
+          // Tăng NGUYÊN TỬ trong DB, không ghi số đã tính từ lượt đọc: hai người sửa cùng lúc đều đọc thấy
+          // bản N và cùng ghi N+1 -> hai nội dung khác nhau mang cùng một phiên bản, duyệt theo phiên bản
+          // (`approveEmployeeSalaries`) không phân biệt được (vbsec 2026-09-10 #40).
+          setupVersion: { increment: 1 },
           effectiveFrom: currentStructure.effectiveFrom,
           effectiveTo: currentStructure.effectiveTo,
           totalAmount: new Prisma.Decimal(totalAmount),
@@ -422,13 +425,13 @@ export async function approveEmployeeSalaries(
   input: ApproveSalariesInput,
   userId?: string,
 ) {
+  // Một câu UPDATE có điều kiện (vbsec 2026-09-10): chỉ dòng CÒN đúng phiên bản người duyệt đã xem (#40) và
+  // còn chờ duyệt (#39 — `not APPROVED` từng cuốn cả bản nháp lẫn bản đã bị từ chối). Dòng bị sửa sau khi
+  // xem (phiên bản đã tăng) không khớp -> không duyệt, báo lại để người duyệt tải lại xem.
   const where: Prisma.EmployeeSalaryWhereInput = {
-    status: { not: 'APPROVED' },
+    status: 'PENDING_APPROVAL',
+    OR: input.items.map((it) => ({ ma_nv: it.employeeId, setupVersion: it.setupVersion })),
   };
-
-  if (input.employeeIds && input.employeeIds.length > 0) {
-    where.ma_nv = { in: input.employeeIds };
-  }
 
   // updateMany trả sẵn số dòng đã đổi — khỏi cần findMany riêng chỉ để đếm trước.
   const result = await db.employeeSalary.updateMany({
@@ -439,16 +442,23 @@ export async function approveEmployeeSalaries(
       approvedByUserId: userId ?? null,
     },
   });
+  const skippedCount = input.items.length - result.count;
 
   if (result.count === 0) {
     return {
       approvedCount: 0,
-      message: 'Không có bản set lương nào đang chờ duyệt.',
+      skippedCount,
+      message:
+        'Không duyệt được bản nào: các bản set lương đã được sửa sau khi bạn xem hoặc không còn chờ duyệt. Tải lại danh sách rồi duyệt lại.',
     };
   }
 
   return {
     approvedCount: result.count,
-    message: `Đã duyệt ${result.count} bản set lương thành công.`,
+    skippedCount,
+    message:
+      skippedCount > 0
+        ? `Đã duyệt ${result.count} bản set lương; ${skippedCount} bản đã được sửa sau khi bạn xem hoặc không còn chờ duyệt — tải lại để xem trước khi duyệt.`
+        : `Đã duyệt ${result.count} bản set lương thành công.`,
   };
 }

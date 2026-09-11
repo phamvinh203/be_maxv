@@ -12,6 +12,19 @@ export const optText = z
   .transform((v) => (v && v.length ? v : null));
 
 /**
+ * Như `optText` nhưng có trần độ dài = độ dài cột `VarChar(n)` — chuỗi dài hơn bị chặn 400 nói rõ, thay
+ * vì để Postgres báo lỗi (500) lúc ghi.
+ */
+export const optTextMax = (n: number) =>
+  z
+    .string()
+    .trim()
+    .max(n, `Tối đa ${n} ký tự`)
+    .nullable()
+    .optional()
+    .transform((v) => (v && v.length ? v : null));
+
+/**
  * Email TÙY CHỌN — vẫn phải qua `emailRule` (trim + lowercase + đúng định dạng).
  * `auth.validator` nói rõ rule đó phải dùng ở MỌI schema nhận email: chỉ giới hạn độ dài thôi
  * thì "nguyen van a" lọt vào DB, tới lúc gửi mail mới vỡ và không ai truy được từ đâu.

@@ -216,6 +216,17 @@ async function layKyDaChot(db: PrismaClient): Promise<Ky[]> {
   return rows.map((r) => ({ nam: r.nam, kyLoai: r.ky_loai as Ky["kyLoai"], kySo: r.ky_so }));
 }
 
+/** Kỳ đã chốt của tenant; kỳ ĐANG kê khai nằm trong số đó thì chặn cả lượt (xem `danhDauKy`). */
+async function kyChotHoacChan(db: PrismaClient, ky: Ky): Promise<Ky[]> {
+  const kyChot = await layKyDaChot(db);
+  if (kyChot.some((k) => k.nam === ky.nam && k.kyLoai === ky.kyLoai && k.kySo === ky.kySo)) {
+    throw new BanDaChotError(
+      "Tờ khai kỳ này đã chốt nên không kê khai lại được. Mở khóa bản tờ khai của kỳ rồi thử lại.",
+    );
+  }
+  return kyChot;
+}
+
 /**
  * Trong `ids`, tờ nào ĐANG được gán vào một kỳ đã chốt — kèm nhãn các kỳ đó.
  *
@@ -272,12 +283,8 @@ async function traKyDangGiu(
  * chuyển hay không là quyết định thuế của kế toán, không phải của một lượt upsert.
  */
 export async function danhDauKy(db: PrismaClient, ky: Ky): Promise<KetQuaDanhDau> {
-  const kyChot = await layKyDaChot(db);
-  if (kyChot.some((k) => k.nam === ky.nam && k.kyLoai === ky.kyLoai && k.kySo === ky.kySo)) {
-    throw new BanDaChotError(
-      "Tờ khai kỳ này đã chốt nên không kê khai lại được. Mở khóa bản tờ khai của kỳ rồi thử lại.",
-    );
-  }
+  // Chặn sớm, trước cả lượt quét: kỳ đã chốt thì khỏi tốn công đọc hóa đơn.
+  await kyChotHoacChan(db, ky);
 
   const { tuNgay, denNgay } = khoangCuaKy(ky);
   const ketQua: KetQuaDanhDau = {
@@ -299,6 +306,11 @@ export async function danhDauKy(db: PrismaClient, ky: Ky): Promise<KetQuaDanhDau
       denNgay,
     );
     ketQua.khongRoKyGoc += khongRoKyGoc;
+
+    // Đọc lại kỳ chốt NGAY TRƯỚC khi ghi, không dùng bản đọc từ đầu lượt: lượt quét trên là N+1 truy
+    // vấn, có thể kéo dài — "Chốt" bấm trong lúc đó (kỳ này hay kỳ khác) mà vẫn ghi theo danh sách cũ
+    // là gỡ/gán hóa đơn của kỳ vừa chốt, bảng kê lệch khỏi số đã nộp.
+    const kyChot = await kyChotHoacChan(db, ky);
 
     // Hỏi MỘT lượt cho cả hai danh sách: tờ sắp gán và tờ sắp gỡ đều phải chừa kỳ đã chốt ra.
     const { giu, nhan } = await traKyDangGiu(
@@ -381,6 +393,10 @@ export function locQuyetDinh(raw: unknown): QuyetDinhKeKhai {
  * dòng thì Prisma ném, controller trả lỗi cho người dùng thấy.
  *
  * Chuỗi rỗng lưu thành `null` để cột trống trong DB chỉ có một dạng duy nhất.
+ *
+ * Kỳ của hóa đơn đã CHỐT thì từ chối (vbsec 2026-09-10): bảng kê của kỳ đã nộp mà còn sửa được thì lệch
+ * khỏi số trên tờ khai. Đọc trạng thái kỳ bằng `FOR SHARE` trong cùng transaction với lượt ghi: "Chốt"
+ * bấm song song phải chờ lượt sửa này commit, không có khe chen giữa.
  */
 export async function capNhatQuyetDinh(
   db: PrismaClient,
@@ -389,15 +405,36 @@ export async function capNhatQuyetDinh(
   quyetDinh: QuyetDinhKeKhai,
 ): Promise<void> {
   if (Object.keys(quyetDinh).length === 0) return;
-  await db.tokhai_ky_hoa_don.update({
-    where: { hoa_don_id_chieu: { hoa_don_id: hoaDonId, chieu } },
-    data: {
-      ...(quyetDinh.keKhai === undefined ? {} : { ke_khai: quyetDinh.keKhai }),
-      ...(quyetDinh.chiTieuTangGiam === undefined
-        ? {}
-        : { chi_tieu_tang_giam: quyetDinh.chiTieuTangGiam || null }),
-      ...(quyetDinh.ghiChu === undefined ? {} : { ghi_chu: quyetDinh.ghiChu || null }),
-    },
+  const khoa = { hoa_don_id_chieu: { hoa_don_id: hoaDonId, chieu } };
+  await db.$transaction(async (tx) => {
+    const dong = await tx.tokhai_ky_hoa_don.findUnique({
+      where: khoa,
+      select: { nam: true, ky_loai: true, ky_so: true },
+    });
+    if (!dong) {
+      throw new Error(
+        "Hóa đơn này chưa được gán vào kỳ nào — bấm \"Kê khai\" cho kỳ của hóa đơn trước.",
+      );
+    }
+    const [ban] = await tx.$queryRaw<{ trang_thai: string }[]>`
+      SELECT trang_thai FROM tokhai_gtgt01
+       WHERE nam = ${dong.nam} AND ky_loai = ${dong.ky_loai} AND ky_so = ${dong.ky_so}
+       FOR SHARE`;
+    if (ban?.trang_thai === "chot") {
+      throw new BanDaChotError(
+        "Tờ khai của kỳ chứa hóa đơn này đã chốt nên không sửa được bảng kê. Mở khóa bản tờ khai trước.",
+      );
+    }
+    await tx.tokhai_ky_hoa_don.update({
+      where: khoa,
+      data: {
+        ...(quyetDinh.keKhai === undefined ? {} : { ke_khai: quyetDinh.keKhai }),
+        ...(quyetDinh.chiTieuTangGiam === undefined
+          ? {}
+          : { chi_tieu_tang_giam: quyetDinh.chiTieuTangGiam || null }),
+        ...(quyetDinh.ghiChu === undefined ? {} : { ghi_chu: quyetDinh.ghiChu || null }),
+      },
+    });
   });
 }
 

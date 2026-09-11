@@ -3,7 +3,6 @@ import { currentUserId } from '../../../../helpers/resolveTenantDb';
 import { dbCoQuyenLuongPayroll } from '../../../../helpers/hrm/payrollAccessGuard';
 import { sendCreated, sendOk } from '../../../../helpers/response';
 import { validateBody, validateParams, validateQuery } from '../../../../utils/validate';
-import { writeLog } from '../../../../services/shared/syslog.service';
 import { z } from 'zod';
 import {
   createPayrollPeriodSchema,
@@ -12,37 +11,12 @@ import {
   updatePayrollPeriodSchema,
 } from '../../../../validators/hrm/du_lieu_tinh_luong/payrollPeriods.validator';
 import * as service from '../../../../services/client/hrm/du_lieu_tinh_luong/payrollPeriods.service';
+import { HANH_DONG_KY_LUONG } from '../../../../constants/hrm/payrollActivities';
+// Sửa BUG-dltl-004 / review-findings.md 2026-09-09: trước đây `reason`/`userId` được validate rồi VỨT
+// ĐI — không nơi nào ghi "ai làm gì lúc nào". Khóa sổ / mở lại / duyệt nay ghi qua `ghiNhatKyKyLuong`.
+import { ghiNhatKyKyLuong } from '../../../../helpers/hrm/nhatKyKyLuong';
 
 const idParamSchema = z.object({ id: z.string().trim().min(1) });
-
-/**
- * Nhật ký kiểm toán cho 3 hành vi thẩm quyền tài chính (khóa sổ / mở lại / phê duyệt kỳ lương)
- * — BR-dltl-002, NFR-dltl-003, ADR-dltl-05 bước 2 (OQ-dltl-003).
- *
- * Sửa BUG-dltl-004 / review-findings.md 2026-09-09: trước đây `reason`/`userId` được validate
- * rồi VỨT ĐI (`_input`/`_userId`) — không có nơi nào ghi lại "ai làm gì lúc nào". Tenant schema
- * KHÔNG có bảng audit riêng cho payroll, nên tái sử dụng `writeLog` (bảng `sys_log` control
- * plane) — ĐÚNG khuôn đã dùng cho "Cấu hình mặc định" (`generalSettings.controller.ts:25-35`,
- * BR-hrm-066 nhóm 6). KHÔNG tạo bảng mới — nhất quán toàn hệ thống theo đúng yêu cầu OQ-dltl-003.
- * `writeLog` là ghi kèm-không-chặn (tự nuốt lỗi bên trong), nên nhật ký hỏng không ảnh hưởng
- * thao tác nghiệp vụ chính.
- */
-async function ghiNhatKyLuong(
-  req: FastifyRequest,
-  hanhDong:
-    | 'HRM_PAYROLL_PERIOD_LOCKED'
-    | 'HRM_PAYROLL_PERIOD_REOPENED'
-    | 'HRM_PAYROLL_PERIOD_APPROVED',
-  periodId: string,
-  extra?: Record<string, unknown>,
-) {
-  await writeLog({
-    hanhDong,
-    userId: currentUserId(req),
-    donViId: req.user.donViId ?? undefined,
-    chiTiet: { periodId, ...extra },
-  });
-}
 
 export async function list(req: FastifyRequest, reply: FastifyReply) {
   const db = await dbCoQuyenLuongPayroll(req);
@@ -100,7 +74,7 @@ export async function lock(req: FastifyRequest, reply: FastifyReply) {
   const { id } = validateParams(idParamSchema, req.params);
   const userId = currentUserId(req);
   const ketQua = await service.lockPayrollPeriod(db, id, userId);
-  await ghiNhatKyLuong(req, 'HRM_PAYROLL_PERIOD_LOCKED', id);
+  await ghiNhatKyKyLuong(req, HANH_DONG_KY_LUONG.PERIOD_LOCKED, id);
   return sendOk(reply, ketQua);
 }
 
@@ -110,7 +84,7 @@ export async function reopen(req: FastifyRequest, reply: FastifyReply) {
   const body = validateBody(reopenPayrollPeriodSchema, req.body);
   const ketQua = await service.reopenPayrollPeriod(db, id);
   // BUG-dltl-004: lý do (>=20 ký tự, đã validate ở trên) PHẢI được lưu lại — trước đây bị vứt.
-  await ghiNhatKyLuong(req, 'HRM_PAYROLL_PERIOD_REOPENED', id, { reason: body.reason });
+  await ghiNhatKyKyLuong(req, HANH_DONG_KY_LUONG.PERIOD_REOPENED, id, { reason: body.reason });
   return sendOk(reply, ketQua);
 }
 
@@ -119,7 +93,7 @@ export async function approve(req: FastifyRequest, reply: FastifyReply) {
   const { id } = validateParams(idParamSchema, req.params);
   const userId = currentUserId(req);
   const ketQua = await service.approvePayrollPeriod(db, id, userId);
-  await ghiNhatKyLuong(req, 'HRM_PAYROLL_PERIOD_APPROVED', id);
+  await ghiNhatKyKyLuong(req, HANH_DONG_KY_LUONG.PERIOD_APPROVED, id);
   return sendOk(reply, ketQua);
 }
 

@@ -15,6 +15,7 @@ import { hrmPayrollPeriodsRoutes } from './du_lieu_tinh_luong/payrollPeriods.rou
 import { hrmPayrollCatalogsRoutes } from './du_lieu_tinh_luong/catalogs.route';
 import { hrmPayrollInputsRoutes } from './du_lieu_tinh_luong/payrollInputs.route';
 import { hrmPayrollCalculationRoutes } from './du_lieu_tinh_luong/payrollCalculation.route';
+import { hrmPayrollClosingRoutes } from './du_lieu_tinh_luong/payrollClosing.route';
 
 /**
  * Nhóm route HRM (nhân sự) — chạy trên DB tenant, các bảng `hrm_*`.
@@ -53,4 +54,5 @@ export async function hrmRoutes(app: FastifyInstance) {
   await app.register(hrmPayrollCatalogsRoutes);
   await app.register(hrmPayrollInputsRoutes);
   await app.register(hrmPayrollCalculationRoutes);
+  await app.register(hrmPayrollClosingRoutes);
 }

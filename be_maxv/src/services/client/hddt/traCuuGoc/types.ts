@@ -71,7 +71,9 @@ export type TraCuuGocErrorCode =
   /** NCC (meinvoice…) trả lỗi hoặc không phản hồi. */
   | "UPSTREAM"
   /** Chưa có bộ tải cho NCC này (msttcgp chưa đăng ký). */
-  | "UNSUPPORTED";
+  | "UNSUPPORTED"
+  /** Máy chủ đang bận (hàng đợi tải gốc đầy / người dùng đã có đủ lượt đang chạy) -> thử lại sau. */
+  | "BUSY";
 
 /**
  * Lỗi có chủ đích của luồng tải hóa đơn gốc. Chỉ mang `code` ngữ nghĩa — KHÔNG mang HTTP status: việc
@@ -88,10 +90,17 @@ export class TraCuuGocError extends Error {
    */
   readonly retryable: boolean;
 
-  constructor(code: TraCuuGocErrorCode, message: string, retryable = false) {
+  /**
+   * Nguyên nhân kỹ thuật (chuỗi lỗi mạng/TLS/DNS, IP:cổng) — CHỈ để ghi log máy chủ, không bao giờ vào
+   * `message` (controller trả `message` thẳng về trình duyệt). vbsec 2026-09-10.
+   */
+  readonly chiTiet?: string;
+
+  constructor(code: TraCuuGocErrorCode, message: string, retryable = false, chiTiet?: string) {
     super(message);
     this.name = "TraCuuGocError";
     this.code = code;
     this.retryable = retryable;
+    this.chiTiet = chiTiet;
   }
 }

@@ -1,14 +1,20 @@
 import { Client } from 'pg';
-import { exec } from 'node:child_process';
+import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import path from 'node:path';
 import { env } from '../../config/env';
 import { sysPrisma } from '../../config/db.sys';
 import { evictTenantDb } from '../../helpers/tenantClient';
 import { applyTenantConstraints } from './hrmTenantConstraints';
-import { tenantDbName, tenantUrl } from '../../utils/dbName';
+import {
+  assertTenDbTenant,
+  tenantDbName,
+  tenantUrl,
+} from '../../utils/dbName';
+import { ConflictError } from '../../helpers/errors';
+import { MESSAGES } from '../../constants/messages';
 
-const execAsync = promisify(exec);
+const execFileAsync = promisify(execFile);
 
 async function withAdminClient<T>(
   fn: (client: Client) => Promise<T>,
@@ -40,12 +46,18 @@ async function withAdminClient<T>(
 export async function provisionTenant(
   donViId: string,
   mst: string,
+  /**
+   * `choPhepDbCoSan`: dùng lại DB đã tồn tại. CHỈ bật khi người vận hành CHỦ ĐỘNG cấp lại DB cho chính
+   * công ty này (admin retry-provision, script seed dev). Mặc định TẮT: đăng ký mới mà DB của MST đã
+   * có thì đó là DB mồ côi của công ty trước — nhận vào là owner mới thừa hưởng trọn dữ liệu cũ.
+   */
+  opts: { choPhepDbCoSan?: boolean } = {},
 ): Promise<string> {
   const dbName = tenantDbName(mst); // đã validate -> an toàn nội suy SQL
 
   try {
-    await createDatabaseIfNotExists(dbName);
-    await pushTenantSchema(dbName);
+    await taoDatabase(dbName, opts.choPhepDbCoSan ?? false);
+    await dayTenantSchema(dbName);
     await applyTenantConstraints(dbName);
 
     // Chỉ đánh dấu vòng đời DB = READY. Billing (trial) do Subscription lo.
@@ -66,25 +78,87 @@ export async function provisionTenant(
   }
 }
 
-async function createDatabaseIfNotExists(dbName: string): Promise<void> {
+/**
+ * Câu `CREATE DATABASE` cho DB tenant. Tách role quản trị (`env.chuDbTenant`) thì giao DB cho role app làm
+ * OWNER: role app không có CREATEDB nhưng vẫn cần đẩy schema (`db push`) lên DB của chính nó. Tên role
+ * đi vào câu SQL (không tham số hóa được định danh) nên phải đúng dạng định danh Postgres.
+ */
+export function cauTaoDatabase(dbName: string, chu?: string): string {
+  if (chu === undefined) return `CREATE DATABASE "${dbName}"`;
+  if (!/^[A-Za-z_][A-Za-z0-9_]{0,62}$/.test(chu)) {
+    throw new Error(`Tên role chủ DB tenant không hợp lệ: ${chu}`);
+  }
+  return `CREATE DATABASE "${dbName}" OWNER "${chu}"`;
+}
+
+async function taoDatabase(
+  dbName: string,
+  choPhepDbCoSan: boolean,
+): Promise<void> {
   await withAdminClient(async (admin) => {
     const exists = await admin.query(
       'SELECT 1 FROM pg_database WHERE datname = $1',
       [dbName],
     );
     if (exists.rowCount === 0) {
-      await admin.query(`CREATE DATABASE "${dbName}"`);
+      await admin.query(cauTaoDatabase(dbName, env.chuDbTenant));
+    } else if (!choPhepDbCoSan) {
+      throw new ConflictError(MESSAGES.COMPANY.TENANT_DB_EXISTS);
     }
   });
 }
 
-async function pushTenantSchema(dbName: string): Promise<void> {
+/** Chạy 1 lệnh con — tách ra để test thay được mà không gọi Prisma CLI thật. */
+export type ChayLenh = (
+  file: string,
+  args: string[],
+  opts: { env?: NodeJS.ProcessEnv },
+) => Promise<unknown>;
+
+/**
+ * Chạy thẳng file JS của Prisma CLI bằng node hiện tại (`execFile`, KHÔNG qua shell): không nội suy
+ * chuỗi vào lệnh shell, và chạy được trên Windows Server (spawn `npx.cmd` không có shell bị Node chặn).
+ */
+const PRISMA_CLI = require.resolve('prisma/build/index.js');
+const chayLenhThat: ChayLenh = (file, args, opts) =>
+  execFileAsync(file, args, { env: opts.env, maxBuffer: 10 * 1024 * 1024 });
+
+/** Che mật khẩu trong URL Postgres: `postgresql://user:pass@host` -> `postgresql://user:***@host`. */
+export function cheMatKhauUrlDb(text: string): string {
+  return text.replace(/(postgres(?:ql)?:\/\/[^:@\s/]+:)[^@\s]*@/gi, '$1***@');
+}
+
+/**
+ * Đẩy schema tenant (`prisma db push`) lên 1 DB tenant. Dùng chung cho provisioning và script
+ * `sync-tenants`.
+ *
+ * URL DB (có mật khẩu tài khoản chủ Postgres) đi qua BIẾN MÔI TRƯỜNG của tiến trình con
+ * (`PRISMA_TENANT_PUSH_URL`, prisma.config.ts đọc) — không đặt lên dòng lệnh, nơi nó lộ qua danh
+ * sách tiến trình và nằm nguyên trong `err.cmd`/`err.message` khi lệnh lỗi. Lỗi ném ra là lỗi MỚI,
+ * đã che mật khẩu, không mang `cmd`/`stderr` gốc.
+ * `--accept-data-loss` để chạy non-TTY (DB mới rỗng / sync schema tenant cũ).
+ */
+export async function dayTenantSchema(
+  dbName: string,
+  chayLenh: ChayLenh = chayLenhThat,
+): Promise<void> {
+  assertTenDbTenant(dbName);
   const schemaPath = path.join('prisma', 'tenant', 'schema.prisma');
-  // Prisma 7: --url ghi đè datasource trong prisma.config.ts cho đúng DB tenant.
-  // --accept-data-loss để chạy non-TTY trên DB rỗng (chỉ tạo bảng mới).
-  await execAsync(
-    `npx prisma db push --schema=${schemaPath} --url="${tenantUrl(dbName)}" --accept-data-loss`,
-  );
+  try {
+    await chayLenh(
+      process.execPath,
+      [PRISMA_CLI, 'db', 'push', `--schema=${schemaPath}`, '--accept-data-loss'],
+      { env: { ...process.env, PRISMA_TENANT_PUSH_URL: tenantUrl(dbName) } },
+    );
+  } catch (err) {
+    const { message, stderr } = err as { message?: unknown; stderr?: unknown };
+    const chiTiet = [message, stderr]
+      .filter((x): x is string => typeof x === 'string' && x.length > 0)
+      .join('\n');
+    throw new Error(
+      `prisma db push lỗi trên ${dbName}: ${cheMatKhauUrlDb(chiTiet)}`,
+    );
+  }
 }
 
 /** Kiểm tra DB tenant có tồn tại thật trong PostgreSQL (dùng cho reconcile/guard). */
@@ -106,6 +180,7 @@ export async function tenantDbExists(dbName: string): Promise<boolean> {
  * thứ hai sẽ quên, và lỗi nổ ra ở chỗ khác hẳn (một request sau đó bốc trúng client hỏng).
  */
 export async function dropTenant(dbName: string): Promise<void> {
+  assertTenDbTenant(dbName);
   await evictTenantDb(dbName);
   await withAdminClient((admin) =>
     admin.query(`DROP DATABASE IF EXISTS "${dbName}" WITH (FORCE)`),
