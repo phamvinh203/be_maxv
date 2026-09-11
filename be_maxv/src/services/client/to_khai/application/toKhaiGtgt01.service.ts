@@ -210,20 +210,26 @@ export async function tinhVaLuu(db: PrismaClient, ky: Ky): Promise<BanToKhai> {
     tinh_luc: new Date(),
   };
 
-  const luu = await db.tokhai_gtgt01.upsert({
-    where: { nam_ky_loai_ky_so: { nam: ky.nam, ky_loai: ky.kyLoai, ky_so: ky.kySo } },
-    create: {
-      nam: ky.nam,
-      ky_loai: ky.kyLoai,
-      ky_so: ky.kySo,
-      trang_thai: "nhap",
-      // `GhiDeItem.lyDo` là optional nên không khớp `InputJsonValue` (không nhận `undefined`);
-      // cast qua `unknown` — giá trị thật luôn serialize được, `locGhiDeHopLe` đã lọc sạch.
-      ghi_de: ghiDe as unknown as Prisma.InputJsonValue,
-      ...duLieu,
-    },
-    update: duLieu,
-  });
+  // Kỳ chưa có bản -> tạo nháp. `skipDuplicates` (ON CONFLICT DO NOTHING): lượt "Lập tờ khai" song
+  // song đã tạo trước thì thôi, rơi xuống ghi có điều kiện như mọi lượt tính lại.
+  const daTao = hienCo
+    ? 0
+    : (
+        await db.tokhai_gtgt01.createMany({
+          data: [
+            {
+              ...khoaKy(ky),
+              trang_thai: "nhap",
+              // `GhiDeItem.lyDo` là optional nên không khớp `InputJsonValue` (không nhận `undefined`);
+              // cast qua `unknown` — giá trị thật luôn serialize được, `locGhiDeHopLe` đã lọc sạch.
+              ghi_de: ghiDe as unknown as Prisma.InputJsonValue,
+              ...duLieu,
+            },
+          ],
+          skipDuplicates: true,
+        })
+      ).count;
+  if (daTao === 0) await ghiKhiChuaChot(db, ky, duLieu);
 
   return {
     ky,
@@ -242,8 +248,32 @@ export async function tinhVaLuu(db: PrismaClient, ky: Ky): Promise<BanToKhai> {
     phuLuc,
     canhBao,
     oSuaDuoc: CT_NHAP_TAY,
-    tinhLuc: luu.tinh_luc?.toISOString() ?? null,
+    tinhLuc: duLieu.tinh_luc.toISOString(),
   };
+}
+
+/** Khóa duy nhất của bản tờ khai một kỳ, dạng phẳng. */
+function khoaKy(ky: Ky) {
+  return { nam: ky.nam, ky_loai: ky.kyLoai, ky_so: ky.kySo };
+}
+
+/**
+ * Ghi vào bản tờ khai CÓ ĐIỀU KIỆN: chỉ khi bản VẪN chưa chốt.
+ *
+ * Guard ở đầu mỗi hàm ghi đọc trạng thái từ trước (với `tinhVaLuu` là trước cả lượt tính đọc hóa đơn
+ * cả kỳ). "Chốt" chen vào khe đó mà ghi `where` chỉ có khóa kỳ thì số của bản VỪA CHỐT — số đem nộp —
+ * bị đè lặng lẽ, trạng thái vẫn là chốt. Bản tờ khai không có đường xóa nên 0 dòng khớp = đã chốt.
+ */
+async function ghiKhiChuaChot(
+  db: PrismaClient,
+  ky: Ky,
+  data: Prisma.tokhai_gtgt01UpdateManyMutationInput,
+) {
+  const { count } = await db.tokhai_gtgt01.updateMany({
+    where: { ...khoaKy(ky), trang_thai: { not: "chot" } },
+    data,
+  });
+  if (count === 0) throw new BanDaChotError();
 }
 
 /**
@@ -325,9 +355,8 @@ export async function luuGhiDe(
   if (!row) throw new ChuaCoBanError();
   if (row.trang_thai === "chot") throw new BanDaChotError();
 
-  await db.tokhai_gtgt01.update({
-    where: { nam_ky_loai_ky_so: { nam: ky.nam, ky_loai: ky.kyLoai, ky_so: ky.kySo } },
-    data: { ghi_de: locGhiDeHopLe(ghiDeMoi) as unknown as Prisma.InputJsonValue },
+  await ghiKhiChuaChot(db, ky, {
+    ghi_de: locGhiDeHopLe(ghiDeMoi) as unknown as Prisma.InputJsonValue,
   });
   return tinhVaLuu(db, ky);
 }
@@ -359,10 +388,7 @@ export async function luuTenHangPhuLuc(
     },
   };
 
-  await db.tokhai_gtgt01.update({
-    where: { nam_ky_loai_ky_so: { nam: ky.nam, ky_loai: ky.kyLoai, ky_so: ky.kySo } },
-    data: { phu_luc: phuLuc as unknown as Prisma.InputJsonValue },
-  });
+  await ghiKhiChuaChot(db, ky, { phu_luc: phuLuc as unknown as Prisma.InputJsonValue });
   return { ...ban, phuLuc };
 }
 

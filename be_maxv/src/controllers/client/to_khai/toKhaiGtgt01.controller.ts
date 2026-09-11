@@ -5,6 +5,7 @@ import { sysPrisma } from "../../../config/db.sys";
 import { dungXmlGtgt01, tenFileXml } from "../../../services/client/to_khai/serialization/xuatXmlGtgt01";
 import * as ToKhai from "../../../services/client/to_khai/application/toKhaiGtgt01.service";
 import { docKy, type KyInput } from "./docThamSo";
+import { thongDiepLoiAnToan } from "../../../helpers/thongDiepLoi";
 
 /**
  * Lập, sửa và chốt tờ khai 01/GTGT của một kỳ. Chỉ đọc/ghi DB tenant — không gọi cổng thuế nên
@@ -13,7 +14,8 @@ import { docKy, type KyInput } from "./docThamSo";
 
 /**
  * Lỗi nghiệp vụ đã biết -> mã HTTP tương ứng kèm `code` máy đọc được (FE dựa vào đó để hiện đúng
- * hướng dẫn); còn lại 400 với câu tiếng Việt.
+ * hướng dẫn); còn lại 400 với câu tiếng Việt. Lỗi NỘI BỘ (Prisma, lỗi lập trình, lỗi mạng) không trả
+ * nguyên message — lộ tên bảng / đường dẫn file (vbsec 2026-09-10); chi tiết đã có ở `request.log`.
  */
 function traLoi(reply: FastifyReply, err: unknown, macDinh: string) {
   if (err instanceof ToKhai.KyChuaKeKhaiError) {
@@ -25,7 +27,7 @@ function traLoi(reply: FastifyReply, err: unknown, macDinh: string) {
   if (err instanceof ToKhai.ChuaCoBanError) {
     return reply.status(404).send({ message: err.message, code: "chua_co_ban" });
   }
-  return reply.status(400).send({ message: err instanceof Error ? err.message : macDinh });
+  return reply.status(400).send({ message: thongDiepLoiAnToan(err, macDinh) });
 }
 
 /** POST /to-khai/gtgt01/tinh — tính từ bảng kê của kỳ rồi ghi bản nháp. */
