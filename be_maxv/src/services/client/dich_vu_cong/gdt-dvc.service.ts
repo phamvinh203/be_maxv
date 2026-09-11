@@ -1,6 +1,7 @@
 import { randomUUID } from "crypto";
 import { describeErrorChain } from "../../../config/gdt-client";
 import { readZipEntryByExtension } from "../../../helpers/zip";
+import { thongDiepLoiAnToan } from "../../../helpers/thongDiepLoi";
 import { filenameFromDisposition } from "../hddt/traCuuGoc/shared";
 import {
   schedule as pacerSchedule,
@@ -203,10 +204,10 @@ const sessions = new Map<string, DvcSession>();
  * ghi vào `sessions` bằng khóa CLIENT gửi lên, khác mọi chỗ còn lại (server tự sinh). */
 const RE_KHOA_PHIEN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
-/** Lượt phục hồi ĐANG chạy của từng khóa — gộp các request trùng khóa, xem `phucHoiPhienDaMat`. */
+/** Lượt phục hồi ĐANG chạy của từng cặp `donViId:key` — gộp các request trùng, xem `phucHoiPhienDaMat`. */
 const dangPhucHoi = new Map<string, Promise<void>>();
 
-/** Mốc lần phục hồi HỎNG gần nhất của từng khóa, để bắt nghỉ trước khi cho thử lại. */
+/** Mốc lần phục hồi HỎNG gần nhất của từng cặp `donViId:key`, để bắt nghỉ trước khi cho thử lại. */
 const phucHoiHongLuc = new Map<string, number>();
 
 /** Phục hồi hỏng thì nghỉ ngần này mới cho thử lại — xem `phucHoiPhienDaMat`. */
@@ -733,7 +734,11 @@ export function phucHoiPhienDaMat(p: DvcPhien, cred: DvcCredential): Promise<voi
   // phiên mà người khác đoán trúng.
   if (!RE_KHOA_PHIEN.test(key)) throw new DvcAutoLoginFailedError("khóa phiên không hợp lệ");
 
-  const hongLuc = phucHoiHongLuc.get(key);
+  // Cửa phạt và cửa gộp khóa theo CẶP công ty + khóa (vbsec 2026-09-10): khóa theo `key` trần thì công
+  // ty khác cầm được khóa là nhập chung lượt phục hồi của chủ, hoặc để lại án phạt chặn chủ 5 phút.
+  const khoaLuot = `${donViId}:${key}`;
+
+  const hongLuc = phucHoiHongLuc.get(khoaLuot);
   if (hongLuc && Date.now() - hongLuc < NGHI_SAU_PHUC_HOI_HONG_MS) {
     // Vừa thử và hỏng -> KHÔNG thử lại ngay. Không có cửa nghỉ này thì mỗi cú bấm của người dùng
     // lại đốt tới 9 request đăng nhập lên cổng cho một khóa gần như chắc chắn không cứu được —
@@ -745,24 +750,33 @@ export function phucHoiPhienDaMat(p: DvcPhien, cred: DvcCredential): Promise<voi
   // dialog là mấy request cùng lúc phát hiện phiên chết: không chặn thì mỗi request mở một lượt
   // đăng nhập THẬT cho cùng tài khoản, ghi đè phiên của nhau trong `sessions`, và lượt nào hỏng
   // trước còn `clearSession` xóa mất phiên lượt kia vừa dựng xong.
-  const dangChay = dangPhucHoi.get(key);
+  const dangChay = dangPhucHoi.get(khoaLuot);
   if (dangChay) return dangChay;
 
+  // Khóa đang là phiên CÒN SỐNG của công ty khác -> không đụng tới: `requireSession` coi "sai chủ" như
+  // "không có phiên" nên lời gọi này tới được đây, nhưng ghi đè là đá văng phiên cổng đang đăng nhập của
+  // chủ khóa. Báo đúng như hết phiên (không lộ khóa có tồn tại hay không). Kiểm + ghi `sessions` cùng một
+  // nhịp đồng bộ, nên hai công ty phục hồi cùng lúc trên một khóa trống thì chỉ một bên chiếm được.
+  const hienCo = sessions.get(key);
+  if (hienCo && hienCo.expiresAt > Date.now() && hienCo.donViId !== donViId) {
+    throw new DvcSessionExpiredError();
+  }
+  const session = phienRong(donViId, cred);
+  sessions.set(key, session);
+
   const luot = (async () => {
-    const session = phienRong(donViId, cred);
-    sessions.set(key, session);
     // Dùng lại NGUYÊN `tuDangNhapLai`: nó đã có đủ lấy cookie/CSRF mới, OCR captcha, thử tối đa
     // `SO_LAN_THU_TU_DANG_NHAP_LAI` lượt, dừng sớm khi sai mật khẩu, và dọn phiên khi hỏng hẳn.
     try {
       await tuDangNhapLai(key, session);
-      phucHoiHongLuc.delete(key);
+      phucHoiHongLuc.delete(khoaLuot);
     } catch (err) {
-      phucHoiHongLuc.set(key, Date.now());
+      phucHoiHongLuc.set(khoaLuot, Date.now());
       throw err;
     }
-  })().finally(() => dangPhucHoi.delete(key));
+  })().finally(() => dangPhucHoi.delete(khoaLuot));
 
-  dangPhucHoi.set(key, luot);
+  dangPhucHoi.set(khoaLuot, luot);
   return luot;
 }
 
@@ -776,7 +790,9 @@ export function toUserMessage(err: unknown, fallback: string): string {
     return "Tài khoản hoặc mật khẩu Dịch vụ công không chính xác.";
   }
   if (err instanceof DvcHttpError) return fallback;
-  return err instanceof Error && err.message ? err.message : fallback;
+  // Lỗi nghiệp vụ (Error thường, câu tiếng Việt) hiện nguyên; lỗi Prisma/lập trình/hệ thống (đường dẫn
+  // nguồn, IP:cổng nội bộ) -> `fallback` (vbsec 2026-09-10).
+  return thongDiepLoiAnToan(err, fallback);
 }
 
 /** `yyyy-mm-dd` (input type=date của FE) -> `dd/MM/yyyy` (dạng cổng DVC nhận). */

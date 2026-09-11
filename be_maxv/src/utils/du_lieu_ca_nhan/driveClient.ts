@@ -256,6 +256,15 @@ export function taoThuMucNeuChua(
 }
 
 /**
+ * Thoát một giá trị để đặt trong cặp nháy đơn của truy vấn Drive (`q`). `\` phải thoát TRƯỚC rồi mới
+ * tới `'` (vbsec 2026-09-10): chỉ thoát `'` thì tên kết thúc bằng `\` (tên thư mục dựng từ họ tên người
+ * dùng nhập) biến `\'` thành `\\` + `'` -> đóng chuỗi sớm, phần sau thành điều kiện truy vấn.
+ */
+function thoatChuoiTruyVanDrive(s: string): string {
+  return s.replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+}
+
+/**
  * Tìm thư mục con theo tên, chưa có thì tạo. Trả về ID.
  *
  * Với scope `drive.file` thì lệnh tìm chỉ thấy thư mục do app tạo — đúng ý: không đụng tới thư
@@ -267,10 +276,10 @@ async function timHoacTaoThuMuc(
   idCha: string | null,
 ): Promise<string> {
   const dieuKien = [
-    `name = '${ten.replace(/'/g, "\\'")}'`,
+    `name = '${thoatChuoiTruyVanDrive(ten)}'`,
     `mimeType = '${MIME_THU_MUC}'`,
     'trashed = false',
-    idCha ? `'${idCha}' in parents` : "'root' in parents",
+    idCha ? `'${thoatChuoiTruyVanDrive(idCha)}' in parents` : "'root' in parents",
   ].join(' and ');
 
   const q = new URLSearchParams({
@@ -444,7 +453,8 @@ export async function xoaFile(
 }
 
 /**
- * Tham số `state` của OAuth — chống CSRF và mang theo công ty đang kết nối.
+ * Tham số `state` của OAuth — chống CSRF và mang theo công ty đang kết nối + NGƯỜI xin vé (callback miễn
+ * đăng nhập, cần biết ai xin để kiểm lại quyền lúc dùng vé — xem `driveCallback`).
  *
  * KHÔNG dùng JWT đăng nhập của app: payload đó khai chặt (userId/role/donViId) cho đúng một
  * mục đích, nhét thêm trường vào là mở đường cho token lẫn lộn giữa hai vai trò. HMAC riêng ở
@@ -454,8 +464,8 @@ const STATE_HAN_MS = 10 * 60 * 1000;
 
 /**
  * Tiền tố tách miền: cùng một khóa bí mật đang phục vụ hai giao thức (JWT truy cập và state
- * OAuth). Hiện chưa lợi dụng được vì hai định dạng khác nhau rõ (JWT có 1 dấu chấm, `than` có
- * 2), nhưng chỉ cần sau này ai đó thêm một trường vào `than` là ranh giới đó mất, và chữ ký
+ * OAuth). Hiện chưa lợi dụng được vì hai định dạng khác nhau rõ (chuỗi JWT ký có 1 dấu chấm, `than` có
+ * 3), nhưng chỉ cần sau này ai đó thêm một trường vào `than` là ranh giới đó mất, và chữ ký
  * state biến thành cỗ máy ký JWT hộ. Tiền tố cố định làm hai không gian không bao giờ trùng.
  */
 const STATE_MIEN = 'drive-state|';
@@ -466,13 +476,13 @@ function kyState(thanh: string): string {
     .digest('base64url');
 }
 
-export function taoState(donViId: string): string {
-  const than = `${donViId}.${Date.now() + STATE_HAN_MS}.${randomBytes(9).toString('base64url')}`;
+export function taoState(donViId: string, userId: string): string {
+  const than = `${donViId}.${userId}.${Date.now() + STATE_HAN_MS}.${randomBytes(9).toString('base64url')}`;
   return `${Buffer.from(than).toString('base64url')}.${kyState(than)}`;
 }
 
-/** Trả `donViId` nếu state hợp lệ và còn hạn; sai/hết hạn -> null. */
-export function docState(state: string): string | null {
+/** Trả công ty + người xin vé nếu state hợp lệ và còn hạn; sai/hết hạn -> null. */
+export function docState(state: string): { donViId: string; userId: string } | null {
   const [phanThan, chuKy] = state.split('.');
   if (!phanThan || !chuKy) return null;
 
@@ -483,7 +493,7 @@ export function docState(state: string): string | null {
   const b = Buffer.from(mong);
   if (a.length !== b.length || !timingSafeEqual(a, b)) return null;
 
-  const [donViId, hetHan] = than.split('.');
-  if (!donViId || !hetHan || Number(hetHan) < Date.now()) return null;
-  return donViId;
+  const [donViId, userId, hetHan] = than.split('.');
+  if (!donViId || !userId || !hetHan || Number(hetHan) < Date.now()) return null;
+  return { donViId, userId };
 }
