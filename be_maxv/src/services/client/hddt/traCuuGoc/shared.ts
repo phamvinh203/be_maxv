@@ -41,9 +41,11 @@ export function dispatcherThemCa(pem: string): Dispatcher {
 }
 
 /**
- * `fetch` tới cổng NCC với timeout, tự bọc lỗi mạng/timeout thành `UPSTREAM` (undici giấu lý do thật
- * ở `cause` -> dùng `describeErrorChain`). Trả `Response` thô để nơi gọi tự đọc (binary/JSON). Tự thêm
- * `user-agent` trình duyệt (ghi đè được qua `init.headers`).
+ * `fetch` tới cổng NCC với timeout, tự bọc lỗi mạng/timeout thành `UPSTREAM`. Trả `Response` thô để nơi
+ * gọi tự đọc (binary/JSON). Tự thêm `user-agent` trình duyệt (ghi đè được qua `init.headers`).
+ *
+ * Lý do thật (undici giấu ở `cause` -> `describeErrorChain`: mã lỗi hệ thống, IP:cổng, DNS/TLS) chỉ nằm ở
+ * `chiTiet` cho log — thông điệp này về tới trình duyệt nên không kể hạ tầng mạng phía máy chủ.
  */
 export async function fetchUpstream(url: string, init: UpstreamInit, ten: string): Promise<Response> {
   try {
@@ -53,7 +55,12 @@ export async function fetchUpstream(url: string, init: UpstreamInit, ten: string
       signal: AbortSignal.timeout(TIMEOUT_MS),
     });
   } catch (err) {
-    throw new TraCuuGocError("UPSTREAM", `Không gọi được ${ten}: ${describeErrorChain(err)}`);
+    throw new TraCuuGocError(
+      "UPSTREAM",
+      `Không kết nối được ${ten} (lỗi mạng hoặc quá thời gian chờ), vui lòng thử lại sau`,
+      false,
+      describeErrorChain(err),
+    );
   }
 }
 

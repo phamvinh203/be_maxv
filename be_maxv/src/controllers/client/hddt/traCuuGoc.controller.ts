@@ -5,23 +5,39 @@ import {
   TraCuuGocError,
 } from "../../../services/client/hddt/traCuuGoc";
 import type { TraCuuGocErrorCode } from "../../../services/client/hddt/traCuuGoc/types";
+import { taoHangDoiGioiHan } from "../../../helpers/hangDoiGioiHan";
 
 /** Map mã lỗi ngữ nghĩa của service -> HTTP status. Layer HTTP nằm ở đây, không rải trong service. */
 const STATUS_BY_CODE: Record<TraCuuGocErrorCode, number> = {
   INVALID_CODE: 422,
   UPSTREAM: 502,
   UNSUPPORTED: 501,
+  BUSY: 429,
 };
+
+/**
+ * Trần số lượt tải gốc: mỗi lượt có thể giữ CPU (captcha OCR, worker dùng chung MỌI tenant) và bắn hàng
+ * trăm request tới NCC trong ~30s. 3 lượt chạy cùng lúc cho cả tiến trình; mỗi người tối đa 2 lượt —
+ * FE tải theo lô TUẦN TỰ (1 lượt/lúc) nên không vướng, chỉ chặn việc dội.
+ */
+const chayTaiGoc = taoHangDoiGioiHan(
+  { dongThoi: 3, choToiDa: 10, moiNguoiToiDa: 2 },
+  () =>
+    new TraCuuGocError(
+      "BUSY",
+      "Máy chủ đang bận tải hóa đơn gốc, vui lòng thử lại sau ít phút",
+    ),
+);
 
 /**
  * GET /gdt/tra-cuu-goc/nha-cung-cap → danh mục NCC có bộ tải tự động + URL tra cứu thủ công của từng
  * NCC. FE đọc cái này thay vì giữ bản sao chép tay của registry BE.
  *
  * Không đụng DB và không gọi cổng NCC nào — chỉ đọc registry trong bộ nhớ, nên rẻ và an toàn để FE
- * gọi mỗi lần mở màn hình.
+ * gọi mỗi lần mở màn hình. `urlDaDo` chỉ gồm người bán của công ty đang chọn (xem `danhMucTraCuuGoc`).
  */
-export async function getNhaCungCapTraCuu(_request: FastifyRequest, reply: FastifyReply) {
-  return reply.send(danhMucTraCuuGoc());
+export async function getNhaCungCapTraCuu(request: FastifyRequest, reply: FastifyReply) {
+  return reply.send(danhMucTraCuuGoc(request.user?.donViId));
 }
 
 interface DownloadOriginalQuery {
@@ -47,7 +63,9 @@ export async function downloadOriginalInvoice(
   if (!code) return reply.status(400).send({ message: "Thiếu code (mã tra cứu hóa đơn)" });
 
   try {
-    const file = await taiHoaDonGoc(msttcgp, { code, sellerMst });
+    const file = await chayTaiGoc(request.user.userId, () =>
+      taiHoaDonGoc(msttcgp, { code, sellerMst }, request.user.donViId),
+    );
     return reply
       .header("Content-Type", file.contentType)
       .header("Content-Disposition", `inline; filename*=UTF-8''${encodeURIComponent(file.filename)}`)

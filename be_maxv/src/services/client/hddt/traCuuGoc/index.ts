@@ -18,6 +18,7 @@ import { vinInvoice } from "./vin_invoice";
 import { viettel } from "./vinvoice_viettel";
 import { vpt } from "./vnpt";
 import { cyberlotus } from "./xcyber";
+import { MST_REGEX } from "../../../../utils/dbName";
 import { DownloadRequest, FileHoaDonGoc, ProviderDownloader, TraCuuGocError } from "./types";
 
 /** Danh sách bộ tải đã có. Thêm NCC mới = thêm 1 phần tử ở đây. */
@@ -52,22 +53,37 @@ export interface DanhMucTraCuuGoc {
    * MST người bán -> URL tra cứu đã DÒ được, ghi đè `urlTraCuu` của NCC tương ứng.
    *
    * BEST-EFFORT và theo TIẾN TRÌNH: rỗng sau mỗi lần restart BE, chỉ có dữ liệu cho những người bán
-   * đã từng tải hóa đơn gốc thành công trong tiến trình này. FE luôn phải có đường lùi về `urlTraCuu`.
+   * mà CHÍNH công ty đang hỏi đã tải hóa đơn gốc trong tiến trình này. FE luôn phải có đường lùi về
+   * `urlTraCuu`.
    */
   urlDaDo: Record<string, string>;
 }
 
 /**
+ * Người bán mà TỪNG công ty đã tải hóa đơn gốc trong tiến trình này. Map domain đã dò của bộ tải là DÙNG
+ * CHUNG mọi công ty (dò 1 lần cho mỗi người bán) — trả nguyên cho FE là kể cho công ty A biết công ty B
+ * mua hàng của ai (vbsec 2026-09-10). Số phần tử bị chặn bởi số công ty × số người bán đã tải.
+ */
+const nguoiBanDaTaiTheoDonVi = new Map<string, Set<string>>();
+
+/**
  * Danh mục NCC cho FE — nguồn DUY NHẤT để FE biết NCC nào tải tự động được và link tra cứu thủ công
- * là gì.
+ * là gì. `urlDaDo` lọc theo người bán công ty `donViId` đã tải (xem `nguoiBanDaTaiTheoDonVi`).
  *
  * Có endpoint này vì trước đây FE giữ một bản sao chép tay của `REGISTRY` (cờ `taiTuDong` + URL cổng
  * NCC). Hai bản lệch nhau mỗi khi deploy lệch phiên bản, và FE đã phải mang một nhánh xử-lý-501 riêng
  * để che triệu chứng đó.
  */
-export function danhMucTraCuuGoc(): DanhMucTraCuuGoc {
+export function danhMucTraCuuGoc(donViId: string | null | undefined): DanhMucTraCuuGoc {
+  const daTai = donViId ? nguoiBanDaTaiTheoDonVi.get(donViId) : undefined;
   const urlDaDo: Record<string, string> = {};
-  for (const p of REGISTRY) Object.assign(urlDaDo, p.urlTraCuuTheoMst?.());
+  if (daTai) {
+    for (const p of REGISTRY) {
+      for (const [mst, url] of Object.entries(p.urlTraCuuTheoMst?.() ?? {})) {
+        if (daTai.has(mst)) urlDaDo[mst] = url;
+      }
+    }
+  }
 
   return {
     nccs: REGISTRY.map((p) => ({ msttcgp: p.mst, ten: p.ten, urlTraCuu: p.urlTraCuu })),
@@ -79,8 +95,13 @@ export function danhMucTraCuuGoc(): DanhMucTraCuuGoc {
  * Tải file PDF gốc 1 hóa đơn theo NCC phát hành.
  * @param msttcgp MST NCC phát hành (vd MISA = "0101243150", Viettel = "0100109106").
  * @param req     Dữ liệu hóa đơn (mã tra cứu + MST người bán + token captcha nếu NCC cần).
+ * @param donViId Công ty đang tải — ghi nhận người bán cho `urlDaDo` của riêng công ty này.
  */
-export async function taiHoaDonGoc(msttcgp: string, req: DownloadRequest): Promise<FileHoaDonGoc> {
+export async function taiHoaDonGoc(
+  msttcgp: string,
+  req: DownloadRequest,
+  donViId?: string | null,
+): Promise<FileHoaDonGoc> {
   const provider = BY_MST.get(msttcgp);
   if (!provider) {
     throw new TraCuuGocError(
@@ -95,6 +116,13 @@ export async function taiHoaDonGoc(msttcgp: string, req: DownloadRequest): Promi
       "INVALID_CODE",
       `Thiếu MST người bán (nbmst) — ${provider.ten} cần MST này để tra cứu hóa đơn`,
     );
+  }
+  // Chỉ nhớ MST đúng dạng: chuỗi rác từ query không có URL đã dò nào để khớp, nhớ vào chỉ phình bộ nhớ.
+  const sellerMst = req.sellerMst?.trim();
+  if (donViId && sellerMst && MST_REGEX.test(sellerMst) && provider.urlTraCuuTheoMst) {
+    const daTai = nguoiBanDaTaiTheoDonVi.get(donViId) ?? new Set<string>();
+    daTai.add(sellerMst);
+    nguoiBanDaTaiTheoDonVi.set(donViId, daTai);
   }
   return provider.download(req);
 }
