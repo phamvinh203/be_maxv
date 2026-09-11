@@ -5,10 +5,6 @@
  * `async (values, maPb?)`, ném `Error` thông điệp tiếng Việt) nên component chỉ đổi dòng
  * import. Riêng `usePhongBanRows` trả thêm trạng thái tải — bảng cần phân biệt "đang tải"
  * với "không có phòng ban nào", việc mà mảng rỗng không nói được.
- *
- * PHẠM VI: chỉ màn Phòng ban dùng file này. Các màn còn lại (bảng lương, kỳ lương, bảng
- * nhân viên, tổng quan) vẫn đọc phòng ban từ mock store — xem `mock/hooks/phongBan.ts`.
- * Nghĩa là hai nơi đang có hai danh sách phòng ban khác nhau cho tới khi API nhân viên xong.
  */
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";

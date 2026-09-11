@@ -78,22 +78,6 @@ export function layConChau(danhSach: PhongBan[], maPb: string): Set<string> {
   return ketQua;
 }
 
-/**
- * Mã phòng ban: gốc là `PB01`, `PB02`…; con của `PB01` là `PB01.01`.
- *
- * Mã chỉ phản ánh vị trí **lúc tạo** — đổi "Trực thuộc" không đổi mã, vì mã đã
- * nằm trên chứng từ kế toán bên `fe_maxv`. `cap` mới là sự thật hiện tại.
- */
-export function sinhMaPhongBan(danhSach: PhongBan[], maPbMe: string | null): string {
-  const tienTo = maPbMe ? `${maPbMe}.` : "PB";
-  const daDung = new Set(danhSach.map((pb) => pb.ma_pb));
-  for (let i = 1; i <= 99; i += 1) {
-    const ma = `${tienTo}${String(i).padStart(2, "0")}`;
-    if (!daDung.has(ma)) return ma;
-  }
-  return `${tienTo}${Date.now().toString().slice(-4)}`;
-}
-
 /** Gợi ý mã nhân viên kế tiếp: `NV0001`, `NV0002`… Người dùng sửa lại được. */
 export function sinhMaNhanVien(danhSach: NhanVien[]): string {
   const daDung = new Set(danhSach.map((nv) => nv.ma_nv));

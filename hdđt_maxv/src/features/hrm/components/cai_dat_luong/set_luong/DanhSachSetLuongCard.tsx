@@ -27,7 +27,7 @@ import { getErrorMessage } from "../../../../../lib/errors";
 import { sapXepCay } from "../../../_shared/cay";
 import { LOAI_HD, TRANG_THAI_SET_LUONG } from "../../../_shared/constants";
 import { ngayVn, nhan, tienVn } from "../../../_shared/format";
-import { usePhongBanList } from "../../../mock/hooks/phongBan";
+import { usePhongBanList } from "../../../api/du_lieu_nhan_vien/phongBanQueries";
 import {
   useDemSetLuong,
   useXoaSetLuong,
