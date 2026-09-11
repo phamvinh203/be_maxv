@@ -13,46 +13,54 @@ updated: 2026-09-11
 - Vấn đề: form khai 7 trường nhưng `mutationFn` chỉ gửi 4 — `maGiaoDich`, `noiNop`, `kyTinhThue` không bao giờ tới API. Ô nhãn "Mã giao dịch" bị bỏ trong khi ô nhãn "Tờ khai" mới là thứ được gửi. Màn đối soát với cơ quan thuế — gõ mã giao dịch, bấm Tìm, nhận về toàn bộ hồ sơ, tưởng đã lọc.
 - Đề xuất fix: nối đủ 3 param còn thiếu, hoặc bỏ hẳn 3 ô khỏi form + sửa nhãn 2 ô còn lại cho khớp param thật.
 - Trạng thái: OPEN
+  → FIXED [2026-09-11] — bỏ 3 ô `maGiaoDich`/`noiNop`/`kyTinhThue` khỏi `BoLocHoSoValues` (BE chỉ nhận 4 param, không sửa được `be_maxv`); relabel `hoSo`→"Mã giao dịch", `loaiHoSo`→"Tờ khai" (tab tờ khai) và `loaiHoSo`→"Số giấy nộp tiền" (tab GNT) khớp đúng param gửi thật, `config.ts`:1-24,176-186 · `BoLocHoSo.tsx`:26-36,140-165, tsc+eslint pass, commit "chưa commit" *(frontend-engineer)*
 
 ### RVW-D02 🟡 NON-BLOCKING — In nguyên body phản hồi đăng nhập cổng DVC ra console
 - Vị trí: `src/features/dich_vu_cong/components/DialogLoginDVC.tsx`:234 — `console.info("[DVC-LOGIN] cổng trả về:", res.data)`
 - Vấn đề: `res.data` là body cổng trả khi đăng nhập thành công — dạng phản hồi chưa chốt, có thể chứa định danh phiên/thông tin NNT. CLAUDE.md cấm log credential/expose sensitive data. Đây là dòng duy nhất trong 49 file log dữ liệu phản hồi. (Ghi nhận thêm: cùng lỗi này còn thấy ở `hdđt_maxv/src/features/hddt/*` theo review nhóm core/auth — cùng pattern DVC login logging.)
 - Đề xuất fix: bọc `if (import.meta.env.DEV)`, hoặc chuyển việc thu thập mẫu response sang log BE.
 - Trạng thái: OPEN
+  → FIXED [2026-09-11] — bọc `console.info` bằng `if (import.meta.env.DEV)`, `DialogLoginDVC.tsx`:234-235, tsc+eslint pass, commit "chưa commit" *(frontend-engineer)*
 
 ### RVW-D03 🟡 NON-BLOCKING — `messageCuaCong` coi mọi phản hồi không nhận dạng được là đăng nhập hỏng, trái comment của chính nó
 - Vị trí: `.../DialogLoginDVC.tsx`:47-70, đối chiếu comment 39-46
 - Vấn đề: comment nói "không có message thì coi như xong", code làm ngược — `status` rỗng vẫn trả "không thành công" → `onLoginSuccess` không chạy dù BE đã mở phiên, còn gọi thêm `refreshCaptcha()` (rủi ro 429).
 - Đề xuất fix: chốt bằng 1 mẫu response thật rồi sửa 1 trong 2 (code hoặc comment) cho khớp; đảo default thành "không nhận dạng được → coi là thành công".
 - Trạng thái: OPEN
+  → FIXED [2026-09-11] — đảo default: `laLoi` chỉ true khi có `msg`/status lỗi biết trước (`999`/`FAIL`/`ERROR`/`success:false`), bỏ hẳn nhánh `isSuccess` dương tính cũ, `DialogLoginDVC.tsx`:39-64, tsc+eslint pass, commit "chưa commit" *(frontend-engineer)*
 
 ### RVW-D04 🟡 NON-BLOCKING — Tải file hồ sơ/thông báo/GNT báo "Đã tải" mà không kiểm tra blob thực sự là file
 - Vị trí: `taiFileHoSo.ts`:15-19 · `taiThongBao.ts`:16-18 · `giay_nop_tien/taiFileGiayNopTien.ts`:11-13 · `pages/dich_vu_cong/DvcPage.tsx`:273-278
 - Vấn đề: chỉ ném khi `!res.ok`. Cổng trả 200 kèm HTML trang đăng nhập (phiên chết) vẫn được lưu xuống máy + toast xanh "Đã tải".
 - Đề xuất fix: guard chung — `blob.size===0` hoặc `blob.type` bắt đầu `text/html`/`application/json` → throw kèm gợi ý đăng nhập lại.
 - Trạng thái: OPEN
+  → FIXED [2026-09-11] — thêm guard `kiemTraBlobLaFile` dùng chung ở `duoiTuContentType.ts`:19-30, gọi trước khi lưu ở `taiFileHoSo.ts`:16-17 · `taiThongBao.ts`:16-17 · `giay_nop_tien/taiFileGiayNopTien.ts`:11-12, tsc+eslint pass, commit "chưa commit" *(frontend-engineer)*
 
 ### RVW-D05 🟡 NON-BLOCKING — `duoiTuContentType` trượt khi content-type có tham số charset → lưu XML thành `.pdf`
 - Vị trí: `src/features/dich_vu_cong/duoiTuContentType.ts`:5-14
 - Đề xuất fix: `contentType.split(";")[0].trim().toLowerCase()` trước khi tra bảng.
 - Trạng thái: OPEN
+  → FIXED [2026-09-11] — thêm `split(";")[0].trim().toLowerCase()` trước khi tra bảng, `duoiTuContentType.ts`:12-17, tsc+eslint pass, commit "chưa commit" *(frontend-engineer)*
 
 ### RVW-D06 🟡 NON-BLOCKING — 3 query key của module DVC thiếu MST, dialog không đóng khi đổi công ty
 - Vị trí: `ThongBaoDialog.tsx`:48 · `ToKhaiXmlDialog.tsx`:139 · `TaiLieuDinhKemDialog.tsx`:71 · `pages/dich_vu_cong/DvcPage.tsx`:76-80
 - Vấn đề: query key thiếu `activeMst`, 3 state mã hồ sơ không reset khi đổi công ty → dialog vẫn hiện cache của công ty cũ.
 - Đề xuất fix: thêm `activeMst` vào 3 key; reset 3 state khi `activeMst` đổi (hoặc `key={activeMst}`).
 - Trạng thái: OPEN
+  → FIXED [2026-09-11] — thêm prop `activeMst` + vào query key của `ThongBaoDialog.tsx`:48 · `ToKhaiXmlDialog.tsx`:143 · `TaiLieuDinhKemDialog.tsx`:78; thêm effect reset 3 state `tepDinhKemMaHoSo`/`thongBaoMaHoSo`/`toKhaiMaHoSo` khi `activeMst` đổi, `DvcPage.tsx`:84-96,443-465, tsc+eslint pass, commit "chưa commit" *(frontend-engineer)*
 
 ### RVW-D07 🟡 NON-BLOCKING — `xuatChiTieuExcel` kéo nhầm `hddt/exportXlsx` chỉ để lấy 3 hằng style
 - Vị trí: `src/features/dich_vu_cong/xuat_excel/xuatChiTieuExcel.ts`:1
 - Đề xuất fix: đổi import sang `../../hddt/xlsxStyle` (file đã tồn tại đúng mục đích này, `to_khai/xuatToKhaiExcel.ts` đã dùng đúng).
 - Trạng thái: OPEN
+  → FIXED [2026-09-11] — đổi import sang `../../hddt/xlsxStyle`, `xuatChiTieuExcel.ts`:1, tsc+eslint pass, commit "chưa commit" *(frontend-engineer)*
 
 ### RVW-D08 🟡 NON-BLOCKING — `XuatFileDvcDialog`: không validate khoảng ngày, 1 loại lỗi làm hỏng cả lượt xuất
 - Vị trí: `.../components/XuatFileDvcDialog.tsx`:133, 150-161
 - Vấn đề: không kiểm `tuNgay <= denNgay` (dialog anh em `DialogDongBo` có kiểm); `Promise.all` bao 6 lượt gọi, 1 lỗi làm reject toàn bộ dù vài file đã ghi xong.
 - Đề xuất fix: thêm check ngày; đổi `Promise.all` → `Promise.allSettled` + liệt kê loại nào hỏng trong toast.
 - Trạng thái: OPEN
+  → FIXED [2026-09-11] — thêm check `tuNgay > denNgay` (state `loiForm` + Alert, cùng khuôn `DialogDongBo`); đổi `Promise.all` 5 loại → `Promise.allSettled` + try/catch riêng XML, liệt kê `loaiHong` trong toast warning, `XuatFileDvcDialog.tsx`:123-190,230-260, tsc+eslint pass, commit "chưa commit" *(frontend-engineer)*
 
 ### 🟢 Suggestion (gộp gọn)
 - `CAN_KHO_RONG` ở `ToKhaiXmlDialog.tsx` rút gọn còn 1 dòng điều kiện.

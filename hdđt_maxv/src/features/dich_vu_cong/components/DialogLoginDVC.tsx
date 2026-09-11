@@ -41,8 +41,9 @@ interface Props {
  *
  * TẠM THỜI: dạng phản hồi của `POST /tthc/loginLDAP` khi đăng nhập ĐÚNG và khi SAI chưa
  * chốt được — cổng trả 200 cho cả hai. Quy ước tạm: có `message` là cổng đang chê điều gì
- * đó, không có thì coi như xong. Có một lượt đăng nhập thật để đối chiếu là siết lại được
- * cả ở đây lẫn trong `gdt-dvc.service.ts`.
+ * đó, không có thì coi như xong — DEFAULT LÀ THÀNH CÔNG, chỉ coi là lỗi khi nhận diện được
+ * dấu hiệu chê rõ ràng (có `msg`, hoặc mã lỗi/status đã biết). Có một lượt đăng nhập thật để
+ * đối chiếu là siết lại được cả ở đây lẫn trong `gdt-dvc.service.ts`.
  */
 function messageCuaCong(data: unknown): string | null {
   if (data && typeof data === "object") {
@@ -54,16 +55,10 @@ function messageCuaCong(data: unknown): string | null {
       (typeof obj.error === "string" && obj.error.trim()) ||
       null;
 
-    const isSuccess =
-      status === "0" ||
-      status === "200" ||
-      status.toUpperCase() === "SUCCESS" ||
-      status.toUpperCase() === "OK" ||
-      obj.success === true;
+    const laLoi =
+      !!msg || status === "999" || obj.status === "FAIL" || obj.status === "ERROR" || obj.success === false;
 
-    if (!isSuccess || status === "999" || obj.status === "FAIL" || obj.status === "ERROR") {
-      return msg || "Đăng nhập cổng Dịch vụ công không thành công.";
-    }
+    if (laLoi) return msg || "Đăng nhập cổng Dịch vụ công không thành công.";
   }
   if (typeof data === "string" && data.trim()) return data.trim();
   return null;
@@ -231,7 +226,9 @@ export default function DialogLoginDVC({
         onSuccess: (res) => {
           // Chừng nào chưa chốt được dạng phản hồi, in nguyên body ra console để còn đối
           // chiếu — đây là thứ duy nhất còn thiếu để phân biệt đăng nhập đúng với sai.
-          console.info("[DVC-LOGIN] cổng trả về:", res.data);
+          // CHỈ log ở DEV: body này có thể chứa định danh phiên/thông tin NNT (RVW-D02),
+          // không được lộ ra console của bản build production.
+          if (import.meta.env.DEV) console.info("[DVC-LOGIN] cổng trả về:", res.data);
 
           const msg = messageCuaCong(res.data);
           if (msg) {
