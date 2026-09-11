@@ -149,6 +149,8 @@ export default function BangTangCaCard({ values, onChange }: Props) {
                       value={dong.so_gio}
                       onChange={(e) => datDong(dong.id, { so_gio: Number(e.target.value) || 0 })}
                       onWheel={(e) => (e.target as HTMLElement).blur()}
+                      error={dong.so_gio <= 0}
+                      helperText={dong.so_gio <= 0 ? "Số giờ phải lớn hơn 0 — dòng này sẽ bị bỏ qua khi áp dụng" : undefined}
                       slotProps={{
                         htmlInput: { min: 0, step: 0.5 },
                         input: {

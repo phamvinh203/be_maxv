@@ -3,10 +3,13 @@ import type { DisplayRow } from "./types";
 
 /**
  * Bọc 1 ô CSV: escape dấu nháy kép và bọc trong "" nếu chứa ký tự đặc biệt.
+ * Chống CSV/formula injection: tên/MST đổ vào từ cổng thuế (bên thứ ba, không tin được) — ô bắt
+ * đầu bằng `=`/`+`/`-`/`@`/tab/CR được Excel/LibreOffice hiểu là công thức, chèn `'` để ép về text.
  * Dùng: nội bộ file này — `exportSavedBackupCsv` (cho cả header lẫn từng ô).
  */
 function csvCell(value: string | number): string {
-  const s = String(value);
+  let s = String(value);
+  if (/^[=+\-@\t\r]/.test(s)) s = `'${s}`;
   return /[",\r\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
 }
 

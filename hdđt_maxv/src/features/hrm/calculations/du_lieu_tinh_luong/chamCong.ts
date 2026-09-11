@@ -139,8 +139,9 @@ export function oCham(
 function congCuaO(o: OChamCong | null, gioCongChuanNgay: number): number {
   if (!o) return 0;
   const moTa = moTaLoaiCong(o.loai);
-  if (!moTa.tinhCong) return 0;
-  if (o.soGio > 0 && gioCongChuanNgay > 0) {
+  // RVW-501: loại không cho nhập giờ (`!tinhCong`) PHẢI vẫn trả `congMacDinh` — trước
+  // đây return 0 thẳng ở đây khiến công tác/nghỉ phép luôn tính 0 công dù BE tính 1.0.
+  if (moTa.tinhCong && o.soGio > 0 && gioCongChuanNgay > 0) {
     return Math.round((o.soGio / gioCongChuanNgay) * 100) / 100;
   }
   return moTa.congMacDinh;

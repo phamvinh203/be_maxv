@@ -8,7 +8,7 @@
  * nhà cung cấp HĐĐT phát hành): nền vân, khung viền kép nâu, danh sách "nhãn — giá trị" hai cột,
  * bảng hàng hóa, và ô chữ ký số xanh có dấu kiểm. Giữ tên class gần với bản gốc để đối chiếu dễ.
  */
-import { formatMoney } from "./format";
+import { formatMoney, formatSoLieu } from "./format";
 import { formatDateTimeVN, vnDateParts } from "./dateUtils";
 import { tinhChatLabel, type InvoiceView } from "./invoiceView";
 import { invoiceQrSvg } from "./invoiceQr";
@@ -192,9 +192,9 @@ export function renderInvoiceHtml(view: InvoiceView): string {
       <td class="tx-left" style="max-width:200px;word-wrap:break-word">${esc(it.loaiDacTrung)}</td>
       <td class="tx-left">${esc(it.tenHang)}</td>
       <td class="tx-left">${esc(it.dvt)}</td>
-      <td class="tx-center">${esc(formatMoney(it.soLuong))}</td>
-      <td class="tx-center">${esc(formatMoney(it.donGia))}</td>
-      <td class="tx-center">${esc(formatMoney(it.chietKhau))}</td>
+      <td class="tx-center">${esc(formatSoLieu(it.soLuong))}</td>
+      <td class="tx-center">${esc(formatSoLieu(it.donGia))}</td>
+      <td class="tx-center">${esc(formatSoLieu(it.chietKhau))}</td>
       <td class="tx-center">${esc(it.thueSuat)}</td>
       <td class="tx-center">${esc(formatMoney(it.thanhTien))}</td>
     </tr>`,

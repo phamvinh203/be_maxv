@@ -14,6 +14,11 @@ import Tooltip from "@mui/material/Tooltip";
 import Typography from "@mui/material/Typography";
 import Alert from "@mui/material/Alert";
 import Chip from "@mui/material/Chip";
+import Dialog from "@mui/material/Dialog";
+import DialogActions from "@mui/material/DialogActions";
+import DialogContent from "@mui/material/DialogContent";
+import DialogContentText from "@mui/material/DialogContentText";
+import DialogTitle from "@mui/material/DialogTitle";
 import CircularProgress from "@mui/material/CircularProgress";
 import FileDownloadRounded from "@mui/icons-material/FileDownloadRounded";
 import { toast } from "react-toastify";
@@ -61,22 +66,40 @@ interface Props {
 export default function ToKhaiGtgt01Editor({ ky, ban, onDoiKy, dangTai, loi }: Props) {
   // Giá trị đang gõ, theo tên thẻ. Chỉ chứa ô người dùng vừa chạm — ô khác đọc thẳng từ `ban.ct`.
   const [nhap, setNhap] = useState<Record<string, string>>({});
+  // Tag của những ô đang gõ lỗi (không đọc được thành số) — đánh error/helperText thẳng lên ô đó
+  // thay vì im lặng bỏ qua, xem RVW-T01.
+  const [oLoi, setOLoi] = useState<Set<string>>(new Set());
   const [dangTaiXml, setDangTaiXml] = useState(false);
+  const [xacNhanTinhLai, setXacNhanTinhLai] = useState(false);
   const tinh = useTinhToKhai();
   const luu = useLuuGhiDe();
   const doiTrangThai = useDoiTrangThai();
 
   const khoa = ban?.trangThai === "chot";
   const dangChay = tinh.isPending || luu.isPending || doiTrangThai.isPending || dangTai;
+  // Còn ô sửa tay chưa lưu XONG lên server — Chốt/Xuất Excel/Xuất XML phải chặn lại, nếu không tờ
+  // khai chạy với số CŨ trên server trong khi màn hình đang hiện số MỚI. Xem RVW-T01.
+  const chuaLuu = Object.keys(nhap).length > 0;
 
-  const bamTinh = () =>
+  const chayTinh = () =>
     tinh.mutate(ky, {
       onSuccess: () => {
         setNhap({});
+        setOLoi(new Set());
         toast.success(`Đã lập tờ khai kỳ ${nhanKy(ky)}.`);
       },
       onError: (err) => toast.error(getErrorMessage(err, "Không lập được tờ khai.")),
     });
+
+  // Còn nháp chưa lưu thì hỏi lại trước khi xóa — "Tính lại" gọi `setNhap({})` mất trắng mọi ô
+  // người dùng đang gõ dở.
+  const bamTinh = () => {
+    if (chuaLuu) {
+      setXacNhanTinhLai(true);
+      return;
+    }
+    chayTinh();
+  };
 
   /**
    * Gom mọi ô đang gõ dở thành bộ ghi đè gửi lên server.
@@ -95,10 +118,11 @@ export default function ToKhaiGtgt01Editor({ ky, ban, onDoiKy, dangTai, loi }: P
         delete ghiDe[tag];
         continue;
       }
-      // Gõ sai (chữ, ký tự lạ) thì giữ lại tên ô để nơi gọi quyết định có báo hay không — tuyệt đối
-      // không lặng lẽ lấy số cũ: số trên tờ khai không được phép khác cái người dùng tưởng mình gõ.
+      // Gõ sai (chữ, ký tự lạ) thì giữ lại TÊN THẺ (chưa format) để nơi gọi vừa báo toast (tự format
+      // ra nhãn) vừa đánh dấu lỗi thẳng lên đúng ô (`oLoi`, so theo tag) — tuyệt đối không lặng lẽ
+      // lấy số cũ: số trên tờ khai không được phép khác cái người dùng tưởng mình gõ.
       if (gia === undefined) {
-        oHong.push(`[${maChiTieu(tag)}]`);
+        oHong.push(tag);
         continue;
       }
       ghiDe[tag] = { gia };
@@ -117,13 +141,18 @@ export default function ToKhaiGtgt01Editor({ ky, ban, onDoiKy, dangTai, loi }: P
     const gom = dungGhiDe();
     if (!gom) return;
     // Còn ô gõ sai thì KHÔNG lưu ô nào cả. Lưu một phần rồi `setNhap({})` là xóa mất cái người dùng
-    // đang gõ dở ở ô kia mà không nói gì — họ chỉ rời con trỏ chứ có bảo bỏ đâu.
-    if (gom.oHong.length > 0) return;
+    // đang gõ dở ở ô kia mà không nói gì — họ chỉ rời con trỏ chứ có bảo bỏ đâu. Đánh dấu NGAY ô nào
+    // đang hỏng lên `oLoi` để người dùng biết mình gõ sai ở đâu, thay vì im lặng tuyệt đối.
+    if (gom.oHong.length > 0) {
+      setOLoi(new Set(gom.oHong));
+      return;
+    }
     luu.mutate(
       { ky, ghiDe: gom.ghiDe },
       {
         onSuccess: () => {
           setNhap({});
+          setOLoi(new Set());
           onThanhCong?.();
         },
         onError: (err) => toast.error(getErrorMessage(err, "Không lưu được tờ khai.")),
@@ -135,7 +164,9 @@ export default function ToKhaiGtgt01Editor({ ky, ban, onDoiKy, dangTai, loi }: P
     const gom = dungGhiDe();
     if (!gom) return;
     if (gom.oHong.length > 0) {
-      toast.error(`Không đọc được số ở ô ${gom.oHong.join(", ")} — kiểm tra lại rồi lưu.`);
+      setOLoi(new Set(gom.oHong));
+      const nhan = gom.oHong.map((tag) => `[${maChiTieu(tag)}]`).join(", ");
+      toast.error(`Không đọc được số ở ô ${nhan} — kiểm tra lại rồi lưu.`);
       return;
     }
     luuVaTinhLai(() => toast.success("Đã lưu tờ khai."));
@@ -193,6 +224,7 @@ export default function ToKhaiGtgt01Editor({ ky, ban, onDoiKy, dangTai, loi }: P
     // Ô đang gõ dở giữ nguyên chuỗi người dùng (chèn dấu chấm giữa chừng làm nhảy con trỏ);
     // ô còn lại hiện số đã định dạng `264.208.827` cho dễ đọc.
     const hienTai = tag in nhap ? nhap[tag] : fmtSoTien(ban?.ct[tag]);
+    const loi = oLoi.has(tag);
 
     return (
       <TableCell align="right" sx={{ verticalAlign: "top", whiteSpace: "nowrap" }}>
@@ -219,6 +251,8 @@ export default function ToKhaiGtgt01Editor({ ky, ban, onDoiKy, dangTai, loi }: P
             variant="standard"
             disabled={khoa || !ban}
             value={String(hienTai)}
+            error={loi}
+            helperText={loi ? "Không đọc được số" : undefined}
             onChange={(e) => setNhap((cu) => ({ ...cu, [tag]: e.target.value }))}
             // Rời ô thì định dạng lại ngay để người dùng thấy con số mình vừa gõ đã được hiểu đúng
             // (gõ "264208827" rời ô thành "264.208.827"); gõ sai thì giữ nguyên để còn sửa.
@@ -231,7 +265,18 @@ export default function ToKhaiGtgt01Editor({ ky, ban, onDoiKy, dangTai, loi }: P
               // ô đã có số rồi tab đi là `docSoTien("")` ra null và ô bị xóa trắng.
               if (!(tag in nhap)) return;
               const gia = docSoTien(nhap[tag]);
-              if (gia === undefined) return;
+              if (gia === undefined) {
+                // Gõ sai hẳn (chữ, ký tự lạ) — đánh dấu lỗi thẳng lên ô này, không lặng lẽ bỏ qua.
+                setOLoi((cu) => (cu.has(tag) ? cu : new Set(cu).add(tag)));
+                return;
+              }
+              if (oLoi.has(tag)) {
+                setOLoi((cu) => {
+                  const moi = new Set(cu);
+                  moi.delete(tag);
+                  return moi;
+                });
+              }
               setNhap((cu) => ({ ...cu, [tag]: gia === null ? "" : fmtSoTien(gia) }));
               // Số không đổi so với bản đã lưu -> khỏi gọi server.
               if (gia !== (ban?.ghiDe[tag]?.gia ?? null)) luuVaTinhLai();
@@ -241,11 +286,12 @@ export default function ToKhaiGtgt01Editor({ ky, ban, onDoiKy, dangTai, loi }: P
             }}
             sx={{
               width: 120,
-              // Ô nhập tay có nền nhạt; ô đã sửa tay gạch chân cam để nhìn ra ngay số nào của người.
+              // Ô nhập tay có nền nhạt; ô đã sửa tay gạch chân cam để nhìn ra ngay số nào của người;
+              // ô đang lỗi gạch chân đỏ (ưu tiên hơn cam) để nổi bật nhất trong 3 trạng thái.
               "& .MuiInput-root": {
                 bgcolor: suaDuoc ? "action.hover" : "transparent",
-                borderBottom: daGhiDe ? "2px solid" : undefined,
-                borderColor: daGhiDe ? "warning.main" : undefined,
+                borderBottom: loi || daGhiDe ? "2px solid" : undefined,
+                borderColor: loi ? "error.main" : daGhiDe ? "warning.main" : undefined,
               },
             }}
           />
@@ -318,38 +364,51 @@ export default function ToKhaiGtgt01Editor({ ky, ban, onDoiKy, dangTai, loi }: P
           >
             Lưu nháp
           </Button>
-          <Button
-            size="small"
-            variant="outlined"
-            color={khoa ? "warning" : "primary"}
-            onClick={bamDoiTrangThai}
-            disabled={dangChay || !ban}
-            sx={{ textTransform: "none" }}
-          >
-            {khoa ? "Mở khóa" : "Chốt"}
-          </Button>
-          <Button
-            size="small"
-            variant="outlined"
-            startIcon={<FileDownloadRounded fontSize="small" />}
-            onClick={bamXuatExcel}
-            // `dangChay`: đang có lượt lưu/tính bay tới server thì số trên `ban` (closure hiện tại)
-            // còn CŨ hơn cái người dùng vừa gõ — xuất ngay lúc này ra file mang số sai.
-            disabled={!ban || dangChay}
-            sx={{ textTransform: "none" }}
-          >
-            Xuất Excel
-          </Button>
-          <Button
-            size="small"
-            variant="outlined"
-            startIcon={<FileDownloadRounded fontSize="small" />}
-            onClick={bamXuatXml}
-            disabled={!ban || dangChay || dangTaiXml}
-            sx={{ textTransform: "none" }}
-          >
-            Xuất XML
-          </Button>
+          <Tooltip title={chuaLuu ? "Còn ô sửa tay chưa lưu — bấm Lưu nháp trước." : ""}>
+            <span>
+              <Button
+                size="small"
+                variant="outlined"
+                color={khoa ? "warning" : "primary"}
+                onClick={bamDoiTrangThai}
+                disabled={dangChay || !ban || chuaLuu}
+                sx={{ textTransform: "none" }}
+              >
+                {khoa ? "Mở khóa" : "Chốt"}
+              </Button>
+            </span>
+          </Tooltip>
+          <Tooltip title={chuaLuu ? "Còn ô sửa tay chưa lưu — bấm Lưu nháp trước." : ""}>
+            <span>
+              <Button
+                size="small"
+                variant="outlined"
+                startIcon={<FileDownloadRounded fontSize="small" />}
+                onClick={bamXuatExcel}
+                // `dangChay`: đang có lượt lưu/tính bay tới server thì số trên `ban` (closure hiện
+                // tại) còn CŨ hơn cái người dùng vừa gõ — xuất ngay lúc này ra file mang số sai.
+                // `chuaLuu`: cùng lý do — còn ô sửa tay CHƯA LƯU XONG thì tuyệt đối không cho xuất.
+                disabled={!ban || dangChay || chuaLuu}
+                sx={{ textTransform: "none" }}
+              >
+                Xuất Excel
+              </Button>
+            </span>
+          </Tooltip>
+          <Tooltip title={chuaLuu ? "Còn ô sửa tay chưa lưu — bấm Lưu nháp trước." : ""}>
+            <span>
+              <Button
+                size="small"
+                variant="outlined"
+                startIcon={<FileDownloadRounded fontSize="small" />}
+                onClick={bamXuatXml}
+                disabled={!ban || dangChay || dangTaiXml || chuaLuu}
+                sx={{ textTransform: "none" }}
+              >
+                Xuất XML
+              </Button>
+            </span>
+          </Tooltip>
         </Stack>
       </Stack>
 
@@ -456,6 +515,31 @@ export default function ToKhaiGtgt01Editor({ ky, ban, onDoiKy, dangTai, loi }: P
             chỉ làm người dùng tưởng mình quên điền. */}
         {ban?.phuLuc && <PhuLuc204Panel ky={ky} phuLuc={ban.phuLuc} khoa={khoa} />}
       </Box>
+
+      {/* "Tính lại"/"Lập tờ khai" xóa trắng mọi ô đang gõ dở (`setNhap({})`) — hỏi lại trước khi
+          xóa nếu còn nháp chưa lưu, xem RVW-T01. */}
+      <Dialog open={xacNhanTinhLai} onClose={() => setXacNhanTinhLai(false)} maxWidth="xs" fullWidth>
+        <DialogTitle>Còn ô sửa tay chưa lưu</DialogTitle>
+        <DialogContent>
+          <DialogContentText sx={{ fontSize: 14 }}>
+            {ban ? "Tính lại" : "Lập tờ khai"} sẽ xóa các ô đang gõ dở chưa lưu và lấy số mới nhất từ
+            hệ thống. Tiếp tục?
+          </DialogContentText>
+        </DialogContent>
+        <DialogActions sx={{ px: 3, pb: 2 }}>
+          <Button onClick={() => setXacNhanTinhLai(false)}>Hủy</Button>
+          <Button
+            variant="contained"
+            color="warning"
+            onClick={() => {
+              setXacNhanTinhLai(false);
+              chayTinh();
+            }}
+          >
+            {ban ? "Tính lại" : "Lập tờ khai"}
+          </Button>
+        </DialogActions>
+      </Dialog>
     </Box>
   );
 }

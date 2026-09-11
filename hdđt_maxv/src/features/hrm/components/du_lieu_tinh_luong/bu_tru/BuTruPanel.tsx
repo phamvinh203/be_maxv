@@ -98,6 +98,9 @@ export default function BuTruPanel() {
     [danhMuc],
   );
   const rong = tongBiTru(mau, khoanTheoMa);
+  // RVW-701: dòng chưa chọn khoản hoặc số tiền = 0 bị BE từ chối ("Số tiền bù trừ
+  // phải lớn hơn 0") — chặn trước khi gửi cả batch, tránh 400 mù mờ.
+  const hopLe = mau.every((d) => d.ma_bt !== "" && d.so_tien > 0);
 
   const handleApDung = async () => {
     setMoApDung(false);
@@ -198,7 +201,7 @@ export default function BuTruPanel() {
               variant="contained"
               startIcon={<PlaylistAddCheckRounded />}
               onClick={() => setMoApDung(true)}
-              disabled={isReadOnly || mau.length === 0 || rows.length === 0}
+              disabled={isReadOnly || mau.length === 0 || rows.length === 0 || !hopLe}
               sx={{ textTransform: "none" }}
             >
               Áp dụng bù trừ ({rows.length})

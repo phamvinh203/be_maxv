@@ -99,6 +99,9 @@ export default function ChuyenCanPanel() {
   );
 
   const coThayDoi = mau.length > 0;
+  // RVW-701/702: dòng chưa chọn loại hoặc chưa nhập ngày mà lọt qua vòng lặp
+  // xóa+ghi sẽ khiến nhân viên đó mất dữ liệu cũ mà không ghi lại được.
+  const hopLe = mau.every((d) => d.ma_cc !== "" && d.ngay !== "");
 
   /** Xóa hết bản ghi hiện có của MỘT nhân viên trong kỳ này — dùng chung cho "Áp dụng" và "Xóa". */
   const xoaChoMotNguoi = useCallback(
@@ -130,24 +133,36 @@ export default function ChuyenCanPanel() {
 
   const handleApDung = async () => {
     setMoApDung(false);
+    // RVW-701: validate TOÀN BỘ bảng đang soạn TRƯỚC vòng lặp, trước cả lời gọi
+    // xóa đầu tiên — không thì người đầu tiên đã bị xóa dữ liệu cũ mà không ghi
+    // lại được vì dòng chưa khai xong bị BE từ chối.
+    if (!hopLe) {
+      toast.error(
+        "Bảng đang soạn còn dòng chưa chọn loại chuyên cần hoặc chưa nhập ngày — kiểm tra lại trước khi áp dụng.",
+      );
+      return;
+    }
     setDangApDung(true);
     let xong = 0;
-    try {
-      for (const row of rows) {
+    // RVW-702: bắt lỗi BÊN TRONG vòng lặp — lỗi ở người thứ k phải nêu rõ tên
+    // người đó, không chỉ đếm số đã xong, để người chốt lương biết phải kiểm tra ai.
+    for (const row of rows) {
+      try {
         await apDungChoMotNguoi(row.ma_nv);
         xong += 1;
+      } catch (err) {
+        toast.error(
+          getErrorMessage(
+            err,
+            `Dừng ở ${row.ho_ten} (${row.ma_nv}) — đã áp xong ${xong}/${rows.length} người, kiểm tra và áp lại cho những người còn thiếu.`,
+          ),
+        );
+        setDangApDung(false);
+        return;
       }
-      toast.success(`Đã áp bảng chuyên cần cho ${xong} nhân viên.`);
-    } catch (err) {
-      toast.error(
-        getErrorMessage(
-          err,
-          `Đã áp ${xong}/${rows.length} nhân viên rồi dừng lại vì lỗi. Kiểm tra và áp lại cho những người còn thiếu.`,
-        ),
-      );
-    } finally {
-      setDangApDung(false);
     }
+    toast.success(`Đã áp bảng chuyên cần cho ${xong} nhân viên.`);
+    setDangApDung(false);
   };
 
   const handleTaiMau = async () => {
@@ -232,7 +247,8 @@ export default function ChuyenCanPanel() {
               startIcon={<PlaylistAddCheckRounded />}
               onClick={() => setMoApDung(true)}
               // Không khóa theo `mau.length`: áp bảng rỗng là chốt "không vi phạm".
-              disabled={isReadOnly || dangApDung || rows.length === 0}
+              // `!hopLe` thì khóa: dòng chưa khai xong lọt vào là mất dữ liệu cũ (RVW-701).
+              disabled={isReadOnly || dangApDung || rows.length === 0 || !hopLe}
               sx={{ textTransform: "none" }}
             >
               Áp dụng chuyên cần ({rows.length})

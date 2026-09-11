@@ -173,6 +173,8 @@ export default function BangChiTieuKpiCard({ values, onChange }: Props) {
                       value={dong.muc_tieu}
                       onChange={(e) => datDong(dong.id, { muc_tieu: Number(e.target.value) || 0 })}
                       onWheel={(e) => (e.target as HTMLElement).blur()}
+                      error={dong.muc_tieu <= 0}
+                      helperText={dong.muc_tieu <= 0 ? "Mục tiêu phải lớn hơn 0" : undefined}
                       slotProps={{
                         htmlInput: { min: 0 },
                         input: chiTieu?.don_vi

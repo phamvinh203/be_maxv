@@ -105,9 +105,11 @@ export default function TangCaPanel() {
         periodId,
         scope: "nhan_vien",
         employeeIds: rows.map((row) => row.ma_nv),
-        // Bỏ dòng chưa chọn loại (`loai === ""`) — máy chủ không nhận enum rỗng.
+        // RVW-701: bỏ dòng chưa chọn loại (`loai === ""`, máy chủ không nhận enum
+        // rỗng) LẪN dòng `so_gio<=0` (BE từ chối "Số giờ tăng ca phải lớn hơn 0",
+        // E-dltl-007) — trước đây chỉ lọc `loai`, dòng 0 giờ vẫn lọt khiến cả batch 400.
         items: mau
-          .filter((d): d is DongTangCa & { loai: LoaiTangCa } => d.loai !== "")
+          .filter((d): d is DongTangCa & { loai: LoaiTangCa } => d.loai !== "" && d.so_gio > 0)
           .map((d) => ({ otType: d.loai, hours: d.so_gio })),
       });
       toast.success(`Đã áp bảng tăng ca cho ${rows.length} nhân viên.`);

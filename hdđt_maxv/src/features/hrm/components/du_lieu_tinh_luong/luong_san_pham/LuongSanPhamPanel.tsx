@@ -92,6 +92,9 @@ export default function LuongSanPhamPanel() {
 
   const coThayDoi = mau.length > 0;
   const tong = tongTienSanPham(mau);
+  // RVW-701: dòng chưa chọn sản phẩm bị BE từ chối (E-dltl-013) — chặn trước khi
+  // gửi cả batch, tránh 400 mù mờ.
+  const hopLe = mau.every((d) => d.ma_sp !== "");
 
   const handleApDung = async () => {
     setMoApDung(false);
@@ -193,7 +196,7 @@ export default function LuongSanPhamPanel() {
               variant="contained"
               startIcon={<PlaylistAddCheckRounded />}
               onClick={() => setMoApDung(true)}
-              disabled={isReadOnly || mau.length === 0 || rows.length === 0}
+              disabled={isReadOnly || mau.length === 0 || rows.length === 0 || !hopLe}
               sx={{ textTransform: "none" }}
             >
               Áp dụng lương SP ({rows.length})
