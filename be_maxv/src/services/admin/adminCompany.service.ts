@@ -52,11 +52,30 @@ export async function adminListCompanies(query: ListCompaniesQuery) {
   return { data, total, page, pageSize };
 }
 
-/** GET /admin/companies/:id — chi tiết kèm owner (+ thuê bao tài khoản) và nhân viên được cấp. */
+/**
+ * GET /admin/companies/:id — chi tiết kèm owner (+ thuê bao tài khoản) và nhân viên được cấp.
+ *
+ * `select` whitelist chứ không `include` (vbsec 2026-09-10): `include` trả MỌI cột DonVi, gồm
+ * cipher/iv/tag mật khẩu cổng HĐĐT/DVC và refresh token Google Drive — admin không cần, trình duyệt
+ * admin không được giữ. Thêm cột mới vào DonVi thì phải chủ động thêm vào đây mới lộ ra.
+ */
 export async function adminGetCompany(id: string) {
   const company = await sysPrisma.donVi.findUnique({
     where: { id },
-    include: {
+    select: {
+      id: true,
+      maSoThue: true,
+      slug: true,
+      tenDonVi: true,
+      diaChi: true,
+      sdt: true,
+      loaiHinhKinhDoanh: true,
+      ownerId: true,
+      status: true,
+      dbName: true,
+      provisionedAt: true,
+      createdAt: true,
+      updatedAt: true,
       owner: {
         select: {
           id: true,
@@ -105,12 +124,18 @@ export async function adminRetryProvision(id: string, adminId: string) {
     throw new ConflictError(MESSAGES.COMPANY.RETRY_NOT_FAILED);
   }
 
-  await sysPrisma.donVi.update({
-    where: { id },
+  // CHIẾM công ty bằng ghi có điều kiện (vbsec 2026-09-10): hai lần bấm retry cùng đọc FAILED, update
+  // không điều kiện là cả hai cùng chạy saga cấp DB trên một công ty. Lượt thua -> 409.
+  const { count } = await sysPrisma.donVi.updateMany({
+    where: { id, status: 'FAILED' },
     data: { status: 'PROVISIONING' },
   });
-  // provisionTenant tự đặt READY/FAILED + trả dbName (ném lỗi nếu thất bại).
-  const dbName = await provisionTenant(company.id, company.maSoThue);
+  if (count === 0) throw new ConflictError(MESSAGES.COMPANY.RETRY_NOT_FAILED);
+  // provisionTenant tự đặt READY/FAILED + trả dbName (ném lỗi nếu thất bại). Admin CHỦ ĐỘNG cấp lại
+  // cho chính công ty này nên được dùng lại DB có sẵn (lượt trước có thể đã tạo DB rồi mới hỏng).
+  const dbName = await provisionTenant(company.id, company.maSoThue, {
+    choPhepDbCoSan: true,
+  });
 
   await writeLog({
     hanhDong: 'RETRY_PROVISION',

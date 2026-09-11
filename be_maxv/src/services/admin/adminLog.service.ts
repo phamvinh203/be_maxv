@@ -40,11 +40,13 @@ export async function adminListLogs(query: ListLogsQuery) {
 /**
  * GET /admin/logs/actions — danh sách hành động (hanhDong) phân biệt đang có
  * trong bảng syslog, để FE đổ vào dropdown lọc (không hardcode).
+ *
+ * `groupBy` (GROUP BY dưới DB) chứ không `findMany({ distinct })`: không bật `nativeDistinct` thì
+ * Prisma kéo MỌI dòng syslog về rồi lọc trùng trong bộ nhớ — bảng chỉ ghi thêm (vbsec 2026-09-10).
  */
 export async function adminListLogActions(): Promise<string[]> {
-  const rows = await sysPrisma.sysLog.findMany({
-    distinct: ['hanhDong'],
-    select: { hanhDong: true },
+  const rows = await sysPrisma.sysLog.groupBy({
+    by: ['hanhDong'],
     orderBy: { hanhDong: 'asc' },
   });
   return rows.map((r) => r.hanhDong);

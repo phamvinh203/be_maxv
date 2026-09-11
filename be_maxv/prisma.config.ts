@@ -11,10 +11,12 @@ const envFile =
 dotenv.config({ path: path.resolve(process.cwd(), envFile) });
 
 // Cấu hình mặc định = control plane maxv2_sys.
-// Lệnh cho tenant (prisma db push) truyền --schema + --url động để ghi đè.
+// Đẩy schema tenant (`dayTenantSchema` ở provisioning.service.ts, script sync-tenants) truyền --schema
+// của tenant và đặt `PRISMA_TENANT_PUSH_URL` trong môi trường của TIẾN TRÌNH CON — URL có mật khẩu DB
+// nên không đưa lên dòng lệnh (--url). Đừng đặt biến này ở shell/PM2: mọi lệnh Prisma sẽ trỏ sang tenant.
 export default defineConfig({
   schema: path.join('prisma', 'sys', 'schema.prisma'),
   datasource: {
-    url: process.env.DB_SYS_URL,
+    url: process.env.PRISMA_TENANT_PUSH_URL ?? process.env.DB_SYS_URL,
   },
 });

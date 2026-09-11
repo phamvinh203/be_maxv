@@ -211,18 +211,21 @@ export async function adminListSubscriptions(query: ListSubscriptionsQuery) {
   return { data, total, page, pageSize };
 }
 
+/**
+ * Khóa dòng thuê bao tới hết transaction rồi mới ĐỌC nó (vbsec 2026-09-10). Đọc ngoài transaction thì
+ * hai thao tác song song (gia hạn x2, hủy + gia hạn) cùng dựa trên một bản cũ: gia hạn mất một kỳ mà
+ * vẫn ghi hai dòng lịch sử, hủy bị lượt gia hạn ghi đè thành ACTIVE. Lượt tới sau chờ rồi đọc bản mới.
+ */
+async function khoaThueBao(tx: Prisma.TransactionClient, id: string) {
+  await tx.$queryRaw`SELECT id FROM "subscription" WHERE id = ${id} FOR UPDATE`;
+}
+
 /** POST /admin/subscriptions/:id/change-plan — đổi gói + ghi lịch sử. */
 export async function adminChangePlan(
   id: string,
   input: ChangePlanInput,
   adminId: string,
 ) {
-  const sub = await sysPrisma.subscription.findUnique({ where: { id } });
-  if (!sub) throw new NotFoundError(MESSAGES.SUBSCRIPTION.SUB_NOT_FOUND);
-  if (sub.planId === input.planId) {
-    throw new ConflictError(MESSAGES.SUBSCRIPTION.SAME_PLAN);
-  }
-
   const plan = await sysPrisma.subscriptionPlan.findUnique({
     where: { id: input.planId },
   });
@@ -231,8 +234,15 @@ export async function adminChangePlan(
   const now = new Date();
   const ketThuc = tinhKetThuc(plan.chuKyThang, now);
 
-  // Đổi gói = chu kỳ mới: cập nhật sub + ghi history trong 1 transaction.
-  const updated = await sysPrisma.$transaction(async (tx) => {
+  // Đổi gói = chu kỳ mới: đọc (đã khóa) + cập nhật sub + ghi history trong 1 transaction.
+  const { updated, sub } = await sysPrisma.$transaction(async (tx) => {
+    await khoaThueBao(tx, id);
+    const sub = await tx.subscription.findUnique({ where: { id } });
+    if (!sub) throw new NotFoundError(MESSAGES.SUBSCRIPTION.SUB_NOT_FOUND);
+    if (sub.planId === input.planId) {
+      throw new ConflictError(MESSAGES.SUBSCRIPTION.SAME_PLAN);
+    }
+
     const next = await tx.subscription.update({
       where: { id },
       data: { planId: plan.id, status: 'ACTIVE', batDau: now, ketThuc },
@@ -248,7 +258,7 @@ export async function adminChangePlan(
         ghiChu: input.ghiChu,
       },
     });
-    return next;
+    return { updated: next, sub };
   });
 
   await writeLog({
@@ -274,19 +284,23 @@ export async function adminChangePlan(
  * hủy là quyết định nghiệp vụ, gia hạn không được lặng lẽ đảo ngược nó.
  */
 export async function adminRenewSubscription(id: string, adminId: string) {
-  const sub = await sysPrisma.subscription.findUnique({
-    where: { id },
-    include: { plan: { select: { ma: true, gia: true, chuKyThang: true } } },
-  });
-  if (!sub) throw new NotFoundError(MESSAGES.SUBSCRIPTION.SUB_NOT_FOUND);
-  if (sub.status === 'CANCELED') {
-    throw new ConflictError(MESSAGES.SUBSCRIPTION.CANCELED_CANNOT_RENEW);
-  }
+  const { updated, sub } = await sysPrisma.$transaction(async (tx) => {
+    await khoaThueBao(tx, id);
+    const sub = await tx.subscription.findUnique({
+      where: { id },
+      include: { plan: { select: { ma: true, gia: true, chuKyThang: true } } },
+    });
+    if (!sub) throw new NotFoundError(MESSAGES.SUBSCRIPTION.SUB_NOT_FOUND);
+    if (sub.status === 'CANCELED') {
+      throw new ConflictError(MESSAGES.SUBSCRIPTION.CANCELED_CANNOT_RENEW);
+    }
 
-  const now = new Date();
-  const ketThuc = tinhKetThuc(sub.plan.chuKyThang, mocGiaHan(sub.ketThuc, now));
+    const now = new Date();
+    const ketThuc = tinhKetThuc(
+      sub.plan.chuKyThang,
+      mocGiaHan(sub.ketThuc, now),
+    );
 
-  const updated = await sysPrisma.$transaction(async (tx) => {
     const next = await tx.subscription.update({
       where: { id },
       // `batDau` GIỮ NGUYÊN: nó là ngày khách bắt đầu dùng gói này, không phải ngày
@@ -306,7 +320,7 @@ export async function adminRenewSubscription(id: string, adminId: string) {
           : 'Gia hạn: gói không giới hạn thời gian',
       },
     });
-    return next;
+    return { updated: next, sub };
   });
 
   await writeLog({
@@ -319,13 +333,14 @@ export async function adminRenewSubscription(id: string, adminId: string) {
 
 /** POST /admin/subscriptions/:id/cancel — hủy thuê bao + ghi lịch sử. */
 export async function adminCancelSubscription(id: string, adminId: string) {
-  const sub = await sysPrisma.subscription.findUnique({ where: { id } });
-  if (!sub) throw new NotFoundError(MESSAGES.SUBSCRIPTION.SUB_NOT_FOUND);
-  if (sub.status === 'CANCELED') {
-    throw new ConflictError(MESSAGES.SUBSCRIPTION.ALREADY_CANCELED);
-  }
+  const { updated, sub } = await sysPrisma.$transaction(async (tx) => {
+    await khoaThueBao(tx, id);
+    const sub = await tx.subscription.findUnique({ where: { id } });
+    if (!sub) throw new NotFoundError(MESSAGES.SUBSCRIPTION.SUB_NOT_FOUND);
+    if (sub.status === 'CANCELED') {
+      throw new ConflictError(MESSAGES.SUBSCRIPTION.ALREADY_CANCELED);
+    }
 
-  const updated = await sysPrisma.$transaction(async (tx) => {
     const next = await tx.subscription.update({
       where: { id },
       data: { status: 'CANCELED' },
@@ -339,7 +354,7 @@ export async function adminCancelSubscription(id: string, adminId: string) {
         hanhDong: 'CANCEL',
       },
     });
-    return next;
+    return { updated: next, sub };
   });
 
   await writeLog({

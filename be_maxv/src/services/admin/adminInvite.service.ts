@@ -1,9 +1,10 @@
 import { sysPrisma } from '../../config/db.sys';
-import { generatePassword, hashPassword } from '../../utils/password';
+import { bamMatKhauKhongAiBiet } from '../../utils/password';
 import { sendMail } from '../shared/mailer.service';
 import { inviteApprovedEmail } from '../../helpers/mailTemplates';
 import { writeLog } from '../shared/syslog.service';
 import { ConflictError, MailError, NotFoundError } from '../../helpers/errors';
+import { assertUserLimit, khoaHanMuc } from '../shared/limits.service';
 import { MESSAGES } from '../../constants/messages';
 import type { Prisma } from '../../generated/sys';
 import type {
@@ -47,8 +48,9 @@ export async function adminListInvites(query: ListInvitesQuery) {
 }
 
 /**
- * POST /admin/invites/:id/approve — tạo User thật cho nhân viên + gửi mật khẩu
- * ngẫu nhiên qua email. Gửi mail thất bại -> rollback toàn bộ (invite về lại PENDING).
+ * POST /admin/invites/:id/approve — tạo User thật cho nhân viên (mật khẩu không ai biết) + email báo đã
+ * duyệt, hướng dẫn tự đặt mật khẩu bằng "Quên mật khẩu". Gửi mail thất bại -> rollback toàn bộ (invite về
+ * lại PENDING): không có mail thì người được mời không biết tài khoản đã có.
  */
 export async function adminApproveInvite(id: string, adminId: string) {
   const invite = await getPendingOrThrow(id);
@@ -67,10 +69,25 @@ export async function adminApproveInvite(id: string, adminId: string) {
     select: { tenDonVi: true, maSoThue: true },
   });
 
-  const password = generatePassword();
-  const passwordHash = await hashPassword(password);
+  const passwordHash = await bamMatKhauKhongAiBiet();
 
   const { user } = await sysPrisma.$transaction(async (tx) => {
+    // Chiếm lời mời TRƯỚC (chỉ khi còn PENDING): từ chối chen vào giữa lúc đang băm mật khẩu thì dừng
+    // ở đây, transaction hủy — không để lại tài khoản đã tạo cho một lời mời đã bị từ chối.
+    const { count } = await tx.inviteRequest.updateMany({
+      where: { id: invite.id, status: 'PENDING' },
+      data: { status: 'APPROVED', approvedById: adminId, resolvedAt: new Date() },
+    });
+    if (count === 0) {
+      throw new ConflictError(MESSAGES.COMPANY.INVITE_NOT_PENDING);
+    }
+
+    // Kiểm LẠI trần nhân viên lúc duyệt (cùng khóa với lúc mời): gói có thể đã hạ cấp, hoặc lời mời
+    // có từ trước khi lời mời đang chờ được tính vào trần. Vượt trần -> lời mời vẫn PENDING.
+    await khoaHanMuc(tx, 'nhan_vien', invite.ownerId);
+    const soNhanVien = await tx.user.count({ where: { ownerId: invite.ownerId } });
+    await assertUserLimit(invite.ownerId, soNhanVien);
+
     const createdUser = await tx.user.create({
       data: {
         email: invite.email,
@@ -92,20 +109,16 @@ export async function adminApproveInvite(id: string, adminId: string) {
         })),
       });
     }
-    await tx.inviteRequest.update({
-      where: { id: invite.id },
-      data: { status: 'APPROVED', approvedById: adminId, resolvedAt: new Date() },
-    });
     return { user: createdUser };
   });
 
   try {
     await sendMail({
       to: invite.email,
-      ...inviteApprovedEmail({ email: invite.email, password, congTy }),
+      ...inviteApprovedEmail({ email: invite.email, congTy }),
     });
   } catch {
-    // Chưa ai biết mật khẩu -> hủy tạo User (cascade xóa DonViAccess), invite về lại PENDING.
+    // Người được mời chưa hay biết gì -> hủy tạo User (cascade xóa DonViAccess), invite về lại PENDING.
     await sysPrisma.$transaction([
       sysPrisma.user.delete({ where: { id: user.id } }),
       sysPrisma.inviteRequest.update({
@@ -139,8 +152,10 @@ export async function adminRejectInvite(
 ) {
   const invite = await getPendingOrThrow(id);
 
-  const updated = await sysPrisma.inviteRequest.update({
-    where: { id: invite.id },
+  // Chỉ từ chối khi lời mời VẪN đang chờ — không lật một lời mời vừa được duyệt (tài khoản đã tạo,
+  // mật khẩu đã gửi) thành REJECTED.
+  const { count } = await sysPrisma.inviteRequest.updateMany({
+    where: { id: invite.id, status: 'PENDING' },
     data: {
       status: 'REJECTED',
       approvedById: adminId,
@@ -148,6 +163,10 @@ export async function adminRejectInvite(
       resolvedAt: new Date(),
     },
   });
+  if (count === 0) {
+    throw new ConflictError(MESSAGES.COMPANY.INVITE_NOT_PENDING);
+  }
+  const updated = { id: invite.id, email: invite.email, status: 'REJECTED' as const, lyDoTuChoi: input.lyDoTuChoi };
 
   await writeLog({
     hanhDong: 'REJECT_INVITE',

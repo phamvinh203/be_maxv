@@ -1,7 +1,10 @@
 import { sysPrisma } from '../../config/db.sys';
-import { generatePassword, hashPassword } from '../../utils/password';
+import { bamMatKhauKhongAiBiet } from '../../utils/password';
+import { sendMail } from '../shared/mailer.service';
+import { adminResetPasswordEmail } from '../../helpers/mailTemplates';
 import { writeLog } from '../shared/syslog.service';
 import { dropTenant } from '../shared/provisioning.service';
+import { tenantDbName } from '../../utils/dbName';
 import { ConflictError, NotFoundError } from '../../helpers/errors';
 import { findOrThrow } from '../../helpers/crudGuards';
 import { MESSAGES } from '../../constants/messages';
@@ -102,10 +105,19 @@ export async function adminSetUserActive(
   if (!active && id === adminId) {
     throw new ConflictError(MESSAGES.USER.CANNOT_DEACTIVATE_SELF);
   }
+  // Không khóa/mở tài khoản ADMIN khác qua UI (cùng quy tắc với đổi vai trò / xóa): một admin
+  // bị chiếm không được khóa hết các admin còn lại.
+  if (user.role === 'ADMIN') {
+    throw new ConflictError(MESSAGES.USER.CANNOT_TOGGLE_ADMIN);
+  }
 
   const updated = await sysPrisma.user.update({
     where: { id },
-    data: { isActive: active },
+    // Khóa thì thu hồi luôn mọi refresh token đã phát — không thì mở lại tài khoản sẽ làm sống
+    // lại mọi phiên cũ (kể cả phiên của kẻ đã chiếm tài khoản, lý do thường gặp để khóa).
+    data: active
+      ? { isActive: true }
+      : { isActive: false, tokenVersion: { increment: 1 } },
     select: USER_SELECT,
   });
   await logUserAction(
@@ -133,7 +145,9 @@ export async function adminChangeUserRole(
 
   const updated = await sysPrisma.user.update({
     where: { id },
-    data: { role },
+    // Lên OWNER = thành chủ tài khoản độc lập: bỏ `ownerId`. Giữ lại thì user này vẫn là tài khoản
+    // con của owner cũ — xóa owner cũ sẽ xóa dây chuyền cả user này lẫn các công ty họ tự tạo.
+    data: role === 'OWNER' ? { role, ownerId: null } : { role },
     select: USER_SELECT,
   });
   await logUserAction(adminId, user, 'CHANGE_USER_ROLE', { role });
@@ -141,19 +155,50 @@ export async function adminChangeUserRole(
 }
 
 /**
- * POST /admin/users/:id/reset-password — sinh mật khẩu mới, trả về 1 lần cho
- * admin (chưa có hạ tầng email). KHÔNG lưu/log mật khẩu thô.
+ * POST /admin/users/:id/reset-password — VÔ HIỆU mật khẩu hiện tại (thay bằng mật khẩu không ai biết) + đá
+ * mọi phiên, rồi email hướng dẫn người dùng TỰ đặt mật khẩu mới bằng "Quên mật khẩu".
+ *
+ * Không sinh mật khẩu trả cho admin nữa (vbsec 2026-09-10): mật khẩu rõ hiện trên màn hình admin rồi đi qua
+ * kênh bất kỳ tới người dùng — admin (và kênh đó) biết mật khẩu người dùng. Gửi mail hỏng KHÔNG hoàn tác:
+ * lý do thường gặp để reset là tài khoản bị chiếm, phải khóa ngay; người dùng vẫn tự vào bằng "Quên mật
+ * khẩu" — `daGuiEmail: false` để admin báo họ.
  */
-export async function adminResetPassword(id: string, adminId: string) {
+export async function adminResetPassword(
+  id: string,
+  adminId: string,
+): Promise<{ email: string; daGuiEmail: boolean }> {
   const user = await getOrThrow(id);
-  const password = generatePassword();
+  // Đích là ADMIN khác thì đây là khóa tài khoản quản trị của người khác — không cho qua giao diện.
+  if (user.role === 'ADMIN') {
+    throw new ConflictError(MESSAGES.USER.CANNOT_RESET_ADMIN_PASSWORD);
+  }
+  const lienHe = await findOrThrow(
+    () => sysPrisma.user.findUnique({ where: { id }, select: { email: true, hoTen: true } }),
+    new NotFoundError(MESSAGES.USER.NOT_FOUND),
+  );
 
   await sysPrisma.user.update({
     where: { id },
-    data: { password: await hashPassword(password) },
+    // Tăng tokenVersion như luồng tự đặt lại bằng OTP: mọi refresh token đã phát (có thể của kẻ
+    // đã chiếm tài khoản — lý do thường gặp để admin reset) hết hiệu lực.
+    data: {
+      password: await bamMatKhauKhongAiBiet(),
+      tokenVersion: { increment: 1 },
+    },
   });
   await logUserAction(adminId, user, 'RESET_PASSWORD');
-  return { password };
+
+  const daGuiEmail = await sendMail({
+    to: lienHe.email,
+    ...adminResetPasswordEmail({ hoTen: lienHe.hoTen, email: lienHe.email }),
+  }).then(
+    () => true,
+    (err) => {
+      console.error(`[adminResetPassword] sendMail lỗi cho user ${id}:`, err);
+      return false;
+    },
+  );
+  return { email: lienHe.email, daGuiEmail };
 }
 
 /**
@@ -196,7 +241,6 @@ export async function adminDeleteUser(
           hoTen: true,
           role: true,
           ownerId: true,
-          ownedDonVi: { select: { id: true, maSoThue: true, dbName: true } },
           _count: { select: { employees: true } },
         },
       }),
@@ -209,9 +253,13 @@ export async function adminDeleteUser(
   }
   assertEmailConfirmed(confirmEmail, user.email);
 
-  // dbName rỗng khi provisioning chưa xong (PROVISIONING/FAILED) — không có DB nào để xóa.
-  for (const dv of user.ownedDonVi) {
-    if (dv.dbName) await dropTenant(dv.dbName);
+  // Cascade xóa CẢ các tài khoản con (User.ownerId -> owner, nhiều tầng nếu dữ liệu cũ có tài khoản con
+  // được nâng OWNER mà còn giữ ownerId) cùng mọi don_vi của họ — nên phải DROP DB của TẤT CẢ công ty đó,
+  // không chỉ công ty của chính user này. dbName rỗng (PROVISIONING/FAILED) thì DROP theo tên suy từ
+  // MST: DB vật lý có thể đã được tạo trước khi hỏng.
+  const donViBiXoa = await donViCuaCayTaiKhoan(id);
+  for (const dv of donViBiXoa) {
+    await dropTenant(dv.dbName ?? tenantDbName(dv.maSoThue));
   }
 
   await sysPrisma.user.delete({ where: { id } });
@@ -222,7 +270,7 @@ export async function adminDeleteUser(
     hoTen: user.hoTen,
     role: user.role,
     soNhanVien: user._count.employees,
-    donVi: user.ownedDonVi.map((d) => ({
+    donVi: donViBiXoa.map((d) => ({
       maSoThue: d.maSoThue,
       dbName: d.dbName,
     })),
@@ -230,7 +278,25 @@ export async function adminDeleteUser(
 
   return {
     id,
-    soDonViDaXoa: user.ownedDonVi.length,
+    soDonViDaXoa: donViBiXoa.length,
     soNhanVienDaXoa: user._count.employees,
   };
+}
+
+/** Mọi don_vi sẽ bị cascade xóa khi xóa user `id`: của chính user + của toàn bộ cây tài khoản con. */
+async function donViCuaCayTaiKhoan(id: string) {
+  const tatCa = new Set<string>([id]);
+  let tangHienTai = [id];
+  while (tangHienTai.length > 0) {
+    const con = await sysPrisma.user.findMany({
+      where: { ownerId: { in: tangHienTai } },
+      select: { id: true },
+    });
+    tangHienTai = con.map((c) => c.id).filter((cid) => !tatCa.has(cid));
+    tangHienTai.forEach((cid) => tatCa.add(cid));
+  }
+  return sysPrisma.donVi.findMany({
+    where: { ownerId: { in: [...tatCa] } },
+    select: { id: true, maSoThue: true, dbName: true },
+  });
 }

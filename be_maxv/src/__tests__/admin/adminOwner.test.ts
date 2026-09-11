@@ -5,13 +5,15 @@ import { buildApp } from '../../app';
 import { sysPrisma } from '../../config/db.sys';
 import { hashPassword } from '../../utils/password';
 import { tenantSlug } from '../../utils/dbName';
+import { batBuocDbKiemThu, matKhauNgauNhien } from '../_hoTro/dbKiemThu';
 
 /**
  * Test admin quản lý owner-centric + kiểm soát trần MST (override).
  *   npx tsx --test src/__tests__/adminOwner.test.ts
  */
 
-const PW = 'Test1234';
+// Sinh mới mỗi lượt chạy — không để mật khẩu tài khoản test nằm trong repo (vbsec 2026-09-10).
+const PW = matKhauNgauNhien();
 const ADMIN = 'phase8.admin@test.local';
 const OWNER = 'phase8.owner@test.local';
 const MST1 = '9980000001';
@@ -52,6 +54,7 @@ async function login(email: string): Promise<string> {
 }
 
 before(async () => {
+  batBuocDbKiemThu();
   app = await buildApp({ logger: false });
   await app.ready();
   await cleanup();

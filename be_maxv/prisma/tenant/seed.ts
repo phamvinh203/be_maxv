@@ -37,7 +37,6 @@ import { sysPrisma } from '../../src/config/db.sys';
 import {
   ensureControlPlaneTestTenant,
   SEED_OWNER_EMAIL,
-  SEED_OWNER_PASSWORD,
 } from '../../src/scripts/hrm/seed-control-plane';
 
 import { restoreDefault } from '../../src/services/client/hrm/cau_hinh_mac_dinh/generalSettings.service';
@@ -887,7 +886,7 @@ async function main(): Promise<void> {
   console.log(`  Kỳ lương:                2 (${PREV_YEAR}-${pad2(PREV_MONTH)} LOCKED, ${CURRENT_YEAR}-${pad2(CURRENT_MONTH)} DRAFT)`);
   console.log('\n  Đăng nhập UI để test tay:');
   console.log(`    Email:      ${SEED_OWNER_EMAIL}`);
-  console.log(`    Mật khẩu:   ${SEED_OWNER_PASSWORD}`);
+  console.log('    Mật khẩu:   (giá trị SEED_OWNER_PASSWORD trong .env)');
   console.log(`    Công ty:    MST ${cp.mst}`);
   console.log('================================================================\n');
 }

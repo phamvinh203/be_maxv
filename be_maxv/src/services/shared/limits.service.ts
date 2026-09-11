@@ -13,7 +13,10 @@ export const PLAN_LIMITS_SELECT = {
   plan: { select: { soMstToiDa: true, soNguoiToiDa: true } },
 } satisfies Prisma.SubscriptionSelect;
 
-/** Giới hạn theo gói của 1 subscription (null nếu chưa có gói). */
+/**
+ * Giới hạn theo gói của 1 subscription — chỉ để HIỂN THỊ (màn admin). `sub = null` ra toàn `null` nhưng
+ * KHÔNG có nghĩa "không giới hạn" khi kiểm trần: `assertLimit` chặn thẳng owner không có gói.
+ */
 export function planLimits(
   sub: {
     plan: { soMstToiDa: number | null; soNguoiToiDa: number | null };
@@ -26,26 +29,38 @@ export function planLimits(
 }
 
 /**
- * Giới hạn của 1 TÀI KHOẢN (owner) theo gói đang dùng.
- * Chưa có subscription (chưa tạo công ty nào) -> không giới hạn (cho tạo MST đầu).
+ * Tuần tự hóa "đếm -> kiểm trần -> tạo" của MỘT owner cho một loại hạn mức, trong transaction đang
+ * mở. Không khóa thì N request song song cùng đọc số đếm cũ, cùng qua kiểm tra, cùng tạo -> vượt gói.
+ * Advisory lock tự nhả khi transaction kết thúc; owner khác (khóa khác) không phải chờ nhau.
+ * Mọi chỗ đếm/tạo của cùng loại hạn mức PHẢI gọi hàm này trước khi đếm.
  */
-export async function getPlanLimits(ownerId: string): Promise<PlanLimits> {
-  const sub = await sysPrisma.subscription.findUnique({
-    where: { ownerId },
-    select: PLAN_LIMITS_SELECT,
-  });
-  return planLimits(sub);
+export async function khoaHanMuc(
+  tx: Prisma.TransactionClient,
+  loai: 'mst' | 'nhan_vien',
+  ownerId: string,
+): Promise<void> {
+  await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`han_muc_${loai}:${ownerId}`}))`;
 }
 
-/** Chặn nếu vượt trần gói (null = không giới hạn) — dùng chung cho MST và nhân viên. */
+/**
+ * Chặn nếu vượt trần gói (trần `null` của GÓI = không giới hạn) — dùng chung cho MST và nhân viên.
+ *
+ * Owner KHÔNG có thuê bao -> chặn (vbsec 2026-09-10). Trước đây coi là không giới hạn: owner mất gói (tạo
+ * gói dùng thử lỗi lúc đăng ký, admin xóa thuê bao) tạo MST — mỗi MST là một DB tenant — và mời nhân
+ * viên vô hạn. Tài khoản chưa có công ty nào được cấp gói dùng thử TRƯỚC khi gọi tới đây (registerCompany).
+ */
 async function assertLimit(
   ownerId: string,
   currentCount: number,
   field: keyof PlanLimits,
   message: string,
 ): Promise<void> {
-  const limits = await getPlanLimits(ownerId);
-  const max = limits[field];
+  const sub = await sysPrisma.subscription.findUnique({
+    where: { ownerId },
+    select: PLAN_LIMITS_SELECT,
+  });
+  if (!sub) throw new ForbiddenError(MESSAGES.SUBSCRIPTION.NO_SUBSCRIPTION);
+  const max = planLimits(sub)[field];
   if (max !== null && currentCount >= max) throw new ForbiddenError(message);
 }
 
