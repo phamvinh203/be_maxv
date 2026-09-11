@@ -169,9 +169,11 @@ export default function SyncInvoiceDialog({ open, onClose }: Props) {
   const runSyncWithToken = (gdtToken: string) => {
     // [DEBUG-SYNC] Mốc bấm nút — đối chiếu với log BE.
     const since = startTimer();
-    console.log(
-      `[DEBUG-SYNC][FE] Bấm ĐỒNG BỘ ${range.tuNgay}..${range.denNgay} direction=${direction} loai=${invoiceKind}`,
-    );
+    if (import.meta.env.DEV) {
+      console.log(
+        `[DEBUG-SYNC][FE] Bấm ĐỒNG BỘ ${range.tuNgay}..${range.denNgay} direction=${direction} loai=${invoiceKind}`,
+      );
+    }
     startMutation.mutate(
       {
         gdtToken,
@@ -180,16 +182,20 @@ export default function SyncInvoiceDialog({ open, onClose }: Props) {
       {
         onSuccess: (started) => {
           // [DEBUG-SYNC] BE trả tiến độ NGAY (~50ms) rồi chạy nền; từ đây FE poll status.
-          console.log(`[DEBUG-SYNC][FE] Lượt nền đã khởi động sau ${since()}:`, started);
+          if (import.meta.env.DEV) {
+            console.log(`[DEBUG-SYNC][FE] Lượt nền đã khởi động sau ${since()}:`, started);
+          }
           setRunStatus(started);
           void pollRun(gdtToken);
         },
         onError: (e) => {
           // [DEBUG-SYNC] Lỗi khi KHỞI ĐỘNG lượt (không còn là lỗi của cả lượt đồng bộ dài).
-          console.error(
-            `[DEBUG-SYNC][FE] LỖI khởi động sau ${since()} — status=${(e as { status?: number }).status ?? "(không có – fetch đứt)"}`,
-            e,
-          );
+          if (import.meta.env.DEV) {
+            console.error(
+              `[DEBUG-SYNC][FE] LỖI khởi động sau ${since()} — status=${(e as { status?: number }).status ?? "(không có – fetch đứt)"}`,
+              e,
+            );
+          }
           setError(getErrorMessage(e, "Không bắt đầu được lượt đồng bộ."));
         },
       },
@@ -222,7 +228,9 @@ export default function SyncInvoiceDialog({ open, onClose }: Props) {
           // Nhưng lỗi LIÊN TIẾP quá ngưỡng = mất kết nối thật: phải thoát, nếu không vòng lặp quay
           // mãi, `syncing` kẹt true và nút Đồng bộ khóa vĩnh viễn cho tới khi F5.
           fails += 1;
-          console.warn(`[DEBUG-SYNC][FE] Poll lỗi nhịp ${fails}/${MAX_POLL_FAILS}:`, e);
+          if (import.meta.env.DEV) {
+            console.warn(`[DEBUG-SYNC][FE] Poll lỗi nhịp ${fails}/${MAX_POLL_FAILS}:`, e);
+          }
           if (fails >= MAX_POLL_FAILS) {
             setError("Mất kết nối khi theo dõi tiến độ — lượt vẫn chạy ở máy chủ, mở lại cửa sổ này để xem tiếp.");
             return;
@@ -236,7 +244,7 @@ export default function SyncInvoiceDialog({ open, onClose }: Props) {
       pollingRef.current = false;
     }
 
-    console.log(`[DEBUG-SYNC][FE] Lượt nền KẾT THÚC:`, status);
+    if (import.meta.env.DEV) console.log(`[DEBUG-SYNC][FE] Lượt nền KẾT THÚC:`, status);
     if (status.error) setError(status.error);
     // Lượt xong -> nạp lại lịch sử + bảng hóa đơn + thống kê.
     if (!isStale()) invalidateInvoiceData();

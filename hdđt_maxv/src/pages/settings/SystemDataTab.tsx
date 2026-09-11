@@ -151,12 +151,17 @@ export default function SystemDataTab() {
         return;
       }
       exportSavedBackupCsv(purchase, sold);
-      // Backup lấy theo khoảng ngày nên vẫn có thể ít hơn tổng trong DB (HĐ ngoài khoảng) —
-      // đối chiếu với thống kê để người dùng biết bản sao lưu chưa phủ hết dữ liệu.
-      if (purchase.length < (stats?.purchase ?? 0) || sold.length < (stats?.sold ?? 0)) {
+      // Đối chiếu 2 nguồn thiếu-dữ-liệu ĐỘC LẬP nhau (RVW-H2-009):
+      //  (1) `p.total`/`s.total` — endpoint `/saved` tự thừa nhận có giới hạn số dòng đọc DB, có thể
+      //      lớn hơn `datas.length` đã bị cắt dù khoảng ngày đã phủ đủ;
+      //  (2) `stats` — khoảng ngày "toàn thời gian" vẫn hẹp hơn số hóa đơn thật có trong hệ thống.
+      // Thiếu 1 trong 2 là bản sao lưu không đủ, phải cảnh báo.
+      const purchaseTotal = Math.max(p.total ?? 0, stats?.purchase ?? 0);
+      const soldTotal = Math.max(s.total ?? 0, stats?.sold ?? 0);
+      if (purchase.length < purchaseTotal || sold.length < soldTotal) {
         setNotice(
           `Bản sao lưu chưa gồm toàn bộ hóa đơn trong hệ thống ` +
-            `(${purchase.length}/${stats?.purchase ?? 0} mua vào, ${sold.length}/${stats?.sold ?? 0} bán ra) — ` +
+            `(${purchase.length}/${purchaseTotal} mua vào, ${sold.length}/${soldTotal} bán ra) — ` +
             `hãy mở rộng khoảng ngày rồi sao lưu lại.`,
         );
       }

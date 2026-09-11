@@ -182,6 +182,13 @@ function mergedPdfFilename(direction: InvoiceDirection, range: ExportRange): str
  * Đọc lại từ đĩa và chạy SAU các vòng vá nên lấy đúng bản cuối cùng; hóa đơn nào thiếu/hỏng file thì
  * bỏ qua rồi đi tiếp, không làm hỏng cả file gộp.
  */
+/**
+ * Trần số hóa đơn gộp vào MỘT file PDF (RVW-H2-008) — `mergeInvoicePdfs` giữ mọi trang trong bộ nhớ
+ * tới lúc `save()`, lượt xuất hàng nghìn hóa đơn × ~200KB/tờ dễ ngốn vài trăm MB heap nếu gộp hết vào
+ * 1 file, dễ crash tab. Vượt trần thì chia thành nhiều file đánh số `0.1-`, `0.2-`… cạnh các file lẻ.
+ */
+const MAX_MERGE_PER_FILE = 500;
+
 async function mergeInvoicePdfs(
   pdfDir: FsDirHandle,
   tasks: TaskState[],
@@ -189,29 +196,38 @@ async function mergeInvoicePdfs(
 ): Promise<number> {
   // Lazy-load pdf-lib (~1MB) — chỉ tải khi thực sự có tick PDF, không nằm trong bundle chính.
   const { PDFDocument } = await import("pdf-lib");
-  const merged = await PDFDocument.create();
-  let count = 0;
-
-  for (const st of tasks) {
-    const bytes = await readFileBytes(pdfDir, `${st.base}.pdf`);
-    if (!bytes) continue;
-    try {
-      const src = await PDFDocument.load(bytes);
-      const pages = await merged.copyPages(src, src.getPageIndices());
-      for (const page of pages) merged.addPage(page);
-      count += 1;
-    } catch (e) {
-      // 1 file hỏng không được kéo theo cả file gộp — bỏ qua tờ đó, các tờ còn lại vẫn vào.
-      console.error(`[exportBundle] Bỏ qua ${st.base}.pdf khi gộp:`, e);
-    }
+  const chunks: TaskState[][] = [];
+  for (let i = 0; i < tasks.length; i += MAX_MERGE_PER_FILE) {
+    chunks.push(tasks.slice(i, i + MAX_MERGE_PER_FILE));
   }
+  const multiFile = chunks.length > 1;
+  let total = 0;
 
-  if (count === 0) return 0;
-  // Ghi thẳng `Uint8Array` (BufferSource) chứ không bọc `new Blob([...])`: file gộp có thể hàng chục
-  // MB, bọc Blob là nhân đôi bộ nhớ ở đúng lúc đỉnh điểm. Phần mở rộng `.pdf` đã đủ để hệ điều hành
-  // nhận diện, không cần MIME type.
-  await writeFile(pdfDir, fileName, await merged.save());
-  return count;
+  for (let batch = 0; batch < chunks.length; batch += 1) {
+    const merged = await PDFDocument.create();
+    let count = 0;
+    for (const st of chunks[batch]) {
+      const bytes = await readFileBytes(pdfDir, `${st.base}.pdf`);
+      if (!bytes) continue;
+      try {
+        const src = await PDFDocument.load(bytes);
+        const pages = await merged.copyPages(src, src.getPageIndices());
+        for (const page of pages) merged.addPage(page);
+        count += 1;
+      } catch (e) {
+        // 1 file hỏng không được kéo theo cả file gộp — bỏ qua tờ đó, các tờ còn lại vẫn vào.
+        console.error(`[exportBundle] Bỏ qua ${st.base}.pdf khi gộp:`, e);
+      }
+    }
+    if (count === 0) continue;
+    // Ghi thẳng `Uint8Array` (BufferSource) chứ không bọc `new Blob([...])`: file gộp có thể hàng chục
+    // MB, bọc Blob là nhân đôi bộ nhớ ở đúng lúc đỉnh điểm. Phần mở rộng `.pdf` đã đủ để hệ điều hành
+    // nhận diện, không cần MIME type.
+    const name = multiFile ? fileName.replace(/^0\./, `0.${batch + 1}-`) : fileName;
+    await writeFile(pdfDir, name, await merged.save());
+    total += count;
+  }
+  return total;
 }
 
 /**
@@ -381,13 +397,27 @@ export async function exportInvoiceBundle(opts: ExportBundleOptions): Promise<Ex
     // (tra theo khóa) và tên file ghi ra đĩa. Lệch nhau là cột "Tên file" chỉ tên file không có thật.
     // Cần cho CẢ Excel lẫn tên file từng hóa đơn, nên tính kể cả khi không tick Excel.
     const sttOf = invoiceSttMap(overviewRows);
+    // Hóa đơn không tra được STT (endpoint danh sách bị cắt dòng) -> cấp STT NỐI TIẾP riêng thay vì
+    // dùng chung `?? 0` cho mọi hóa đơn trượt (RVW-H2-006): cùng một số 0 khiến chúng ghi ĐÈ LÊN
+    // NHAU trên đĩa (`writeFile` luôn `create: true`). Số cấp ra được GHI NGƯỢC vào `sttOf` để sheet
+    // Chi tiết (dưới) và tên file từng hóa đơn (bên dưới nữa) nhận CÙNG một số cho cùng 1 hóa đơn —
+    // đúng tinh thần "nguồn duy nhất" ở trên, không phải hai bộ đếm phụ lệch nhau.
+    let sttPhu = sttOf.size;
+    const sttFor = (key: string): number => {
+      let stt = sttOf.get(key);
+      if (stt === undefined) {
+        stt = ++sttPhu;
+        sttOf.set(key, stt);
+      }
+      return stt;
+    };
 
     // Excel tổng hợp là lựa chọn RIÊNG CHO TỪNG CHIỀU (2 ô tick): cho phép chỉ tải bảng kê mua vào
     // (hoặc chỉ bán ra), hoặc chỉ tải file hóa đơn mà không kèm Excel nào.
     if (wantsExcel(direction)) {
       const nccs = await danhMucNcc;
       const detailRows = details.flatMap((d) =>
-        toDetailRows(d, sttOf.get(detailInvoiceKey(d)) ?? 0, replacedBy, nccs),
+        toDetailRows(d, sttFor(detailInvoiceKey(d)), replacedBy, nccs),
       );
       const buffer = await buildSummaryWorkbookBuffer(
         overviewRows,
@@ -409,7 +439,7 @@ export async function exportInvoiceBundle(opts: ExportBundleOptions): Promise<Ex
     if (htmlDir) htmlDirs.push(htmlDir);
 
     for (const view of views) {
-      const stt = sttOf.get(invoiceKey(view.mauSo, view.kyHieu, view.soHd, view.seller.mst)) ?? 0;
+      const stt = sttFor(invoiceKey(view.mauSo, view.kyHieu, view.soHd, view.seller.mst));
       states.push({
         direction,
         stt,

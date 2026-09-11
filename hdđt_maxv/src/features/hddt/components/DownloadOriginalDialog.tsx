@@ -217,17 +217,21 @@ export default function DownloadOriginalDialog({
   }, [rows]);
 
   // Mở dialog -> đánh dấu chọn tất cả NCC (mặc định tải cả tháng) & đặt lại trạng thái tiến trình.
+  // Deps CHỈ `open` (KHÔNG `suppliers`): `suppliers` đổi định danh mỗi khi `rows` đổi (vòng poll
+  // invalidate mỗi 10s), kể cả lúc dialog đang mở VÀ đang tải — để `suppliers` trong deps thì effect
+  // chạy lại giữa chừng, xóa mất `downloading`/`progress`/`ketQua`/`checked` (RVW-H2-003), người dùng
+  // tưởng lượt tải đã dừng nên bấm tải lần hai, chạy song song 2 vòng cùng ghi vào 1 thư mục.
   useEffect(() => {
-    if (open) {
-      // eslint-disable-next-line react-hooks/set-state-in-effect
-      setChecked(new Set(suppliers.map((s) => s.key)));
-      setDownloading(false);
-      setProgress(null);
-      setKetQua(null);
-      setLoiCaLuot(null);
-      setNhomDangXem(null);
-    }
-  }, [open, suppliers]);
+    if (!open) return;
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setChecked(new Set(suppliers.map((s) => s.key)));
+    setDownloading(false);
+    setProgress(null);
+    setKetQua(null);
+    setLoiCaLuot(null);
+    setNhomDangXem(null);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- cố ý bỏ `suppliers`, xem chú thích trên.
+  }, [open]);
 
   const allChecked = suppliers.length > 0 && checked.size === suppliers.length;
   const someChecked = checked.size > 0 && !allChecked;
@@ -286,6 +290,11 @@ export default function DownloadOriginalDialog({
       }
 
       const sttOf = invoiceSttMap(rows);
+      // STT NỐI TIẾP riêng cho hóa đơn không tra được số thứ tự — KHÔNG dùng chung `?? 0` cho mọi
+      // hóa đơn trượt (RVW-H2-006): cùng một số 0 khiến các hóa đơn đó ghi ĐÈ LÊN NHAU trên đĩa, vì
+      // `writeFile` luôn `create: true`. Khởi từ `sttOf.size` để không trùng số đã cấp cho hóa đơn
+      // tra được.
+      let sttPhu = sttOf.size;
       // Hàng đợi tải: chỉ HĐ thuộc NCC đã tick + có bộ tải + có mã tra cứu.
       // `sellerMst` (nbmst) đi kèm vì NCC như Viettel cần nó làm `supplierTaxCode`; MISA bỏ qua.
       // `moTa` của item trong hàng đợi là TÊN FILE sẽ ghi — vào nhóm "ok" thì dùng luôn, khỏi dựng lại.
@@ -321,9 +330,10 @@ export default function DownloadOriginalDialog({
           boQua.push({ ...item, moTa: "Chưa có mã tra cứu — cần tải chi tiết hóa đơn trước" });
           continue;
         }
+        const stt = sttOf.get(key) ?? ++sttPhu;
         queue.push({
           ...item,
-          moTa: `${invoiceFileBase(sttOf.get(key) ?? 0, row.ngayLap, row.soHd, row.sellerMst)}.pdf`,
+          moTa: `${invoiceFileBase(stt, row.ngayLap, row.soHd, row.sellerMst)}.pdf`,
           msttcgp: nccMst,
           code,
           sellerMst: row.sellerMst,

@@ -27,54 +27,63 @@ updated: 2026-09-11
 - Vấn đề: effect deps `[open, suppliers]` chạy lại mỗi khi `rows` đổi định danh (kể cả khi dialog đang mở và đang tải, do vòng poll invalidate mỗi 10s) → reset `downloading`/`progress`/`ketQua`/`checked` giữa chừng. Người dùng bấm tải lần hai, chạy song song 2 vòng tải cùng ghi vào 1 thư mục.
 - Đề xuất fix: tách effect, chỉ reset khi `open` chuyển `false → true` (deps `[open]` với eslint-disable có chú thích lý do).
 - Trạng thái: OPEN
+  → FIXED [2026-09-11] — effect early-return khi `!open`, deps còn mỗi `[open]` (bỏ `suppliers`) kèm `eslint-disable-next-line react-hooks/exhaustive-deps` có chú thích lý do, `hdđt_maxv/src/features/hddt/components/DownloadOriginalDialog.tsx`:219-234, tsc+eslint pass, commit "chưa commit" *(frontend-engineer)*
 
 ### RVW-H2-004 🟡 NON-BLOCKING — `pollDetailRun` không có dung sai nhịp poll như 2 vòng poll anh em
 - Vị trí: `hdđt_maxv/src/features/hddt/components/InvoiceListTabs.tsx`:693-714
 - Vấn đề: gọi `getDetailRunStatus` trần trong vòng lặp, một nhịp mạng chập là nhảy thẳng catch, bỏ theo dõi dù BE vẫn chạy tiếp. `api/updateRun.ts`:137-146 và `api/invoiceDetail.ts`:234-242 đã có dung sai `MAX_POLL_NEN_HONG`, đây là bản bị sót.
 - Đề xuất fix: áp cùng khuôn dung sai, hoặc dùng lại `pollDetailRunToast` đã có sẵn.
 - Trạng thái: OPEN
+  → FIXED [2026-09-11] — áp cùng khuôn dung sai (không đổi sang `pollDetailRunToast`: hàm đó không có hook `onProgress` per-tick mà `pollDetailRun` cần để điền dần cột "T.thái tải"): bọc `getDetailRunStatus` trong try/catch với bộ đếm `pollFails`, ngưỡng `MAX_POLL_NEN_HONG` (import từ `lib/toastChayNen`), `hdđt_maxv/src/features/hddt/components/InvoiceListTabs.tsx`:707, 727-737, tsc+eslint pass, commit "chưa commit" *(frontend-engineer)*
 
 ### RVW-H2-005 🟡 NON-BLOCKING — Cột "Tên file xuất hóa đơn" không khớp tên file thật khi bảng đang lọc/sắp xếp
 - Vị trí: `hdđt_maxv/src/features/hddt/components/InvoiceListTabs.tsx`:1308-1309 · `hdđt_maxv/src/features/hddt/templates/dauVao.ts`:225-230 · `hdđt_maxv/src/features/hddt/exportBundle.ts`:379-383, 412
 - Vấn đề: STT hiển thị trên web tính từ `rows` (đã lọc + sắp xếp); STT dùng để đặt tên file khi xuất tính từ `overviewRows` (thứ tự DB thô). Lọc/sắp xếp bảng là hai con số lệch nhau → cột "Tên file" chỉ tên một file không tồn tại trên đĩa.
 - Đề xuất fix: tính STT một lần từ nguồn không lọc/sắp xếp, tra theo khóa (`invoiceKey`) cho cả bảng lẫn export.
 - Trạng thái: OPEN
+  → FIXED [2026-09-11] — thêm memo `overviewRows` (mapped, KHÔNG lọc/sắp xếp) + `sttOf = invoiceSttMap(overviewRows)` dùng CHUNG cho bảng Tổng quát và bảng Chi tiết; dòng render tra `sttOf.get(invoiceKey(...))` thay vì `safePage*rowsPerPage+i+1` theo vị trí, `hdđt_maxv/src/features/hddt/components/InvoiceListTabs.tsx`:468-503, 1334-1338, tsc+eslint pass, commit "chưa commit" *(frontend-engineer)*
 
 ### RVW-H2-006 🟡 NON-BLOCKING — `sttOf.get(...) ?? 0` phá vỡ cơ chế chống trùng tên file
 - Vị trí: `hdđt_maxv/src/features/hddt/exportBundle.ts`:412 · `hdđt_maxv/src/features/hddt/components/DownloadOriginalDialog.tsx`:326
 - Vấn đề: khi STT tra không ra (endpoint danh sách bị cắt dòng), fallback `?? 0` gán CÙNG số 0 cho mọi hóa đơn trượt → các hóa đơn đó ghi đè lẫn nhau im lặng (`writeFile` luôn `create: true`).
 - Đề xuất fix: cấp STT nối tiếp riêng cho hóa đơn không tra được (`++sttPhu`, khởi tạo từ `sttOf.size`), không dùng chung 0.
 - Trạng thái: OPEN
+  → FIXED [2026-09-11] — `exportBundle.ts` thêm helper `sttFor(key)` (biến thể của `++sttPhu` đề xuất): cấp số nối tiếp từ `sttOf.size` cho khóa trượt RỒI GHI NGƯỢC vào `sttOf`, để sheet Chi tiết (dòng 390) và tên file từng hóa đơn (dòng 412, cũng dùng `sttFor`) nhận CÙNG một số cho cùng 1 hóa đơn thay vì 2 bộ đếm phụ lệch nhau — `hdđt_maxv/src/features/hddt/exportBundle.ts`:399-413, 420, 442; `DownloadOriginalDialog.tsx` (chỉ 1 điểm dùng) áp `?? ++sttPhu` đúng như đề xuất, `hdđt_maxv/src/features/hddt/components/DownloadOriginalDialog.tsx`:292-297, 333-340, tsc+eslint pass, commit "chưa commit" *(frontend-engineer)*
 
 ### RVW-H2-007 🟡 NON-BLOCKING — Gõ ô lọc trạng thái xóa lựa chọn dropdown, 3 nơi hiển thị 3 bộ lọc khác nhau
 - Vị trí: `hdđt_maxv/src/features/hddt/components/InvoiceListTabs.tsx`:593-602 (`applyStatusLabelFilter`)
 - Vấn đề: gõ text mơ hồ (chưa đủ rõ) khiến `resolveUniqueOptionCode` trả `""`, xóa sạch mã chính xác đã chọn ở panel. Panel vẫn hiện lựa chọn cũ, nút "Cập nhật từ Thuế điện tử" lại gọi GDT theo `filterDraft` — ba nơi nói ba chuyện khác nhau về cùng một bộ lọc.
 - Đề xuất fix: chỉ ghi đè mã khi suy ra được; text mơ hồ thì giữ nguyên lựa chọn panel (`if (code || !text.trim()) setAppliedFilters(...)`).
 - Trạng thái: OPEN
+  → FIXED [2026-09-11] — áp đúng đề xuất `if (code || !text.trim()) setAppliedFilters(...)`, `hdđt_maxv/src/features/hddt/components/InvoiceListTabs.tsx`:606-615, tsc+eslint pass, commit "chưa commit" *(frontend-engineer)*
 
 ### RVW-H2-008 🟡 NON-BLOCKING — Gộp PDF nạp toàn bộ file vào RAM, không có trần
 - Vị trí: `hdđt_maxv/src/features/hddt/exportBundle.ts`:185-215 (`mergeInvoicePdfs`), gọi ở :635-652
 - Vấn đề: giữ mọi trang của mọi hóa đơn trong 1 `PDFDocument` tới lúc `save()`. Lượt xuất hàng nghìn hóa đơn × ~200KB/tờ → vài trăm MB heap, dễ crash tab.
 - Đề xuất fix: đặt trần `MAX_MERGE = 500`, vượt trần thì chia lô (`0.1-`, `0.2-`...).
 - Trạng thái: OPEN
+  → FIXED [2026-09-11] — thêm hằng `MAX_MERGE_PER_FILE = 500`, `mergeInvoicePdfs` chia `tasks` thành nhiều lô, mỗi lô 1 `PDFDocument` riêng (giải phóng heap giữa các lô), vượt 1 lô thì tên file đổi `0.` → `0.{n}-`; giữ nguyên chữ ký hàm/tổng trả về nên chỗ gọi không đổi, `hdđt_maxv/src/features/hddt/exportBundle.ts`:185-231, tsc+eslint pass, commit "chưa commit" *(frontend-engineer)*
 
 ### RVW-H2-009 🟡 NON-BLOCKING — `getAllSavedInvoices` kéo toàn bộ lịch sử hóa đơn về trình duyệt, không đối chiếu số lượng thiếu
 - Vị trí: `hdđt_maxv/src/features/hddt/api/gdt.ts`:179-185
 - Vấn đề: query `2000-01-01 → 2100-12-31` không phân trang. Endpoint có giới hạn dòng (comment tự thừa nhận) nhưng `exportSavedBackupCsv` không đối chiếu `total` với `datas.length` — bản sao lưu có thể thiếu dữ liệu mà không ai biết.
 - Đề xuất fix: đối chiếu `result.total` với số dòng nhận được, cảnh báo khi lệch.
 - Trạng thái: OPEN
+  → FIXED [2026-09-11] — `getAllSavedInvoices` (api/gdt.ts) giữ nguyên (chỉ đọc dữ liệu, không có state để cảnh báo); phương án tương đương tại nơi TIÊU THỤ duy nhất (`SystemDataTab.handleExport`, ngoài phạm vi review nhưng là chỗ duy nhất gọi `exportSavedBackupCsv`): cảnh báo hiện có chỉ so `purchase.length` với `stats?.purchase` (thống kê DB riêng) — bổ sung `Math.max(p.total ?? 0, stats?.purchase ?? 0)` để bắt CẢ trường hợp chính endpoint `/saved` tự cắt dòng (giá trị `total` nó tự trả) lẫn trường hợp khoảng ngày hẹp hơn toàn hệ thống, `hdđt_maxv/src/pages/settings/SystemDataTab.tsx`:153-167, tsc+eslint pass, commit "chưa commit" *(frontend-engineer)*
 
 ### RVW-H2-010 🟡 NON-BLOCKING — Cột Số lượng/Đơn giá/Chiết khấu (%) trong Excel dùng định dạng số nguyên
 - Vị trí: `hdđt_maxv/src/features/hddt/templates/dauVao.ts`:296-322 (và `dauRa.ts` tương ứng) · `types.ts`:71-73, 88
 - Vấn đề: `numFmt: "#,##0"` cho 3 cột này. Web mất hẳn phần lẻ (RVW-H2-001). `tlCktm` (tỷ lệ chiết khấu %) không có ký hiệu `%`, dễ đọc nhầm thành tiền.
 - Đề xuất fix: `QTY_FMT = "#,##0.####"`, `PCT_FMT = "0.##%"` áp cho 2 file `dauVao.ts`/`dauRa.ts`.
 - Trạng thái: OPEN
+  → FIXED [2026-09-11] — `QTY_FMT = "#,##0.####"` áp đúng đề xuất cho cột `soLuong`/`gia`. `PCT_FMT` đổi khác đề xuất: đọc `detailRow.ts`:326 + `tinhTienHoaDon.ts`:51 xác nhận `tlCktm` lưu SỐ PHẦN TRĂM THÔ (vd `10` = 10%, cùng quy ước `TLCK/100` toàn app) — mã `%` chuẩn Excel TỰ NHÂN 100 khi hiển thị nên `"0.##%"` sẽ ra "1000%" sai; dùng `PCT_FMT = '0.##"%"'` (bọc `%` trong nháy kép, in CHỮ không tính lại) để vừa hiện đúng số vừa có ký hiệu %. Thêm 2 hằng vào `templates/types.ts`:76-86, áp cho cột `soLuong`/`gia`/`tlCktm` ở cả `dauVao.ts`:8-19, 297-322 và `dauRa.ts`:21-32, 313-340, tsc+eslint pass, commit "chưa commit" *(frontend-engineer)*
 
 ### RVW-H2-011 🟡 NON-BLOCKING — Log debug còn nguyên trong mã production
 - Vị trí: `InvoiceListTabs.tsx`:825-827 · `SyncInvoiceDialog.tsx`:172-173,183,189-192,225,239 · `api/updateRun.ts`:144
 - Vấn đề: `console.log("[DEBUG-...]")` chạy mỗi lần bấm nút/mỗi nhịp poll, in MST + khoảng ngày ra console máy người dùng. Không log credential.
 - Đề xuất fix: bọc `if (import.meta.env.DEV)` hoặc xóa.
 - Trạng thái: OPEN
+  → FIXED [2026-09-11] — bọc `if (import.meta.env.DEV)` (theo đúng tiền lệ `DialogLoginDVC.tsx`:231) cho cả 7 log: `InvoiceListTabs.tsx`:849-853 · `SyncInvoiceDialog.tsx`:172-176, 183-189, 191-198, 231-233, 247 · `api/updateRun.ts`:144-146, tsc+eslint pass, commit "chưa commit" *(frontend-engineer)*
 
 ### RVW-H2-012 🟢 SUGGESTION — `dauVao.ts`/`dauRa.ts` trùng ~89%
 - Vị trí: `templates/dauVao.ts` (589 dòng), `templates/dauRa.ts` (610 dòng)

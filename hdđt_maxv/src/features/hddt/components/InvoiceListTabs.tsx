@@ -43,6 +43,7 @@ import {
   startUpdateRun,
   type UpdateRunStatus,
 } from "../api/updateRun";
+import { MAX_POLL_NEN_HONG } from "../../../lib/toastChayNen";
 import { useAuth } from "../../auth/useAuth";
 import { toast } from "react-toastify";
 import type {
@@ -464,31 +465,37 @@ function InvoiceTablePanel({ direction, active }: InvoiceTablePanelProps) {
     () => buildReplacedByMap(savedQuery.data?.thayThe ?? []),
     [savedQuery.data],
   );
+  // Bản đồ ĐẦY ĐỦ, KHÔNG lọc/sắp xếp — NGUỒN DUY NHẤT cho số thứ tự hóa đơn (xem `sttOf` dưới) và
+  // gốc để lọc ra `filteredRows`. Tách riêng để `sttOf` không đổi theo mỗi thao tác lọc/sắp xếp.
+  const overviewRows = useMemo(
+    () => (savedQuery.data?.datas ?? []).map((r) => toDisplayRow(r, direction, replacedBy)),
+    [savedQuery.data, direction, replacedBy],
+  );
   // Tách lọc khỏi sắp xếp (giống `filteredDetailRows`/`sortedDetailRows` bên dưới) — gộp chung 1
-  // memo sẽ khiến MỖI LẦN bấm đổi chiều sắp xếp cũng chạy lại toàn bộ map `toDisplayRow` + lọc qua
-  // `matchesOverviewFilters` (hàng nghìn hóa đơn), dù dữ liệu/bộ lọc không đổi gì.
+  // memo sẽ khiến MỖI LẦN bấm đổi chiều sắp xếp cũng chạy lại toàn bộ lọc qua `matchesOverviewFilters`
+  // (hàng nghìn hóa đơn), dù dữ liệu/bộ lọc không đổi gì.
   const filteredRows = useMemo(() => {
-    const mapped = (savedQuery.data?.datas ?? []).map((r) => toDisplayRow(r, direction, replacedBy));
     const needle = tenHangFilter.trim().toLowerCase();
-    return mapped.filter(
+    return overviewRows.filter(
       (r) =>
         (!needle || r.tenHang?.toLowerCase().includes(needle)) &&
         matchesOverviewFilters(r, direction, appliedFilters, columnFilters),
     );
-  }, [savedQuery.data, direction, replacedBy, tenHangFilter, appliedFilters, columnFilters]);
+  }, [overviewRows, direction, tenHangFilter, appliedFilters, columnFilters]);
   const rows = useMemo(
     () => applySort(filteredRows, overviewSort),
     [filteredRows, overviewSort],
   );
-  // Số thứ tự hóa đơn lấy từ BẢNG TỔNG QUÁT (`rows`), tra theo khóa định danh chứ không theo vị trí:
-  // hai bảng là hai truy vấn riêng, cùng sắp theo ngày lập nên thứ tự giữa các hóa đơn CÙNG NGÀY
-  // không được đảm bảo trùng nhau. Cột "Tên file hóa đơn" đọc số này nên ghép sai là chỉ nhầm file.
+  // Số thứ tự hóa đơn = tra theo khóa định danh trên `overviewRows` (KHÔNG lọc/sắp xếp), KHÔNG theo
+  // vị trí trong `rows` (RVW-H2-005): lọc/sắp xếp bảng đổi vị trí liên tục, mà `exportBundle.ts` đặt
+  // tên file cũng tính STT từ đúng thứ tự thô này — lệch nhau là cột "Tên file hóa đơn" chỉ tên một
+  // file không tồn tại trên đĩa. Dùng CHUNG cho cả bảng Tổng quát (vòng render bên dưới) lẫn bảng
+  // Chi tiết ngay dưới đây.
+  const sttOf = useMemo(() => invoiceSttMap(overviewRows), [overviewRows]);
   const detailRows = useMemo(() => {
     // Tab "Chi tiết" đang ẩn -> khỏi flatMap hàng chục nghìn dòng hàng (`sortedDetailRows` chỉ dùng
-    // khi tab này mở). `savedDetailsQuery.data` vẫn còn trong cache (staleTime 5 phút) sau khi rời
-    // tab, và `rows` đổi theo MỌI thao tác sort/lọc ở bảng Tổng quát -> không gate thì tính lại vô ích.
+    // khi tab này mở). `savedDetailsQuery.data` vẫn còn trong cache (staleTime 5 phút) sau khi rời tab.
     if (resultTab !== "chi-tiet") return EMPTY_DETAIL_ROWS;
-    const sttOf = invoiceSttMap(rows);
     const details = savedDetailsQuery.data ?? [];
     return details.flatMap((d) => {
       const str = (v: unknown): string => (v == null ? "" : String(v));
@@ -497,7 +504,7 @@ function InvoiceTablePanel({ direction, active }: InvoiceTablePanelProps) {
     });
     // `danhMucNccQuery.data` PHẢI nằm trong deps: danh mục về sau lần render đầu, không tính lại thì
     // cột "URL tra cứu" kẹt ở URL dự phòng của registry FE cho tới khi có thứ khác kích render.
-  }, [resultTab, savedDetailsQuery.data, rows, replacedBy, danhMucNccQuery.data]);
+  }, [resultTab, savedDetailsQuery.data, sttOf, replacedBy, danhMucNccQuery.data]);
   // Lọc CLIENT các cột chỉ có ở bảng Chi tiết rồi sắp xếp — TRƯỚC khi đưa vào `InvoiceDetailPanel`
   // (bảng đó chỉ hiển thị + tự phân trang, không biết gì về filter/sort).
   const filteredDetailRows = useMemo(() => {
@@ -598,7 +605,14 @@ function InvoiceTablePanel({ direction, active }: InvoiceTablePanelProps) {
   ) => {
     resetPageAndSelection();
     setColumnFilters((prev) => ({ ...prev, [textKey]: text || undefined }));
-    setAppliedFilters((prev) => ({ ...prev, [key]: resolveUniqueOptionCode(text, options) }));
+    // Gõ mơ hồ (chưa đủ rõ để khớp DUY NHẤT 1 lựa chọn) -> `code` rỗng: GIỮ NGUYÊN lựa chọn đã áp ở
+    // panel thay vì xóa sạch (RVW-H2-007) — chỉ ghi đè khi suy ra được mã CHÍNH XÁC, hoặc khi người
+    // dùng xóa trắng ô (cố ý bỏ lọc). Không thì panel/dòng lọc/lượt GDT nền sẽ nói ba chuyện khác
+    // nhau về cùng một bộ lọc.
+    const code = resolveUniqueOptionCode(text, options);
+    if (code || !text.trim()) {
+      setAppliedFilters((prev) => ({ ...prev, [key]: code }));
+    }
   };
 
   /**
@@ -690,6 +704,7 @@ function InvoiceTablePanel({ direction, active }: InvoiceTablePanelProps) {
     try {
       let status = await startDetailRun(direction, gdtToken, query);
       let lastDone = -1;
+      let pollFails = 0;
       for (;;) {
         if (runIdRef.current !== startRun) {
           toast.dismiss(toastId);
@@ -710,7 +725,16 @@ function InvoiceTablePanel({ direction, active }: InvoiceTablePanelProps) {
         }
         if (!status.active) break;
         await sleep(POLL_INTERVAL_MS);
-        status = await getDetailRunStatus(direction);
+        try {
+          status = await getDetailRunStatus(direction);
+          pollFails = 0;
+        } catch (e) {
+          // Dung sai nhịp poll (RVW-H2-004) — cùng khuôn với `pollUpdateRunToast`/`pollDetailRunToast`:
+          // một nhịp mạng chập KHÔNG được nhảy thẳng catch bỏ theo dõi trong khi BE vẫn chạy tiếp, chỉ
+          // bỏ cuộc khi lỗi LIÊN TIẾP quá ngưỡng (mất kết nối thật).
+          pollFails += 1;
+          if (pollFails >= MAX_POLL_NEN_HONG) throw e;
+        }
       }
       toast.update(toastId, {
         render: status.authExpired
@@ -822,9 +846,11 @@ function InvoiceTablePanel({ direction, active }: InvoiceTablePanelProps) {
     setAppliedFilters(filters);
     // Chốt mốc lượt hiện tại: đổi công ty giữa chừng (effect bump runIdRef) -> ngừng bám lượt này.
     const startRun = runIdRef.current;
-    console.log(
-      `[DEBUG-CAPNHAT][FE] Bấm CẬP NHẬT TỪ THUẾ ĐIỆN TỬ ${direction} ${filters.tuNgay}..${filters.denNgay}`,
-    );
+    if (import.meta.env.DEV) {
+      console.log(
+        `[DEBUG-CAPNHAT][FE] Bấm CẬP NHẬT TỪ THUẾ ĐIỆN TỬ ${direction} ${filters.tuNgay}..${filters.denNgay}`,
+      );
+    }
     // Lượt chạy NỀN ở BE: request này chỉ khởi động (~50ms) rồi FE poll tiến độ. Nhờ vậy khoảng
     // ngày dài không còn bị proxy cắt thành 502, và BE dám kiên nhẫn 10 phút/trang khi GDT chặn.
     void (async () => {
@@ -1305,8 +1331,11 @@ function InvoiceTablePanel({ direction, active }: InvoiceTablePanelProps) {
                   `pagedRows`: đây là tổng của cả bảng nên không đổi khi lật trang — cũng là con số
                   nằm ở sheet Excel. */}
               {totalsRow(columns, tong, headerRowHeight)}
-              {pagedRows.map((r, i) => {
-                const stt = safePage * rowsPerPage + i + 1;
+              {pagedRows.map((r) => {
+                // Tra theo khóa trên `sttOf` (NGUỒN DUY NHẤT, xem chú thích ở khai báo) — KHÔNG tính
+                // theo vị trí trong `pagedRows`/trang hiện tại (RVW-H2-005), để khớp đúng STT dùng khi
+                // đặt tên file xuất.
+                const stt = sttOf.get(invoiceKey(r.mauHd, r.soSeri, r.soHd, r.sellerMst)) ?? 0;
                 return (
                   // Tô cả hàng theo trạng thái/cảnh báo, cùng quy tắc với bảng Chi tiết và Excel.
                   // Hàng ĐANG CHỌN vẫn ưu tiên màu chọn của MUI (`.Mui-selected` đè lên `sx`) — đúng

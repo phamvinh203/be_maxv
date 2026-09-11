@@ -7,8 +7,9 @@ import type { DetailRow, DisplayRow } from "../types";
 import { ttTaiCell } from "./cells";
 import {
   MONEY2_FMT,
-  NUM_FMT,
   NO_DATA_YET,
+  PCT_FMT,
+  QTY_FMT,
   RATE_FMT,
   TOTAL_COL_WIDTH,
   chiDongDau,
@@ -299,7 +300,7 @@ export function detailDauVao(): InvoiceColumn<DetailRow>[] {
       width: 12,
       webWidth: 120,
       align: "right",
-      numFmt: NUM_FMT,
+      numFmt: QTY_FMT,
       value: (r) => r.soLuong,
     },
     {
@@ -308,7 +309,7 @@ export function detailDauVao(): InvoiceColumn<DetailRow>[] {
       width: 12,
       webWidth: 110,
       align: "right",
-      numFmt: NUM_FMT,
+      numFmt: QTY_FMT,
       value: (r) => r.gia,
     },
     {
@@ -317,7 +318,7 @@ export function detailDauVao(): InvoiceColumn<DetailRow>[] {
       width: 12,
       webWidth: 125,
       align: "right",
-      numFmt: NUM_FMT,
+      numFmt: PCT_FMT,
       value: (r) => r.tlCktm,
     },
     {
