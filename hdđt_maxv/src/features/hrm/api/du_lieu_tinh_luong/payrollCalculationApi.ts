@@ -188,10 +188,17 @@ const PAYROLL_LINE_NUMERIC_FIELDS = [
   "totalCompanyCost",
 ] as const satisfies readonly (keyof PayrollCalculationLineApi)[];
 
+let daCanhBaoTruongThieu = false;
+
 function normalizePayrollLine(raw: Record<string, unknown>): PayrollCalculationLineApi {
   const line = { ...raw } as unknown as Record<string, unknown>;
   for (const field of PAYROLL_LINE_NUMERIC_FIELDS) {
-    line[field] = Number(raw[field]);
+    const v = Number(raw[field] ?? 0);
+    if (!Number.isFinite(v) && !daCanhBaoTruongThieu) {
+      daCanhBaoTruongThieu = true;
+      console.warn(`[payrollCalculationApi] trường "${field}" không phải số hợp lệ, đã fallback về 0`);
+    }
+    line[field] = Number.isFinite(v) ? v : 0;
   }
   return line as unknown as PayrollCalculationLineApi;
 }

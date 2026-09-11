@@ -15,8 +15,6 @@ import { getErrorMessage } from "../../../../lib/errors";
 import { hopDongHienHanh } from "../../_shared/cay";
 import { homNay } from "../../_shared/format";
 import { hopDongRong, nhanVienRong } from "../../_shared/formDefaults";
-// Nhân viên đã chạy API thật; còn lịch sử hợp đồng (và các tab Hồ sơ / Người phụ thuộc bên
-// trong) vẫn là mock — khóa theo ma_nv nên nhân viên tạo mới sẽ thấy các tab đó trống.
 import {
   useMaNhanVienMoi,
   useNhanVienDetail,
@@ -97,6 +95,16 @@ export default function NhanVienDialog({ open, onClose, maNv }: Props) {
   );
 
   const handleSubmit = async () => {
+    // RVW-A08: trước đây bấm Lưu với ô trống tốn 1 round-trip mới nhận lỗi 400 chung chung.
+    if (!nhanVien.ho_ten.trim()) {
+      toast.error("Nhập họ và tên.");
+      return;
+    }
+    if (!laSua && !nhanVien.ma_nv.trim()) {
+      toast.error("Nhập mã nhân viên.");
+      return;
+    }
+
     setDangLuu(true);
     try {
       if (laSua) {

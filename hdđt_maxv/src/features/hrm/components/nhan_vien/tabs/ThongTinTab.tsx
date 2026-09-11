@@ -21,7 +21,7 @@ import {
   NGAN_HANG_VN,
   TRANG_THAI_NV,
 } from "../../../_shared/constants";
-import { ngayVn, nhan, tienVn } from "../../../_shared/format";
+import { canhBaoDoDai, homNay, ngayVn, nhan, tienVn } from "../../../_shared/format";
 // Phải là danh sách phòng ban THẬT: BE chặn ma_pb không tồn tại, chọn từ mock sẽ lưu lỗi 404.
 import { usePhongBanList } from "../../../api/du_lieu_nhan_vien/phongBanQueries";
 import {
@@ -115,12 +115,16 @@ export default function ThongTinTab({
           size="small"
           value={nhanVien.so_cccd}
           onChange={(e) => dat("so_cccd", e.target.value)}
+          helperText={canhBaoDoDai(nhanVien.so_cccd, [9, 12])}
+          slotProps={{ htmlInput: { inputMode: "numeric", maxLength: 12 } }}
         />
         <TextField
           label="MST cá nhân"
           size="small"
           value={nhanVien.mst_ca_nhan}
           onChange={(e) => dat("mst_ca_nhan", e.target.value)}
+          helperText={canhBaoDoDai(nhanVien.mst_ca_nhan, [10, 13])}
+          slotProps={{ htmlInput: { inputMode: "numeric", maxLength: 13 } }}
         />
         <TextField
           label="Mã nhân viên"
@@ -144,7 +148,9 @@ export default function ThongTinTab({
           size="small"
           value={nhanVien.ngay_sinh}
           onChange={(e) => dat("ngay_sinh", e.target.value)}
-          slotProps={{ inputLabel: { shrink: true } }}
+          // Ngày tương lai làm cột tuổi ở `SinhNhatCard` ra số âm — chặn MỀM bằng `max` (vẫn
+          // gõ tay vượt qua được), không chặn submit vì hồ sơ cũ có thể thiếu ngày sinh (RVW-A09).
+          slotProps={{ inputLabel: { shrink: true }, htmlInput: { max: homNay() } }}
         />
         <TextField
           select
@@ -164,6 +170,8 @@ export default function ThongTinTab({
           size="small"
           value={nhanVien.dien_thoai}
           onChange={(e) => dat("dien_thoai", e.target.value)}
+          helperText={canhBaoDoDai(nhanVien.dien_thoai, [10, 11])}
+          slotProps={{ htmlInput: { inputMode: "numeric", maxLength: 11 } }}
         />
         <TextField
           label="Email"

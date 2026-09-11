@@ -71,3 +71,20 @@ export function mergeNhanVienKyLuongWithData<TBan extends { ma_nv: string }, TRo
   const banTheoNv = new Map((banList ?? []).map((r) => [r.ma_nv, r]));
   return nhanVien.map((row) => mapRow(row, banTheoNv.get(row.ma_nv)));
 }
+
+/**
+ * Đếm số nhân viên CÓ dữ liệu trên máy chủ (`banList` — vd đã áp KPI/thưởng/bù
+ * trừ trong kỳ) nhưng KHÔNG còn nằm trong `nhanVien` đang lọc (nghỉ việc, đổi
+ * phòng ban, hoặc bị 3 ô lọc của `ThanhLocKyLuong` loại ra) — RVW-711: dữ liệu
+ * này vẫn được tính vào bảng lương (server không biết gì về bộ lọc phía trình
+ * duyệt), nhưng biến mất khỏi MỌI bảng của Panel nên không ai xem/xóa được qua
+ * màn này. Dùng để hiện dòng cảnh báo tổng hợp dưới bảng.
+ */
+export function demSoNgoaiBoLoc<TBan extends { ma_nv: string }>(
+  nhanVien: NhanVienKyLuongRow[],
+  banList: TBan[] | undefined,
+): number {
+  if (!banList || banList.length === 0) return 0;
+  const trongBoLoc = new Set(nhanVien.map((nv) => nv.ma_nv));
+  return banList.filter((ban) => !trongBoLoc.has(ban.ma_nv)).length;
+}

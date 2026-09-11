@@ -12,11 +12,14 @@ createRoot(document.getElementById("root")!).render(
   <StrictMode>
     <QueryClientProvider client={queryClient}>
       <DisplaySettingsProvider>
-        <AuthProvider>
-          <GdtSessionProvider>
+        {/* RVW-C02: GdtSessionProvider bọc NGOÀI AuthProvider — AuthContext cần gọi
+            clearGdtSession() bên trong resetSession() (xem AuthContext.tsx), nên phải nằm
+            trong cây của GdtSessionProvider để dùng được hook useGdtSession(). */}
+        <GdtSessionProvider>
+          <AuthProvider>
             <AppRouter />
-          </GdtSessionProvider>
-        </AuthProvider>
+          </AuthProvider>
+        </GdtSessionProvider>
       </DisplaySettingsProvider>
     </QueryClientProvider>
   </StrictMode>,

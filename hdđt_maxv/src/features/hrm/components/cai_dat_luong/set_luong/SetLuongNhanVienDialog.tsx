@@ -16,13 +16,17 @@ import TableCell from "@mui/material/TableCell";
 import TableContainer from "@mui/material/TableContainer";
 import TableHead from "@mui/material/TableHead";
 import TableRow from "@mui/material/TableRow";
+import CircularProgress from "@mui/material/CircularProgress";
 import { getErrorMessage } from "../../../../../lib/errors";
 import { PHAN_LOAI_THUE, TIEU_THUC_TINH, moTaLoaiKhoan } from "../../../_shared/constants";
 import { ngayVn, nhan, tienVn } from "../../../_shared/format";
 import { useKhoanLuongList } from "../../../api/cai_dat_luong/salaryItemsQueries";
 import { useCauTrucLuong } from "../../../api/cai_dat_luong/salaryStructuresQueries";
 import { useLuuSetLuong, useSetLuongCuaNhanVien } from "../../../api/cai_dat_luong/employeeSalariesQueries";
-import { useNhanVienDetail } from "../../../api/du_lieu_nhan_vien/nhanVienQueries";
+import {
+  useDanhSachNhanVien,
+  useNhanVienDetail,
+} from "../../../api/du_lieu_nhan_vien/nhanVienQueries";
 import TienField from "../../TienField";
 
 interface Props {
@@ -43,6 +47,9 @@ interface Props {
  */
 export default function SetLuongNhanVienDialog({ open, onClose, maNv, chiDoc }: Props) {
   const nhanVien = useNhanVienDetail(maNv);
+  // Phân biệt "đang tải" với "đã xóa" (RVW-A16) — mạng chậm thì hiện spinner thay vì màn hình
+  // đứng yên không dialog không spinner.
+  const { isLoading: dangTaiDanhSach } = useDanhSachNhanVien();
   const cauTruc = useCauTrucLuong();
   const banHienCo = useSetLuongCuaNhanVien(maNv);
   const danhMuc = useKhoanLuongList();
@@ -82,7 +89,18 @@ export default function SetLuongNhanVienDialog({ open, onClose, maNv, chiDoc }: 
     }
   };
 
-  if (!nhanVien) return null;
+  if (!nhanVien) {
+    if (dangTaiDanhSach) {
+      return (
+        <Dialog open={open} onClose={onClose} maxWidth="md" fullWidth>
+          <Stack sx={{ alignItems: "center", py: 6 }}>
+            <CircularProgress />
+          </Stack>
+        </Dialog>
+      );
+    }
+    return null;
+  }
 
   return (
     <Dialog open={open} onClose={onClose} maxWidth="md" fullWidth>

@@ -1,3 +1,10 @@
+/**
+ * RVW-TK-008: hằng "đơn vị cơ sở" mặc định — hệ thống hiện chỉ vận hành 1 đơn vị cơ sở/tenant
+ * nên hardcode là chấp nhận được; nếu sau này cần đa đơn vị cơ sở thật, đổi thành Select và báo
+ * BA (không tự suy diễn UI đa đơn vị ở đây).
+ */
+export const MA_DVCS_MAC_DINH = '001';
+
 /** 1 kho hàng (dmkho). `ten_nhkho` chỉ có ở danh sách (join nhóm kho). */
 export interface Kho {
   ma_kho: string;
@@ -31,7 +38,7 @@ export interface KhoListParams {
 
 export const EMPTY_KHO: KhoForm = {
   ma_kho: '',
-  ma_dvcs: '001',
+  ma_dvcs: MA_DVCS_MAC_DINH,
   ten_kho: '',
   ten_kho2: '',
   dai_ly_yn: false,
@@ -44,7 +51,7 @@ export const EMPTY_KHO: KhoForm = {
 export function khoToForm(d: Kho): KhoForm {
   return {
     ma_kho: d.ma_kho,
-    ma_dvcs: d.ma_dvcs || '001',
+    ma_dvcs: d.ma_dvcs || MA_DVCS_MAC_DINH,
     ten_kho: d.ten_kho,
     ten_kho2: d.ten_kho2 ?? '',
     dai_ly_yn: !!d.dai_ly_yn,

@@ -19,10 +19,22 @@ export interface KhachHangForm {
 }
 
 export interface KhachHangListParams {
+  page?: number;
+  pageSize?: number;
+  /** Ô tìm chung: mã / tên / mã số thuế. */
+  q?: string;
   ma_kh?: string;
   ten_kh?: string;
   dia_chi?: string;
   ma_so_thue?: string;
+}
+
+/** Response GET danh sách — BE phân trang server-side (khớp `khachHang.service.ts`). */
+export interface KhachHangListResponse {
+  items: KhachHang[];
+  total: number;
+  page: number;
+  pageSize: number;
 }
 
 export const EMPTY_KHACH_HANG: KhachHangForm = {

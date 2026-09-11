@@ -1,4 +1,4 @@
-import { useMemo, useState, type MouseEvent } from "react";
+import { memo, useCallback, useMemo, useState, type MouseEvent } from "react";
 import { toast } from "react-toastify";
 import Alert from "@mui/material/Alert";
 import Box from "@mui/material/Box";
@@ -9,6 +9,7 @@ import TableBody from "@mui/material/TableBody";
 import TableCell from "@mui/material/TableCell";
 import TableContainer from "@mui/material/TableContainer";
 import TableHead from "@mui/material/TableHead";
+import TablePagination from "@mui/material/TablePagination";
 import TableRow from "@mui/material/TableRow";
 import ButtonBase from "@mui/material/ButtonBase";
 import Chip from "@mui/material/Chip";
@@ -25,6 +26,7 @@ import {
   oMacDinh,
   thongKeDong,
   type NgayCham,
+  type ThongKeDong,
 } from "../../../calculations/du_lieu_tinh_luong/chamCong";
 import { COT_THONG_KE_CONG, moTaLoaiCong } from "../../../_shared/constants";
 import { useCauHinh } from "../../../api/cau_hinh_mac_dinh/cauHinhQueries";
@@ -34,11 +36,15 @@ import { useAttendanceMatrix, useOverrideAttendanceCell } from "../../../api/du_
 import { useCurrentPayrollPeriod } from "../useCurrentPayrollPeriod";
 import { useBangKeChiDoc } from "../useBangKeChiDoc";
 import CanhBaoChiDoc from "../CanhBaoChiDoc";
-import type { LoaiCong, OChamCong } from "../../../types";
+import type { LoaiCong, NhanVien, OChamCong } from "../../../types";
 import OChamCongPopover from "./OChamCongPopover";
 
 /** Bề ngang một cột ngày — đủ chỗ cho ký hiệu mà 31 cột vẫn vừa màn hình rộng. */
 const RONG_COT_NGAY = 40;
+
+/** RVW-704: 200 NV × 31 ngày ≈ 8.400 ô — chỉ dựng DOM của một trang tại một thời điểm. */
+const SO_DONG_MOI_TRANG = 50;
+const CAC_LUA_CHON_SO_DONG = [25, 50, 100, 200];
 
 interface ODangMo {
   neo: HTMLElement;
@@ -78,6 +84,8 @@ export default function ChamCongPanel() {
   const overrideMut = useOverrideAttendanceCell(periodId);
 
   const [dangMo, setDangMo] = useState<ODangMo | null>(null);
+  const [trang, setTrang] = useState(0);
+  const [soDongTrang, setSoDongTrang] = useState(SO_DONG_MOI_TRANG);
 
   const ngayTrongThang = useMemo(
     () => cacNgayTrongThang(nam, thang, cauHinh, ngayLe),
@@ -118,13 +126,28 @@ export default function ChamCongPanel() {
     [nhanVien, ngayTrongThang, ghiDe, gioCongChuanNgay],
   );
 
-  const moO = (
-    e: MouseEvent<HTMLElement>,
-    maNv: string,
-    tenNv: string,
-    ngayCham: NgayCham,
-    giaTri: OChamCong | null,
-  ) => setDangMo({ neo: e.currentTarget, maNv, tenNv, ngayCham, giaTri });
+  // RVW-704: chỉ dựng DOM của trang đang xem — 8.400 ô của cả bảng chỉ còn
+  // ~1.550 ô/trang (50 NV × 31 ngày) thay vì luôn dựng hết. `trangHopLe` suy ra
+  // từ `dong.length` thay vì reset bằng `useEffect`: đổi kỳ lương/lọc nhân
+  // viên làm `dong` ngắn lại thì trang cũ tự kẹp về trang cuối còn dữ liệu.
+  const trangHopLe = Math.min(trang, Math.max(0, Math.ceil(dong.length / soDongTrang) - 1));
+  const dongTrangNay = useMemo(
+    () => dong.slice(trangHopLe * soDongTrang, trangHopLe * soDongTrang + soDongTrang),
+    [dong, trangHopLe, soDongTrang],
+  );
+
+  // Tham chiếu cố định (không đổi qua các lần render) để `ChamCongRow` bên
+  // dưới `memo` được — truyền hàm mới mỗi render sẽ vô hiệu hóa memo.
+  const moO = useCallback(
+    (
+      e: MouseEvent<HTMLElement>,
+      maNv: string,
+      tenNv: string,
+      ngayCham: NgayCham,
+      giaTri: OChamCong | null,
+    ) => setDangMo({ neo: e.currentTarget, maNv, tenNv, ngayCham, giaTri }),
+    [],
+  );
 
   const ghiO = async (maNv: string, ngay: string, o: OChamCong) => {
     try {
@@ -251,104 +274,17 @@ export default function ChamCongPanel() {
           </TableHead>
 
           <TableBody>
-            {dong.map((d) => (
-              <TableRow key={d.nhanVien.ma_nv} hover>
-                <TableCell
-                  sx={{
-                    position: "sticky",
-                    left: 0,
-                    zIndex: 1,
-                    bgcolor: "background.paper",
-                    minWidth: 200,
-                  }}
-                >
-                  <Typography variant="body2" sx={{ fontWeight: 600 }} noWrap>
-                    {d.nhanVien.ho_ten}
-                  </Typography>
-                  <Typography variant="caption" color="text.secondary">
-                    {d.nhanVien.ma_nv}
-                  </Typography>
-                </TableCell>
-
-                {ngayTrongThang.map((nc, i) => {
-                  const o = d.o[i] ?? null;
-                  const moTa = o ? moTaLoaiCong(o.loai) : null;
-                  return (
-                    <TableCell
-                      key={nc.ngay}
-                      align="center"
-                      sx={{
-                        width: RONG_COT_NGAY,
-                        p: 0.25,
-                        bgcolor: (theme) =>
-                          nc.tenNgayLe
-                            ? alpha(theme.palette.error.main, 0.06)
-                            : !nc.laNgayLamViec
-                              ? alpha(theme.palette.warning.main, 0.06)
-                              : undefined,
-                      }}
-                    >
-                      <ButtonBase
-                        disabled={isReadOnly}
-                        onClick={(e) => moO(e, d.nhanVien.ma_nv, d.nhanVien.ho_ten, nc, o)}
-                        sx={{
-                          width: "100%",
-                          minHeight: 28,
-                          borderRadius: 0.75,
-                          fontSize: 12,
-                          fontWeight: 700,
-                          color:
-                            !moTa || moTa.mau === "default"
-                              ? "text.primary"
-                              : `${moTa.mau}.contrastText`,
-                          bgcolor: moTa
-                            ? moTa.mau === "default"
-                              ? "action.selected"
-                              : `${moTa.mau}.main`
-                            : "transparent",
-                          "&:hover": { outline: "2px solid", outlineColor: "primary.main" },
-                        }}
-                      >
-                        {/* Ô đã nhập số giờ riêng thì hiện luôn số giờ, không hiện ký hiệu. */}
-                        {o ? (o.soGio > 0 ? `${o.soGio}h` : moTa?.kyHieu) : ""}
-                      </ButtonBase>
-                    </TableCell>
-                  );
-                })}
-
-                <TableCell align="center">{ngayChuan}</TableCell>
-                <TableCell align="center">
-                  <Typography
-                    variant="body2"
-                    sx={{
-                      fontWeight: 700,
-                      // Thiếu công so với chuẩn thì tô đỏ, dư thì tô xanh.
-                      color:
-                        d.thongKe.ngayCongThucTe < ngayChuan
-                          ? "error.main"
-                          : d.thongKe.ngayCongThucTe > ngayChuan
-                            ? "success.main"
-                            : "text.primary",
-                    }}
-                  >
-                    {d.thongKe.ngayCongThucTe}
-                  </Typography>
-                </TableCell>
-                {COT_THONG_KE_CONG.map((loai) => {
-                  const so = d.thongKe.soNgayTheoLoai[loai];
-                  return (
-                    <TableCell key={loai} align="center">
-                      {so > 0 ? (
-                        so
-                      ) : (
-                        <Box component="span" sx={{ color: "text.disabled" }}>
-                          0
-                        </Box>
-                      )}
-                    </TableCell>
-                  );
-                })}
-              </TableRow>
+            {dongTrangNay.map((d) => (
+              <ChamCongRow
+                key={d.nhanVien.ma_nv}
+                nhanVien={d.nhanVien}
+                o={d.o}
+                thongKe={d.thongKe}
+                ngayTrongThang={ngayTrongThang}
+                ngayChuan={ngayChuan}
+                isReadOnly={isReadOnly}
+                onMoO={moO}
+              />
             ))}
 
             {dong.length === 0 && (
@@ -367,6 +303,21 @@ export default function ChamCongPanel() {
           </TableBody>
         </Table>
       </TableContainer>
+
+      <TablePagination
+        component="div"
+        count={dong.length}
+        page={trangHopLe}
+        onPageChange={(_e, trangMoi) => setTrang(trangMoi)}
+        rowsPerPage={soDongTrang}
+        onRowsPerPageChange={(e) => {
+          setSoDongTrang(Number(e.target.value));
+          setTrang(0);
+        }}
+        rowsPerPageOptions={CAC_LUA_CHON_SO_DONG}
+        labelRowsPerPage="Nhân viên/trang"
+        labelDisplayedRows={({ from, to, count }) => `${from}-${to} / ${count} nhân viên`}
+      />
 
       <Stack direction="row" spacing={2} sx={{ mt: 1.5, flexWrap: "wrap", gap: 1 }}>
         {LOAI_CONG_CHU_THICH.map((loai) => {
@@ -424,6 +375,141 @@ export default function ChamCongPanel() {
     </Box>
   );
 }
+
+interface ChamCongRowProps {
+  nhanVien: NhanVien;
+  o: (OChamCong | null)[];
+  thongKe: ThongKeDong;
+  ngayTrongThang: NgayCham[];
+  ngayChuan: number;
+  isReadOnly: boolean;
+  onMoO: (
+    e: MouseEvent<HTMLElement>,
+    maNv: string,
+    tenNv: string,
+    ngayCham: NgayCham,
+    giaTri: OChamCong | null,
+  ) => void;
+}
+
+/**
+ * Một dòng của bảng chấm công, tách riêng + `memo` (RVW-704): `dong` ở component
+ * cha tính lại toàn bộ (object mới) mỗi khi `ghiDe` đổi tham chiếu — kể cả vậy,
+ * `memo` vẫn tránh được việc re-render 200 dòng ở các trường hợp KHÔNG đổi
+ * `dong` (đóng/mở popover, chuyển trang...) vì `onMoO` đã ổn định qua `useCallback`.
+ *
+ * ponytail: chưa cache theo từng nhân viên để giữ nguyên tham chiếu `o`/`thongKe`
+ * của người không bị sửa — nếu 200-500 NV vẫn giật khi sửa 1 ô, nâng cấp tiếp
+ * bằng cách cache `o`/`thongKe` theo `ma_nv` trong `ChamCongPanel` (chỉ tính lại
+ * đúng người vừa ghi).
+ */
+const ChamCongRow = memo(function ChamCongRow({
+  nhanVien,
+  o: oCacNgay,
+  thongKe,
+  ngayTrongThang,
+  ngayChuan,
+  isReadOnly,
+  onMoO,
+}: ChamCongRowProps) {
+  return (
+    <TableRow hover>
+      <TableCell
+        sx={{
+          position: "sticky",
+          left: 0,
+          zIndex: 1,
+          bgcolor: "background.paper",
+          minWidth: 200,
+        }}
+      >
+        <Typography variant="body2" sx={{ fontWeight: 600 }} noWrap>
+          {nhanVien.ho_ten}
+        </Typography>
+        <Typography variant="caption" color="text.secondary">
+          {nhanVien.ma_nv}
+        </Typography>
+      </TableCell>
+
+      {ngayTrongThang.map((nc, i) => {
+        const o = oCacNgay[i] ?? null;
+        const moTa = o ? moTaLoaiCong(o.loai) : null;
+        return (
+          <TableCell
+            key={nc.ngay}
+            align="center"
+            sx={{
+              width: RONG_COT_NGAY,
+              p: 0.25,
+              bgcolor: (theme) =>
+                nc.tenNgayLe
+                  ? alpha(theme.palette.error.main, 0.06)
+                  : !nc.laNgayLamViec
+                    ? alpha(theme.palette.warning.main, 0.06)
+                    : undefined,
+            }}
+          >
+            <ButtonBase
+              disabled={isReadOnly}
+              onClick={(e) => onMoO(e, nhanVien.ma_nv, nhanVien.ho_ten, nc, o)}
+              sx={{
+                width: "100%",
+                minHeight: 28,
+                borderRadius: 0.75,
+                fontSize: 12,
+                fontWeight: 700,
+                color:
+                  !moTa || moTa.mau === "default" ? "text.primary" : `${moTa.mau}.contrastText`,
+                bgcolor: moTa
+                  ? moTa.mau === "default"
+                    ? "action.selected"
+                    : `${moTa.mau}.main`
+                  : "transparent",
+                "&:hover": { outline: "2px solid", outlineColor: "primary.main" },
+              }}
+            >
+              {/* Ô đã nhập số giờ riêng thì hiện luôn số giờ, không hiện ký hiệu. */}
+              {o ? (o.soGio > 0 ? `${o.soGio}h` : moTa?.kyHieu) : ""}
+            </ButtonBase>
+          </TableCell>
+        );
+      })}
+
+      <TableCell align="center">{ngayChuan}</TableCell>
+      <TableCell align="center">
+        <Typography
+          variant="body2"
+          sx={{
+            fontWeight: 700,
+            // Thiếu công so với chuẩn thì tô đỏ, dư thì tô xanh.
+            color:
+              thongKe.ngayCongThucTe < ngayChuan
+                ? "error.main"
+                : thongKe.ngayCongThucTe > ngayChuan
+                  ? "success.main"
+                  : "text.primary",
+          }}
+        >
+          {thongKe.ngayCongThucTe}
+        </Typography>
+      </TableCell>
+      {COT_THONG_KE_CONG.map((loai) => {
+        const so = thongKe.soNgayTheoLoai[loai];
+        return (
+          <TableCell key={loai} align="center">
+            {so > 0 ? (
+              so
+            ) : (
+              <Box component="span" sx={{ color: "text.disabled" }}>
+                0
+              </Box>
+            )}
+          </TableCell>
+        );
+      })}
+    </TableRow>
+  );
+});
 
 /** Thứ tự ký hiệu ở dòng chú thích dưới bảng. */
 const LOAI_CONG_CHU_THICH = [

@@ -12,7 +12,7 @@ import type {
   PhuongPhapNgayCong,
 } from "../../../types";
 import NhomCauHinh from "../NhomCauHinh";
-import SoField from "../SoField";
+import SoField from "../../SoField";
 
 interface Props {
   values: CauHinhMacDinh;

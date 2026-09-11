@@ -4,6 +4,7 @@ import TextField from "@mui/material/TextField";
 import MenuItem from "@mui/material/MenuItem";
 import Typography from "@mui/material/Typography";
 import { QUAN_HE } from "../../_shared/constants";
+import { canhBaoDoDai, homNay } from "../../_shared/format";
 import type { NguoiPhuThuocFormValues, QuanHe } from "../../types";
 
 interface Props {
@@ -62,25 +63,33 @@ export default function NguoiPhuThuocForm({ values, onChange }: Props) {
             size="small"
             value={values.ngay_sinh}
             onChange={(e) => dat("ngay_sinh", e.target.value)}
-            slotProps={{ inputLabel: { shrink: true } }}
+            // Chặn MỀM ngày tương lai bằng `max` (vẫn gõ tay vượt qua được), không chặn submit
+            // vì hồ sơ cũ có thể thiếu ngày sinh (RVW-A09).
+            slotProps={{ inputLabel: { shrink: true }, htmlInput: { max: homNay() } }}
           />
           <TextField
             label="Số CCCD"
             size="small"
             value={values.so_cccd}
             onChange={(e) => dat("so_cccd", e.target.value)}
+            helperText={canhBaoDoDai(values.so_cccd, [9, 12])}
+            slotProps={{ htmlInput: { inputMode: "numeric", maxLength: 12 } }}
           />
           <TextField
             label="MST cá nhân"
             size="small"
             value={values.mst_ca_nhan}
             onChange={(e) => dat("mst_ca_nhan", e.target.value)}
+            helperText={canhBaoDoDai(values.mst_ca_nhan, [10, 13])}
+            slotProps={{ htmlInput: { inputMode: "numeric", maxLength: 13 } }}
           />
           <TextField
             label="Điện thoại"
             size="small"
             value={values.dien_thoai}
             onChange={(e) => dat("dien_thoai", e.target.value)}
+            helperText={canhBaoDoDai(values.dien_thoai, [10, 11])}
+            slotProps={{ htmlInput: { inputMode: "numeric", maxLength: 11 } }}
           />
           <Box sx={{ gridColumn: { sm: "1 / -1" } }}>
             <TextField

@@ -1,6 +1,6 @@
 import { taiFileGiayNopTienDvc } from "./api";
 import { luuVeMay } from "../../../lib/downloadFile";
-import { duoiTuContentType } from "../duoiTuContentType";
+import { duoiTuContentType, kiemTraBlobLaFile } from "../duoiTuContentType";
 
 /**
  * Tải PDF của một Giấy nộp tiền về máy — nguồn cho icon cột "Tải file" ở `BangHoSo` khi đang mở
@@ -9,6 +9,7 @@ import { duoiTuContentType } from "../duoiTuContentType";
  */
 export async function taiFileGiayNopTien(key: string | null, maGiaoDich: string): Promise<void> {
   const blob = await taiFileGiayNopTienDvc({ key: key ?? undefined, maGiaoDich });
+  kiemTraBlobLaFile(blob);
   const duoi = duoiTuContentType(blob.type, "pdf");
   luuVeMay(blob, `${maGiaoDich}.${duoi}`);
 }

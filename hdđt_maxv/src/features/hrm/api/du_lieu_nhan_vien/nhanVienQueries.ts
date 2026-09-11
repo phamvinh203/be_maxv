@@ -131,7 +131,11 @@ function hopDongTuApi(r: NhanVienApiRow): HopDong | null {
     so_hd: r.so_hop_dong,
     loai_hd: loaiHopDongVeFe(r.loai_hop_dong),
     kieu_luong: r.kieu_luong === "net" ? "NET" : "GROSS",
-    // BE chưa có cột tiền lương (spec nhân viên chỉ có Gross/Net) — bảng lương vẫn chạy mock.
+    // BE chưa có cột tiền lương trên hồ sơ nhân viên (spec nhân viên chỉ có Gross/Net) — chưa
+    // biết số thật nên tạm để 0. RVW-511: lẽ ra nên là `number | null` để phân biệt "0 đồng"
+    // với "không biết", nhưng `HopDong.luong_chinh`/`luong_bhxh` là type DÙNG CHUNG với các màn
+    // hợp đồng thật (`components/nhan_vien/**`, ngoài phạm vi sửa của đợt này) — đổi ở đây sẽ
+    // vỡ typecheck ở đó. Không đổi type, chỉ xóa comment "mock" đã lỗi thời (mock xóa 2026-09-10).
     luong_chinh: 0,
     luong_bhxh: 0,
     ngay_bat_dau: veNgayInput(r.ngay_vao_lam),
@@ -469,9 +473,12 @@ export function useGanNhanhPhongBan() {
     mutationFn: async ({
       maPb,
       maNvList,
+      onTien,
     }: {
       maPb: string;
       maNvList: string[];
+      /** Gọi sau MỖI người gán xong (RVW-507) — khuôn giống `useTaiNhieuFileLen`. */
+      onTien?: (daXong: number, tong: number) => void;
     }) => {
       let xong = 0;
       for (const maNv of maNvList) {
@@ -479,6 +486,7 @@ export function useGanNhanhPhongBan() {
           const hienTai = await getNhanVien(maNv);
           await updateNhanVien(maNv, { ...apiRowVeBody(hienTai), ma_pb: maPb });
           xong += 1;
+          onTien?.(xong, maNvList.length);
         } catch (err) {
           const lyDo = err instanceof Error ? err.message : "lỗi không rõ";
           throw new Error(
@@ -493,10 +501,14 @@ export function useGanNhanhPhongBan() {
   });
 
   return useCallback(
-    async (maPb: string, maNvList: string[]) => {
+    async (
+      maPb: string,
+      maNvList: string[],
+      onTien?: (daXong: number, tong: number) => void,
+    ) => {
       if (!maPb) throw new Error("Chưa chọn phòng ban đích.");
       if (maNvList.length === 0) throw new Error("Chưa chọn nhân viên nào.");
-      await gan.mutateAsync({ maPb, maNvList });
+      await gan.mutateAsync({ maPb, maNvList, onTien });
     },
     [gan],
   );

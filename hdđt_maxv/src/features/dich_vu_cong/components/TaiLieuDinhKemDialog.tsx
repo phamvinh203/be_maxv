@@ -24,6 +24,9 @@ interface Props {
   dvcKey: string | null;
   /** Mã hồ sơ đang xem — `null` khi chưa chọn dòng nào (dialog không fetch). */
   maHoSo: string | null;
+  /** MST công ty đang chọn — vào query key để đổi công ty không đọc nhầm cache của công ty cũ
+   * (RVW-D06). `DvcPage` cũng tự reset `maHoSo` về `null` khi đổi công ty. */
+  activeMst?: string;
   /** Báo lên `DvcPage` để bỏ khóa phiên khi BE nói phiên chết hẳn — xem `boKhoaNeuPhienChet`. */
   onPhienChet?: (err: unknown) => void;
 }
@@ -65,10 +68,11 @@ export default function TaiLieuDinhKemDialog({
   onClose,
   dvcKey,
   maHoSo,
+  activeMst,
   onPhienChet,
 }: Props) {
   const query = useQuery({
-    queryKey: ["dvc", "tai-lieu-dkem", dvcKey, maHoSo],
+    queryKey: ["dvc", "tai-lieu-dkem", activeMst, dvcKey, maHoSo],
     queryFn: () => layTaiLieuDinhKemDvc({ key: dvcKey as string, maHoSo: maHoSo as string }),
     enabled: open && !!dvcKey && !!maHoSo,
   });

@@ -9,6 +9,7 @@ import MenuItem from "@mui/material/MenuItem";
 import Button from "@mui/material/Button";
 import Alert from "@mui/material/Alert";
 import Chip from "@mui/material/Chip";
+import CircularProgress from "@mui/material/CircularProgress";
 import FileDownloadRounded from "@mui/icons-material/FileDownloadRounded";
 import CalculateRounded from "@mui/icons-material/CalculateRounded";
 import LockRounded from "@mui/icons-material/LockRounded";
@@ -130,7 +131,7 @@ export default function BangLuongPanel() {
     setDangXuat(true);
     try {
       await xuatBangLuongExcel(rows, ky.nhan);
-      toast.success("Đã xuất bảng lương — file ghi đủ 18 cột và theo đơn vị đồng.");
+      toast.success("Đã xuất bảng lương — file ghi đủ 19 cột và theo đơn vị đồng.");
     } catch (err) {
       toast.error(getErrorMessage(err, "Không xuất được bảng lương."));
     } finally {
@@ -200,12 +201,12 @@ export default function BangLuongPanel() {
               ))}
             </TextField>
             <Button
-              startIcon={<FileDownloadRounded />}
+              startIcon={dangXuat ? <CircularProgress size={16} /> : <FileDownloadRounded />}
               onClick={handleXuat}
               disabled={dangXuat || isLoading || rows.length === 0}
               sx={{ textTransform: "none", whiteSpace: "nowrap" }}
             >
-              Xuất Excel
+              {dangXuat ? "Đang xuất…" : "Xuất Excel"}
             </Button>
             <Button
               variant="contained"

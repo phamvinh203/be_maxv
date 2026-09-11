@@ -1,5 +1,5 @@
 /**
- * Mười tám cột của bảng lương.
+ * Mười chín cột của bảng lương.
  *
  * Bảng trên màn hình **và** file Excel đều đọc danh sách này, nên hai bên không
  * lệch nhau được: thêm một cột là cả hai chỗ cùng có, và số ở file xuất ra luôn
@@ -15,21 +15,36 @@ export interface CotBangLuong {
   tien?: boolean;
   /** Có cộng ở dòng "Tổng cộng" không. Cột tiền và cột giờ thì có, NPT thì không. */
   cong?: boolean;
+  /** Dương = trừ, âm = cộng lại — đảo dấu khi hiển thị (web lẫn Excel). Chỉ `bu_tru` dùng. */
+  dauNguoc?: boolean;
   align?: "left" | "right" | "center";
   minWidth?: number;
+  /** Cột dính trái (sticky) trên web: bề rộng cố định để cột kế bên không bị chồng lên. */
+  stickyWidth?: number;
   /** Còn hiện khi chọn mức "Rút gọn". */
   rutGon?: boolean;
   value: (row: DongBangLuong) => number;
-  /** Chuỗi cho các cột không phải số (hai cột đầu). */
+  /** Chuỗi cho các cột không phải số (ba cột đầu). */
   text?: (row: DongBangLuong) => string;
 }
 
 export const COT_BANG_LUONG: CotBangLuong[] = [
   {
+    key: "ma_nv",
+    header: "Mã NV",
+    align: "left",
+    minWidth: 90,
+    stickyWidth: 90,
+    rutGon: true,
+    value: () => 0,
+    text: (row) => row.ma_nv,
+  },
+  {
     key: "ho_ten",
     header: "Họ và tên",
     align: "left",
     minWidth: 200,
+    stickyWidth: 200,
     rutGon: true,
     value: () => 0,
     text: (row) => row.ho_ten,
@@ -56,7 +71,7 @@ export const COT_BANG_LUONG: CotBangLuong[] = [
   { key: "bao_hiem", header: "Bảo hiểm", tien: true, cong: true, minWidth: 120, rutGon: true, value: (r) => r.bao_hiem },
   { key: "cong_doan", header: "Công đoàn", tien: true, cong: true, minWidth: 110, value: (r) => r.cong_doan },
   { key: "kpcd_ct", header: "KPCĐ (cty)", tien: true, cong: true, minWidth: 110, value: (r) => r.kpcd_ct },
-  { key: "bu_tru", header: "Các khoản bù trừ", tien: true, cong: true, minWidth: 140, rutGon: true, value: (r) => r.bu_tru },
+  { key: "bu_tru", header: "Các khoản bù trừ", tien: true, cong: true, minWidth: 140, rutGon: true, dauNguoc: true, value: (r) => r.bu_tru },
   { key: "thue_tncn", header: "Thuế TNCN", tien: true, cong: true, minWidth: 120, rutGon: true, value: (r) => r.thue_tncn },
   { key: "thuc_linh", header: "Thực lĩnh", tien: true, cong: true, minWidth: 140, rutGon: true, value: (r) => r.thuc_linh },
 ];

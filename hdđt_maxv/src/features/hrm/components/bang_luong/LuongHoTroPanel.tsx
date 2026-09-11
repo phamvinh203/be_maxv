@@ -137,12 +137,12 @@ export default function LuongHoTroPanel() {
         <Stack spacing={0.5} sx={{ alignItems: { lg: "flex-end" } }}>
           <Stack direction="row" spacing={1.5}>
             <Button
-              startIcon={<FileDownloadRounded />}
+              startIcon={dangXuat ? <CircularProgress size={16} /> : <FileDownloadRounded />}
               onClick={handleXuat}
               disabled={dangXuat || isLoading || rows.length === 0}
               sx={{ textTransform: "none", whiteSpace: "nowrap" }}
             >
-              Xuất Excel
+              {dangXuat ? "Đang xuất…" : "Xuất Excel"}
             </Button>
             <Button
               variant="contained"

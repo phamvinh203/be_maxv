@@ -1,20 +1,17 @@
-import { useLocation } from "react-router-dom";
 import ManHinhDangPhatTrien from "../../../components/ManHinhDangPhatTrien";
-import { MAN_HINH_HO_SO_LUONG } from "../../../features/hrm/components/ho_so_luong/tabs";
+
+interface Props {
+  ten: string;
+  moTa?: string;
+}
 
 /**
  * Chỗ giữ dùng chung cho cả mười bốn tab của khu "Hồ sơ lương".
  *
- * Tra nhãn và mô tả theo path đang mở thay vì viết một page cho mỗi tab: các màn
- * hình chỉ khác nhau đúng hai chuỗi đó, mà chúng đã nằm sẵn ở `tabs.ts`.
+ * NB-3: nhãn/mô tả nhận thẳng qua props (route sinh từ `MAN_HINH_HO_SO_LUONG` truyền vào,
+ * xem `routes/AppRouter.tsx`) thay vì tự tra bằng `useLocation` + `pathname.startsWith`+`find` —
+ * cách cũ khớp nhầm phần tử ĐẦU TIÊN có path là tiền tố của path đang mở.
  */
-export default function HoSoLuongChuaDungPage() {
-  const { pathname } = useLocation();
-  const manHinh = MAN_HINH_HO_SO_LUONG.find((mh) =>
-    pathname.startsWith(`/hrm/ho-so-luong/${mh.path}`),
-  );
-
-  return (
-    <ManHinhDangPhatTrien ten={manHinh?.label ?? "Hồ sơ lương"} moTa={manHinh?.moTa} />
-  );
+export default function HoSoLuongChuaDungPage({ ten, moTa }: Props) {
+  return <ManHinhDangPhatTrien ten={ten} moTa={moTa} />;
 }

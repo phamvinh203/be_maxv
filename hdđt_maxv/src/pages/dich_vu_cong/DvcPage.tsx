@@ -81,6 +81,20 @@ export default function DvcPage() {
 
   const activeMst = useActiveCompanyMst();
 
+  /**
+   * Đổi công ty -> đóng 3 dialog xem theo mã hồ sơ, không giữ mã của công ty cũ trên màn hình
+   * (RVW-D06). Query key của 3 dialog cũng đã thêm `activeMst` (xem props `activeMst` truyền
+   * xuống bên dưới) nên dù state có lỡ giữ lại thì cũng không đọc nhầm cache công ty cũ.
+   */
+  useEffect(() => {
+    // Đóng dialog theo đúng props `activeMst` mới đổi, không phải đồng bộ state nội bộ ngược —
+    // cùng lý do các effect reset form khác trong module này (`DialogLoginDVC`) đã tắt rule y hệt.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setTepDinhKemMaHoSo(null);
+    setThongBaoMaHoSo(null);
+    setToKhaiMaHoSo(null);
+  }, [activeMst]);
+
   /** Có lượt đồng bộ nền đang chạy hay không — chỉ để khóa nút "Đồng bộ" trong dialog. Số liệu thật
    * nằm trong toast tiến độ, không cần dựng lại ở đây. */
   const [dangDongBoNen, setDangDongBoNen] = useState(false);
@@ -437,6 +451,7 @@ export default function DvcPage() {
         onClose={() => setTepDinhKemMaHoSo(null)}
         dvcKey={dvcKey}
         maHoSo={tepDinhKemMaHoSo}
+        activeMst={activeMst}
         onPhienChet={boKhoaNeuPhienChet}
       />
 
@@ -445,6 +460,7 @@ export default function DvcPage() {
         onClose={() => setThongBaoMaHoSo(null)}
         dvcKey={dvcKey}
         maHoSo={thongBaoMaHoSo}
+        activeMst={activeMst}
         onPhienChet={boKhoaNeuPhienChet}
       />
 
@@ -453,6 +469,7 @@ export default function DvcPage() {
         onClose={() => setToKhaiMaHoSo(null)}
         dvcKey={dvcKey}
         maHoSo={toKhaiMaHoSo}
+        activeMst={activeMst}
         onPhienChet={boKhoaNeuPhienChet}
       />
     </>

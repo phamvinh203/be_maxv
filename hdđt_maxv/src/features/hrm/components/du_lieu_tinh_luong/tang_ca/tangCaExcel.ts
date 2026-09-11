@@ -3,9 +3,10 @@
  * cột dùng chung cho tải mẫu, xuất và nhập, để file xuất ra nhập lại được ngay.
  */
 
-import type { CellValue, Workbook, Worksheet } from "exceljs";
+import type { Workbook } from "exceljs";
 import { LOAI_TANG_CA, moTaLoaiTangCa } from "../../../_shared/constants";
 import { gioQuyDoi, sinhIdDongTangCa, tongGioOt, tongGioQuyDoi } from "../../../calculations/du_lieu_tinh_luong/tangCa";
+import { chuoiO, soThapPhan, taiXlsx, toTieuDe } from "../_shared/excel";
 import type {
   CauHinhMacDinh,
   DongTangCa,
@@ -20,56 +21,6 @@ const COT_BANG = [
   { header: "Số giờ OT", width: 14 },
   { header: "Quy đổi", width: 14 },
 ];
-
-const HEADER_FILL = "FFDDE6F2";
-
-/** Ô Excel có thể là số, chuỗi, công thức hoặc rich text — ép về chuỗi đã trim. */
-function chuoiO(giaTri: CellValue): string {
-  if (giaTri === null || giaTri === undefined) return "";
-  if (typeof giaTri === "object") {
-    if ("richText" in giaTri) return giaTri.richText.map((p) => p.text).join("").trim();
-    if ("text" in giaTri) return String(giaTri.text).trim();
-    if ("result" in giaTri) return String(giaTri.result ?? "").trim();
-    return "";
-  }
-  return String(giaTri).trim();
-}
-
-/** Chấp nhận cả `12,5` lẫn `12.5` — xem ghi chú ở `kpiExcel.soO`. */
-function soO(giaTri: CellValue): number {
-  if (typeof giaTri === "number") return giaTri;
-  const text = chuoiO(giaTri).replace(/\s/g, "").replace(/h$/i, "").replace(",", ".");
-  if (!text) return 0;
-  const so = Number(text);
-  return Number.isFinite(so) ? so : 0;
-}
-
-function taiVe(buffer: ArrayBuffer, filename: string): void {
-  const blob = new Blob([buffer], {
-    type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-  });
-  const url = URL.createObjectURL(blob);
-  const link = document.createElement("a");
-  link.href = url;
-  link.download = filename;
-  document.body.appendChild(link);
-  link.click();
-  document.body.removeChild(link);
-  URL.revokeObjectURL(url);
-}
-
-function toTieuDe(ws: Worksheet, soCot: number): void {
-  const row = ws.getRow(1);
-  for (let i = 1; i <= soCot; i += 1) {
-    row.getCell(i).fill = {
-      type: "pattern",
-      pattern: "solid",
-      fgColor: { argb: HEADER_FILL },
-    };
-  }
-  row.font = { bold: true };
-  row.alignment = { vertical: "middle", horizontal: "center", wrapText: true };
-}
 
 /** Sheet tra cứu mã ↔ tên ↔ hệ số, để người điền file biết gõ mã nào vào cột đầu. */
 function themSheetDanhMuc(wb: Workbook, cauHinh: CauHinhMacDinh): void {
@@ -98,7 +49,7 @@ export async function taiFileMauTangCa(cauHinh: CauHinhMacDinh): Promise<void> {
   }
 
   themSheetDanhMuc(wb, cauHinh);
-  taiVe((await wb.xlsx.writeBuffer()) as ArrayBuffer, "Mau-nhap-tang-ca.xlsx");
+  taiXlsx((await wb.xlsx.writeBuffer()) as ArrayBuffer, "Mau-nhap-tang-ca.xlsx");
 }
 
 /** Xuất bảng tăng ca đang soạn + danh sách nhân viên đang lọc. */
@@ -148,7 +99,7 @@ export async function xuatTangCaExcel(
   }
 
   themSheetDanhMuc(wb, cauHinh);
-  taiVe((await wb.xlsx.writeBuffer()) as ArrayBuffer, "Bang-tang-ca.xlsx");
+  taiXlsx((await wb.xlsx.writeBuffer()) as ArrayBuffer, "Bang-tang-ca.xlsx");
 }
 
 /**
@@ -191,7 +142,7 @@ export async function docFileTangCa(file: File): Promise<DongTangCa[]> {
       dongLoi.push(soDong);
       return;
     }
-    const soGio = soO(row.getCell(3).value);
+    const soGio = soThapPhan(row.getCell(3).value);
     if (soGio <= 0) return;
     // Cùng một loại hai lần thì giờ cộng đôi — lấy lần đầu, bỏ các lần sau.
     if (daGap.has(loai)) return;

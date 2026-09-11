@@ -153,7 +153,8 @@ function sanPhamVeKieuFe(r: PieceworkProductApi): SanPham {
     ma_sp: r.code,
     ten_sp: r.name,
     don_vi: r.unit,
-    don_gia: r.unitPrice,
+    // Bắt buộc Number(): BE trả chuỗi (Decimal), để nguyên là mọi phép cộng đơn giá thành nối chuỗi.
+    don_gia: Number(r.unitPrice),
     ghi_chu: "",
     status: r.status === "ACTIVE" ? "1" : "0",
   };
@@ -256,7 +257,8 @@ function chuyenCanVeKieuFe(r: DiligenceViolationTypeApi): LoaiChuyenCan {
     ma_cc: r.code,
     ten_cc: r.name,
     cach_tru: r.deductionMethod,
-    muc_tru: r.penaltyRate,
+    // Bắt buộc Number(): BE trả chuỗi (Decimal), để nguyên là mọi phép cộng mức trừ thành nối chuỗi.
+    muc_tru: Number(r.penaltyRate),
     ghi_chu: "",
     status: r.status === "ACTIVE" ? "1" : "0",
   };

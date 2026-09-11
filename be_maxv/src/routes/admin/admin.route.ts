@@ -39,6 +39,7 @@ import {
   listOwners,
   getOwner,
 } from '../../controllers/admin/adminOwner.controller';
+import { listModules } from '../../controllers/admin/adminModules.controller';
 
 /**
  * Nhóm route quản trị (control plane maxv2_sys).
@@ -52,6 +53,9 @@ export async function adminRoutes(app: FastifyInstance) {
   // Quản lý tài khoản (owner-centric): xem MST/DB + nhân viên của từng owner
   app.get('/owners', listOwners);
   app.get('/owners/:id', getOwner);
+
+  // Danh mục module — màn hình admin suy ra cột bảng/ô tick của gói từ đây
+  app.get('/modules', listModules);
 
   // Quản lý đơn vị (tenant)
   app.get('/companies', listCompanies);

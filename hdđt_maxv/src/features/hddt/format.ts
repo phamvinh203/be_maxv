@@ -12,6 +12,16 @@ export function formatMoney(n?: number): string {
 }
 
 /**
+ * Định dạng Số lượng/Đơn giá/Chiết khấu trên bản thể hiện hóa đơn — GIỮ NGUYÊN phần lẻ, KHÔNG
+ * làm tròn như `formatMoney`. Số liệu này phải khớp tuyệt đối với XML gốc đã ký số (9,69 lít phải
+ * hiện "9,69", không phải "10").
+ */
+export function formatSoLieu(n?: number): string {
+  if (typeof n !== "number") return "";
+  return n.toLocaleString("vi-VN", { maximumFractionDigits: 10 });
+}
+
+/**
  * Cắt SAI SỐ DẤU PHẨY ĐỘNG của phép nhân/cộng — KHÔNG phải làm tròn số liệu.
  *
  * Phân biệt cho rõ, vì hai thứ này trông giống nhau mà hậu quả trái ngược:

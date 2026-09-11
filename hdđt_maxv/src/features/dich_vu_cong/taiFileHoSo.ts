@@ -1,6 +1,6 @@
 import { taiFileHoSoDvc } from "./api/dvc";
 import { luuVeMay } from "../../lib/downloadFile";
-import { duoiTuContentType } from "./duoiTuContentType";
+import { duoiTuContentType, kiemTraBlobLaFile } from "./duoiTuContentType";
 
 /**
  * Tải file XML của một hồ sơ Dịch vụ công về máy — nguồn cho icon cột "Tải file" ở
@@ -14,6 +14,7 @@ import { duoiTuContentType } from "./duoiTuContentType";
  */
 export async function taiFileHoSo(key: string | null, maHoSo: string): Promise<void> {
   const blob = await taiFileHoSoDvc({ key: key ?? undefined, maHoSo });
+  kiemTraBlobLaFile(blob);
   const duoi = duoiTuContentType(blob.type, "xml");
   luuVeMay(blob, `${maHoSo}.${duoi}`);
 }

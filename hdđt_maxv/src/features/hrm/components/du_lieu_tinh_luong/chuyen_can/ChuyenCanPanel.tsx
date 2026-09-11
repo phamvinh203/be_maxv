@@ -1,36 +1,30 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { toast } from "react-toastify";
 import Alert from "@mui/material/Alert";
 import Box from "@mui/material/Box";
-import Paper from "@mui/material/Paper";
 import Stack from "@mui/material/Stack";
 import Button from "@mui/material/Button";
-import Chip from "@mui/material/Chip";
 import Dialog from "@mui/material/Dialog";
 import DialogTitle from "@mui/material/DialogTitle";
 import DialogContent from "@mui/material/DialogContent";
 import DialogContentText from "@mui/material/DialogContentText";
 import DialogActions from "@mui/material/DialogActions";
-import DownloadRounded from "@mui/icons-material/DownloadRounded";
-import UploadFileRounded from "@mui/icons-material/UploadFileRounded";
-import FileDownloadRounded from "@mui/icons-material/FileDownloadRounded";
-import PlaylistAddCheckRounded from "@mui/icons-material/PlaylistAddCheckRounded";
-import ContentCopyRounded from "@mui/icons-material/ContentCopyRounded";
-import DeleteSweepRounded from "@mui/icons-material/DeleteSweepRounded";
-import TuneRounded from "@mui/icons-material/TuneRounded";
+import { useAuth } from "@/features/auth/useAuth";
 import { getErrorMessage } from "../../../../../lib/errors";
 import { PHAM_VI_AP_DUNG } from "../../../_shared/constants";
 import { nhan } from "../../../_shared/format";
+import { hrmPayrollCalculationKeys, hrmPayrollDataKeys } from "../../../api/hrmKeys";
 import { useLoaiChuyenCanIdByCode, useLoaiChuyenCanList } from "../../../api/du_lieu_tinh_luong/payrollCatalogsQueries";
-import {
-  useDeleteDiligenceRecord,
-  useDiligenceDataList,
-  useRecordDiligence,
-} from "../../../api/du_lieu_tinh_luong/payrollInputsQueries";
+import { deleteDiligenceRecord, recordDiligence } from "../../../api/du_lieu_tinh_luong/payrollInputsApi";
+import { useDiligenceDataList } from "../../../api/du_lieu_tinh_luong/payrollInputsQueries";
+import { useCanhBaoRoiTrang } from "../_shared/useCanhBaoRoiTrang";
 import { useCurrentPayrollPeriod } from "../useCurrentPayrollPeriod";
 import { useBangKeChiDoc } from "../useBangKeChiDoc";
 import CanhBaoChiDoc from "../CanhBaoChiDoc";
-import { mergeNhanVienKyLuongWithData, useNhanVienKyLuong } from "../useNhanVienKyLuong";
+import CanhBaoNgoaiBoLoc from "../CanhBaoNgoaiBoLoc";
+import ThanhCongCuBangNhap from "../ThanhCongCuBangNhap";
+import { demSoNgoaiBoLoc, mergeNhanVienKyLuongWithData, useNhanVienKyLuong } from "../useNhanVienKyLuong";
 import type { ChuyenCanNhanVienRow, DongChuyenCan, LocNhanVienKyLuong, PhamViApDung } from "../../../types";
 import XacNhanXoaDialog from "../../XacNhanXoaDialog";
 import BangChuyenCanCard from "./BangChuyenCanCard";
@@ -60,8 +54,8 @@ export default function ChuyenCanPanel() {
 
   const danhMuc = useLoaiChuyenCanList();
   const idTheoMa = useLoaiChuyenCanIdByCode();
-  const recordMut = useRecordDiligence(periodId);
-  const deleteMut = useDeleteDiligenceRecord(periodId);
+  const qc = useQueryClient();
+  const { currentCompanyId } = useAuth();
 
   const [mau, setMau] = useState<DongChuyenCan[]>([]);
   const [phamVi, setPhamVi] = useState<PhamViApDung>("nhan_vien");
@@ -99,24 +93,62 @@ export default function ChuyenCanPanel() {
   );
 
   const coThayDoi = mau.length > 0;
+  // RVW-707: nháp chỉ sống trong state — chặn F5/đóng tab khi còn nội dung
+  // chưa áp dụng, tránh mất trắng im lặng.
+  useCanhBaoRoiTrang(coThayDoi);
+  // RVW-711: nhân viên có vi phạm chuyên cần trong kỳ nhưng bị 3 ô lọc ẩn khỏi
+  // bảng — dữ liệu vẫn tính vào lương, chỉ là không ai thấy để kiểm tra ở màn này.
+  const soNgoaiBoLoc = demSoNgoaiBoLoc(nhanVien, diligenceData);
+  // RVW-701/702: dòng chưa chọn loại hoặc chưa nhập ngày mà lọt qua vòng lặp
+  // xóa+ghi sẽ khiến nhân viên đó mất dữ liệu cũ mà không ghi lại được.
+  const hopLe = mau.every((d) => d.ma_cc !== "" && d.ngay !== "");
 
-  /** Xóa hết bản ghi hiện có của MỘT nhân viên trong kỳ này — dùng chung cho "Áp dụng" và "Xóa". */
-  const xoaChoMotNguoi = useCallback(
+  /**
+   * RVW-705: nạp lại danh sách vi phạm + bảng lương xem trước SAU KHI cả loạt
+   * ghi/xóa đã xong — gọi 1 lần, không đặt trong vòng lặp theo từng nhân viên.
+   * Trước đây dùng `useRecordDiligence`/`useDeleteDiligenceRecord` (tự
+   * `invalidateQueries` ở `onSuccess`), khiến mỗi lần ghi 1 bản ghi kích thêm 1
+   * lượt GET danh sách toàn bộ nhân viên — N người × M dòng ghi thành O(N²M).
+   */
+  const napLaiDuLieu = useCallback(() => {
+    void qc.invalidateQueries({
+      queryKey: hrmPayrollDataKeys.diligenceList(currentCompanyId, periodId),
+    });
+    void qc.invalidateQueries({
+      queryKey: hrmPayrollCalculationKeys.calculate(currentCompanyId, periodId),
+    });
+  }, [qc, currentCompanyId, periodId]);
+
+  /**
+   * Xóa hết bản ghi hiện có của MỘT nhân viên trong kỳ này — gọi thẳng hàm tầng
+   * api (không qua hook mutation) để KHÔNG kích invalidate riêng cho từng lần
+   * xóa khi hàm này chạy bên trong vòng lặp N người của `apDungChoMotNguoi`.
+   */
+  const xoaChoMotNguoiSilent = useCallback(
     async (maNv: string) => {
       const banHienTai = (diligenceData ?? []).find((r) => r.ma_nv === maNv);
       for (const rec of banHienTai?.records ?? []) {
-        await deleteMut.mutateAsync(rec.id);
+        await deleteDiligenceRecord(rec.id);
       }
     },
-    [diligenceData, deleteMut],
+    [diligenceData],
+  );
+
+  /** Xóa hết bản ghi của MỘT nhân viên rồi nạp lại dữ liệu ngay — dùng cho nút "Xóa" đơn lẻ. */
+  const xoaChoMotNguoi = useCallback(
+    async (maNv: string) => {
+      await xoaChoMotNguoiSilent(maNv);
+      napLaiDuLieu();
+    },
+    [xoaChoMotNguoiSilent, napLaiDuLieu],
   );
 
   /** Xóa hết bản ghi hiện có của MỘT nhân viên trong kỳ này, rồi ghi lại theo bảng đang soạn. */
   const apDungChoMotNguoi = useCallback(
     async (maNv: string) => {
-      await xoaChoMotNguoi(maNv);
+      await xoaChoMotNguoiSilent(maNv);
       for (const d of mau) {
-        await recordMut.mutateAsync({
+        await recordDiligence({
           periodId,
           ma_nv: maNv,
           violationTypeId: idTheoMa.get(d.ma_cc) ?? d.ma_cc,
@@ -125,27 +157,44 @@ export default function ChuyenCanPanel() {
         });
       }
     },
-    [xoaChoMotNguoi, mau, recordMut, periodId, idTheoMa],
+    [xoaChoMotNguoiSilent, mau, periodId, idTheoMa],
   );
 
   const handleApDung = async () => {
     setMoApDung(false);
+    // RVW-701: validate TOÀN BỘ bảng đang soạn TRƯỚC vòng lặp, trước cả lời gọi
+    // xóa đầu tiên — không thì người đầu tiên đã bị xóa dữ liệu cũ mà không ghi
+    // lại được vì dòng chưa khai xong bị BE từ chối.
+    if (!hopLe) {
+      toast.error(
+        "Bảng đang soạn còn dòng chưa chọn loại chuyên cần hoặc chưa nhập ngày — kiểm tra lại trước khi áp dụng.",
+      );
+      return;
+    }
     setDangApDung(true);
     let xong = 0;
+    // RVW-702: bắt lỗi BÊN TRONG vòng lặp — lỗi ở người thứ k phải nêu rõ tên
+    // người đó, không chỉ đếm số đã xong, để người chốt lương biết phải kiểm tra ai.
+    // RVW-705: nạp lại dữ liệu đúng MỘT lần trong `finally`, dù xong hết hay
+    // dừng giữa chừng — không còn nạp lại sau MỖI người trong vòng lặp.
     try {
       for (const row of rows) {
-        await apDungChoMotNguoi(row.ma_nv);
-        xong += 1;
+        try {
+          await apDungChoMotNguoi(row.ma_nv);
+          xong += 1;
+        } catch (err) {
+          toast.error(
+            getErrorMessage(
+              err,
+              `Dừng ở ${row.ho_ten} (${row.ma_nv}) — đã áp xong ${xong}/${rows.length} người, kiểm tra và áp lại cho những người còn thiếu.`,
+            ),
+          );
+          return;
+        }
       }
       toast.success(`Đã áp bảng chuyên cần cho ${xong} nhân viên.`);
-    } catch (err) {
-      toast.error(
-        getErrorMessage(
-          err,
-          `Đã áp ${xong}/${rows.length} nhân viên rồi dừng lại vì lỗi. Kiểm tra và áp lại cho những người còn thiếu.`,
-        ),
-      );
     } finally {
+      napLaiDuLieu();
       setDangApDung(false);
     }
   };
@@ -198,88 +247,28 @@ export default function ChuyenCanPanel() {
         />
       )}
 
-      <Paper variant="outlined" sx={{ p: 2 }}>
-        <Stack
-          direction={{ xs: "column", xl: "row" }}
-          spacing={1.5}
-          sx={{ alignItems: { xl: "center" }, justifyContent: "space-between" }}
-        >
-          <Stack direction="row" spacing={1.5} sx={{ flexWrap: "wrap", gap: 1.5 }}>
-            <Button
-              startIcon={<DownloadRounded />}
-              onClick={handleTaiMau}
-              sx={{ textTransform: "none" }}
-            >
-              Tải mẫu
-            </Button>
-            <Button
-              startIcon={<UploadFileRounded />}
-              onClick={() => inputFile.current?.click()}
-              disabled={isReadOnly}
-              sx={{ textTransform: "none" }}
-            >
-              Nhập Excel
-            </Button>
-            <Button
-              startIcon={<FileDownloadRounded />}
-              onClick={handleXuat}
-              sx={{ textTransform: "none" }}
-            >
-              Xuất Excel
-            </Button>
-            <Button
-              variant="contained"
-              startIcon={<PlaylistAddCheckRounded />}
-              onClick={() => setMoApDung(true)}
-              // Không khóa theo `mau.length`: áp bảng rỗng là chốt "không vi phạm".
-              disabled={isReadOnly || dangApDung || rows.length === 0}
-              sx={{ textTransform: "none" }}
-            >
-              Áp dụng chuyên cần ({rows.length})
-            </Button>
-            <Button
-              startIcon={<ContentCopyRounded />}
-              onClick={() => setMoTaiSuDung(true)}
-              disabled={isReadOnly}
-              sx={{ textTransform: "none" }}
-            >
-              Tái sử dụng
-            </Button>
-            <Button
-              color="error"
-              startIcon={<DeleteSweepRounded />}
-              onClick={() => setMoXoaTatCa(true)}
-              disabled={mau.length === 0}
-              sx={{ textTransform: "none" }}
-            >
-              Xóa tất cả
-            </Button>
-            <Button
-              variant="outlined"
-              startIcon={<TuneRounded />}
-              onClick={() => setMoQuanLy(true)}
-              sx={{ textTransform: "none" }}
-            >
-              Quản lý chuyên cần
-            </Button>
-          </Stack>
+      <ThanhCongCuBangNhap
+        isReadOnly={isReadOnly}
+        coThayDoi={coThayDoi}
+        soLuongApDung={rows.length}
+        // Không khóa theo `mau.length`: áp bảng rỗng là chốt "không vi phạm".
+        // `!hopLe` thì khóa: dòng chưa khai xong lọt vào là mất dữ liệu cũ (RVW-701).
+        disabledApDung={isReadOnly || dangApDung || rows.length === 0 || !hopLe}
+        disabledXoaTatCa={mau.length === 0}
+        inputFile={inputFile}
+        onTaiMau={handleTaiMau}
+        onNhap={handleNhap}
+        onXuat={handleXuat}
+        onApDung={() => setMoApDung(true)}
+        onTaiSuDung={() => setMoTaiSuDung(true)}
+        onXoaTatCa={() => setMoXoaTatCa(true)}
+        onQuanLy={() => setMoQuanLy(true)}
+        nhanApDung="Áp dụng chuyên cần"
+        nhanQuanLy="Quản lý chuyên cần"
+        canhBaoChuaApDung="Bảng chuyên cần có nội dung chưa áp dụng"
+      />
 
-          {coThayDoi && (
-            <Box>
-              <Chip
-                size="small"
-                color="warning"
-                label="Bảng chuyên cần có nội dung chưa áp dụng"
-                sx={{ height: 22 }}
-              />
-            </Box>
-          )}
-        </Stack>
-
-        <input ref={inputFile} type="file" accept=".xlsx,.xlsm" hidden onChange={handleNhap} />
-      </Paper>
-
-      <BangChuyenCanCard values={mau} onChange={setMau} />
+      <BangChuyenCanCard values={mau} onChange={setMau} rows={rows} />
 
       <DanhSachChuyenCanCard
         phamVi={phamVi}
@@ -290,6 +279,7 @@ export default function ChuyenCanPanel() {
         isReadOnly={isReadOnly}
         onXoaNhanVien={xoaChoMotNguoi}
       />
+      <CanhBaoNgoaiBoLoc soLuong={soNgoaiBoLoc} module="chuyên cần" />
 
       <QuanLyChuyenCanDialog open={moQuanLy} onClose={() => setMoQuanLy(false)} />
 

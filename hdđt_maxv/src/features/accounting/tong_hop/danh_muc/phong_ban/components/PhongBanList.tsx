@@ -40,7 +40,7 @@ export function PhongBanList(): JSX.Element {
     getId: (r) => r.ma_pb,
     searchKeys: SEARCH_KEYS,
   });
-  const { selected, setSelected } = list;
+  const { selected, setSelectedId } = list;
 
   const [form, setForm] = useState<{
     open: boolean;
@@ -62,7 +62,7 @@ export function PhongBanList(): JSX.Element {
     del.mutate(selected.ma_pb, {
       onSuccess: () => {
         setDeleteOpen(false);
-        setSelected(null);
+        setSelectedId(null);
       },
       onError: (err) => list.setActionError(getApiError(err, "Xóa thất bại.")),
     });

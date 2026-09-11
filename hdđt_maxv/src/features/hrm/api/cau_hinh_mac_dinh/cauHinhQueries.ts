@@ -297,6 +297,20 @@ export function useTrangThaiCauHinh(): {
 }
 
 /**
+ * Cấu hình mặc định — `null` khi CHƯA CÓ dữ liệu thật (đang tải/lỗi), KHÔNG tự động fallback
+ * về bộ chuẩn như `useCauHinh()` (RVW-508).
+ *
+ * Dùng cho màn hình CHỈ ĐỌC hệ số/tỷ lệ từ cấu hình (vd hệ số tăng ca 150/200%) — nơi hiện số
+ * mặc định rồi nhảy sang số thật của công ty là sai UX; nên render skeleton khi `null` thay vì
+ * gọi `useCauHinh()` + tự ghép `useTrangThaiCauHinh().daCoDuLieu`. `useCauHinh()` (trả bộ chuẩn
+ * khi chưa tải) vẫn đúng cho MÀN CẤU HÌNH — form cần khung hiện ngay để người dùng sửa.
+ */
+export function useCauHinhDaTai(): CauHinhMacDinh | null {
+  const { data } = useCauHinhQuery();
+  return useMemo(() => (data ? veKieuFeCauHinh(data) : null), [data]);
+}
+
+/**
  * Lưu cấu hình. Trả mã cảnh báo của máy chủ (`CANH_BAO_BIEU_THUE_LECH_CHUAN`) hoặc `undefined`.
  *
  * Ba phép kiểm trước khi gửi giữ nguyên từ bản mock, cộng một phép kiểm ngưỡng tăng dần. Đây

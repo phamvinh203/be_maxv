@@ -71,19 +71,14 @@ export default function SettingsPage() {
               borderRadius: 2,
             }}
           >
-            {/* Giữ mount cả 4 tab, chỉ ẩn bằng CSS — tránh remount + gọi lại API mỗi lần đổi tab. */}
-            <Box sx={{ display: tab === "company" ? "block" : "none" }}>
-              <CompanyManagementTab />
-            </Box>
-            <Box sx={{ display: tab === "sync-schedule" ? "block" : "none" }}>
-              <SyncScheduleTab />
-            </Box>
-            <Box sx={{ display: tab === "display" ? "block" : "none" }}>
-              <DisplayModeTab />
-            </Box>
-            <Box sx={{ display: tab === "system-data" ? "block" : "none" }}>
-              <SystemDataTab />
-            </Box>
+            {/* RVW-C04: chỉ mount đúng tab đang chọn — trước đây mount cả 4 tab (ẩn bằng
+                display:none) nên vào /settings là bắn GET /companies + lịch sử đồng bộ + thống
+                kê hệ thống cùng lúc dù chỉ xem 1 tab. staleTime 30s của mỗi query đã đủ tránh gọi
+                lại khi remount lúc đổi qua đổi lại tab, nên bỏ mount-ẩn không còn lý do giữ. */}
+            {tab === "company" && <CompanyManagementTab />}
+            {tab === "sync-schedule" && <SyncScheduleTab />}
+            {tab === "display" && <DisplayModeTab />}
+            {tab === "system-data" && <SystemDataTab />}
           </Box>
         </Box>
       </Box>

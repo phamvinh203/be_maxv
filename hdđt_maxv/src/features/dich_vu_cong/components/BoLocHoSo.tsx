@@ -24,11 +24,8 @@ import { currentMonthRange } from "../../hddt/dateUtils";
  * cùng bộ ô này tab Giấy nộp tiền dùng để lọc số tham chiếu và ngân hàng nộp.
  */
 export interface BoLocHoSoValues {
-  maGiaoDich: string;
   loaiHoSo: string;
   hoSo: string;
-  noiNop: string;
-  kyTinhThue: string;
   /** Ngày nộp từ, dạng `yyyy-mm-dd` như input type=date trả về. */
   tuNgay: string;
   /** Ngày nộp đến, dạng `yyyy-mm-dd`. */
@@ -42,11 +39,8 @@ export interface BoLocHoSoValues {
 function taoBoLocMacDinh(): BoLocHoSoValues {
   const { tuNgay, denNgay } = currentMonthRange();
   return {
-    maGiaoDich: "",
     loaiHoSo: "",
     hoSo: "",
-    noiNop: "",
-    kyTinhThue: "",
     tuNgay,
     denNgay,
   };
@@ -55,7 +49,7 @@ function taoBoLocMacDinh(): BoLocHoSoValues {
 interface Props {
   /** Tiêu đề bộ lọc — mỗi tab lọc một loại hồ sơ nên chữ khác nhau. */
   tieuDe: string;
-  /** Nhãn 7 ô, lấy từ `TAB_DVC` của tab đang mở. */
+  /** Nhãn 4 ô, lấy từ `TAB_DVC` của tab đang mở. */
   nhan: NhanBoLoc;
   /** Đang tra cứu — khoá hai nút và thay chữ trên nút Tìm kiếm bằng vòng quay. */
   loading?: boolean;
@@ -69,7 +63,7 @@ interface Props {
 /**
  * Bộ lọc tra cứu hồ sơ đã nộp — gập/mở được, khớp layout bộ lọc hóa đơn.
  *
- * Ba tab dùng chung đúng bộ bảy ô này, chỉ khác nhãn, nên nhãn nhận từ ngoài
+ * Ba tab dùng chung đúng bộ bốn ô này, chỉ khác nhãn, nên nhãn nhận từ ngoài
  * vào thay vì viết cứng: khác nhau có bấy nhiêu mà tách ba component thì ba chỗ
  * phải sửa mỗi lần layout đổi.
  *
@@ -139,20 +133,12 @@ export default function BoLocHoSo({
             }}
           >
             <TextField
-              label={nhan.maGiaoDich}
-              value={values.maGiaoDich}
-              onChange={setField("maGiaoDich")}
-              size="small"
-              fullWidth
-            />
-            <TextField
               label={nhan.loaiHoSo}
               value={values.loaiHoSo}
               onChange={setField("loaiHoSo")}
               size="small"
               fullWidth
             />
-
             <TextField
               label={nhan.hoSo}
               value={values.hoSo}
@@ -160,23 +146,9 @@ export default function BoLocHoSo({
               size="small"
               fullWidth
             />
-            <TextField
-              label={nhan.noiNop}
-              value={values.noiNop}
-              onChange={setField("noiNop")}
-              size="small"
-              fullWidth
-            />
 
-            <TextField
-              label={nhan.kyTinhThue}
-              value={values.kyTinhThue}
-              onChange={setField("kyTinhThue")}
-              size="small"
-              fullWidth
-            />
-            {/* Ngày nộp là một khoảng nên hai ô nằm chung một ô lưới. */}
-            <Stack direction="row" spacing={1.5}>
+            {/* Ngày nộp là một khoảng nên hai ô nằm chung, trải hết chiều ngang hàng dưới. */}
+            <Stack direction="row" spacing={1.5} sx={{ gridColumn: { sm: "1 / -1" } }}>
               <TextField
                 label={nhan.tuNgay}
                 type="date"

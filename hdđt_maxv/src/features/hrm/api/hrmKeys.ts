@@ -26,14 +26,23 @@ export const hrmNhanVienKeys = {
 
 export const hrmNptKeys = {
   all: ["hrm-nguoi-phu-thuoc"] as const,
+  /** Toàn công ty — dùng cho màn hình độc lập có tìm kiếm (`useNguoiPhuThuocRows`). */
   list: (companyId: string | null) =>
     ["hrm-nguoi-phu-thuoc", companyId, "list"] as const,
+  /** Một nhân viên (RVW-513) — dùng cho tab trong hồ sơ (`useNguoiPhuThuocList`). */
+  theoNv: (companyId: string | null, maNv: string | null) =>
+    ["hrm-nguoi-phu-thuoc", companyId, "theo-nv", maNv] as const,
 };
 
+/**
+ * Khóa THÊM theo `ma_nv` (RVW-513) — trước đây tải toàn bộ tài liệu công ty rồi lọc ở client,
+ * trái nguyên tắc "danh sách nghiệp vụ phải lọc/phân trang ở máy chủ" (`taiHetTrang.ts`), cùng
+ * loại vấn đề BUG-HRM-25 mà `hrmHopDongKeys` đã sửa.
+ */
 export const hrmTaiLieuKeys = {
   all: ["hrm-tai-lieu"] as const,
-  list: (companyId: string | null) =>
-    ["hrm-tai-lieu", companyId, "list"] as const,
+  list: (companyId: string | null, maNv: string | null) =>
+    ["hrm-tai-lieu", companyId, "list", maNv] as const,
 };
 
 /**

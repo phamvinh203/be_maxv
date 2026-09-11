@@ -5,36 +5,8 @@
  * thêm một khoản hỗ trợ ở Cài đặt lương là cả hai chỗ cùng có thêm cột.
  */
 
-import type { Worksheet } from "exceljs";
 import type { DongLuongHoTro, KhoanHoTroCot } from "../../types";
-
-const HEADER_FILL = "FFDDE6F2";
-const TONG_FILL = "FFF3E8D2";
-const TIEN_FMT = "#,##0";
-
-function taiVe(buffer: ArrayBuffer, filename: string): void {
-  const blob = new Blob([buffer], {
-    type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-  });
-  const url = URL.createObjectURL(blob);
-  const link = document.createElement("a");
-  link.href = url;
-  link.download = filename;
-  document.body.appendChild(link);
-  link.click();
-  document.body.removeChild(link);
-  URL.revokeObjectURL(url);
-}
-
-function toHang(ws: Worksheet, hang: number, soCot: number, mau: string): void {
-  const row = ws.getRow(hang);
-  for (let i = 1; i <= soCot; i += 1) {
-    row.getCell(i).fill = { type: "pattern", pattern: "solid", fgColor: { argb: mau } };
-  }
-  row.font = { bold: true };
-  row.alignment = { vertical: "middle", horizontal: "center", wrapText: true };
-  row.height = 32;
-}
+import { HEADER_FILL, TIEN_FMT, TONG_FILL, taiVeExcel, toTieuDe as toHang } from "./excelChung";
 
 /**
  * Xuất bảng lương hỗ trợ của kỳ.
@@ -114,7 +86,7 @@ export async function xuatLuongHoTroExcel(
 
   ws.views = [{ state: "frozen", xSplit: 2, ySplit: hangTieuDe }];
 
-  taiVe(
+  taiVeExcel(
     (await wb.xlsx.writeBuffer()) as ArrayBuffer,
     `Luong-ho-tro-${nhanKy.replace(/\W+/g, "-")}.xlsx`,
   );

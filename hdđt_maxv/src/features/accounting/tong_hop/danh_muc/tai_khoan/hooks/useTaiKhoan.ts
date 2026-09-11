@@ -23,7 +23,10 @@ export function useTaiKhoanList(options?: { enabled?: boolean }) {
   return useQuery({
     queryKey: taiKhoanKeys.list(currentCompanyId),
     queryFn: () => listTaiKhoan(),
-    placeholderData: (prev) => prev,
+    // RVW-N07: không giữ placeholder qua lần đổi công ty — tránh hiện data tenant cũ
+    // dưới tên công ty mới trong lúc chờ refetch.
+    placeholderData: (prev, prevQuery) =>
+      prevQuery?.queryKey[1] === currentCompanyId ? prev : undefined,
     enabled: (options?.enabled ?? true) && isAuthenticated && !!currentCompanyId,
   });
 }

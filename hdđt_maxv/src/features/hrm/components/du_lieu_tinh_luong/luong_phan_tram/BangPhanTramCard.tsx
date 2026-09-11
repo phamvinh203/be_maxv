@@ -26,6 +26,7 @@ import {
   tongTienPhanTram,
 } from "../../../calculations/du_lieu_tinh_luong/luongPhanTram";
 import { useKhoanPhanTramList } from "../../../api/cai_dat_luong/salaryItemsQueries";
+import { tyLeHopLe } from "../_shared/inputGuards";
 import type { DongLuongPhanTram } from "../../../types";
 import TienField from "../../TienField";
 
@@ -156,7 +157,7 @@ export default function BangPhanTramCard({ values, onChange }: Props) {
                       size="small"
                       fullWidth
                       value={dong.ty_le}
-                      onChange={(e) => datDong(dong.id, { ty_le: Number(e.target.value) || 0 })}
+                      onChange={(e) => datDong(dong.id, { ty_le: tyLeHopLe(e.target.value) })}
                       onWheel={(e) => (e.target as HTMLElement).blur()}
                       // Chỉ nhắc khi lệch danh mục, không chặn — lệch tỷ lệ là
                       // có thật, chỉ cần người nhập biết mình đang lệch.

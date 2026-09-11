@@ -154,7 +154,12 @@ export function PhongBanFormDialog({
               label="Tk chi phí"
               fullWidth
               value={form.ma_td1}
-              onChange={(e) => setField("ma_td1", e.target.value.toUpperCase())}
+              onChange={(e) => {
+                // RVW-N09: gõ tay đổi mã mà không xóa ten_tk cũ sẽ lưu lệch (mã 642 kèm
+                // tên "Tiền mặt" của mã 1111 đã chọn trước đó qua picker) — reset ten_tk
+                // mỗi khi gõ tay, chỉ picker mới được set lại đồng bộ cả 2.
+                setForm((f) => ({ ...f, ma_td1: e.target.value.toUpperCase(), ten_tk: "" }));
+              }}
               helperText={form.ten_tk || undefined}
               slotProps={{
                 input: {

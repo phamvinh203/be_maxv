@@ -1,21 +1,25 @@
-/** Nhãn 7 ô của bộ lọc — mỗi tab lọc một loại hồ sơ nên chữ khác nhau. */
+/**
+ * Nhãn 4 ô của bộ lọc — mỗi tab lọc một loại hồ sơ nên chữ khác nhau.
+ *
+ * CHỈ 4 ô (không phải 7): BE `traCuuHoSoDvc`/`traCuuGiayNopTienDvc` chỉ nhận đúng 2 tham số lọc
+ * văn bản (`loaiHoSo`, `hoSo`) + khoảng ngày — từng có thêm 3 ô `maGiaoDich`/`noiNop`/`kyTinhThue`
+ * nhưng không API nào nhận (RVW-D01), đã bỏ khỏi form thay vì âm thầm không gửi.
+ */
 export interface NhanBoLoc {
-  maGiaoDich: string;
   loaiHoSo: string;
   hoSo: string;
-  noiNop: string;
-  kyTinhThue: string;
   tuNgay: string;
   denNgay: string;
 }
 
-/** Nhãn dùng cho hai tab tờ khai — chỉ khác nhau ở cổng nộp, form thì giống hệt. */
+/**
+ * Nhãn tab tờ khai — khớp ĐÚNG param thật gửi lên `traCuuHoSoDvc` (xem `mutationFn` ở
+ * `DvcPage`): `hoSo` gửi làm `maHoSo` (lọc cột `ma_ho_so`, hiển thị "Mã giao dịch"), `loaiHoSo`
+ * gửi làm `maToKhai` (lọc cột `to_khai`, hiển thị "Tờ khai / Phụ lục").
+ */
 const NHAN_TO_KHAI: NhanBoLoc = {
-  maGiaoDich: "Mã giao dịch",
-  loaiHoSo: "Loại tờ khai",
-  hoSo: "Tờ khai",
-  noiNop: "Nơi nộp",
-  kyTinhThue: "Kỳ tính thuế",
+  loaiHoSo: "Tờ khai",
+  hoSo: "Mã giao dịch",
   tuNgay: "Ngày nộp từ",
   denNgay: "Đến ngày",
 };
@@ -177,12 +181,11 @@ export const TAB_DVC: TabDvc[] = [
     value: "giay-nop-tien",
     label: "Giấy nộp tiền",
     tieuDeBoLoc: "Bộ lọc giấy nộp tiền đã được đồng bộ",
+    // `hoSo` gửi làm `maGiaoDich` (lọc cột `so_tham_chieu`), `loaiHoSo` gửi làm `soGnt` (lọc cột
+    // `so_giay_nop_tien`) — khớp `mutationFn` ở `DvcPage`, xem chú thích `NHAN_TO_KHAI`.
     nhanBoLoc: {
-      maGiaoDich: "Mã giao dịch",
-      loaiHoSo: "Loại giấy nộp tiền",
+      loaiHoSo: "Số giấy nộp tiền",
       hoSo: "Số tham chiếu",
-      noiNop: "Ngân hàng nộp",
-      kyTinhThue: "Kỳ tính thuế",
       tuNgay: "Ngày nộp từ",
       denNgay: "Đến ngày",
     },

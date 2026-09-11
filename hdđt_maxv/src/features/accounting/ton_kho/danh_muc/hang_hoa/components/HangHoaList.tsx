@@ -40,18 +40,26 @@ const SEARCH_KEYS = ["ma_vt", "ten_vt"];
 const giaTon = (v: number): string => GIA_TON[v] ?? String(v);
 
 export function HangHoaList(): JSX.Element {
-  const { data, isLoading, isError, error, refetch } = useHangHoaList({
-    limit: 500,
-  });
-  const del = useDeleteHangHoa();
-
-  const rows = useMemo(() => data?.data ?? [], [data]);
+  // RVW-TK-001: BE phân trang server-side thật ({data,total,page,limit}) — bảng này KHÔNG
+  // dùng list.selected/list.filtered/list.paged của useCatalogList (derive từ `rows` truyền
+  // vào, mà rows thật chỉ có SAU khi fetch theo list.page/list.search — truyền rows:[] chỉ
+  // để lấy phần state độc lập với rows: selectedId/setSelectedId/isSelected/toggleSelect/
+  // searchInput/search/page/rpp/actionError), thay vì cắt cứng ở 500 dòng đầu như trước.
   const list = useCatalogList<HangHoa>({
-    rows,
+    rows: [],
     getId: (r) => r.ma_vt,
     searchKeys: SEARCH_KEYS,
   });
-  const { selected, setSelected } = list;
+
+  const { data, isLoading, isFetching, isError, error, refetch } =
+    useHangHoaList({ search: list.search, page: list.page + 1, limit: list.rpp });
+  const del = useDeleteHangHoa();
+
+  const rows = useMemo(() => data?.data ?? [], [data]);
+  const selected = useMemo(
+    () => rows.find((r) => r.ma_vt === list.selectedId) ?? null,
+    [rows, list.selectedId],
+  );
 
   const [form, setForm] = useState<{
     open: boolean;
@@ -74,13 +82,15 @@ export function HangHoaList(): JSX.Element {
     del.mutate(selected.ma_vt, {
       onSuccess: () => {
         setDeleteOpen(false);
-        setSelected(null);
+        list.setSelectedId(null);
       },
       onError: (err) => list.setActionError(getApiError(err, "Xóa thất bại.")),
     });
   }
 
+  // RVW-TK-010: 4 chức năng dưới chưa triển khai — disable + tooltip thay vì bấm vào im lặng.
   const noop = () => {};
+  const CHUA_LAM = "Sắp có";
 
   return (
     <Box
@@ -136,21 +146,29 @@ export function HangHoaList(): JSX.Element {
             icon: <GridOnIcon fontSize="small" />,
             label: "Xuất Excel",
             onClick: noop,
+            disabled: true,
+            disabledReason: CHUA_LAM,
           },
           {
             icon: <UploadFileIcon fontSize="small" />,
             label: "Lấy dữ liệu từ tệp…",
             onClick: noop,
+            disabled: true,
+            disabledReason: CHUA_LAM,
           },
           {
             icon: <FileDownloadIcon fontSize="small" />,
             label: "Tải tệp mẫu…",
             onClick: noop,
+            disabled: true,
+            disabledReason: CHUA_LAM,
           },
           {
             icon: <LockIcon fontSize="small" />,
             label: "Khóa cột",
             onClick: noop,
+            disabled: true,
+            disabledReason: CHUA_LAM,
           },
         ]}
       />
@@ -168,7 +186,8 @@ export function HangHoaList(): JSX.Element {
           color="text.secondary"
           sx={{ ml: "auto" }}
         >
-          {isLoading ? "đang tải…" : `${list.filtered.length} mặt hàng`}
+          {isLoading ? "đang tải…" : `${data?.total ?? 0} mặt hàng`}
+          {isFetching && !isLoading ? " · đang cập nhật…" : ""}
         </Typography>
       </Stack>
 
@@ -208,7 +227,7 @@ export function HangHoaList(): JSX.Element {
             </TableRow>
           </TableHead>
           <TableBody>
-            {list.paged.map((r) => (
+            {rows.map((r) => (
               <TableRow
                 key={r.ma_vt}
                 hover
@@ -239,7 +258,7 @@ export function HangHoaList(): JSX.Element {
                 <TableCell>{r.nh_vt3 || "—"}</TableCell>
               </TableRow>
             ))}
-            {!isLoading && list.filtered.length === 0 && (
+            {!isLoading && rows.length === 0 && (
               <TableRow>
                 <TableCell
                   colSpan={18}
@@ -258,7 +277,7 @@ export function HangHoaList(): JSX.Element {
 
       <TablePagination
         component="div"
-        count={list.filtered.length}
+        count={data?.total ?? 0}
         page={list.page}
         onPageChange={(_, p) => list.setPage(p)}
         rowsPerPage={list.rpp}

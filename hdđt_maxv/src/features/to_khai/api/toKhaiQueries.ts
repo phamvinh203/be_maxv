@@ -7,6 +7,7 @@ import {
   postKeKhai,
   type QuyetDinhKeKhai,
 } from "./toKhai";
+import { gtgt01Keys } from "./gtgt01Queries";
 import type { Ky } from "../ky";
 import type { InvoiceDirection } from "../../hddt/types";
 
@@ -61,15 +62,20 @@ export function useKeKhaiMutation() {
 /**
  * Sửa quyết định kê khai của một dòng trên bảng kê.
  *
- * Làm mới cả prefix của mô-đun thay vì chỉ bảng kê đang xem: hai cột này là đầu vào của lượt tính
- * tờ khai, nên bản tờ khai đã lập của kỳ cũng phải được coi là cũ sau khi đổi.
+ * Chỉ làm mới đúng bảng kê (kỳ + chiều) của dòng vừa sửa và bản tờ khai của kỳ đó — hai cột này là
+ * đầu vào của lượt tính tờ khai nên bản tờ khai đã lập cũng phải được coi là cũ, nhưng KHÔNG cần
+ * đụng tới bảng kê chiều kia hay kỳ khác (trước đây invalidate cả prefix `toKhai/{companyId}` khiến
+ * đổi 1 ô tải lại toàn bộ mọi bảng kê, có thể hàng nghìn dòng).
  */
 export function useSuaQuyetDinhMutation() {
   const qc = useQueryClient();
   const { currentCompanyId } = useAuth();
   return useMutation({
-    mutationFn: (v: { chieu: InvoiceDirection; id: string; quyetDinh: QuyetDinhKeKhai }) =>
+    mutationFn: (v: { chieu: InvoiceDirection; id: string; quyetDinh: QuyetDinhKeKhai; ky: Ky }) =>
       patchQuyetDinh(v.chieu, v.id, v.quyetDinh),
-    onSuccess: () => qc.invalidateQueries({ queryKey: toKhaiKeys.byCompany(currentCompanyId) }),
+    onSuccess: (_data, v) => {
+      qc.invalidateQueries({ queryKey: toKhaiKeys.bangKe(currentCompanyId, v.ky, v.chieu) });
+      qc.invalidateQueries({ queryKey: gtgt01Keys.ban(currentCompanyId, v.ky) });
+    },
   });
 }

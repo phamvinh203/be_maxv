@@ -65,6 +65,8 @@ export function KhoFormDialog({ open, mode, current, onClose }: Props): JSX.Elem
   }
 
   const pending = create.isPending || update.isPending;
+  // RVW-TK-008: chỉ hiển thị tên công ty hiện tại cho user biết đang thao tác ở đâu — giá trị
+  // thật sự gửi lên BE luôn là `MA_DVCS_MAC_DINH` (xem types.ts), KHÔNG derive từ company này.
   const tenDonVi = useActiveCompany()?.tenDonVi ?? '';
   const { data: nhomKhoData } = useNhomKhoList();
   const nhomKhos = nhomKhoData ?? [];

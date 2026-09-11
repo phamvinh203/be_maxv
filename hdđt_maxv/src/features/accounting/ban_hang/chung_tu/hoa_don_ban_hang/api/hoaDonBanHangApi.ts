@@ -1,15 +1,15 @@
 import { api } from '@/lib/apiClient';
 import type {
-  HoaDon,
   HoaDonChiTiet,
   HoaDonListParams,
+  HoaDonListResponse,
   HoaDonPayload,
 } from '@/features/accounting/ban_hang/chung_tu/hoa_don_ban_hang/types';
 
 const BASE = '/ban-hang/hoa-don-ban-hang';
 
-export function listHoaDon(params?: HoaDonListParams): Promise<HoaDon[]> {
-  return api.get<HoaDon[]>(BASE, { params });
+export function listHoaDon(params?: HoaDonListParams): Promise<HoaDonListResponse> {
+  return api.get<HoaDonListResponse>(BASE, { params });
 }
 
 export function getChiTiet(sttRec: string): Promise<HoaDonChiTiet[]> {

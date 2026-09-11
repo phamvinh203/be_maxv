@@ -49,7 +49,12 @@ export default function ForgotPasswordForm() {
     (e: ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) =>
       setForm((f) => ({ ...f, [key]: e.target.value }));
 
-  /** Bước 1: xin OTP. Server luôn trả 200 giống nhau nên cứ sang bước 2 khi không có lỗi mạng. */
+  /**
+   * Bước 1: xin OTP. Server KHÔNG luôn trả 200 giống nhau — trả 404 (email chưa đăng ký),
+   * 401 (tài khoản bị khoá) hoặc 409 (xin OTP quá nhiều lần/giờ) tùy trường hợp (xem
+   * `requestPasswordReset`, `be_maxv/src/services/client/auth.service.ts`:154-171). Lỗi được
+   * gắn vào ô email bên dưới, chỉ sang bước 2 khi request thành công.
+   */
   const handleRequestOtp = async (e: FormEvent) => {
     e.preventDefault();
     if (submitting) return;

@@ -310,17 +310,25 @@ export interface MoTaLoaiCong {
   label: string;
   phim: string;
   mau: "success" | "info" | "primary" | "warning" | "error" | "default";
-  /** Có cộng vào cột "Ngày công thực tế" không. */
+  /** Ô có cho nhập số giờ tùy chỉnh không — khớp `isHourBasedAttendanceType` ở BE
+   * (`payrollInputs.service.ts`): chỉ `lam_viec`/`nua_ngay` cho nhập giờ, các loại
+   * còn lại BE bỏ qua giờ khai báo và luôn áp hệ số cố định `congMacDinh`. */
   tinhCong: boolean;
-  /** Công quy đổi khi không nhập số giờ cụ thể. */
+  /**
+   * Công quy đổi mặc định khi không nhập giờ (hoặc loại không cho nhập giờ).
+   * PHẢI khớp đúng `ATTENDANCE_FIXED_VALUE` ở BE (`payrollInputs.service.ts`) cho
+   * các loại không cho nhập giờ — BE luôn hưởng hệ số này bất kể FE tính gì.
+   */
   congMacDinh: number;
 }
 
 export const LOAI_CONG: MoTaLoaiCong[] = [
   { value: "lam_viec", kyHieu: "1", label: "Làm việc", phim: "1", mau: "success", tinhCong: true, congMacDinh: 1 },
   { value: "nua_ngay", kyHieu: "1/2", label: "Nửa ngày", phim: "2", mau: "success", tinhCong: true, congMacDinh: 0.5 },
-  { value: "cong_tac", kyHieu: "CT", label: "Công tác", phim: "3", mau: "info", tinhCong: false, congMacDinh: 0 },
-  { value: "nghi_phep", kyHieu: "P", label: "Nghỉ phép", phim: "4", mau: "primary", tinhCong: false, congMacDinh: 0 },
+  // RVW-501: BE (ATTENDANCE_FIXED_VALUE) hưởng nguyên 1.0 công cho công tác/nghỉ phép
+  // bất kể giờ khai báo — congMacDinh phải là 1, KHÔNG phải 0.
+  { value: "cong_tac", kyHieu: "CT", label: "Công tác", phim: "3", mau: "info", tinhCong: false, congMacDinh: 1 },
+  { value: "nghi_phep", kyHieu: "P", label: "Nghỉ phép", phim: "4", mau: "primary", tinhCong: false, congMacDinh: 1 },
   { value: "nghi_le", kyHieu: "NL", label: "Nghỉ lễ", phim: "5", mau: "warning", tinhCong: false, congMacDinh: 0 },
   { value: "om", kyHieu: "O", label: "Ốm", phim: "6", mau: "warning", tinhCong: false, congMacDinh: 0 },
   { value: "khong_luong", kyHieu: "X", label: "Không lương", phim: "7", mau: "error", tinhCong: false, congMacDinh: 0 },

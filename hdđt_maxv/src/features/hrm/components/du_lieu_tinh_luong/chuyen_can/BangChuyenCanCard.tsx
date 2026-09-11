@@ -22,25 +22,32 @@ import { moTaCachTru } from "../../../_shared/constants";
 import { dongChuyenCanRong, tongGioChuyenCan } from "../../../calculations/du_lieu_tinh_luong/chuyenCan";
 import { tienVn } from "../../../_shared/format";
 import { useLoaiChuyenCanList } from "../../../api/du_lieu_tinh_luong/payrollCatalogsQueries";
-import type { DongChuyenCan } from "../../../types";
+import { soDuong } from "../_shared/inputGuards";
+import type { ChuyenCanNhanVienRow, DongChuyenCan } from "../../../types";
 
 interface Props {
   values: DongChuyenCan[];
   onChange: (values: DongChuyenCan[]) => void;
+  /** Nhân viên trong phạm vi áp dụng — dùng để kẹp preview theo đơn giá thật của từng người (RVW-503). */
+  rows: ChuyenCanNhanVienRow[];
 }
 
 /**
  * Bảng lỗi chuyên cần đang soạn — mỗi dòng là **một lần** vi phạm.
  *
- * Không có cột tiền ở đây, cố ý: mức trừ của loại "mất toàn bộ" bằng đúng khoản
- * chuyên cần của **từng người**, nên cùng một dòng lỗi mà mỗi nhân viên mất một
- * số khác nhau. Con số thật hiện ở bảng nhân viên bên dưới (Đơn giá → Tổng trừ →
- * Thành tiền); ở đây chỉ ghi mức trừ của loại dưới ô chọn để dễ đối chiếu.
+ * Không có cột tiền theo TỪNG dòng, cố ý: mức trừ của loại "mất toàn bộ" bằng
+ * đúng khoản chuyên cần của **từng người**, nên cùng một dòng lỗi mà mỗi nhân
+ * viên mất một số khác nhau. Con số CHÍNH THỨC hiện ở bảng nhân viên bên dưới
+ * (Đơn giá → Tổng trừ → Thành tiền, đọc thẳng từ máy chủ, đã áp bất biến chặn
+ * sàn BR-dltl-016). Chip "Trừ dự kiến" ở đây chỉ là preview của bảng đang soạn
+ * TRƯỚC khi áp — cũng kẹp theo `min(tổng phạt, đơn giá)` của từng người trong
+ * `rows` (RVW-503) để không hiện số vượt đơn giá, việc không bao giờ xảy ra
+ * thật lúc chốt.
  *
  * Cùng một loại lỗi được lặp nhiều dòng miễn khác ngày — đi trễ ba hôm là ba
  * dòng, gộp lại thì mất dấu ngày vi phạm.
  */
-export default function BangChuyenCanCard({ values, onChange }: Props) {
+export default function BangChuyenCanCard({ values, onChange, rows }: Props) {
   const danhMuc = useLoaiChuyenCanList();
 
   const loaiTheoMa = useMemo(() => new Map(danhMuc.map((cc) => [cc.ma_cc, cc])), [danhMuc]);
@@ -61,6 +68,23 @@ export default function BangChuyenCanCard({ values, onChange }: Props) {
   const coMatToanBo = values.some(
     (d) => loaiTheoMa.get(d.ma_cc)?.cach_tru === "mat_toan_bo",
   );
+
+  /**
+   * RVW-503: kẹp sàn theo đúng bất biến BR-dltl-016 của máy chủ (`tongTru =
+   * min(tongPhat, donGia)`, khớp `payrollInputs.service.ts::getDiligenceData`)
+   * — đơn giá chuyên cần khác nhau theo từng người nên số trừ thật khi áp dụng
+   * không giống nhau. Hiện dải thấp nhất/cao nhất thay vì một số không kẹp,
+   * có thể vượt hẳn đơn giá và không bao giờ xảy ra thật lúc chốt.
+   */
+  const duKienTheoNguoi = rows.map((r) =>
+    coMatToanBo ? r.don_gia : Math.min(truCoDinh, r.don_gia),
+  );
+  const duKienThapNhat = duKienTheoNguoi.length ? Math.min(...duKienTheoNguoi) : truCoDinh;
+  const duKienCaoNhat = duKienTheoNguoi.length ? Math.max(...duKienTheoNguoi) : truCoDinh;
+  const nhanTruDuKien =
+    duKienThapNhat === duKienCaoNhat
+      ? `Trừ dự kiến: ${tienVn(Math.round(duKienThapNhat))} ₫`
+      : `Trừ dự kiến: ${tienVn(Math.round(duKienThapNhat))}–${tienVn(Math.round(duKienCaoNhat))} ₫`;
 
   return (
     <Paper variant="outlined" sx={{ p: 2.5 }}>
@@ -86,9 +110,9 @@ export default function BangChuyenCanCard({ values, onChange }: Props) {
           />
           <Chip
             size="small"
-            color={truCoDinh > 0 ? "warning" : "default"}
+            color={duKienCaoNhat > 0 ? "warning" : "default"}
             variant="outlined"
-            label={`Trừ cố định: ${tienVn(Math.round(truCoDinh))} ₫`}
+            label={nhanTruDuKien}
           />
           {coMatToanBo && (
             <Chip size="small" color="error" label="Có lỗi mất toàn bộ chuyên cần" />
@@ -156,7 +180,7 @@ export default function BangChuyenCanCard({ values, onChange }: Props) {
                       size="small"
                       fullWidth
                       value={dong.so_gio}
-                      onChange={(e) => datDong(dong.id, { so_gio: Number(e.target.value) || 0 })}
+                      onChange={(e) => datDong(dong.id, { so_gio: soDuong(e.target.value) })}
                       onWheel={(e) => (e.target as HTMLElement).blur()}
                       // Loại không trừ theo giờ vẫn cho nhập, chỉ nói rõ là số
                       // này không vào tiền — biên bản vẫn cần ghi trễ bao lâu.

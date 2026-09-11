@@ -125,6 +125,7 @@ export default function XuatFileDvcDialog({ open, onClose }: Props) {
   const [denNgay, setDenNgay] = useState("");
   const [dir, setDir] = useState<FsDirHandle | null>(null);
   const [dangXuat, setDangXuat] = useState(false);
+  const [loiForm, setLoiForm] = useState("");
 
   const activeMst = useActiveCompanyMst();
 
@@ -143,22 +144,51 @@ export default function XuatFileDvcDialog({ open, onClose }: Props) {
 
   const xuatFile = async () => {
     if (!dir || !activeMst) return;
+    if (tuNgay > denNgay) {
+      setLoiForm("Từ ngày phải trước hoặc bằng Đến ngày.");
+      return;
+    }
+    setLoiForm("");
     setDangXuat(true);
     try {
       const thuMucDich = await dir.getDirectoryHandle(THU_MUC_THONG_KE, { create: true });
       const p = { dir: thuMucDich, mst: activeMst, tuNgay, denNgay };
-      const [ketQua, soXml] = await Promise.all([
-        Promise.all(CAC_LOAI_XUAT.map((khai) => xuatMotLoai(p, khai))),
-        xuatXmlHangLoat(dir, tuNgay, denNgay),
-      ]);
-      const daGhi = ketQua.filter((k) => k.soHoSo > 0);
-      if (daGhi.length === 0 && soXml === 0) {
+
+      // `allSettled` (không `all`): 6 lượt gọi độc lập, 1 loại hỏng không được kéo sập toàn bộ
+      // lượt xuất trong khi vài loại khác đã ghi file xong (RVW-D08).
+      const ketQuaLoai = await Promise.allSettled(
+        CAC_LOAI_XUAT.map((khai) => xuatMotLoai(p, khai)),
+      );
+      const daGhi: KetQuaXuatMot[] = [];
+      const loaiHong: string[] = [];
+      ketQuaLoai.forEach((r, i) => {
+        if (r.status === "fulfilled") {
+          if (r.value.soHoSo > 0) daGhi.push(r.value);
+        } else {
+          loaiHong.push(CAC_LOAI_XUAT[i]!.nhan);
+        }
+      });
+
+      let soXml = 0;
+      try {
+        soXml = await xuatXmlHangLoat(dir, tuNgay, denNgay);
+      } catch {
+        loaiHong.push(THU_MUC_XML);
+      }
+
+      if (daGhi.length === 0 && soXml === 0 && loaiHong.length === 0) {
         const dsNhan = CAC_LOAI_XUAT.map((k) => k.nhan).join(", ");
         toast.info(`Không có hồ sơ nào (${dsNhan}) trong khoảng ngày đã chọn.`);
         return;
       }
 
-      toast.success(`Đã xuất excel thống kê đối soát Dịch vụ công và tờ khai xml. `);
+      if (loaiHong.length > 0) {
+        toast.warning(
+          `Đã xuất xong phần còn lại — lỗi khi xuất: ${loaiHong.join(", ")}. Thử xuất lại nếu cần.`,
+        );
+      } else {
+        toast.success(`Đã xuất excel thống kê đối soát Dịch vụ công và tờ khai xml. `);
+      }
     } catch (e) {
       toast.error(getErrorMessage(e, "Xuất file đối soát Dịch vụ công thất bại."));
     } finally {
@@ -200,6 +230,12 @@ export default function XuatFileDvcDialog({ open, onClose }: Props) {
           </Alert>
         )}
 
+        {loiForm && (
+          <Alert severity="error" sx={{ mb: 2 }} onClose={() => setLoiForm("")}>
+            {loiForm}
+          </Alert>
+        )}
+
         <Stack direction={{ xs: "column", sm: "row" }} spacing={2} sx={{ mb: 2 }}>
           <TextField
             type="date"
@@ -208,7 +244,10 @@ export default function XuatFileDvcDialog({ open, onClose }: Props) {
             label="Từ ngày"
             slotProps={{ inputLabel: { shrink: true } }}
             value={tuNgay}
-            onChange={(e) => setTuNgay(e.target.value)}
+            onChange={(e) => {
+              setLoiForm("");
+              setTuNgay(e.target.value);
+            }}
           />
           <TextField
             type="date"
@@ -217,7 +256,10 @@ export default function XuatFileDvcDialog({ open, onClose }: Props) {
             label="Đến ngày"
             slotProps={{ inputLabel: { shrink: true } }}
             value={denNgay}
-            onChange={(e) => setDenNgay(e.target.value)}
+            onChange={(e) => {
+              setLoiForm("");
+              setDenNgay(e.target.value);
+            }}
           />
         </Stack>
 

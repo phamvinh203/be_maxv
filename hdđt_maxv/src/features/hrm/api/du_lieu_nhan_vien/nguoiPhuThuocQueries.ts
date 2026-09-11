@@ -90,10 +90,10 @@ function veKieuApi(values: NguoiPhuThuocFormValues): NguoiPhuThuocApiBody {
 }
 
 /**
- * Lấy TOÀN BỘ người phụ thuộc của công ty rồi lọc ở client.
- * Danh mục này nhỏ (vài người/nhân viên) và cả hai lối vào đều cần cùng bộ dữ liệu — một
- * query dùng chung thì đổi ở tab cũng thấy ngay ở màn danh sách, không phải nghĩ cách đồng bộ
- * nhiều cache theo từng `ma_nv`.
+ * Lấy TOÀN BỘ người phụ thuộc của công ty — CHỈ cho màn hình độc lập
+ * (`useNguoiPhuThuocRows`), nơi thật sự cần duyệt/tìm kiếm trên cả công ty cùng lúc.
+ * Tab trong hồ sơ nhân viên dùng `useDanhSachNptTheoNv` (lọc `ma_nv` ở máy chủ, RVW-513) —
+ * đừng gọi hook này cho một nhân viên đơn lẻ, tốn cả danh sách công ty chỉ để lọc còn vài dòng.
  */
 function useDanhSachNpt() {
   const { isAuthenticated, currentCompanyId } = useAuth();
@@ -105,6 +105,16 @@ function useDanhSachNpt() {
     queryKey: hrmNptKeys.list(currentCompanyId),
     queryFn: () => listNguoiPhuThuoc(),
     enabled: isAuthenticated && !!currentCompanyId,
+  });
+}
+
+/** Người phụ thuộc của MỘT nhân viên — lọc `ma_nv` ở máy chủ (RVW-513), khóa cache riêng theo nhân viên. */
+function useDanhSachNptTheoNv(maNv: string | null) {
+  const { isAuthenticated, currentCompanyId } = useAuth();
+  return useQuery({
+    queryKey: hrmNptKeys.theoNv(currentCompanyId, maNv),
+    queryFn: () => listNguoiPhuThuoc({ ma_nv: maNv ?? undefined }),
+    enabled: isAuthenticated && !!currentCompanyId && !!maNv,
   });
 }
 
@@ -121,12 +131,8 @@ export function useNguoiPhuThuocList(maNv: string | null): {
   isError: boolean;
   error: unknown;
 } {
-  const { data, isLoading, isError, error } = useDanhSachNpt();
-  const items = useMemo(
-    () =>
-      maNv ? (data ?? []).filter((r) => r.ma_nv === maNv).map(veKieuFe) : [],
-    [data, maNv],
-  );
+  const { data, isLoading, isError, error } = useDanhSachNptTheoNv(maNv);
+  const items = useMemo(() => (data ?? []).map(veKieuFe), [data]);
   return { items, isLoading, isError, error };
 }
 

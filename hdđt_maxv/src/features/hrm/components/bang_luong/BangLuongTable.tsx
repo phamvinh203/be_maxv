@@ -1,3 +1,4 @@
+import { useEffect, useMemo, useState } from "react";
 import Box from "@mui/material/Box";
 import Paper from "@mui/material/Paper";
 import Stack from "@mui/material/Stack";
@@ -6,6 +7,7 @@ import TableBody from "@mui/material/TableBody";
 import TableCell from "@mui/material/TableCell";
 import TableContainer from "@mui/material/TableContainer";
 import TableHead from "@mui/material/TableHead";
+import TablePagination from "@mui/material/TablePagination";
 import TableRow from "@mui/material/TableRow";
 import Tooltip from "@mui/material/Tooltip";
 import Typography from "@mui/material/Typography";
@@ -15,6 +17,14 @@ import { hauToCheDo, tienTheoCheDo } from "../../calculations/bang_luong/bangLuo
 import { tienVn } from "../../_shared/format";
 import type { CheDoHienThi, DongBangLuong } from "../../types";
 import { cotTheoMuc, tongTheoCot, type CotBangLuong } from "./cotBangLuong";
+
+/** "Các khoản bù trừ" dương (gốc) = trừ, âm = cộng lại — cùng quy ước ở dòng, Tổng cộng
+ * và file Excel (RVW-A02, cột đánh dấu `dauNguoc` trong `cotBangLuong.ts`). */
+function hienThiBuTru(so: number, oSo: (so: number) => string): string {
+  if (so > 0) return `− ${oSo(so)}`;
+  if (so < 0) return `+ ${oSo(-so)}`;
+  return oSo(0);
+}
 
 interface Props {
   rows: DongBangLuong[];
@@ -41,34 +51,56 @@ function chiTietThuNhap(row: DongBangLuong): string {
 /**
  * Bảng lương của kỳ.
  *
- * Hai cột đầu **dính bên trái**: bảng rộng 18 cột, cuộn ngang tới cột Thuế mà
- * không còn thấy tên ai thì không đối chiếu được.
+ * Hai cột đầu (Mã NV, Họ và tên) **dính bên trái**: bảng rộng 19 cột, cuộn ngang
+ * tới cột Thuế mà không còn thấy đang xem của ai thì không đối chiếu được.
  *
  * Cột "Thu nhập" có tooltip liệt kê đủ bảy khoản cấu thành — trong đó **Lương %**
  * và **Chuyên cần** không có cột riêng nên nếu không có tooltip thì hai khoản đó
  * biến mất khỏi màn hình dù vẫn nằm trong tổng.
  */
 export default function BangLuongTable({ rows, cheDo, rutGon, isLoading }: Props) {
-  const cot = cotTheoMuc(rutGon);
-  const tong = tongTheoCot(cot, rows);
+  const cot = useMemo(() => cotTheoMuc(rutGon), [rutGon]);
+  const tong = useMemo(() => tongTheoCot(cot, rows), [cot, rows]);
   const hauTo = hauToCheDo(cheDo);
+
+  // Phân trang client — tổng và dòng "Tổng cộng" vẫn tính trên TOÀN BỘ `rows`, chỉ phần
+  // hiển thị từng dòng mới cắt theo trang (RVW-A06: bảng vài trăm-nghìn dòng không phân
+  // trang sẽ giật khi cuộn/lọc).
+  const [page, setPage] = useState(0);
+  const [rowsPerPage, setRowsPerPage] = useState(25);
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- lọc/kỳ đổi làm danh sách ngắn lại, trang cũ có thể vượt quá
+    if (page > 0 && page * rowsPerPage >= rows.length) setPage(0);
+  }, [rows.length, rowsPerPage, page]);
+  const rowsTrang = useMemo(
+    () => rows.slice(page * rowsPerPage, page * rowsPerPage + rowsPerPage),
+    [rows, page, rowsPerPage],
+  );
 
   /** Ô số của một cột — cột tiền quy theo chế độ, cột khác giữ nguyên. */
   const oSo = (c: CotBangLuong, so: number) =>
     c.tien ? tienTheoCheDo(so, cheDo) : so.toLocaleString("vi-VN");
 
-  /** Hai cột đầu dính trái; `viTri` là mép trái của cột thứ hai. */
-  const dinhTrai = (i: number) =>
-    i > 1
-      ? undefined
-      : ({
-          position: "sticky" as const,
-          left: i === 0 ? 0 : 200,
-          zIndex: 2,
-          bgcolor: "background.paper",
-        });
+  /** Cột dính trái theo `stickyWidth` khai ở `cotBangLuong.ts`: mép trái = tổng bề rộng
+   * các cột dính trước nó, bề rộng chính cột bị chặn trần (ellipsis) nên không bao giờ
+   * lấn sang cột kế — bỏ số `left` hardcode cũ hay bị tên dài đè lên (RVW-A15). */
+  const dinhTrai = (i: number) => {
+    const c = cot[i];
+    if (!c?.stickyWidth) return undefined;
+    const left = cot.slice(0, i).reduce((cong, cc) => cong + (cc.stickyWidth ?? 0), 0);
+    return {
+      position: "sticky" as const,
+      left,
+      zIndex: 2,
+      bgcolor: "background.paper",
+      maxWidth: c.stickyWidth,
+      overflow: "hidden",
+      textOverflow: "ellipsis",
+    };
+  };
 
   return (
+    <Stack spacing={0}>
     <TableContainer component={Paper} variant="outlined" sx={{ maxHeight: "62vh" }}>
       <Table size="small" stickyHeader sx={{ width: "max-content", minWidth: "100%" }}>
         <TableHead>
@@ -82,7 +114,7 @@ export default function BangLuongTable({ rows, cheDo, rutGon, isLoading }: Props
                   whiteSpace: "nowrap",
                   minWidth: c.minWidth,
                   ...dinhTrai(i),
-                  ...(i <= 1 ? { zIndex: 4 } : undefined),
+                  ...(c.stickyWidth ? { zIndex: 4 } : undefined),
                 }}
               >
                 {c.header}
@@ -113,7 +145,7 @@ export default function BangLuongTable({ rows, cheDo, rutGon, isLoading }: Props
           )}
 
           {!isLoading &&
-            rows.map((row) => (
+            rowsTrang.map((row) => (
               <TableRow key={row.ma_nv} hover>
                 {cot.map((c, i) => {
                   const chung = {
@@ -121,14 +153,21 @@ export default function BangLuongTable({ rows, cheDo, rutGon, isLoading }: Props
                     sx: { whiteSpace: "nowrap", ...dinhTrai(i) },
                   };
 
+                  if (c.key === "ma_nv") {
+                    return (
+                      <TableCell key={c.key} {...chung}>
+                        <Typography variant="body2" sx={{ fontFamily: "monospace" }}>
+                          {row.ma_nv}
+                        </Typography>
+                      </TableCell>
+                    );
+                  }
+
                   if (c.key === "ho_ten") {
                     return (
                       <TableCell key={c.key} {...chung}>
                         <Typography variant="body2" sx={{ fontWeight: 600 }}>
                           {row.ho_ten}
-                        </Typography>
-                        <Typography variant="caption" color="text.secondary">
-                          {row.ma_nv}
                         </Typography>
                       </TableCell>
                     );
@@ -186,7 +225,7 @@ export default function BangLuongTable({ rows, cheDo, rutGon, isLoading }: Props
                           variant="body2"
                           color={so > 0 ? "error.main" : "success.main"}
                         >
-                          {so > 0 ? `− ${oSo(c, so)}` : `+ ${oSo(c, -so)}`}
+                          {hienThiBuTru(so, (v) => oSo(c, v))}
                         </Typography>
                       </TableCell>
                     );
@@ -241,7 +280,7 @@ export default function BangLuongTable({ rows, cheDo, rutGon, isLoading }: Props
                   sx={{
                     whiteSpace: "nowrap",
                     ...dinhTrai(i),
-                    ...(i <= 1
+                    ...(c.stickyWidth
                       ? {
                           zIndex: 4,
                           bgcolor: (theme) => alpha(theme.palette.primary.main, 0.08),
@@ -249,7 +288,13 @@ export default function BangLuongTable({ rows, cheDo, rutGon, isLoading }: Props
                       : undefined),
                   }}
                 >
-                  {i === 0 ? "Tổng cộng" : c.cong ? oSo(c, tong.get(c.key) ?? 0) : ""}
+                  {i === 0
+                    ? "Tổng cộng"
+                    : !c.cong
+                      ? ""
+                      : c.key === "bu_tru"
+                        ? hienThiBuTru(tong.get(c.key) ?? 0, (v) => oSo(c, v))
+                        : oSo(c, tong.get(c.key) ?? 0)}
                 </TableCell>
               ))}
             </TableRow>
@@ -257,5 +302,22 @@ export default function BangLuongTable({ rows, cheDo, rutGon, isLoading }: Props
         )}
       </Table>
     </TableContainer>
+    {rows.length > 0 && (
+      <TablePagination
+        component="div"
+        count={rows.length}
+        page={page}
+        onPageChange={(_, trangMoi) => setPage(trangMoi)}
+        rowsPerPage={rowsPerPage}
+        onRowsPerPageChange={(e) => {
+          setRowsPerPage(Number(e.target.value));
+          setPage(0);
+        }}
+        rowsPerPageOptions={[10, 25, 50, 100]}
+        labelRowsPerPage="Số dòng/trang"
+        labelDisplayedRows={({ from, to, count }) => `${from}-${to} / ${count}`}
+      />
+    )}
+    </Stack>
   );
 }

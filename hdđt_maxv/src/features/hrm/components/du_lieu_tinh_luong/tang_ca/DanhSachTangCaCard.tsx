@@ -84,7 +84,7 @@ export default function DanhSachTangCaCard({
                 Tổng giờ theo tháng
               </TableCell>
               <TableCell align="right" sx={{ width: 150 }}>
-                Tổng giờ năm
+                Giờ OT kỳ này
               </TableCell>
               <TableCell align="right" sx={{ width: 130 }}>
                 Quy đổi
@@ -129,11 +129,11 @@ export default function DanhSachTangCaCard({
                   </TableCell>
 
                   <TableCell align="right">
-                    <Typography
-                      variant="body2"
-                      sx={{ fontWeight: 600 }}
-                      color={`${mauGioTangCa(row.gio_nam, cauHinh.nguong_vuot_muc_tc_nam)}.main`}
-                    >
+                    {/* RVW-709: KHÔNG tô theo ngưỡng năm — cột này thật ra chỉ là giờ OT
+                        của KỲ NÀY (API chưa trả lũy kế năm thật, xem ghi chú ở
+                        `TangCaPanel`), tô theo `nguong_vuot_muc_tc_nam` sẽ luôn xanh và
+                        đánh lừa người chốt lương tưởng đã kiểm tra trần OT/năm. */}
+                    <Typography variant="body2" sx={{ fontWeight: 600 }}>
                       {gioVn(row.gio_nam)}h
                     </Typography>
                   </TableCell>

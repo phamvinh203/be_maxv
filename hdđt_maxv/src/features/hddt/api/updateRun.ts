@@ -141,7 +141,9 @@ export async function pollUpdateRunToast(
         // Lỗi mạng chập 1 nhịp poll -> thử lại nhịp sau, KHÔNG bỏ lượt (lượt vẫn chạy ở BE).
         // Nhưng lỗi LIÊN TIẾP quá ngưỡng = mất kết nối thật -> thoát, khỏi treo toast vĩnh viễn.
         fails += 1;
-        console.warn(`[DEBUG-CAPNHAT][FE] Poll lỗi nhịp ${fails}/${MAX_POLL_NEN_HONG}:`, e);
+        if (import.meta.env.DEV) {
+          console.warn(`[DEBUG-CAPNHAT][FE] Poll lỗi nhịp ${fails}/${MAX_POLL_NEN_HONG}:`, e);
+        }
         if (fails >= MAX_POLL_NEN_HONG) throw e;
       }
     }

@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Paper from "@mui/material/Paper";
 import Stack from "@mui/material/Stack";
 import TextField from "@mui/material/TextField";
@@ -40,6 +40,21 @@ export default function ThanhLocBangLuong({
   const dat = <K extends keyof BangLuongFilters>(khoa: K, giaTri: BangLuongFilters[K]) =>
     onFilters({ ...filters, [khoa]: giaTri });
 
+  // Ô tìm gõ tức thì, nhưng chỉ đẩy vào bộ lọc (kéo theo gọi API/lọc lại bảng) sau
+  // 250ms ngừng gõ — gõ nhanh 500-2000 nhân viên không bị giật theo từng phím (RVW-A06).
+  const [qGo, setQGo] = useState(filters.q);
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- đồng bộ khi bộ lọc bị reset từ nơi khác
+    setQGo(filters.q);
+  }, [filters.q]);
+  useEffect(() => {
+    const hen = setTimeout(() => {
+      if (qGo !== filters.q) dat("q", qGo);
+    }, 250);
+    return () => clearTimeout(hen);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- chỉ debounce theo qGo, filters/dat đọc giá trị mới nhất ở lần chạy effect
+  }, [qGo]);
+
   return (
     <Paper variant="outlined" sx={{ p: 2 }}>
       <Stack
@@ -51,8 +66,8 @@ export default function ThanhLocBangLuong({
           <TextField
             size="small"
             placeholder="Tìm mã/tên nhân viên"
-            value={filters.q}
-            onChange={(e) => dat("q", e.target.value)}
+            value={qGo}
+            onChange={(e) => setQGo(e.target.value)}
             sx={{ width: { xs: "100%", md: 240 } }}
             slotProps={{
               input: {

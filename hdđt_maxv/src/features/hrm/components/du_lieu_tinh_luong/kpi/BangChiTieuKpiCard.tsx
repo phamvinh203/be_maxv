@@ -20,6 +20,7 @@ import AddRounded from "@mui/icons-material/AddRounded";
 import DeleteRounded from "@mui/icons-material/DeleteRounded";
 import { dongKpiRong, hieuSuat, mauHieuSuat, tongTrongSo, tyLeHt } from "../../../calculations/du_lieu_tinh_luong/kpi";
 import { useChiTieuKpiList } from "../../../api/du_lieu_tinh_luong/payrollCatalogsQueries";
+import { soDuong } from "../_shared/inputGuards";
 import type { DongKpi } from "../../../types";
 
 interface Props {
@@ -159,7 +160,9 @@ export default function BangChiTieuKpiCard({ values, onChange }: Props) {
                       size="small"
                       fullWidth
                       value={dong.trong_so}
-                      onChange={(e) => datDong(dong.id, { trong_so: Number(e.target.value) || 0 })}
+                      onChange={(e) =>
+                        datDong(dong.id, { trong_so: Math.round(soDuong(e.target.value)) })
+                      }
                       onWheel={(e) => (e.target as HTMLElement).blur()}
                       slotProps={{ htmlInput: { min: 0, step: 1 } }}
                     />
@@ -171,8 +174,10 @@ export default function BangChiTieuKpiCard({ values, onChange }: Props) {
                       size="small"
                       fullWidth
                       value={dong.muc_tieu}
-                      onChange={(e) => datDong(dong.id, { muc_tieu: Number(e.target.value) || 0 })}
+                      onChange={(e) => datDong(dong.id, { muc_tieu: soDuong(e.target.value) })}
                       onWheel={(e) => (e.target as HTMLElement).blur()}
+                      error={dong.muc_tieu <= 0}
+                      helperText={dong.muc_tieu <= 0 ? "Mục tiêu phải lớn hơn 0" : undefined}
                       slotProps={{
                         htmlInput: { min: 0 },
                         input: chiTieu?.don_vi
@@ -192,7 +197,7 @@ export default function BangChiTieuKpiCard({ values, onChange }: Props) {
                       size="small"
                       fullWidth
                       value={dong.thuc_thi}
-                      onChange={(e) => datDong(dong.id, { thuc_thi: Number(e.target.value) || 0 })}
+                      onChange={(e) => datDong(dong.id, { thuc_thi: soDuong(e.target.value) })}
                       onWheel={(e) => (e.target as HTMLElement).blur()}
                       slotProps={{
                         htmlInput: { min: 0 },

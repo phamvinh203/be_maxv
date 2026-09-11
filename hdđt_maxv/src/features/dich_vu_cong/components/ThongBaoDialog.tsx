@@ -26,6 +26,9 @@ interface Props {
   dvcKey: string | null;
   /** Mã hồ sơ đang xem — `null` khi chưa chọn dòng nào (dialog không fetch). */
   maHoSo: string | null;
+  /** MST công ty đang chọn — vào query key để đổi công ty không đọc nhầm cache của công ty cũ
+   * (RVW-D06). `DvcPage` cũng tự reset `maHoSo` về `null` khi đổi công ty. */
+  activeMst?: string;
   /** Báo lên `DvcPage` để bỏ khóa phiên khi BE nói phiên chết hẳn — xem `boKhoaNeuPhienChet`. */
   onPhienChet?: (err: unknown) => void;
 }
@@ -40,12 +43,19 @@ interface Props {
  *
  * Dùng: `BangHoSo` (icon cột "Thông báo").
  */
-export default function ThongBaoDialog({ open, onClose, dvcKey, maHoSo, onPhienChet }: Props) {
+export default function ThongBaoDialog({
+  open,
+  onClose,
+  dvcKey,
+  maHoSo,
+  activeMst,
+  onPhienChet,
+}: Props) {
   // idTbao đang tải — chỉ 1 nút bị khóa/xoay tại 1 thời điểm, các dòng khác vẫn bấm được.
   const [dangTai, setDangTai] = useState<string | null>(null);
 
   const query = useQuery({
-    queryKey: ["dvc", "thong-bao", maHoSo],
+    queryKey: ["dvc", "thong-bao", activeMst, maHoSo],
     // `key` tùy chọn: BE đọc cache trước (hồ sơ đã đồng bộ thì không cần đăng nhập cổng), chỉ
     // dùng `dvcKey` khi BE cần gọi cổng thật vì cache còn thiếu.
     queryFn: () => layDanhSachThongBaoDvc({ key: dvcKey ?? undefined, maHoSo: maHoSo as string }),

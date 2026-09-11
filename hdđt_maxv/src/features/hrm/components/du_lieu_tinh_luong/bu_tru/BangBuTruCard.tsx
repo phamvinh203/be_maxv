@@ -163,6 +163,8 @@ export default function BangBuTruCard({ values, onChange }: Props) {
                       label=""
                       value={dong.so_tien}
                       onChange={(so) => datDong(dong.id, { so_tien: so })}
+                      error={dong.so_tien <= 0}
+                      helperText={dong.so_tien <= 0 ? "Số tiền phải lớn hơn 0" : undefined}
                     />
                   </TableCell>
 

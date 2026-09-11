@@ -127,12 +127,20 @@ export interface DiemXuHuongLuong extends ThangNam {
   loi: string | null;
 }
 
+/** Kỳ chưa khóa (`DRAFT`/`PENDING_REVIEW`) đọc live — tốn cả pipeline tính lương toàn công ty. */
+const TRANG_THAI_CHUA_KHOA = new Set<PayrollPeriodApiItem["status"]>(["DRAFT", "PENDING_REVIEW"]);
+
 /**
  * Tổng bảng lương của từng tháng trong khung 6 tháng — một `GET /payroll/sheet-lines` cho mỗi kỳ
  * đang có (kỳ đã khóa đọc snapshot, kỳ nháp tính live — đúng như màn Bảng lương hiển thị).
  *
  * Dùng CHUNG `payrollSheetLinesOptions` với `usePayrollSheetLinesQuery` nên chung mục cache với màn
  * Bảng lương; `useQueries` vì số kỳ thay đổi, không gọi hook kia trong vòng lặp được.
+ *
+ * Chỉ query kỳ ĐÃ KHÓA (đọc snapshot rẻ) + kỳ của tháng cuối khung (tháng đang theo dõi) — kỳ nháp
+ * của 5 tháng còn lại (nếu có, hiếm) không được tính live để tránh bắn tới 6 lượt tính lương toàn
+ * công ty chỉ để vẽ 1 biểu đồ xu hướng (RVW-506). Về sau nên có endpoint tổng hợp
+ * `GET /payroll/summary?from=&to=` để không phải đánh đổi độ mới của dữ liệu nháp cũ.
  */
 export function useXuHuongLuong(
   periods: PayrollPeriodApiItem[],
@@ -140,7 +148,15 @@ export function useXuHuongLuong(
 ): { diem: DiemXuHuongLuong[]; isLoading: boolean } {
   const { currentCompanyId, isAuthenticated } = useAuth();
   const kyTheoThang = khung.map((t) => kyCuaThang(periods, t));
-  const coKy = kyTheoThang.filter((ky): ky is PayrollPeriodApiItem => ky !== null);
+  const thangDangTheoDoi = khung.at(-1);
+  const coKy = kyTheoThang.filter(
+    (ky): ky is PayrollPeriodApiItem =>
+      ky !== null &&
+      (!TRANG_THAI_CHUA_KHOA.has(ky.status) ||
+        (thangDangTheoDoi !== undefined &&
+          ky.year === thangDangTheoDoi.nam &&
+          ky.month === thangDangTheoDoi.thang)),
+  );
 
   const ketQua = useQueries({
     queries: coKy.map((ky) => payrollSheetLinesOptions(currentCompanyId, ky.id, isAuthenticated)),

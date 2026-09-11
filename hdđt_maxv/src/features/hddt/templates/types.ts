@@ -73,6 +73,17 @@ export const NUM_FMT = "#,##0"; // Không có phần thập phân
 export const MONEY2_FMT = "#,##0"; // Không có phần thập phân
 /** Tỷ giá: tối thiểu 2 số lẻ (hóa đơn VND ra "1.00" đúng mẫu), giữ đủ số lẻ của tỷ giá ngoại tệ. */
 export const RATE_FMT = "0.00######";
+/**
+ * Số lượng/Đơn giá: giữ tới 4 số lẻ, KHÔNG làm tròn về số nguyên như `NUM_FMT` (RVW-H2-010) —
+ * "9,69" lít phải hiện đúng "9,69" trong Excel, không phải "10".
+ */
+export const QTY_FMT = "#,##0.####";
+/**
+ * Tỷ lệ chiết khấu (%). Giá trị lưu là SỐ PHẦN TRĂM THÔ (vd 10 nghĩa là 10%, cùng quy ước
+ * `TLCK / 100` của `tinhTienHoaDon.ts`) — KHÔNG dùng mã định dạng `%` chuẩn của Excel vì nó TỰ NHÂN
+ * 100 khi hiển thị (10 sẽ ra "1000%"). Bọc `%` trong dấu nháy kép để Excel in ra CHỮ, không tính lại.
+ */
+export const PCT_FMT = '0.##"%"';
 
 /**
  * Render 1 ô trên web. Cột có `cell` thì `cell` quyết định tất cả; còn lại: cột số -> `formatMoney`,

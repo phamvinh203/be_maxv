@@ -23,6 +23,8 @@ export interface ToKhaiRow extends DisplayRow {
   /** Cột "Năm" và "Kỳ kê khai" — lấy từ KỲ ĐANG XEM, không suy từ ngày lập hóa đơn nữa. */
   nam: string;
   kyKeKhai: string;
+  /** Kỳ đang xem dạng object — cần để invalidate cache đúng phạm vi khi sửa quyết định tại dòng. */
+  ky: Ky;
 }
 
 export type { InvoiceDirection };
