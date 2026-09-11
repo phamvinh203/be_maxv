@@ -10,18 +10,22 @@ import {
   listHoaDon,
   updateHoaDon,
 } from '@/features/ban_hang/chung_tu/hoa_don_ban_hang/api/hoaDonBanHangApi';
-import type { HoaDonPayload } from '@/features/ban_hang/chung_tu/hoa_don_ban_hang/types';
+import type {
+  HoaDonListParams,
+  HoaDonPayload,
+} from '@/features/ban_hang/chung_tu/hoa_don_ban_hang/types';
 
 export const hoaDonKeys = {
   all: ['hoa-don-ban-hang'] as const,
-  list: ['hoa-don-ban-hang', 'list'] as const,
+  list: (params: HoaDonListParams) => ['hoa-don-ban-hang', 'list', params] as const,
   chiTiet: (sttRec: string) => ['hoa-don-ban-hang', 'chi-tiet', sttRec] as const,
 };
 
-export function useHoaDonList() {
+/** Một trang danh sách theo `params` — giữ trang cũ trên màn hình trong lúc nạp trang mới. */
+export function useHoaDonList(params: HoaDonListParams) {
   return useQuery({
-    queryKey: hoaDonKeys.list,
-    queryFn: () => listHoaDon(),
+    queryKey: hoaDonKeys.list(params),
+    queryFn: () => listHoaDon(params),
     placeholderData: (prev) => prev,
   });
 }

@@ -18,7 +18,21 @@ export interface KhachHangForm {
   status: string;
 }
 
+/** Một trang danh sách khách hàng (GET /ban-hang/khach-hang) — server phân trang. */
+export interface KhachHangPage {
+  items: KhachHang[];
+  total: number;
+  page: number;
+  pageSize: number;
+}
+
 export interface KhachHangListParams {
+  /** Trang, bắt đầu từ 1. */
+  page?: number;
+  /** Số dòng mỗi trang — server giới hạn tối đa 100. */
+  pageSize?: number;
+  /** Ô tìm chung: mã / tên / mã số thuế (server lọc). */
+  q?: string;
   ma_kh?: string;
   ten_kh?: string;
   dia_chi?: string;

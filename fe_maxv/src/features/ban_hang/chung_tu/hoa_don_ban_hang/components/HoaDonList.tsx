@@ -1,4 +1,4 @@
-import { useMemo, useState, type JSX } from 'react';
+import { useEffect, useState, type JSX } from 'react';
 import {
   Alert,
   Box,
@@ -21,7 +21,6 @@ import { getApiError } from '@/lib/apiClient';
 import { fmt } from '@/utils/format';
 import DeleteDialog from '@/components/DeleteDialog';
 import { CatalogToolbar } from '@/components/catalog/CatalogToolbar';
-import { useCatalogList } from '@/components/catalog/useCatalogList';
 import {
   useDeleteHoaDon,
   useHoaDonList,
@@ -29,7 +28,8 @@ import {
 import type { HoaDon } from '@/features/ban_hang/chung_tu/hoa_don_ban_hang/types';
 import { HoaDonFormDialog, type HoaDonMode } from './HoaDonFormDialog';
 
-const SEARCH_KEYS = ['so_ct', 'ma_kh', 'ten_kh', 'dien_giai'];
+/** Chờ người dùng ngừng gõ bao lâu rồi mới gửi từ khóa tìm kiếm lên server. */
+const SEARCH_DEBOUNCE_MS = 300;
 
 const money = (v: string | number): string => fmt(Number(v) || 0);
 const day = (v: string | null): string =>
@@ -41,17 +41,39 @@ const STATUS: Record<string, { label: string; color: 'success' | 'default' | 'wa
   '0': { label: 'Hủy', color: 'default' },
 };
 
+/**
+ * Danh sách hóa đơn bán hàng — PHÂN TRANG + TÌM KIẾM Ở SERVER (không tải cả bảng về trình duyệt như
+ * các danh mục nhỏ dùng `useCatalogList`): chỉ trang đang xem đi qua mạng, `total` do server đếm.
+ */
 export function HoaDonList(): JSX.Element {
-  const { data, isLoading, isFetching, isError, error, refetch } = useHoaDonList();
+  const [searchInput, setSearchInput] = useState('');
+  const [q, setQ] = useState('');
+  const [page, setPage] = useState(0);
+  const [rpp, setRpp] = useState(25);
+  const [selected, setSelected] = useState<HoaDon | null>(null);
+  const [actionError, setActionError] = useState('');
+
+  // Ngừng gõ một nhịp mới gửi từ khóa, và về trang đầu (cùng nhịp `useCatalogList`).
+  useEffect(() => {
+    const t = setTimeout(() => {
+      setQ(searchInput.trim());
+      setPage(0);
+    }, SEARCH_DEBOUNCE_MS);
+    return () => clearTimeout(t);
+  }, [searchInput]);
+
+  const { data, isLoading, isFetching, isError, error, refetch } = useHoaDonList({
+    page: page + 1,
+    pageSize: rpp,
+    q,
+  });
   const del = useDeleteHoaDon();
 
-  const rows = useMemo(() => data ?? [], [data]);
-  const list = useCatalogList<HoaDon>({
-    rows,
-    getId: (r) => r.stt_rec,
-    searchKeys: SEARCH_KEYS,
-  });
-  const { selected, setSelected } = list;
+  const rows = data?.items ?? [];
+  const total = data?.total ?? 0;
+  const isSelected = (r: HoaDon): boolean => selected?.stt_rec === r.stt_rec;
+  const toggleSelect = (r: HoaDon): void =>
+    setSelected((cur) => (cur?.stt_rec === r.stt_rec ? null : r));
 
   const [form, setForm] = useState<{ open: boolean; mode: HoaDonMode; current: HoaDon | null }>({
     open: false,
@@ -65,13 +87,15 @@ export function HoaDonList(): JSX.Element {
 
   function confirmDelete() {
     if (!selected) return;
-    list.setActionError('');
+    setActionError('');
     del.mutate(selected.stt_rec, {
       onSuccess: () => {
         setDeleteOpen(false);
         setSelected(null);
+        // Vừa xóa dòng cuối cùng của trang (không phải trang đầu) -> lùi một trang, khỏi hiện trang rỗng.
+        if (rows.length === 1 && page > 0) setPage(page - 1);
       },
-      onError: (err) => list.setActionError(getApiError(err, 'Xóa thất bại.')),
+      onError: (err) => setActionError(getApiError(err, 'Xóa thất bại.')),
     });
   }
 
@@ -80,8 +104,8 @@ export function HoaDonList(): JSX.Element {
       <CatalogToolbar
         addLabel="Thêm hóa đơn"
         onAdd={() => openForm('new', null)}
-        searchValue={list.searchInput}
-        onSearchChange={list.setSearchInput}
+        searchValue={searchInput}
+        onSearchChange={setSearchInput}
         searchPlaceholder="Tìm số CT / mã-tên khách / diễn giải…"
         onRefresh={() => void refetch()}
         actions={[
@@ -95,14 +119,14 @@ export function HoaDonList(): JSX.Element {
       <Stack direction="row" sx={{ alignItems: 'center', px: 2, py: 0.5, gap: 1 }}>
         <Typography variant="body2" color="text.secondary">Hóa đơn bán hàng</Typography>
         <Typography variant="caption" color="text.secondary" sx={{ ml: 'auto' }}>
-          {isLoading ? 'đang tải…' : `${list.filtered.length} hóa đơn`}
+          {isLoading ? 'đang tải…' : `${total} hóa đơn`}
           {isFetching && !isLoading ? ' · đang cập nhật…' : ''}
         </Typography>
       </Stack>
 
-      {(isError || list.actionError) && (
+      {(isError || actionError) && (
         <Alert severity="error" sx={{ mx: 2, mb: 1, py: 0 }}>
-          {list.actionError || getApiError(error, 'Không tải được danh sách.')}
+          {actionError || getApiError(error, 'Không tải được danh sách.')}
         </Alert>
       )}
 
@@ -131,14 +155,14 @@ export function HoaDonList(): JSX.Element {
                 <TableCell colSpan={13} align="center" sx={{ py: 4, color: 'text.secondary' }}>Đang tải…</TableCell>
               </TableRow>
             )}
-            {list.paged.map((r) => {
+            {rows.map((r) => {
               const st = STATUS[r.status] ?? { label: r.status, color: 'default' as const };
               return (
                 <TableRow
                   key={r.stt_rec}
                   hover
-                  selected={list.isSelected(r)}
-                  onClick={() => list.toggleSelect(r)}
+                  selected={isSelected(r)}
+                  onClick={() => toggleSelect(r)}
                   onDoubleClick={() => openForm('edit', r)}
                   sx={{ cursor: 'pointer', opacity: r.status === '0' ? 0.55 : 1 }}
                 >
@@ -160,10 +184,10 @@ export function HoaDonList(): JSX.Element {
                 </TableRow>
               );
             })}
-            {!isLoading && list.filtered.length === 0 && (
+            {!isLoading && rows.length === 0 && (
               <TableRow>
                 <TableCell colSpan={13} align="center" sx={{ py: 6, color: 'text.secondary' }}>
-                  {list.searchInput ? 'Không tìm thấy hóa đơn phù hợp' : 'Chưa có hóa đơn nào'}
+                  {q ? 'Không tìm thấy hóa đơn phù hợp' : 'Chưa có hóa đơn nào'}
                 </TableCell>
               </TableRow>
             )}
@@ -173,13 +197,13 @@ export function HoaDonList(): JSX.Element {
 
       <TablePagination
         component="div"
-        count={list.filtered.length}
-        page={list.page}
-        onPageChange={(_, p) => list.setPage(p)}
-        rowsPerPage={list.rpp}
+        count={total}
+        page={page}
+        onPageChange={(_, p) => setPage(p)}
+        rowsPerPage={rpp}
         onRowsPerPageChange={(e) => {
-          list.setRpp(Number(e.target.value));
-          list.setPage(0);
+          setRpp(Number(e.target.value));
+          setPage(0);
         }}
         rowsPerPageOptions={[25, 50, 100]}
         labelRowsPerPage="Số dòng/trang"

@@ -159,11 +159,25 @@ export type HoaDonPayload = Omit<HoaDonForm, 'chi_tiet'> & {
 };
 
 export interface HoaDonListParams {
+  /** Trang, bắt đầu từ 1. */
+  page?: number;
+  /** Số dòng mỗi trang — server giới hạn tối đa 100. */
+  pageSize?: number;
+  /** Ô tìm chung: số CT / mã khách / tên khách / diễn giải (server lọc). */
+  q?: string;
   so_ct?: string;
   ma_kh?: string;
   ten_kh?: string;
   ngay_ct?: string;
   trang_thai?: string;
+}
+
+/** Một trang danh sách hóa đơn (GET /hoa-don-ban-hang) — server phân trang. */
+export interface HoaDonPage {
+  items: HoaDon[];
+  total: number;
+  page: number;
+  pageSize: number;
 }
 
 const todayIso = (): string => new Date().toISOString().slice(0, 10);

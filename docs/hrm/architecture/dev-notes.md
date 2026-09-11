@@ -726,6 +726,38 @@ gọi thêm service có sẵn thay vì `db.<model>.create()` trực tiếp cho c
 **Không cần chạy lại `sync:tenants`/`hrm:constraints` sau seed** — script chỉ ghi dữ liệu, không
 đụng schema/constraint của tenant (đã áp sẵn lúc `provisionTenant()`).
 
+### 1.11. Màn "Chốt kỳ lương" — chốt số từng bảng kê (2026-09-11, backend-engineer)
+
+**Mô hình trước khi đọc code:** kỳ lương có 12 "bảng kê". Chốt số một bảng kê = thêm 1 dòng
+`hrm_payroll_module_locks` (kỳ, mã bảng kê); mở chốt = xóa dòng đó. Đây KHÁC khóa sổ kỳ: khóa sổ
+đổi trạng thái kỳ + chụp bảng lương; chốt số chỉ đóng băng một bảng kê trong lúc kỳ còn mở.
+
+| Thao tác | Route → hàm | Ghi chú |
+|---|---|---|
+| Tổng quan 12 thẻ + "Bảng lương a/b NV" | `GET /payroll-periods/:id/closing` → `payrollClosing.service.ts::getPayrollClosingOverview` | Kỳ đã khóa sổ ⇒ mọi bảng kê `locked`, `lockSource='PERIOD'` |
+| Chốt / mở chốt 1 bảng kê | `POST .../modules/:module/lock` · `.../unlock` → `lockPayrollModule` / `unlockPayrollModule` | Mở chốt gắn `assertAdminOrOwner` ở route |
+| Chốt toàn kỳ | `POST .../modules/lock-all` → `lockAllPayrollModules` | Một `createManyAndReturn({ skipDuplicates })` cho cả 12 — trả + ghi nhật ký đúng các dòng THỰC chèn |
+| Tính lương tạm | `POST .../calculate` → `calculatePayrollForPeriod` | Tính `calculatePayrollPreview` NGOÀI transaction; trong transaction chỉ `chuyenTrangThai` (khóa dòng kỳ) + `ghiDeBangLuong`. Giới hạn 30 lượt/phút/người |
+| Lịch sử hoạt động | `GET .../activities` → `payrollActivity.service.ts::listPayrollPeriodActivities` | Đọc `syslog` (control plane) — file DUY NHẤT của nhóm payroll đụng `sysPrisma` |
+| Ghi nhật ký kỳ lương | `helpers/hrm/nhatKyKyLuong.ts::ghiNhatKyKyLuong` | Dùng chung cho `payrollPeriods.controller` + `payrollClosing.controller`; kiểu `ChiTietNhatKyKyLuong` dùng chung với bên đọc |
+| Chặn ghi 8 bảng kê | `helpers/hrm/payrollPeriodLockGuard.ts::assertPayrollModuleWritable` | Gọi ở đầu 10 đường ghi `payrollInputs.service.ts`; 2 lượt đọc chạy song song |
+| "Kỳ còn mở" | `payrollPeriodLockGuard.ts::KY_LUONG_CON_MO` / `kyLuongConMo()` | MỘT nguồn cho guard ghi, màn Chốt kỳ lương, `getPayrollSheetLines` |
+
+**TUYỆT ĐỐI:**
+- Đường ghi MỚI của `/payroll-data/*` phải gọi `assertPayrollModuleWritable(db, periodId, '<MÃ>')`,
+  KHÔNG gọi `assertPayrollPeriodWritable` trơn — gọi trơn là chốt số bảng kê mất tác dụng với
+  đường đó. Test tham số hóa 10 đường ghi ở `hrmPayrollClosing.test.ts` phải thêm dòng cho đường mới.
+- Ghi nhật ký kỳ lương CHỈ qua `ghiNhatKyKyLuong` với mã từ `constants/hrm/payrollActivities.ts`
+  — bên đọc lọc theo `chiTiet.periodId`; ghi tay `writeLog` là dòng lịch sử lặng lẽ biến khỏi màn.
+- `hrm_payroll_sheet_lines`: chỉ dòng của kỳ đã khóa sổ (`LOCKED/APPROVED/PAID/ARCHIVED`) là chứng
+  từ. Dòng của kỳ còn mở là kết quả TẠM của nút "Tính lương" — module thuế / báo cáo sau này đọc bảng
+  này phải kiểm trạng thái kỳ, KHÔNG `findMany` trơn. Ghi vào bảng chỉ qua `ghiDeBangLuong`.
+- Thêm bảng kê mới: thêm giá trị enum `PayrollModuleCode` + dòng `PAYROLL_MODULES`
+  (`constants/hrm/payrollModules.ts`) + `HIEN_THI_BANG_KE` phía FE, rồi `generate` + `sync:tenants`.
+- Test: `__tests__/hrm/hrmPayrollClosing.test.ts` mock `config/db.sys` (không chạm control plane
+  thật) và mock `calculatePayrollPreview`/`ghiDeBangLuong`; mock DB của `hrmPayrollInputData.test.ts`
+  phải có `payrollModuleLock.findUnique` (guard tra ở mọi đường ghi).
+
 ---
 
 ## 2. Frontend (`hdđt_maxv`)
@@ -1307,3 +1339,37 @@ cùng hàm tải**, nên không tốn thêm request khi cache còn tươi. `mock
 Kiểm chứng: `npx tsc -b` exit 0 · `npm run lint` 0 lỗi · `vite build` thành công. Giao diện soát bằng
 trang preview tạm với dữ liệu giả (sáng, tối, không có quyền lương, rỗng, màn 1000/1280/1440px), đã
 xóa sau khi soát. **Chưa chạy trên tenant thật** (cần đăng nhập).
+
+### 2.16. Góc chọn kỳ lương + màn "Chốt kỳ lương" (2026-09-11, frontend-engineer)
+
+**Mô hình:** kỳ lương đang chọn là trạng thái CHUNG của cả khu HRM. `PayrollPeriodProvider` bọc
+một lần ở `pages/hrm/HrmPage.tsx` (không còn bọc riêng ở `DuLieuLuongPage`/`BangLuongPage`). Trạng
+thái DUY NHẤT là **tháng đang xem** (`thangChon`, đổi qua `chonThang(ThangNam)`, nhớ `YYYY-MM` ở
+`localStorage`); kỳ suy ra từ tháng: tháng chưa có kỳ ⇒ `selectedPeriod = null`, các màn hiện "chưa
+có kỳ" thay vì giữ lặng lẽ kỳ cũ. Danh sách kỳ lấy qua `useDanhSachKyLuongTheoQuyen` (dùng chung với
+Dashboard — cùng cổng quyền lương, cùng khóa cache). Helper tháng/kỳ dùng chung:
+`_shared/thangKyLuong.ts` (`ThangNam`, `luiThang`, `kyCuaThang`, `kyMoiNhat`, `thangCuaKy`, `nhanThang`).
+
+| Thao tác | Nơi xử lý |
+|---|---|
+| Ô `‹ 09/2026 › 📅` + nút "Chốt kỳ lương T9/2026" / "Tạo kỳ lương" (góc phải thanh HRM) | `components/chot_ky_luong/GocKyLuong.tsx` |
+| Trang `/hrm/chot-ky-luong` | `pages/hrm/chot_ky_luong/ChotKyLuongPage.tsx` → `components/chot_ky_luong/ChotKyLuongPanel.tsx` |
+| Header (chip trạng thái, "Bảng lương a/b NV", "x/12") + Tính lương, Chốt số toàn kỳ (kèm hộp xác nhận), Hướng dẫn — header tự quản mutation/hộp thoại của mình | `ChotKyLuongHeader.tsx`, `HuongDanChotKyDialog.tsx` |
+| Nút vòng đời kỳ (Trình duyệt / Từ chối / Khóa sổ / Mở lại / Duyệt) — chuyển từ `KyLuongSelector` cũ (đã xóa) | `VongDoiKyLuong.tsx` |
+| Thẻ bảng kê (chốt / mở chốt + hộp xác nhận mở chốt), lịch sử hoạt động | `ChotKyLuongPanel.tsx`, `TheBangKe.tsx`, `LichSuHoatDong.tsx`; icon/màu/đường "Xem chi tiết": `bangKe.ts` |
+| Dùng chung trong màn | `chayVoiThongBao.ts` (toast xanh/đỏ), `useLaChuTaiKhoan.ts` (mirror `assertAdminOrOwner`), `IconVuong.tsx` |
+| API + query | `api/chot_ky_luong/chotKyLuongApi.ts`, `chotKyLuongQueries.ts` — thao tác chốt chỉ làm mới 2 khóa `closing`/`activities` của đúng kỳ (`useLamMoiChotKy`); khóa nằm CHUNG tiền tố `hrm-payroll-periods` ⇒ mutation vòng đời kỳ cũng tự làm mới thẻ + lịch sử |
+| 8 màn nhập liệu chỉ đọc khi bảng kê đã chốt | `components/du_lieu_tinh_luong/useBangKeChiDoc.ts` + `CanhBaoChiDoc.tsx` |
+
+**TUYỆT ĐỐI:**
+- Màn nhập liệu mới lấy cờ chỉ đọc từ `useBangKeChiDoc('<MÃ>')`, KHÔNG lấy `isReadOnly` trơn của
+  `useCurrentPayrollPeriod` — trơn thì bảng kê đã chốt vẫn cho bấm (máy chủ vẫn chặn 403, nhưng
+  người dùng chỉ thấy lỗi sau khi bấm).
+- Mở một màn kỳ lương từ nơi khác (Dashboard...) qua `useMoManKyLuong()(duongDan, ky)` — truyền
+  CẢ kỳ, hook chọn đúng tháng của kỳ qua context (provider đã mount sẵn; ghi `localStorage` rồi điều
+  hướng như trước kia KHÔNG còn tác dụng).
+- Mutation tạo/đổi kỳ (`payrollPeriodsQueries.ts`) chỉ về khi danh sách kỳ đã nạp lại
+  (`useInvalidatePayroll` trả promise) — nơi gọi `mutateAsync` đọc được ngay kỳ vừa tạo, không cần
+  cơ chế "kỳ đang chờ" trong provider.
+- Nút Mở chốt / Khóa sổ / Mở lại / Duyệt khóa sẵn khi `user.role` không phải OWNER/ADMIN — chỉ để
+  báo sớm; máy chủ (`assertAdminOrOwner`) mới là hàng rào thật.

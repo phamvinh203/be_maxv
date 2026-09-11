@@ -81,9 +81,9 @@ Tài liệu được xây dựng trên cơ sở phân tích giao diện Mock t�
   - Tổng lương thiết lập phải lớn hơn 0 (`E-sal-008`).
 - Cơ chế phiên bản & Quy trình duyệt:
   - Khi thiết lập lần đầu: `setupVersion = 1`, `status = PENDING_APPROVAL`.
-  - Khi cập nhật chỉnh sửa: `setupVersion = setupVersion + 1`, `status` tự động chuyển về `PENDING_APPROVAL` (bất kể trước đó đang là `APPROVED`).
+  - Khi cập nhật chỉnh sửa: `setupVersion = setupVersion + 1` (tăng nguyên tử trong DB — hai người sửa cùng lúc ra hai phiên bản khác nhau), `status` tự động chuyển về `PENDING_APPROVAL` (bất kể trước đó đang là `APPROVED`).
   - Duyệt đơn lẻ (`POST /employee-salaries/:employeeId/approve`).
-  - Duyệt hàng loạt (`POST /employee-salaries/approve` nhận `employeeIds: [...]`).
+  - Duyệt hàng loạt (`POST /employee-salaries/approve` nhận `items: [{ employeeId, setupVersion }]` — các bản đang chờ duyệt người duyệt đang xem; bản đã bị sửa sau khi xem không được duyệt theo, xem BR-sal-010).
 
 ---
 
@@ -100,7 +100,7 @@ Tài liệu được xây dựng trên cơ sở phân tích giao diện Mock t�
 | **BR-sal-007** | Hợp đồng đang hiệu lực | Nhân viên được set lương bắt buộc phải có Hợp đồng lao động còn hiệu lực (`CON_HIEU_LUC`) | `E-sal-009` | 400 |
 | **BR-sal-008** | Tổng lương dương | Tổng mức thu nhập sau khi set lương phải > 0 | `E-sal-008` | 400 |
 | **BR-sal-009** | Phiên bản & Duyệt lại | Mỗi lần chỉnh sửa mức lương, `setupVersion` tăng 1 và trạng thái chuyển về `PENDING_APPROVAL` | - | 200 |
-| **BR-sal-010** | Danh sách duyệt hợp lệ | Khi duyệt hàng loạt, mảng `employeeIds` phải có ít nhất 1 phần tử | `E-sal-011` | 400 |
+| **BR-sal-010** | Danh sách duyệt hợp lệ | Khi duyệt hàng loạt, `items` phải có ít nhất 1 phần tử, mỗi phần tử gồm `employeeId` + `setupVersion` đã xem, không trùng nhân viên. Chỉ bản còn đúng phiên bản đó và còn `PENDING_APPROVAL` mới được duyệt (cập nhật 2026-09-11, vbsec LOW #39/#40) | `E-sal-011` | 400 |
 
 ---
 
@@ -119,4 +119,4 @@ Tài liệu được xây dựng trên cơ sở phân tích giao diện Mock t�
 | `set-luong` (Modal set lương) | Xem chi tiết lương NV | `GET /api/v1/hrm/employee-salaries/:employeeId` | `:employeeId` (e.g. `NV0001`) | `{ success: true, data: { employee, salary, items: [...] } }` |
 | `set-luong` (Modal set lương) | Lưu mức lương nhân viên | `POST /api/v1/hrm/employee-salaries/:employeeId` | `items: [{ itemId, amount }]` hoặc `khoan: { [id]: amount }` | `{ success: true, data: EmployeeSalary }` |
 | `set-luong` (Duyệt lẻ) | Duyệt lương nhân viên | `POST /api/v1/hrm/employee-salaries/:employeeId/approve` | `:employeeId` | `{ success: true, data: EmployeeSalary }` |
-| `set-luong` (Duyệt loạt) | Duyệt danh sách chọn | `POST /api/v1/hrm/employee-salaries/approve` | `{ employeeIds: ['NV0001', 'NV0002'] }` | `{ success: true, data: { count: 2 } }` |
+| `set-luong` (Duyệt loạt) | Nút "Duyệt lương": duyệt các bản đang chờ duyệt trong danh sách đang hiển thị | `POST /api/v1/hrm/employee-salaries/approve` | `{ items: [{ employeeId: 'NV0001', setupVersion: 3 }] }` | `{ success: true, data: { approvedCount, skippedCount, message } }` |

@@ -2,7 +2,7 @@
 type: api-contract
 feature: hrm-du-lieu-tinh-luong
 status: in-review
-updated: 2026-09-10
+updated: 2026-09-11
 author: system-architect
 links:
   - docs/hrm/du_lieu_tinh_luong/srs-du-lieu-tinh-luong.md
@@ -12,7 +12,7 @@ links:
 
 # HR — Hợp đồng API: Dữ liệu tính lương (Payroll Input Data API Contract)
 
-Đặc tả **45 REST endpoint** của tính năng `du_lieu_tinh_luong` trong `be_maxv`, đối soát trực tiếp từ mã nguồn (route → controller → validator → service).
+Đặc tả **45 REST endpoint** của tính năng `du_lieu_tinh_luong` trong `be_maxv`, đối soát trực tiếp từ mã nguồn (route → controller → validator → service) — cộng **6 endpoint** của màn "Chốt kỳ lương" thêm ngày 2026-09-11 (Mục 9).
 
 - **Base URL Prefix**: `/api/v1/hrm` — đăng ký tại `be_maxv/src/routes/index.route.ts:48`
 - **Ứng dụng tiêu thụ**: `hdđt_maxv` (Kế toán & HĐĐT) — nhóm `/api/v1/*`. **KHÔNG** thuộc nhóm `maxv` `/api/v1/admin/*`.
@@ -79,10 +79,11 @@ Tương tự, mọi mảng `records[]` trong 8 endpoint `GET /payroll-data/*` tr
 - **Quyền xem lương (`xemLuong`)**: cả 4 controller (`payrollPeriods`/`catalogs`/`payrollInputs`/
   `payrollCalculation`) nay đi qua `dbCoQuyenLuongPayroll()` — thiếu quyền → **403** (không `code`
   `E-dltl-*`, dùng chung message `MESSAGES.HRM.KHONG_CO_QUYEN_XEM_LUONG`, giống nhóm `/hop-dong`).
-- **Vai trò (ADMIN/OWNER)**: 3 action `POST /payroll-periods/:id/{lock,reopen,approve}` nay có
-  `preHandler: assertAdminOrOwner` — role khác `ADMIN`/`OWNER` (vd `OWNER_EMPLOYEE`) → **403**
-  (`MESSAGES.HRM.CAN_QUYEN_ADMIN_HOAC_OWNER`). `submit`/`reject`/`mark-paid`/`archive`/CRUD kỳ vẫn
-  CHỈ cần `requireModule('hrm')` — KHÔNG đổi.
+- **Vai trò (ADMIN/OWNER)**: 5 action `POST /payroll-periods/:id/{lock,reopen,approve,mark-paid,archive}`
+  nay có `preHandler: assertAdminOrOwner` — role khác `ADMIN`/`OWNER` (vd `OWNER_EMPLOYEE`) → **403**
+  (`MESSAGES.HRM.CAN_QUYEN_ADMIN_HOAC_OWNER`). `mark-paid`/`archive` thêm ngày 2026-09-11 (vbsec LOW
+  #37, chủ dự án chốt: đánh dấu đã chi / lưu trữ kỳ cũng là thẩm quyền tài chính). `submit`/`reject`/CRUD
+  kỳ vẫn CHỈ cần `requireModule('hrm')`.
 
 **Mục 1.6 (Chuyển trạng thái) — cột "Lỗi khi sai trạng thái" bổ sung 403 mới cho (c)(d)(e):**
 - `lock`/`reopen`/`approve`: thêm **403** `{ success:false, message:"Chỉ ADMIN hoặc OWNER..." }`
@@ -205,8 +206,8 @@ sửa 2026-09-09.
 | c | `POST /payroll-periods/:id/lock` | `:14` | `:156-176` | `DRAFT` **hoặc** `PENDING_REVIEW` → `LOCKED` | — | 400 (không `code`) |
 | d | `POST /payroll-periods/:id/reopen` | `:15` | `:181-201` | `LOCKED` → `DRAFT` | `{ reason: string ≥20 }` | 400 (không `code`); Zod nếu `reason` < 20 |
 | e | `POST /payroll-periods/:id/approve` | `:16` | `:203-218` | `LOCKED` → `APPROVED` | — | 400 (không `code`) |
-| f | `POST /payroll-periods/:id/mark-paid` | `:17` | `:220-231` | `APPROVED` → `PAID` | — | 400 (không `code`) |
-| g | `POST /payroll-periods/:id/archive` | `:18` | `:233-244` | `PAID` → `ARCHIVED` | — | 400 (không `code`) |
+| f | `POST /payroll-periods/:id/mark-paid` | `:17` | `:220-231` | `APPROVED` → `PAID` | — | 400 (không `code`); **403** nếu không phải ADMIN/OWNER (từ 2026-09-11) |
+| g | `POST /payroll-periods/:id/archive` | `:18` | `:233-244` | `PAID` → `ARCHIVED` | — | 400 (không `code`); **403** nếu không phải ADMIN/OWNER (từ 2026-09-11) |
 
 Mọi endpoint trên: **200 OK** `{ success:true, data:{ …PayrollPeriod } }` · **404** `E-dltl-025`.
 
@@ -893,3 +894,70 @@ Không làm phần này thì 6 cột mới ở DB **không ai đặt được gi
 - **Backend Engineer**: đọc ADR-010 **trước** khi sửa `payrollCalculation.service.ts` — thứ tự các bước quyết định con số, không phải sở thích. Sửa `schema.prisma` + service **cùng một lượt** (xem cảnh báo 8.5). Tách `tinhKhoanPhuCapTheoKy` dùng chung cho 2 endpoint, và cho nó trả về **từng khoản kèm nhãn phân giỏ** để bước [5a] không phải duyệt lại lần hai (ADR-010 Consequences mục 2).
 - **Frontend Engineer** *(đang tạm ngừng — đọc khi được kích hoạt lại)*: adapter theo bảng 8.1.1; chú ý 2 cạm bẫy đánh ⭐ (`gio_tang_ca` ≠ `otConvertedHours`, `thu_nhap_chiu_thue` ≠ `taxableIncome`, và công thức `thu_nhap_chiu_thue` nay có **4** số hạng).
 - **Business Analyst (Final Sign-off)**: `Q-1` và `Q-2` **đã chốt** (chủ dự án, 2026-09-10) — chỉ còn **`Q-3`** (thuần hiển thị, không chặn Backend). Việc BA cần làm thêm: bổ sung `AC` cho `otherAllowanceTaxExemptAmount` vào SRS Mục 15.3.1 (bước [5a] phân giỏ hiện chưa có trong công thức BA viết) trước khi chuyển `Ready for Implementation`.
+
+---
+
+## 9. Màn "Chốt kỳ lương" — 6 endpoint (2026-09-11)
+
+Nghiệp vụ: SRS Mục 16 (`BR-dltl-030…034`). Route `routes/hrm/du_lieu_tinh_luong/payrollClosing.route.ts`, controller `payrollClosing.controller.ts`, service `payrollClosing.service.ts` (tenant) + `payrollActivity.service.ts` (đọc nhật ký control plane). Cả 6 endpoint qua `dbCoQuyenLuongPayroll` (thiếu quyền lương → 403 `E-hrm-058`), kỳ lạ → 404 `E-dltl-025`.
+
+`:module` ∈ `ATTENDANCE` · `OVERTIME` · `KPI` · `BONUS` · `ADJUSTMENT` · `PIECEWORK` · `COMMISSION` · `OTHER_INCOME` · `DILIGENCE` · `TAX_DEDUCTION` · `SALARY_PROFILE` · `SUPPORT_ALLOWANCE` (enum `PayrollModuleCode`). Mã khác → 400 (Zod).
+
+| Method | Endpoint | Quyền | Thành công | Lỗi nghiệp vụ |
+|---|---|---|---|---|
+| GET | `/payroll-periods/:id/closing` | Quyền lương | 200 — tổng quan (dưới) | 404 `E-dltl-025` |
+| GET | `/payroll-periods/:id/activities` | Quyền lương | 200 — ≤ 50 dòng, mới nhất trước | 404 `E-dltl-025` |
+| POST | `/payroll-periods/:id/modules/:module/lock` | Quyền lương | 200 — dòng `PayrollModuleLock` vừa tạo | 403 `E-dltl-001` (kỳ đã khóa sổ) · 409 `E-dltl-028` (đã chốt trước đó) |
+| POST | `/payroll-periods/:id/modules/:module/unlock` | **ADMIN/OWNER** (`assertAdminOrOwner`) | 200 — `{ module, unlocked: true }` | 403 (không phải chủ TK) · 403 `E-dltl-001` · 409 `E-dltl-028` (đang mở) |
+| POST | `/payroll-periods/:id/modules/lock-all` | Quyền lương | 200 — `{ lockedModules: PayrollModuleCode[] }` — CHỈ các bảng kê THỰC SỰ vừa chèn (bảng kê người khác chốt chen giữa không tính; rỗng nếu đã đủ) | 403 `E-dltl-001` |
+| POST | `/payroll-periods/:id/calculate` | Quyền lương · **30 lượt/phút/người** (như 3 route GET tính lương) | 200 — `{ calculatedEmployees: number }` | 403 `E-dltl-001` · 409 `E-dltl-026` (kỳ bị khóa sổ trong lúc tính — không ghi đè) · 429 |
+
+### 9.1. `GET /payroll-periods/:id/closing`
+
+```jsonc
+{
+  "period": { "id": "…", "code": "2026-09", "name": "Kỳ lương tháng 9/2026", "month": 9, "year": 2026,
+              "status": "DRAFT", "lockedAt": null },
+  "periodLocked": false,                 // true khi status ∈ LOCKED/APPROVED/PAID/ARCHIVED
+  "modules": [                           // luôn đủ 12 dòng, đúng thứ tự hiển thị
+    { "module": "ATTENDANCE", "label": "Chấm công", "periodData": true,
+      "locked": true, "lockSource": "MODULE",   // MODULE = chốt riêng · PERIOD = kỳ đã khóa sổ · null = đang mở
+      "lockedAt": "2026-09-10T09:38:11.000Z", "lockedByUserId": "…", "lockedByName": "Nguyễn Văn A" }
+  ],
+  "lockedModuleCount": 1,
+  "totalModules": 12,
+  "payroll": { "calculatedEmployees": 0, "totalEmployees": 2 }   // "Bảng lương a/b NV"
+}
+```
+
+- `lockSource = PERIOD`: bảng kê không chốt riêng nhưng kỳ đã khóa sổ — `lockedAt`/`lockedByUserId` lấy của kỳ.
+- `payroll.calculatedEmployees` = số dòng `PayrollSheetLine` của kỳ (lần tính / khóa sổ gần nhất); `totalEmployees` = nhân viên `status='1'`, chưa xóa — cùng bộ lọc với engine tính lương.
+- Hệ quả với `GET /payroll-periods` (Mục 1.1): `_count.payrollSheetLines` của kỳ `DRAFT`/`PENDING_REVIEW` nay có thể > 0 sau khi bấm "Tính lương" — đó là kết quả TẠM, **không** phải chứng từ; chỉ dòng của kỳ đã khóa sổ trở đi mới là bảng lương chốt.
+
+### 9.2. `GET /payroll-periods/:id/activities`
+
+```jsonc
+[
+  { "id": "…", "action": "HRM_PAYROLL_MODULE_LOCKED", "type": "LOCK",      // LOCK · UNLOCK · EDIT · APPROVE
+    "description": "Chốt số liệu Chấm công", "userId": "…", "userName": "Nguyễn Văn A",
+    "createdAt": "2026-09-10T09:38:11.000Z" }
+]
+```
+
+Nguồn: bảng `syslog` (control plane) lọc `donViId` = công ty đang chọn + `hanhDong` ∈ 7 mã ở `constants/hrm/payrollActivities.ts` + `chiTiet.periodId` = `:id`. Không trả IP. `userName` rơi về `"Hệ thống"` khi không có người thao tác.
+
+| `hanhDong` | `type` | Ghi bởi | `chiTiet` |
+|---|---|---|---|
+| `HRM_PAYROLL_MODULE_LOCKED` | LOCK | `lock` | `{ periodId, module }` |
+| `HRM_PAYROLL_MODULE_UNLOCKED` | UNLOCK | `unlock` | `{ periodId, module }` |
+| `HRM_PAYROLL_MODULES_LOCKED_ALL` | LOCK | `lock-all` (chỉ khi có bảng kê vừa chốt) | `{ periodId, count, modules }` |
+| `HRM_PAYROLL_CALCULATED` | EDIT | `calculate` | `{ periodId, calculatedEmployees }` |
+| `HRM_PAYROLL_PERIOD_LOCKED` · `_REOPENED` · `_APPROVED` | LOCK · UNLOCK · APPROVE | vòng đời kỳ (có từ trước) | `{ periodId }` (+ `reason` khi mở lại) |
+
+### 9.3. Ảnh hưởng chéo — 8 nhóm `/payroll-data/*`
+
+Mọi đường ghi (`PUT attendance/cell`, `POST overtime/apply`, `DELETE overtime/:ma_nv`, `POST kpi/apply`, `POST bonus/apply`, `POST piecework/apply`, `POST commission/apply`, `POST diligence/record`, `DELETE diligence/:id`, `POST adjustments/apply`) nay qua `assertPayrollModuleWritable` thay cho `assertPayrollPeriodWritable`: thêm nhánh **403 `E-dltl-027`** khi bảng kê tương ứng đã chốt số. Đường đọc không đổi.
+
+### 9.4. Triển khai
+
+Bảng mới `hrm_payroll_module_locks` (data-model Mục 12) ⇒ bắt buộc `npm run generate` + `npm run sync:tenants` (+ `npm run hrm:constraints` theo runbook `architecture/dev-notes.md` Mục 1.3b) **cùng lượt** deploy mã: thiếu bảng thì mọi đường ghi `/payroll-data/*` gãy (guard tra bảng này).

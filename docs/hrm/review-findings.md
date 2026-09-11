@@ -683,3 +683,153 @@ Phần FE này đạt chất lượng bàn giao: kiến trúc đúng hướng (m
 - `RVW-029` 🟡 — bỏ request thừa ở tab "Lương hỗ trợ" trước khi có tenant đông nhân viên.
 - `RVW-031`…`RVW-035` 🟢 — gom vào một đợt dọn nhỏ của `frontend-engineer`.
 - Nợ chưa thuộc phạm vi phiên này, vẫn `OPEN`: `RVW-027` (FE phải ẩn/disable nút Thêm/Sửa/Xóa khoản lương theo `role` — việc của FE, chưa làm), `RVW-022b`/`ISSUE-blth-004`, và **giới hạn kiểm thử đã được QA nêu trung thực ở Mục 9.5**: chưa ai xác nhận bằng mắt trên dữ liệu thật (không có tenant/tài khoản test có kỳ lương). Đề nghị PO/BA cấp một tenant mẫu có kỳ `DRAFT` + kỳ `LOCKED` trước khi bàn giao cho người dùng cuối.
+
+---
+
+## Review 2026-09-11 — Verdict: ⚠️ Approve with comments
+
+**Phạm vi review** — phiên `backend-engineer + frontend-engineer` (`work-log.md` `[2026-09-11 01:13]`): màn "Chốt kỳ lương" (`BR-dltl-030…034`; SRS Mục 16 · api-contract Mục 9 · data-model Mục 12). Backend: `prisma/tenant/schema.prisma` (enum `PayrollModuleCode`, model `PayrollModuleLock`), `constants/hrm/payrollModules.ts` + `payrollActivities.ts` (mới) + `payrollErrors.ts`, `helpers/hrm/payrollPeriodLockGuard.ts` (`assertPayrollModuleWritable`), `payrollInputs.service.ts` (10 đường ghi), `payrollClosing.service.ts` + `payrollActivity.service.ts` (mới), `payrollClosing.controller.ts` (mới) + `payrollPeriods.controller.ts`, `payrollClosing.route.ts` (mới) + `hrm.route.ts`, `payrollClosing.validator.ts`, 2 file test. Frontend `hdđt_maxv`: `api/chot_ky_luong/*`, `api/hrmKeys.ts`, `components/chot_ky_luong/*` (8 file), `PayrollPeriodContext.tsx` + `useCurrentPayrollPeriod.ts` (viết lại), `useBangKeChiDoc.ts` + `CanhBaoChiDoc.tsx`, 8 `*Panel.tsx`, `dashboard/dieuHuong.ts`, xóa `KyLuongSelector.tsx`, `pages/hrm/HrmPage.tsx`, `ChotKyLuongPage.tsx`, `DuLieuLuongPage.tsx`, `BangLuongPage.tsx`, `routes/AppRouter.tsx`.
+
+**Lưu ý môi trường**: trong lúc review, cây làm việc vẫn bị agent khác sửa song song — `TheBangKe.tsx` (01:18:56), `HrmNav.tsx` (01:16:56, padding tab — có trong work-log phiên này), 2 file preview tạm `hdđt_maxv/preview-chot-ky.html` + `src/__preview_chot_ky__.tsx` (còn lúc bắt đầu review, đã bị xóa trước 01:29 — nay khớp câu "đã xóa trang preview" của work-log), `routes/hrm/du_lieu_tinh_luong/payrollCalculation.route.ts` (01:38, gắn giới hạn theo người dùng cho 3 route GET — không thuộc phiên này). Mọi kết luận dưới đây là trên trạng thái cuối lúc 01:38; các lệnh kiểm chứng đã chạy lại sau thời điểm đó.
+
+**Đã tự kiểm chứng độc lập:**
+
+| Lệnh | Kết quả code-reviewer tự chạy | Khớp work-log? |
+|---|---|---|
+| `be_maxv`: `npm run typecheck` | exit 0 | ✅ |
+| `be_maxv`: `npx tsx --experimental-test-module-mocks --test src/__tests__/hrm/hrmPayrollClosing.test.ts src/__tests__/hrm/hrmPayrollInputData.test.ts` | **21/21 pass** (9 + 12), chạy 2 lần (trước và sau các thay đổi song song) | ✅ (9/9 ca closing) |
+| `be_maxv`: `npx eslint` trên 12 file BE trong phạm vi | 0 error, 2 warning `no-explicit-any` có từ trước (`payrollInputs.service.ts`:82 — RVW-013) | ✅ |
+| `hdđt_maxv`: `npx tsc -b` | exit 0 | ✅ |
+| `hdđt_maxv`: `npx eslint src/features/hrm src/pages/hrm src/routes/AppRouter.tsx` | 0 lỗi, 0 cảnh báo | ✅ |
+
+KHÔNG chạy `npm test` toàn bộ (một số suite chạm DB thật) và KHÔNG chạy `sync:tenants`; con số 867/871 trong work-log là số của backend-engineer, reviewer chưa xác nhận lại.
+
+**Đã đối chiếu và XÁC NHẬN ĐÚNG (không phát sinh finding):**
+
+1. **Không đường ghi nào lọt guard** — grep toàn `be_maxv/src` (trừ `generated`/test) mọi lệnh `create/createMany/update/updateMany/upsert/delete/deleteMany` lên 8 model dữ liệu kỳ (gồm cả dạng `tx.<model>` truyền vào `replaceScopedRecords`): chỉ nằm trong `payrollInputs.service.ts`, và cả 10 hàm ghi gọi `assertPayrollModuleWritable` ở dòng đầu với ĐÚNG mã bảng kê (soát từng literal: ATTENDANCE · OVERTIME×2 · KPI · BONUS · PIECEWORK · COMMISSION · DILIGENCE×2 · ADJUSTMENT). `deleteDiligenceRecord` lấy `periodId` từ bản ghi trong DB, không tin client. Kiểu `PayrollPeriodDataModule` chặn ngay ở `tsc` việc truyền nhầm 4 mã dùng chung vào guard.
+2. **Thẩm quyền** — cả 6 handler gọi `dbCoQuyenLuongPayroll` trước mọi truy vấn; `unlock` gắn `assertAdminOrOwner` ở `preHandler` (chạy sau hook `authenticate` + `requireModule('hrm')` của `hrm.route.ts`); `lock`/`lock-all`/`calculate` chỉ cần quyền lương — đúng quyết định #2. `ADMIN` không vào được tenant (`accessibleDonViWhere` trả `null`) ⇒ thực tế chỉ OWNER mở chốt được.
+3. **Cô lập tenant của "Lịch sử hoạt động"** — lọc `donViId` = công ty của phiên (đã qua `resolveTenantInfo`), `periodId` được xác thực trong DB tenant trước (id bịa → 404); 1 MST = 1 `DonVi` (`maSoThue @unique`) nên không có 2 công ty chung một DB tenant; test ghim `where.donViId` + JSON path. Không trả IP; họ tên tra theo id lấy từ chính log của công ty.
+4. **Quyết định #3** — kỳ `LOCKED+` ⇒ 12 bảng kê `locked` (`lockSource=PERIOD`, bảng kê có khóa riêng giữ `MODULE`); lock/unlock/lock-all/calculate → 403 `E-dltl-001`; `reopen` không đụng `hrm_payroll_module_locks` ⇒ giữ nguyên khóa riêng. Khóa sổ không kiểm số bảng kê, FE chỉ cảnh báo trong hộp xác nhận (AC-dltl-35).
+5. **Quyết định #4 + không đè bảng lương vừa chụp** — `calculatePayrollForPeriod` và `lockPayrollPeriod` đều chiếm dòng kỳ bằng `updateMany` có điều kiện TRƯỚC `snapshotPayrollSheet` ⇒ hai lượt tuần tự hóa trên khóa dòng, lượt sau thấy trạng thái mới (READ COMMITTED đánh giá lại `WHERE`): tính-lương-chen-sau-khóa-sổ nhận 409 `E-dltl-026`, khóa-sổ-chen-sau-tính-lương chụp đè lần cuối. `totalEmployees` dùng đúng bộ lọc `status='1', da_xoa=false` của engine; engine sinh 1 dòng/nhân viên. Người đọc `PayrollSheetLine` duy nhất (`getPayrollSheetLines`) rẽ nhánh theo trạng thái kỳ ⇒ bản tạm của kỳ mở KHÔNG lọt ra màn Bảng lương/Dashboard; FE không dùng `_count.payrollSheetLines`.
+6. **Hợp đồng API** — shape 6 endpoint và mã lỗi/HTTP (404 `E-dltl-025`, 403 `E-dltl-001`/`E-dltl-027`, 409 `E-dltl-028`/`E-dltl-026`, 400 Zod) khớp api-contract Mục 9; hằng `HANH_DONG_KY_LUONG` dùng chung bên ghi lẫn bên đọc; log vòng đời kỳ cũ đã có `chiTiet.periodId` + `donViId` nên lên lịch sử được.
+7. **Frontend — luật hook**: mọi hook ở `GocKyLuong`, `ChotKyLuongPanel`, `VongDoiKyLuong`, `LichSuHoatDong`, `TheBangKe`, `useBangKeChiDoc`, 8 panel đều gọi TRƯỚC các `return` sớm (`biTuChoi` / `!selectedPeriod` / `!periodId`).
+8. **Frontend — chọn kỳ theo tháng**: `selectedPeriod` suy lại từ `periods` của công ty hiện tại (id `localStorage` của tenant khác bị loại như trước); kỳ vừa tạo chưa có trong danh sách được giữ qua `kyCho` rồi thắng khi danh sách nạp xong; đổi kỳ thì 7 panel có bảng soạn đều reset (`setMau([])` theo `periodId`) ⇒ không áp nhầm bảng của tháng cũ sang tháng mới. `useMoManKyLuong` (5 thẻ Dashboard) đổi qua context; mọi route dùng `useCurrentPayrollPeriod` đều nằm dưới `HrmPage` (đã soát `AppRouter.tsx`) ⇒ không route nào vỡ vì mất provider riêng. `HrmNav` trả `false` cho `/hrm/chot-ky-luong` (không cảnh báo MUI).
+9. **Frontend — cache & quyền**: khóa `closing`/`activities` mang `companyId`, nằm dưới tiền tố `hrm-payroll-periods` ⇒ các mutation vòng đời kỳ (kể cả ở Dashboard) tự làm tươi thẻ + lịch sử. Nút "Mở chốt" / "Khóa sổ" / "Mở lại" / "Duyệt" khóa sẵn cho người không phải chủ TK kèm tooltip, khớp `assertAdminOrOwner`. 8 panel gate đủ nút ghi (Nhập Excel, Áp dụng, Tái sử dụng, ô chấm công) bằng `isReadOnly` mới — "Xóa tất cả" chỉ xóa bảng soạn cục bộ.
+10. **Bảo mật khác**: không raw SQL, không log dữ liệu lương, không gọi bên thứ ba, lý do mở lại kỳ (text người dùng) chỉ render dạng text React. `GET .../activities` có index `donViId` sẵn — chưa cần index kép ở quy mô hiện tại.
+
+---
+
+### RVW-036 🟡 NON-BLOCKING — Xóa kỳ `DRAFT` cascade xóa luôn dữ liệu 8 bảng kê ĐÃ CHỐT SỐ: người bị cấm "Mở chốt" vẫn gỡ được bằng cách xóa kỳ, và không để lại nhật ký
+
+- Vị trí: `be_maxv/src/routes/hrm/du_lieu_tinh_luong/payrollPeriods.route.ts`:10 (không role-guard) → `controllers/client/hrm/du_lieu_tinh_luong/payrollPeriods.controller.ts`:73 (không `writeLog`) → `services/client/hrm/du_lieu_tinh_luong/payrollPeriods.service.ts`:107-121 (chỉ kiểm `status === 'DRAFT'`); `onDelete: Cascade` của `PayrollModuleLock` + 8 bảng dữ liệu kỳ (`prisma/tenant/schema.prisma`)
+- Vấn đề: BR-dltl-030/031 dựng bất biến mới — dữ liệu bảng kê đã chốt số chỉ sửa được sau khi **chủ tài khoản** mở chốt. Nhưng `DELETE /payroll-periods/:id` (có từ trước, chỉ cần quyền lương) vẫn xóa được kỳ `DRAFT` đang có bảng kê chốt số, cascade xóa sạch cả dòng khóa lẫn dữ liệu đã chốt. Tức nhân viên HR có quyền lương — người mà máy chủ cố tình từ chối "Mở chốt" (AC-dltl-31) — vẫn đi đường vòng xóa-rồi-tạo-lại kỳ; thao tác xóa kỳ cũng không ghi `writeLog`, nên sau đó chỉ còn các dòng lịch sử mồ côi trỏ tới `periodId` không tồn tại. Data-model Mục 12.1 chủ ý cho cascade ("xóa kỳ Bản nháp thì khóa chốt đi theo, không mồ côi") — đó là quyết định về **dòng mồ côi**, chưa ai cân nhắc khía cạnh **thẩm quyền**; SRS Mục 6.1 / api-contract Mục 1.5 cũng chưa nói gì về kỳ đã có bảng kê chốt số. Không xếp Blocking vì FE không có nút xóa kỳ (grep `useDeletePayrollPeriod`: 0 nơi dùng) — rủi ro chỉ qua gọi API trực tiếp.
+- Đề xuất fix: cần BA chốt 1 trong 2 (không tự đoán): (a) từ chối xóa khi kỳ còn ≥ 1 dòng `PayrollModuleLock` — 409 nêu tên các bảng kê đang chốt ("mở chốt trước khi xóa kỳ"), hoặc (b) chỉ ADMIN/OWNER được xóa kỳ (`preHandler: assertAdminOrOwner` như `lock/reopen/approve`). Chọn cách nào cũng ghi `writeLog` cho thao tác xóa kỳ (`{ periodId, code }`), bổ sung SRS Mục 6.1 + api-contract Mục 1.5 và 1 test.
+- Trạng thái: OPEN
+
+---
+
+### RVW-037 🟡 NON-BLOCKING — "Tính lương" chạy trọn engine TRONG interactive transaction mặc định 5s, giữ khóa dòng kỳ suốt lượt tính, và là route tính-lương-toàn-công-ty duy nhất không có giới hạn theo người dùng
+
+- Vị trí: `be_maxv/src/services/client/hrm/du_lieu_tinh_luong/payrollClosing.service.ts`:214-231; `routes/hrm/du_lieu_tinh_luong/payrollClosing.route.ts`:13; đối chiếu `routes/hrm/du_lieu_tinh_luong/payrollCalculation.route.ts`:9-15
+- Vấn đề: `db.$transaction(async (tx) => …)` không truyền `{ timeout, maxWait }` ⇒ mặc định Prisma `timeout: 5000ms` — đúng nợ `A-05` còn OPEN (data-model Mục 6.2). Bên trong: `updateMany` chiếm khóa dòng `hrm_payroll_periods` → `snapshotPayrollSheet` (nạp dữ liệu cả công ty + pipeline 10 bước + `deleteMany` + `createMany`). Khác khóa sổ (1 lần/kỳ, chỉ chủ TK), nút này được thiết kế để **bấm lặp lại** và **ai có quyền lương cũng bấm được**: 2 người/2 tab bấm gần nhau thì lượt sau đứng chờ khóa dòng *trong khi đồng hồ 5s của chính nó đang chạy*; lượt "Khóa sổ" của chủ TK chen vào lúc đang tính cũng phải chờ như vậy. Tenant đông nhân viên, tổng thời gian vượt 5s ⇒ Prisma ném `P2028` ⇒ `errorHandler.plugin.ts` không map ⇒ **500 "Lỗi máy chủ nội bộ"** thay vì 409 rõ ràng — tệ nhất là làm hỏng lượt khóa sổ. Kèm theo: hôm nay 3 route GET cùng tính lương toàn công ty vừa được gắn `gioiHanTheoNguoiDung(30, '1 minute')`; `POST /payroll-periods/:id/calculate` (nặng hơn vì còn ghi) là route duy nhất trong nhóm chỉ còn trần chung 300/phút/IP. Không xếp Blocking: tenant dev 1–2 nhân viên, engine < 1s, FE khóa nút khi đang chạy.
+- Đề xuất fix: (1) tính NGOÀI transaction, chỉ khóa dòng cho pha ghi ngắn — bản tạm không phải chứng từ nên tính trên dữ liệu đã commit là đủ, điều kiện `status ∈ {DRAFT, PENDING_REVIEW}` vẫn chặn đè bảng lương vừa chụp:
+
+  ```ts
+  const lines = await calculatePayrollPreview(db, periodId, period);
+  return db.$transaction(async (tx) => {
+    const { count } = await tx.payrollPeriod.updateMany({
+      where: { id: periodId, status: { in: KY_CON_MO } },
+      data: { updatedAt: new Date() },
+    });
+    if (count === 0) throw new PayrollError(PAYROLL_ERROR_CODES.E_DLTL_026, '…', HttpStatus.CONFLICT);
+    await tx.payrollSheetLine.deleteMany({ where: { periodId } });
+    if (lines.length > 0) await tx.payrollSheetLine.createMany({ data: lines });
+    return { calculatedEmployees: lines.length };
+  }, { timeout: 30_000 });
+  ```
+
+  (tách phần ghi của `snapshotPayrollSheet` thành hàm dùng chung để không chép logic); (2) đóng luôn `A-05` cho `lockPayrollPeriod` bằng `{ timeout }` tường minh; (3) gắn `gioiHanTheoNguoiDung(…)` cho route `calculate` cho đồng bộ 3 route GET; (4) cân nhắc map `P2028` → 409 "đang có thao tác khác trên kỳ lương, thử lại".
+- Trạng thái: OPEN
+  → FIXED một phần [2026-09-11] — (1) `payrollClosing.service.ts::calculatePayrollForPeriod` tính `calculatePayrollPreview` NGOÀI transaction; trong transaction chỉ còn `chuyenTrangThai(tx, …, KY_LUONG_CON_MO, { updatedAt })` (export từ `payrollPeriods.service.ts`) + `ghiDeBangLuong` — đường ghi DUY NHẤT vào `hrm_payroll_sheet_lines`, `snapshotPayrollSheet` dùng chung (`payrollCalculation.service.ts`); (3) `payrollClosing.route.ts` gắn `gioiHanTheoNguoiDung(30, '1 minute')` cho `POST .../calculate`. CHƯA làm: (2) `{ timeout }` cho `lockPayrollPeriod` (`A-05` vẫn OPEN), (4) map `P2028`. Test `hrmPayrollClosing.test.ts` 11/11, `npm test` 923/927 (4 đỏ cố ý có sẵn), commit: chưa commit *(backend-engineer)*
+
+---
+
+### RVW-038 🟡 NON-BLOCKING — Cổng triển khai: guard mới tra bảng `hrm_payroll_module_locks` ở CẢ 10 đường ghi `/payroll-data/*` — tenant chưa `sync:tenants` là gãy toàn bộ nhập liệu lương (500)
+
+- Vị trí: `be_maxv/src/helpers/hrm/payrollPeriodLockGuard.ts`:83 (`payrollModuleLock.findUnique`), `services/client/hrm/du_lieu_tinh_luong/payrollClosing.service.ts`:45; runbook: api-contract Mục 9.4, data-model Mục 12.2, `CONTEXT_SUMMARY.md` dòng 29
+- Vấn đề: mã đúng, nhưng thứ tự triển khai quyết định sống còn: DB tenant thiếu bảng thì `findUnique` ném `P2021` → `errorHandler` rơi nhánh 500 ⇒ mọi thao tác ghi của 8 màn nhập liệu và `GET .../closing` hỏng cùng lúc cho tenant đó (còn cờ chỉ đọc phía FE thì "mở" — xem RVW-044). Work-log + data-model xác nhận mới chạy 10/10 tenant dev/local, **production chưa chạy**; `sync:tenants` là bước tay, không nằm trong `build`/`start`. Tiền lệ cùng loại: `RVW-022b`/`ISSUE-blth-004` vẫn OPEN đúng ở khâu này.
+- Đề xuất fix: thay đổi là **thuần thêm** (đã đo `migrate diff`: 4 lệnh tạo, 0 DROP) nên chạy **DB trước, mã sau**: `npm run generate` → `npm run sync:tenants` + `npm run hrm:constraints` trên TẤT CẢ tenant production → xác nhận từng tenant `SELECT to_regclass('public.hrm_payroll_module_locks') IS NOT NULL` (ghi kết quả vào `work-log.md`) → rồi mới deploy mã. Mã cũ không đọc bảng mới nên cửa sổ lỗi bằng 0. Ghi thứ tự này vào runbook `dev-notes.md` Mục 1.3b cùng lượt với RVW-022b.
+- Trạng thái: OPEN
+
+---
+
+### RVW-039 🟢 SUGGESTION — Chốt / mở chốt / chốt toàn kỳ không khóa dòng kỳ; `lock-all` báo cáo danh sách DỰ ĐỊNH chứ không phải danh sách THỰC GHI
+
+- Vị trí: `be_maxv/src/services/client/hrm/du_lieu_tinh_luong/payrollClosing.service.ts`:114-147 (lock), :149-169 (unlock), :172-196 (lock-all — `return { lockedModules: canChot }` ở :195); lập luận ở data-model Mục 12.3 gạch đầu dòng 2
+- Vấn đề: cả 3 hàm kiểm trạng thái kỳ rồi mới ghi, không chiếm dòng như `calculatePayrollForPeriod` — câu "ràng buộc duy nhất lo phần đồng thời" (data-model 12.3) chỉ đúng cho tranh chấp chốt-với-chốt, không cho chốt-với-khóa-sổ. (a) Khóa sổ commit chen giữa ⇒ `unlock` vẫn xóa được khóa trên kỳ đã `LOCKED` và trả 200 — trái BR-dltl-032, và sau "Mở lại kỳ" bảng kê đó thành "đang mở" dù quy tắc hứa giữ nguyên (xác suất rất thấp: hai thao tác đều chỉ chủ TK làm được). (b) Khả dĩ hơn: HR A bấm "Chốt số liệu" một thẻ đúng lúc HR B bấm "Chốt số toàn kỳ" ⇒ `skipDuplicates` bỏ dòng trùng nhưng hàm vẫn trả + ghi nhật ký `count = canChot.length` ⇒ lịch sử có cả "Chốt số liệu X" (A) lẫn "Chốt số toàn kỳ (11 bảng kê)" (B) trong khi B thực chốt 10; toast phía B cũng báo 11. Sai dấu vết kiểm toán, không sai dữ liệu.
+- Đề xuất fix: (1) `lock-all` dùng `createManyAndReturn({ data, skipDuplicates: true, select: { module: true } })` rồi trả + ghi log đúng các dòng vừa chèn; (2) muốn đóng hẳn (a): bọc 3 hàm trong `$transaction` và chiếm dòng kỳ bằng đúng mẫu `updateMany … status in KY_CON_MO` của `calculatePayrollForPeriod`; sửa lại câu lập luận ở data-model Mục 12.3 cho khớp.
+- Trạng thái: OPEN
+  → FIXED một phần [2026-09-11] — (1) `lockAllPayrollModules` chèn cả 12 bằng MỘT `createManyAndReturn({ skipDuplicates: true, select: { module: true } })`, trả + ghi nhật ký đúng các dòng THỰC chèn (bỏ lượt `findMany` đọc trước); fake DB test mô phỏng đúng `skipDuplicates`. CHƯA làm (2) khóa dòng kỳ cho lock/unlock — giữ mức kiểm-rồi-ghi như guard có sẵn, ghi rõ ở data-model Mục 12.3. Commit: chưa commit *(backend-engineer)*
+
+---
+
+### RVW-040 🟢 SUGGESTION — `PayrollSheetLine` đổi nghĩa (kỳ mở nay chứa kết quả TẠM) nhưng tài liệu tại chỗ trong mã vẫn gọi là "snapshot đóng băng"
+
+- Vị trí: `be_maxv/prisma/tenant/schema.prisma`:1719 (`/// 14. Bảng Lương Tổng hợp Snapshot`); `services/client/hrm/du_lieu_tinh_luong/payrollCalculation.service.ts`:668 và :698; `payrollPeriods.service.ts`:33 (`_count.payrollSheetLines`); api-contract Mục 1.1 (ví dụ `payrollSheetLines: 0` cho kỳ DRAFT)
+- Vấn đề: trước đợt này "có dòng `PayrollSheetLine`" ⇔ "chứng từ của kỳ đã khóa sổ". Từ nay nút "Tính lương" ghi đè bảng này khi kỳ còn mở. `getPayrollSheetLines` vẫn đúng (rẽ nhánh theo trạng thái) và `CONTEXT_SUMMARY.md` dòng 60 đã ghi — nhưng người đọc mã (docblock model + 2 docblock service) và người đọc hợp đồng (`_count.payrollSheetLines` nay > 0 với kỳ DRAFT) vẫn thấy nghĩa cũ. Rủi ro cụ thể: các màn "Bảng tính thuế / Tờ khai TNCN / Quyết toán" đang là chỗ giữ (`to-khai-thue`) sẽ tự nhiên đọc thẳng bảng này; thiếu điều kiện trạng thái kỳ là đưa số tạm của kỳ nháp vào tờ khai.
+- Đề xuất fix: sửa docblock model + `snapshotPayrollSheet` + `getPayrollSheetLines` thành 1 câu bất biến: "Chỉ dòng của kỳ `LOCKED/APPROVED/PAID/ARCHIVED` là chứng từ; dòng của kỳ `DRAFT/PENDING_REVIEW` là kết quả tạm của nút Tính lương"; thêm vào phần **TUYỆT ĐỐI** của `dev-notes.md` Mục 1.11; cập nhật chú thích `_count.payrollSheetLines` ở api-contract Mục 1.1. Tùy chọn: 1 helper đọc-dòng-chính-thức có kiểm trạng thái để module thuế sau này gọi thay vì `findMany` trơn.
+- Trạng thái: OPEN
+  → FIXED [2026-09-11] — docblock model `PayrollSheetLine` (`prisma/tenant/schema.prisma`) + `ghiDeBangLuong`/`getPayrollSheetLines` (`payrollCalculation.service.ts`) ghi rõ bất biến "kỳ đã khóa sổ = chứng từ đóng băng; kỳ còn mở = kết quả TẠM của nút Tính lương, KHÔNG đọc làm số liệu"; `getPayrollSheetLines` rẽ nhánh bằng `kyLuongConMo()` dùng chung; thêm vào mục TUYỆT ĐỐI `dev-notes.md` Mục 1.11 và api-contract Mục 9.1. Chưa làm helper đọc-dòng-chính-thức (tùy chọn). Commit: chưa commit *(backend-engineer)*
+
+---
+
+### RVW-041 🟢 SUGGESTION — Hai nguồn sự thật cho "kỳ còn ghi được" + 2 cặp helper chép y hệt
+
+- Vị trí: `be_maxv/src/services/client/hrm/du_lieu_tinh_luong/payrollClosing.service.ts`:32 (`KY_CON_MO`) vs `helpers/hrm/payrollPeriodLockGuard.ts`:58 (`readOnlyStatuses`); `controllers/client/hrm/du_lieu_tinh_luong/payrollClosing.controller.ts`:27-39 (`ghiNhatKy`) vs `payrollPeriods.controller.ts`:34-46 (`ghiNhatKyLuong`); `hdđt_maxv/src/features/hrm/api/chot_ky_luong/chotKyLuongQueries.ts`:46-52 (`useInvalidateChotKy`) vs `api/du_lieu_tinh_luong/payrollPeriodsQueries.ts`:52-58 (`useInvalidatePayroll`)
+- Vấn đề: (a) guard ghi dữ liệu dùng danh sách ĐEN (4 trạng thái chỉ đọc), màn chốt kỳ dùng danh sách TRẮNG (2 trạng thái mở) — comment tự thừa nhận "trùng tập". Thêm một trạng thái kỳ mới (vd `CANCELLED`) là hai bên lệch nhau lặng lẽ: guard cho ghi dữ liệu nhưng màn chốt coi kỳ đã khóa. (b) 2 hàm ghi nhật ký và 2 hook invalidate giống nhau từng dòng — đúng loại lặp RVW-007 đã cảnh báo.
+- Đề xuất fix: export `KY_CON_MO` + `kyConMo()` từ `payrollPeriodLockGuard.ts` và cho `assertPayrollPeriodWritable` dùng chính nó; rút `ghiNhatKyLuong` thành 1 helper dùng chung cho 2 controller; export `useInvalidatePayroll` và bỏ bản sao ở `chotKyLuongQueries.ts`.
+- Trạng thái: OPEN
+  → FIXED [2026-09-11] — (a) `payrollPeriodLockGuard.ts` export `KY_LUONG_CON_MO` + `kyLuongConMo()`; `assertPayrollPeriodWritable(db, id, thongBao?)` dùng chính nó (thay `readOnlyStatuses`) và thay luôn `assertKyConMoDeChot` của `payrollClosing.service.ts`; `getPayrollSheetLines` cũng dùng. (b) MỚI `helpers/hrm/nhatKyKyLuong.ts::ghiNhatKyKyLuong` + kiểu `ChiTietNhatKyKyLuong` dùng chung cho 2 controller VÀ bên đọc `payrollActivity.service.ts`. Hook FE: `chotKyLuongQueries.ts` nay chỉ làm mới 2 khóa `closing`/`activities` của đúng kỳ (`useLamMoiChotKy`) — không còn là bản sao `useInvalidatePayroll` (vốn làm mới cả danh sách kỳ + nhóm tính lương, thừa với thao tác chốt). Commit: chưa commit *(backend-engineer)*
+
+---
+
+### RVW-042 🟢 SUGGESTION — Test chỉ ghim 1/10 đường ghi với `E-dltl-027`; 4 endpoint POST mới chưa có ca 403 thiếu quyền lương
+
+- Vị trí: `be_maxv/src/__tests__/hrm/hrmPayrollClosing.test.ts`:246-282 (chỉ `PUT attendance/cell` qua HTTP), :410-459 (ca 403 thiếu quyền chỉ cho 2 route GET)
+- Vấn đề: 9 đường ghi còn lại hiện chỉ đúng nhờ đọc tay từng literal mã bảng kê — một lần sửa nhầm (vd `applyCommission` truyền `'BONUS'`) sẽ khiến chốt số Lương phần trăm mất tác dụng mà cả bộ test vẫn xanh. Chính dev-notes Mục 1.11 cảnh báo "gọi trơn là chốt số bảng kê mất tác dụng … mà không test cũ nào báo" — test mới cũng chưa báo được. Tương tự, `lock`/`unlock`/`lock-all`/`calculate` gọi `dbCoQuyenLuongPayroll` đúng (đã đọc mã) nhưng không ca nào ghim điều đó.
+- Đề xuất fix: 1 test tham số hóa 10 dòng `{ method, url, payload, module }` — chốt `module` rồi gọi route ⇒ 403 `E-dltl-027`; chốt module KHÁC ⇒ không bị guard này chặn. Thêm vòng lặp 4 route POST với `xemLuongChoRequestHienTai = false` ⇒ 403.
+- Trạng thái: OPEN
+  → FIXED [2026-09-11] — `hrmPayrollClosing.test.ts`: test tham số hóa gọi thẳng 10 hàm ghi của `payrollInputs.service.ts` — chỉ chốt đúng bảng kê của hàm ⇒ `E-dltl-027`; chốt MỌI bảng kê khác ⇒ không bị guard chặn (bắt được lỗi truyền nhầm mã bảng kê). Thêm test 4 route POST (lock/unlock/lock-all/calculate) thiếu quyền lương ⇒ 403, không ghi khóa, không chạy engine, không ghi nhật ký. 11/11 pass. Commit: chưa commit *(backend-engineer)*
+
+---
+
+### RVW-043 🟢 SUGGESTION — Tạo kỳ từ góc thanh HRM: trong lúc danh sách kỳ nạp lại, màn Chốt kỳ nháy "chưa có kỳ lương" và nút "Tạo kỳ lương" bấm được lần nữa
+
+- Vị trí: `hdđt_maxv/src/features/hrm/components/du_lieu_tinh_luong/PayrollPeriodContext.tsx`:61-73 (`setKyCho`), :79 (`dangTai`); `components/chot_ky_luong/GocKyLuong.tsx`:61-74, :133; `components/chot_ky_luong/ChotKyLuongPanel.tsx`:67-76
+- Vấn đề: sau `mutateAsync` thành công, `taoKy.isPending` về `false` ngay, còn kỳ mới chỉ xuất hiện khi lượt refetch danh sách xong (invalidate không được chờ). Trong khoảng đó `kyCho` đang treo nhưng `dangTai = false` (refetch nền không bật `isLoading`) ⇒ `selectedPeriod = null` ⇒ màn vừa điều hướng tới hiện "Tháng m/y chưa có kỳ lương…" và nút góc quay lại "Tạo kỳ lương" đang bật; bấm lần nữa ⇒ 409 "Kỳ tính lương … đã tồn tại". Không hỏng dữ liệu (`code` duy nhất chặn), chỉ nháy sai trạng thái đúng ngay kịch bản AC-dltl-36.
+- Đề xuất fix: coi "đang chờ kỳ vừa tạo" là đang tải — `dangTai = !quyen.biTuChoi && (!duocGoi || isLoading || (!!kyCho && !periods.some((p) => p.id === kyCho)))`; hoặc trong `onSuccess` của `useCreatePayrollPeriod` chèn kỳ mới vào cache danh sách (`setQueryData`) trước khi invalidate.
+- Trạng thái: OPEN
+  → FIXED [2026-09-11] — sửa tận gốc thay vì thêm nhánh: `useInvalidatePayroll` (`payrollPeriodsQueries.ts`) trả promise CHỜ nhóm `hrm-payroll-periods` nạp lại ⇒ `mutateAsync` của tạo kỳ chỉ về khi danh sách đã có kỳ mới, `isPending` giữ nút khóa suốt lúc đó. Provider bỏ hẳn `kyCho`/`setSelectedPeriodId`, chọn kỳ CHỈ theo tháng (`chonThang(ThangNam)`), nhớ tháng `YYYY-MM` ở `localStorage`. Soát bằng trang preview tạm: bấm "tháng sau" ra đúng "Tạo kỳ lương T10/2026". Commit: chưa commit *(frontend-engineer)*
+
+---
+
+### RVW-044 🟢 SUGGESTION — Cờ chỉ đọc theo bảng kê "mở" trong lúc tổng quan chốt đang tải/lỗi và không tự làm tươi khi máy chủ trả `E-dltl-027`
+
+- Vị trí: `hdđt_maxv/src/features/hrm/components/du_lieu_tinh_luong/useBangKeChiDoc.ts`:15-18; `components/chot_ky_luong/ChotKyLuongHeader.tsx`:62, :124
+- Vấn đề: `bangKeDaChot` chỉ bật khi `data` của `GET .../closing` đã có ⇒ lúc đang tải hoặc khi request lỗi (vd tenant chưa có bảng — RVW-038), 8 màn nhập liệu hiện như đang mở; người dùng soạn/nhập Excel xong mới ăn 403. Khi ghi bị từ chối `E-dltl-027` (người khác vừa chốt ở tab khác), FE chỉ toast, không nạp lại tổng quan ⇒ màn vẫn cho bấm tiếp. Tương tự, header lấy `periodLocked` từ `tongQuan` nên nút "Tính lương" bật trong lúc tải với kỳ đã khóa sổ, dù `period.status` đã có sẵn từ danh sách. Máy chủ vẫn chặn đúng nên chỉ là UX.
+- Đề xuất fix: header dùng `kyDaKhoaSo(period.status) || tongQuan?.periodLocked`; ở `onError` các mutation nhập liệu (cạnh `useInvalidateInputs`, `payrollInputsQueries.ts`:42) nếu `err.code === 'E-dltl-027'` thì invalidate `hrmPayrollPeriodKeys.closing(companyId, periodId)`; tùy chọn cho `useBangKeChiDoc` trả thêm `isLoading` để khóa nút ghi khi chưa biết trạng thái chốt.
+- Trạng thái: OPEN
+  → FIXED một phần [2026-09-11] — `ChotKyLuongHeader.tsx` khóa "Tính lương"/"Chốt số toàn kỳ" theo `kyDaKhoaSo(period.status)` (có ngay, không đợi tổng quan); `useBangKeChiDoc` không gọi `/closing` khi kỳ đã chỉ đọc. CHƯA làm: làm tươi tổng quan khi nhận `E-dltl-027`, khóa nút ghi lúc tổng quan đang tải (máy chủ vẫn chặn đúng). Commit: chưa commit *(frontend-engineer)*
+
+---
+
+**Verdict: ⚠️ Approve with comments — KHÔNG có 🔴 Blocking.** 3 🟡 (`RVW-036`…`RVW-038`) · 6 🟢 (`RVW-039`…`RVW-044`).
+
+Phần lõi đúng quyết định của chủ dự án và đúng hợp đồng: guard theo bảng kê phủ đủ 10/10 đường ghi, chỉ chặn 8 bảng kê dữ liệu kỳ (4 bảng kê dùng chung chỉ đánh dấu đã rà soát), mở chốt đúng chỉ chủ TK, "Lịch sử hoạt động" cô lập đúng theo `donViId`, tính-lương-tạm và khóa sổ tuần tự hóa đúng trên khóa dòng kỳ. Phía FE, nâng `PayrollPeriodProvider` lên `HrmPage` và chọn kỳ theo tháng không làm vỡ lối tắt Dashboard hay khu Bảng lương; luật hook, cache theo công ty, khóa nút theo vai trò đều đạt. Test tự động của phần mới tốt (9 ca, có ca race 409) nhưng mỏng ở chiều "đủ 10 đường ghi" (RVW-042).
+
+Điều kiện kèm theo (KHÔNG chặn merge, nhưng chặn go-live):
+- `RVW-038` 🟡 — **`sync:tenants` + `hrm:constraints` trên toàn bộ tenant production TRƯỚC khi deploy mã**, có bằng chứng `to_regclass` từng tenant trong `work-log.md`.
+- `RVW-036` 🟡 — BA chốt quy tắc xóa kỳ khi đã có bảng kê chốt số (chặn hay chỉ chủ TK), kèm nhật ký xóa kỳ.
+- `RVW-037` 🟡 — tách pha tính khỏi khóa dòng + timeout tường minh + giới hạn theo người dùng trước khi mở cho tenant đông nhân viên.
+- Quy trình: phiên này đi thẳng từ yêu cầu chủ dự án sang code ("ngoài luồng 3 Amigos"); chưa có `test-matrix`/`test-cases`/`test-report` nào phủ `AC-dltl-29…36`, và `CONTEXT_SUMMARY.md` dòng 29 tự ghi "chưa qua Tester-QA Phase B, chưa kiểm giao diện trên trình duyệt đã đăng nhập". Review này KHÔNG thay thế QA Phase B — đề nghị tester-qa chạy 8 AC trên tenant mẫu đã seed trước khi bàn giao người dùng cuối.
+- Carry-forward vẫn `OPEN`, không đánh số lại: `A-05` (nay gắn với RVW-037), `RVW-022b`/`ISSUE-blth-004`, `RVW-027`, `RVW-029`…`RVW-035`.
