@@ -59,6 +59,34 @@ export default function HrmDataTable<T extends GridValidRowModel>({
   pageSizeOptions = [10, 25, 50, 100],
   initialPageSize = 25,
 }: HrmDataTableProps<T>) {
+  // `@mui/x-data-grid` Community KHÔNG hỗ trợ initialState.pinnedColumns (chỉ Pro) —
+  // dùng lại kỹ thuật sticky CSS thủ công của BangLuongTable.tsx cũ (hàm dinhTrai()),
+  // dựa vào data-field mà DataGrid gắn sẵn trên header/cell.
+  const pinnedSx = pinnedLeftColumns?.length
+    ? (() => {
+        let left = 0;
+        const styles: Record<string, object> = {};
+        for (const field of pinnedLeftColumns) {
+          const col = columns.find((c) => c.field === field);
+          const width = col?.width ?? col?.minWidth ?? 100;
+          styles[`& .MuiDataGrid-columnHeader[data-field="${field}"]`] = {
+            position: "sticky",
+            left,
+            zIndex: 3,
+            backgroundColor: "background.paper",
+          };
+          styles[`& .MuiDataGrid-cell[data-field="${field}"]`] = {
+            position: "sticky",
+            left,
+            zIndex: 2,
+            backgroundColor: "background.paper",
+          };
+          left += width;
+        }
+        return styles;
+      })()
+    : undefined;
+
   return (
     <AsyncState loading={loading} error={error} empty={empty} emptyMessage={emptyMessage}>
       <Box sx={{ width: "100%" }}>
@@ -72,12 +100,9 @@ export default function HrmDataTable<T extends GridValidRowModel>({
           pageSizeOptions={pageSizeOptions}
           initialState={{
             pagination: { paginationModel: { pageSize: initialPageSize, page: 0 } },
-            ...(pinnedLeftColumns?.length
-              ? { pinnedColumns: { left: pinnedLeftColumns } }
-              : undefined),
           }}
           slots={{ footer: () => <Footer content={footer} /> }}
-          sx={{ maxHeight: "62vh" }}
+          sx={{ maxHeight: "62vh", ...pinnedSx }}
         />
       </Box>
     </AsyncState>
