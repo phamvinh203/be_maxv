@@ -526,3 +526,23 @@
 - Kiểm chứng: `npm run typecheck` exit 0 · `npm run lint` 4 lỗi = đúng baseline mã nháp chưa commit, 0 lỗi mới · `npm test` 939 ca pass (tăng 5), vẫn đúng 2 ca đỏ có sẵn TC-hrm-301/TC-hrm-316.
 - Bước tiếp theo: bước 3 — danh mục thu nhập (5 endpoint + seed lười `AC-tkt-003` dùng lại `DANH_MUC_THU_NHAP_SEED` đã có + `usageCount` + chặn xóa `E-tkt-002`).
 - Commit: chưa commit
+
+## [2026-09-14 23:21] backend-engineer — to_khai_thue bước 3: danh mục loại thu nhập ngoài lương
+
+- Nhiệm vụ: 5 endpoint danh mục (api-contract Mục 2) + seed lười AC-tkt-003 + `usageCount` + chặn xóa E-tkt-002. Đây là bước đầu tiên chạm thật vào endpoint nghiệp vụ; bản ghi thu nhập ở bước 4 tham chiếu danh mục này nên phải xong trước.
+- MỚI (`be_maxv/src/`):
+  - `helpers/hrm/toKhaiThueValidate.ts` — `kiemTraTkt()` bọc Zod để **lỗi kiểm đầu vào cũng mang mã `E-tkt-*`** (hợp đồng Mục 0.2 đòi mọi lỗi có `code`, kể cả lỗi Zod). Bọc ở đây thay vì sửa `utils/validate.ts`: file đó là hạ tầng chung, đổi hình dạng lỗi ở đó là đổi hợp đồng của mọi phân hệ cùng lúc. Chi tiết từng trường sai gộp vào `message` để người dùng biết sai ở đâu.
+  - `validators/hrm/to_khai_thue/incomeCategory.validator.ts` — schema lo HÌNH DẠNG; quan hệ nhóm ↔ tham số tách thành `soatThamSoTheoNhom()` để **một quy tắc phục vụ cả POST lẫn PUT** (PUT gộp giá trị cũ với giá trị mới RỒI mới soát, vì BR-tkt-003 nói về trạng thái SAU khi sửa chứ không phải mấy trường vừa gửi).
+  - `services/client/hrm/to_khai_thue/incomeCategory.service.ts` — 5 thao tác + seed lười + tự cấp mã.
+  - `controllers/client/hrm/to_khai_thue/incomeCategory.controller.ts` — file riêng, KHÔNG nhét vào controller nháp đang chờ viết lại.
+  - `__tests__/hrm/hrmIncomeCategory.test.ts` — 9 ca.
+- Quyết định đáng ghi:
+  - **Mở rộng BR-tkt-003 cho cả 4 nhóm.** Hợp đồng Mục 2.3 nêu đích danh 2 nhóm `EXEMPT_FULL`/`TAXABLE_FULL` là "có tham số thừa ⇒ từ chối", kèm lý do *"tham số thừa gây hiểu nhầm; từ chối thay vì lặng lẽ bỏ qua"*. Lý do đó áp y hệt cho 2 nhóm còn lại nên đã áp chung: mỗi nhóm chỉ nhận đúng tham số của mình. **Nếu BA thấy chặt quá thì nới ở đúng một chỗ `soatThamSoTheoNhom()`.**
+  - **Đổi nhóm thì tham số của nhóm cũ KHÔNG mang theo** — nếu không sẽ có bản ghi mang trần miễn thuế của nhóm đã bỏ, vừa vô nghĩa vừa dễ bị đọc nhầm sau này.
+  - Tự cấp mã dùng lại nguyên thuật toán quét-khe-trống + vòng thử lại 5 lượt của `sinhMaCa()` (ADR-001), kể cả phần "người dùng NHẬP mã thì KHÔNG thử lại" — thử lại ở đó là tự ý đổi mã họ đã cố ý chọn.
+  - `seedLuoiNeuRong` dùng `createMany` + `skipDuplicates`: hai người cùng mở màn lần đầu thì người sau không vỡ vì trùng mã.
+- Liên kết: BR-tkt-001…004 · FR-tkt-001…004 · AC-tkt-001…005 · E-tkt-001/002/003/016 · api-contract Mục 2 · ADR-001 · ADR-013 (sửa danh mục không hồi tố ⇒ trả `affectedRecordsCount`).
+- Kiểm chứng: `npm run typecheck` exit 0 · `npm run lint` 4 lỗi = baseline mã nháp, 0 lỗi mới · `npm test` 948 ca pass (tăng 9), vẫn đúng 2 ca đỏ có sẵn.
+- **Chưa đạt, ghi rõ để không tưởng nhầm là xong:** điều kiện nghiệm thu của QA là grep được 21 mã `E-tkt-*` trong **phản hồi HTTP thật**. Bộ ca hiện tại kiểm ở tầng service/validator, chưa có ca HTTP nào cho 5 endpoint này — cần bộ đồ gá API (tenant + vé đăng nhập) như `hrmSettingsShiftsHolidaysApi.test.ts` đang có. Thuộc phase tester-qa.
+- **Phần wiring chưa commit:** `routes/hrm/to_khai_thue/toKhaiThue.route.ts` đã nối 5 endpoint trong cây làm việc nhưng KHÔNG commit — file đó thuộc bộ nháp mà tài liệu đối soát kết luận phải viết lại. Cả `GET /tax-policies` của bước 1 cũng đang chờ cùng lý do. Khi làm xong bước 4-6 thì viết lại route/controller một lượt và toàn bộ trở nên gọi được.
+- Commit: chưa commit
