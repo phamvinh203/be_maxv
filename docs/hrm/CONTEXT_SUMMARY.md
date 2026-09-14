@@ -1254,3 +1254,16 @@ Kiểm định độc lập 2 phiên `frontend-engineer` (`work-log.md` `17:30` 
 | 2026-09-11 | backend-engineer + frontend-engineer (phiên được chủ dự án yêu cầu trực tiếp) | Triển khai đủ máy chủ + giao diện + tài liệu; `sync:tenants` + `hrm:constraints` trên 10/10 tenant dev/local — xem `work-log.md` phiên 2026-09-11 |
 | 2026-09-11 | code-reviewer | Review: ⚠️ Approve with comments — 0 🔴 · 3 🟡 (`RVW-036…038`) · 6 🟢 (`RVW-039…044`), xem `review-findings.md` |
 | 2026-09-11 | backend-engineer + frontend-engineer | `/simplify` + sửa findings: FIXED `RVW-040/041/042/043`, FIXED một phần `RVW-037/039/044`; còn OPEN `RVW-036` (chờ BA: xóa kỳ đã có bảng kê chốt số) và `RVW-038` (sync production trước deploy) — xem `work-log.md` phiên 02:36 |
+
+## 23. Đợt làm lại UI/UX HRM — nền tảng DataTable/FormDialog (2026-09-14)
+
+**Yêu cầu:** chủ dự án muốn làm lại UI/UX của `hdđt_maxv/src/features/hrm` (giao diện mọc tự nhiên qua nhiều đợt, không có design system dùng chung). Khảo sát trước khi thiết kế: 119 file/28 route, không nơi nào dùng `@mui/x-data-grid` (bảng tự dựng, phân trang client-side dù comment ghi "vài trăm-nghìn dòng"), `BangLuongTable.tsx` 19 cột trong đó 2 cột ẩn trong tooltip, 21 file dialog CRUD gần như copy-paste ở `du_lieu_tinh_luong`, form 100% `useState` tay, backend HRM (`nhanVien.service.ts`, `payrollCalculation.service.ts`) chưa hỗ trợ phân trang/sort server-side.
+
+**Quyết định (ADR-011):** dựng bộ component nền dùng chung tại `features/hrm/_shared/components/` (`HrmDataTable` bọc `@mui/x-data-grid`, `AsyncState` cho loading/empty/error, `HrmFormDialog` dùng `react-hook-form` + `zod`), pilot đầu tiên áp lên `BangLuongTable.tsx`. Giữ nguyên backend (phân trang vẫn client-side) và giữ nguyên nav — xem `architecture/adr/ADR-011-nen-tang-ui-datatable-form-dialog-hrm.md` để biết đầy đủ context/alternatives/trade-offs.
+
+**Tiến độ:**
+
+| Ngày | Ai | Việc |
+|---|---|---|
+| 2026-09-14 | architect (phiên được chủ dự án yêu cầu trực tiếp) | Khảo sát UI/UX + backend, chốt phạm vi qua trao đổi trực tiếp, ghi `ADR-011`; tiếp theo: lập kế hoạch triển khai pilot `BangLuongTable` |
+| 2026-09-14 | architect (cùng phiên) | Đọc `BangLuongTable.tsx`/`cotBangLuong.ts`/`bangLuongExcel.ts`/`BangLuongPanel.tsx` thật, viết kế hoạch triển khai 6 task tại `docs/superpowers/plans/2026-09-14-hrm-ui-foundation-bang-luong-pilot.md`; phát hiện thêm: thêm cột Lương %/Chuyên cần kéo theo phải sửa `bangLuongExcel.ts` (bỏ sheet "Chi tiết thu nhập" dư thừa + dòng ghi chú sai) — đã đưa vào Task 2 của kế hoạch. Chưa triển khai — chờ chủ dự án chọn cách thực thi (subagent-driven / inline)
