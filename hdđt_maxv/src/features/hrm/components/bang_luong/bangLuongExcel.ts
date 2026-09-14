@@ -6,7 +6,6 @@
  * không khớp với nguồn. Muốn đổi số thì sửa ở màn nguồn rồi tính lại.
  */
 
-import type { Workbook } from "exceljs";
 import { COT_BANG_LUONG, tongTheoCot } from "./cotBangLuong";
 import { HEADER_FILL, TIEN_FMT, TONG_FILL, taiVeExcel, toTieuDe } from "./excelChung";
 import type { DongBangLuong } from "../../types";
@@ -16,43 +15,10 @@ import type { DongBangLuong } from "../../types";
  * trên màn hình thay vì để Excel tự hiểu theo dấu gốc trong DB (RVW-A02). */
 const BU_TRU_FMT = `"+"${TIEN_FMT};"-"${TIEN_FMT};0`;
 
-/** Sheet giải thích các khoản không có cột riêng — xem ghi chú ở `BangLuongTable`. */
-function themSheetChiTiet(wb: Workbook, rows: DongBangLuong[]): void {
-  const ws = wb.addWorksheet("Chi tiết thu nhập");
-  ws.columns = [
-    { header: "Mã", width: 12 },
-    { header: "Họ và tên", width: 26 },
-    { header: "Lương theo ngày", width: 16 },
-    { header: "Tiền tăng ca", width: 16 },
-    { header: "Lương sản phẩm", width: 16 },
-    { header: "Thưởng", width: 14 },
-    { header: "KPI", width: 14 },
-    { header: "Lương phần trăm", width: 16 },
-    { header: "Chuyên cần", width: 14 },
-    { header: "Thu nhập", width: 16 },
-  ];
-  for (let i = 3; i <= 10; i += 1) ws.getColumn(i).numFmt = TIEN_FMT;
-  toTieuDe(ws, 1, 10, HEADER_FILL);
-  for (const row of rows) {
-    ws.addRow([
-      row.ma_nv,
-      row.ho_ten,
-      row.luong_theo_ngay,
-      row.tien_tang_ca,
-      row.luong_san_pham,
-      row.thuong,
-      row.kpi,
-      row.luong_phan_tram,
-      row.chuyen_can,
-      row.thu_nhap,
-    ]);
-  }
-}
-
 /**
  * Xuất bảng lương của kỳ.
  *
- * Luôn xuất **đủ 19 cột** và luôn theo **đồng**, bất kể màn hình đang để "Rút
+ * Luôn xuất **đủ 21 cột** và luôn theo **đồng**, bất kể màn hình đang để "Rút
  * gọn" hay đang xem theo nghìn/triệu: file này đi kèm chứng từ chi lương, thiếu
  * cột hay làm tròn về triệu là không đối chiếu được với phiếu chi.
  */
@@ -81,16 +47,7 @@ export async function xuatBangLuongExcel(
   tieuDe.alignment = { vertical: "middle", horizontal: "center" };
   ws.getRow(1).height = 26;
 
-  // Dòng 2: sheet chính chỉ 5/7 cột cấu thành "Thu nhập" (thiếu Lương % và Chuyên
-  // cần) — không có dòng này, người nhận cộng lệch số rồi tưởng sai (RVW-A03).
-  ws.mergeCells(2, 1, 2, soCot);
-  const ghiChu = ws.getCell(2, 1);
-  ghiChu.value =
-    "Cột \"Thu nhập\" gồm cả Lương % và Chuyên cần (không có cột riêng ở sheet này) — xem đủ 7 khoản cấu thành ở sheet \"Chi tiết thu nhập\".";
-  ghiChu.font = { italic: true, size: 10, color: { argb: "FF6B6B6B" } };
-  ghiChu.alignment = { vertical: "middle", horizontal: "center" };
-
-  const hangTieuDe = 4;
+  const hangTieuDe = 2;
   const rowTieuDe = ws.getRow(hangTieuDe);
   COT_BANG_LUONG.forEach((c, i) => {
     rowTieuDe.getCell(i + 1).value = c.header;
@@ -126,7 +83,6 @@ export async function xuatBangLuongExcel(
 
   ws.views = [{ state: "frozen", xSplit: 2, ySplit: hangTieuDe }];
 
-  themSheetChiTiet(wb, rows);
   taiVeExcel(
     (await wb.xlsx.writeBuffer()) as ArrayBuffer,
     `Bang-luong-${nhanKy.replace(/\W+/g, "-")}.xlsx`,
