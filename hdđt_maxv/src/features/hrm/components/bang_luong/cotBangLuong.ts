@@ -1,5 +1,5 @@
 /**
- * Mười chín cột của bảng lương.
+ * Hai mươi mốt cột của bảng lương.
  *
  * Bảng trên màn hình **và** file Excel đều đọc danh sách này, nên hai bên không
  * lệch nhau được: thêm một cột là cả hai chỗ cùng có, và số ở file xuất ra luôn
@@ -67,6 +67,8 @@ export const COT_BANG_LUONG: CotBangLuong[] = [
   { key: "luong_san_pham", header: "Lương theo sản phẩm", tien: true, cong: true, minWidth: 150, value: (r) => r.luong_san_pham },
   { key: "thuong", header: "Thưởng", tien: true, cong: true, minWidth: 110, value: (r) => r.thuong },
   { key: "kpi", header: "KPI", tien: true, cong: true, minWidth: 110, value: (r) => r.kpi },
+  { key: "luong_phan_tram", header: "Lương %", tien: true, cong: true, minWidth: 110, value: (r) => r.luong_phan_tram },
+  { key: "chuyen_can", header: "Chuyên cần", tien: true, cong: true, minWidth: 110, value: (r) => r.chuyen_can },
   { key: "thu_nhap", header: "Thu nhập", tien: true, cong: true, minWidth: 130, rutGon: true, value: (r) => r.thu_nhap },
   { key: "bao_hiem", header: "Bảo hiểm", tien: true, cong: true, minWidth: 120, rutGon: true, value: (r) => r.bao_hiem },
   { key: "cong_doan", header: "Công đoàn", tien: true, cong: true, minWidth: 110, value: (r) => r.cong_doan },

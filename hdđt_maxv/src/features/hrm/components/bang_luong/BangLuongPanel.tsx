@@ -131,7 +131,7 @@ export default function BangLuongPanel() {
     setDangXuat(true);
     try {
       await xuatBangLuongExcel(rows, ky.nhan);
-      toast.success("Đã xuất bảng lương — file ghi đủ 19 cột và theo đơn vị đồng.");
+      toast.success("Đã xuất bảng lương — file ghi đủ 21 cột và theo đơn vị đồng.");
     } catch (err) {
       toast.error(getErrorMessage(err, "Không xuất được bảng lương."));
     } finally {
@@ -243,7 +243,6 @@ export default function BangLuongPanel() {
           bảng lương.
         </Alert>
       )}
-      {isError && <Alert severity="error">{errorMessage}</Alert>}
 
       <ThanhLocBangLuong
         filters={filters}
@@ -257,12 +256,12 @@ export default function BangLuongPanel() {
         cheDo={cheDo}
         rutGon={mucChiTiet === "rut_gon"}
         isLoading={isLoading}
+        error={isError ? errorMessage : null}
       />
 
       <Typography variant="caption" color="text.secondary">
         Số liệu tính sẵn ở máy chủ từ Hợp đồng, Cài đặt lương, Chấm công và các màn của khu Dữ
-        liệu tính lương. Lương phần trăm và Chuyên cần không có cột riêng — di chuột vào cột "Thu
-        nhập" để xem đủ bảy khoản cấu thành.
+        liệu tính lương.
       </Typography>
     </Stack>
   );

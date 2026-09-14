@@ -747,9 +747,9 @@ export interface DongBangLuong {
   luong_san_pham: number;
   thuong: number;
   kpi: number;
-  /** Hoa hồng — gộp vào "Thu nhập", không có cột riêng. */
+  /** Hoa hồng — có cột riêng trong bảng lương, vẫn cộng vào "Thu nhập". */
   luong_phan_tram: number;
-  /** Chuyên cần còn lại sau khi trừ vi phạm — gộp vào "Thu nhập". */
+  /** Chuyên cần còn lại sau khi trừ vi phạm — có cột riêng trong bảng lương, vẫn cộng vào "Thu nhập". */
   chuyen_can: number;
 
   thu_nhap: number;
