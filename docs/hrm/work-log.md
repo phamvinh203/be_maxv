@@ -485,3 +485,25 @@
 - Chưa đụng tới: 14 vị trí số liệu lỗi thời trong mã nháp `to_khai_thue` (xem tài liệu đối soát Mục 7) — thuộc đợt bật lại FE, không phải việc này.
 - Liên kết: BUG-dltl-003 · BUG-dltl-004 · BR-hrm-081 · `doi-soat-ma-nhap-to-khai-thue.md` Mục 12.
 - Commit: chưa commit
+
+## [2026-09-14 22:52] backend-engineer — to_khai_thue bước 0: di trú M-1 + M-2
+
+- Nhiệm vụ: mở đường cho phase backend-engineer của sub-cụm `to_khai_thue`. Theo thứ tự việc ở `to_khai_thue/doi-soat-ma-nhap-to-khai-thue.md` Mục 10, bước 0 là di trú CSDL — **không** bắt đầu từ endpoint, vì không có bảng thì không endpoint nào code được.
+- Quyết định nghiệp vụ chốt trước khi làm: **OQ-tkt-02 — áp biểu thuế mới cho TOÀN BỘ năm 2026**, không tách H1/H2 (chủ dự án quyết). Đã ghi vào `data-model` Mục 7.1 ghi chú 3.
+- Đã sửa — lược đồ (`be_maxv/prisma/tenant/schema.prisma`):
+  - 4 enum mới: `OtherIncomeTaxGroup` · `ExemptCapPeriod` · `TaxLaborType` · `TaxMethod`.
+  - `PayrollModuleCode` thêm `TAX_SHEET`, kèm chú thích dài vì sao giá trị này **CỐ Ý nằm ngoài** `PAYROLL_MODULE_CODES` (hai hàng rào `lockAllPayrollModules` và `payrollModuleParamsSchema` phụ thuộc điều đó — thêm vào là tạo trạng thái "đã khóa nhưng không có số liệu chốt").
+  - 3 bảng mới: `hrm_tax_policies` (ADR-012) · `hrm_other_income_categories` · `hrm_tax_calculation_lines` (ADR-013 tầng tháng, `@@unique([periodId, recipientKey])`).
+  - `hrm_other_income_records` thêm 5 cột: `otherIncomeCategoryId` + `taxTreatmentGroup` (**nullable trong M-1/M-2**, siết NOT NULL ở M-3), `exemptAmount`, `taxableAmount`, `forceWithholding`. Cột `incomeType` giữ lại, đánh dấu lỗi thời, bỏ ở M-4.
+  - Quan hệ ngược `taxCalculationLines` trên `PayrollPeriod` và `hrm_nhan_vien`.
+- Đã sửa — ràng buộc (`src/services/shared/hrmTenantConstraints.ts`): 2 unique index SQL thô mà Prisma DSL không diễn tả được — `hrm_oic_ten_khong_trung` (tên danh mục theo `lower(btrim())`) và `hrm_oir_chong_trung` (chống trùng bản ghi, `COALESCE(ma_nv, 'VL:'||lower(btrim(fullName)))` vì `@@unique` của Prisma KHÔNG chặn được vãng lai — Postgres coi mọi NULL là khác nhau).
+- MỚI — dữ liệu khởi tạo:
+  - `src/constants/hrm/to_khai_thue/taxSeedData.ts` — 2 mốc chính sách + 12 danh mục. Đặt ở constants dùng chung vì có HAI nơi tiêu thụ: script này và seed lười `AC-tkt-003` sẽ viết ở bước 3. Biểu thuế lấy lại từ `BIEU_THUE_7_BAC_CU`/`BIEU_THUE_CHUAN_5_BAC` đã có, không chép số.
+  - `src/scripts/hrm/seed-chinh-sach-thue.ts` + npm script `hrm:seed-thue` (có cờ `--thu`). Ranh giới ghi: dòng đã có thì **GIỮ NGUYÊN, không ghi đè** — sau lần nạp đầu kế toán được sửa danh mục và script vận hành không được xóa công sức đó.
+- **Kiểm tra AN TOÀN trước khi ghi DB (việc đáng giá nhất phiên này):** dựng script tạm in ra SQL mà `db push` SẼ chạy (`prisma migrate diff`, chỉ đọc) trước khi chạy thật. Phát hiện lệnh push sẽ **xóa 3 index + 3 khóa ngoại** là drift có sẵn từ trước (tạo bằng SQL thô nên Prisma không biết), trong đó có `hrm_hop_dong_so_hd_key` (BR-hrm-056) và 3 FK của bảng hóa đơn/kho. Đã đối chiếu: **cả 6 đều được `hrm:constraints` dựng lại** — đúng thiết kế, đó là lý do tài liệu bắt chạy 2 lệnh liền nhau. **Không có DROP TABLE/DROP COLUMN nào.** Báo cáo chủ dự án và được đồng ý rồi mới chạy.
+- Đã chạy trên tenant: `sync:tenants` → `hrm:constraints` (áp 14, có sẵn 2) → `hrm:seed-thue`. Kiểm chứng độc lập bằng script tạm (đã xóa): 5 index + 3 FK + 5 bảng + enum `TAX_SHEET` đều có; phép tra cứu theo mốc hiệu lực cho đúng kết quả ADR-012 — kỳ 2025-06 ra biểu 7 bậc, kỳ 2026-01 và 2026-09 ra biểu 5 bậc; 12 danh mục chia đúng 8 `EXEMPT_FULL` / 2 `EXEMPT_CAPPED` / 1 `TAXABLE_FULL` / 1 `WITHHOLDING_FLAT`.
+- Về bước "chuyển `incomeType` sang danh mục" của M-2: **không cần script** — bảng `hrm_other_income_records` vừa được tạo lần đầu (trước đó chưa từng tồn tại trong DB), không tenant nào có dòng dữ liệu nào để chuyển.
+- Liên kết: ADR-012 · ADR-013 · `data-model-to-khai-thue.md` Mục 6 (M-1/M-2), Mục 7 (seed) · BR-tkt-001…003 · BR-tkt-006 · BR-tkt-013 · BR-tkt-017 · OQ-tkt-02 (đã chốt).
+- Kiểm chứng: `prisma validate` hợp lệ · `npm run typecheck` exit 0 · `hrm:seed-thue` chạy lượt 2 cho "đã thêm 0, giữ nguyên 14" (chạy-lại-cùng-kết-quả).
+- Bước tiếp theo: bước 1 (`resolveTaxPolicy` + `E-tkt-015` + `GET /tax-policies`) và bước 2 (hạ tầng 21 mã lỗi `E-tkt-*`). **CHƯA làm** — hai thứ này chặn mọi service phía sau nên phải xong trước khi chạm endpoint nghiệp vụ.
+- Commit: chưa commit

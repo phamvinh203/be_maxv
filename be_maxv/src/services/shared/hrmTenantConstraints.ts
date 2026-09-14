@@ -181,6 +181,37 @@ const CAU_IDEMPOTENT: { ten: string; sql: string }[] = [
     sql: `CREATE UNIQUE INDEX IF NOT EXISTS "m81_ma_dvcs_so_ct_key"
           ON "m81" (COALESCE("ma_dvcs", ''), "so_ct")`,
   },
+  {
+    // BR-tkt-003 (di trú M-1): tên danh mục thu nhập ngoài lương duy nhất, KHÔNG phân biệt
+    // hoa/thường và bỏ khoảng trắng đầu cuối. Dùng unique index BIỂU THỨC thay vì thêm cột
+    // `nameNormalized`: cột phái sinh là nguồn sự thật thứ hai — quên cập nhật một nhánh ghi là
+    // ràng buộc vô hiệu trong im lặng. Prisma DSL không diễn tả được `lower(btrim(...))`.
+    ten: 'unique BR-tkt-003 hrm_other_income_categories(lower(btrim(name)))',
+    sql: `CREATE UNIQUE INDEX IF NOT EXISTS "hrm_oic_ten_khong_trung"
+          ON "hrm_other_income_categories" (lower(btrim("name")))`,
+  },
+  {
+    // BR-tkt-006 / E-tkt-005 (di trú M-1): chống trùng bản ghi thu nhập ngoài lương.
+    //   - KHÔNG dùng `@@unique` của Prisma: `ma_nv` nullable ⇒ Postgres coi mọi NULL là KHÁC
+    //     nhau ⇒ cá nhân vãng lai không bị chặn trùng. Đó đúng là ca EC-tkt-07 (double-click)
+    //     mà quy tắc này sinh ra để chặn — nên phải `COALESCE` sang khóa vãng lai.
+    //   - KHÔNG kiểm bằng `findFirst` trước `create`: hai request song song cùng vượt qua bước
+    //     kiểm rồi cùng ghi. Kiểm ở tầng ứng dụng không chặn được đua.
+    //   - Service bắt `P2002` rồi ánh xạ sang 409 `E-tkt-005`.
+    // Giới hạn đã biết: cùng số tiền nhưng `paymentType` khác nhau cho ra `grossAmount` khác
+    // nhau ⇒ không bị coi là trùng. Đúng chữ BR-tkt-006 ("trùng HOÀN TOÀN").
+    // Lưu ý giai đoạn M-1/M-2: `otherIncomeCategoryId` còn nullable nên dòng cũ chưa gán danh
+    // mục vẫn lọt (NULL khác NULL). Hết M-2 mọi dòng đều có danh mục nên ràng buộc đủ hiệu lực.
+    ten: 'unique BR-tkt-006 hrm_other_income_records (chong trung)',
+    sql: `CREATE UNIQUE INDEX IF NOT EXISTS "hrm_oir_chong_trung"
+          ON "hrm_other_income_records" (
+            "periodId",
+            COALESCE("ma_nv", 'VL:' || lower(btrim("fullName"))),
+            "otherIncomeCategoryId",
+            "paymentDate",
+            "grossAmount"
+          )`,
+  },
 ];
 
 /**

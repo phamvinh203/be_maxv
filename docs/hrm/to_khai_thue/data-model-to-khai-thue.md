@@ -664,13 +664,13 @@ giam_tru_bao_hiem  = employeeInsuranceDeduction + min(BH hưu trí tự nguyện
 | `effectiveFrom` | `personalDeduction` | `dependentDeduction` | `taxBrackets` | `withholdingTaxRate` / `Threshold` | `voluntaryPensionMonthlyCap` | `lunchAllowanceTaxFreeCap` |
 |---|---:|---:|---|---|---:|---:|
 | `1900-01-01` (kế thừa) | **11.000.000** | **4.400.000** | biểu **7 bậc** cũ (5/10/15/20/25/30/35 — `payrollCalculation.service.ts:21-42`) | 10.0 / **2.000.000** | 1.000.000 | 730.000 |
-| `2026-01-01` | **15.500.000** | **6.200.000** | biểu **5 bậc** (10tr–5% · 30tr–10% · 60tr–20% · 100tr–30% · bậc mở–35%) | 10.0 / **2.000.000** `[CHỜ BA]` | **3.000.000** | **730.000** `[CHỜ BA]` |
+| `2026-01-01` | **15.500.000** | **6.200.000** | biểu **5 bậc** (10tr–5% · 30tr–10% · 60tr–20% · 100tr–30% · bậc mở–35%) | 10.0 / **5.000.000** | **3.000.000** | **1.200.000** |
 
 **Ba ghi chú bắt buộc đọc:**
 
 1. Dòng `1900-01-01` là **ảnh chụp hiện trạng**, không phải giá trị "đúng" — chép đúng những gì `GeneralSetting` và `tinhThueLuyTien()` đang chạy, để mọi kỳ đã chốt trong quá khứ tính lại vẫn ra đúng số cũ (A-tkt-01).
-2. `withholdingTaxThreshold = 2.000.000` và `lunchAllowanceTaxFreeCap = 730.000` ở dòng 2026 **cố tình giữ nguyên số cũ**: SRS Mục 14 điểm 5 nói rõ hai số này thuộc `srs-du-lieu-tinh-luong.md` (đã ký duyệt) và **không** được sửa trong đợt này. Đổi số ở đây là Architect tự ý đổi quyết định nghiệp vụ. Xem phản biện **P-02**.
-3. Ngày hiệu lực `2026-01-01` bám `BR-tkt-017` ("kỳ tính thuế 2026 trở đi"). **`OQ-tkt-02` còn mở** — nếu kết luận là H1/2026 vẫn tạm áp biểu cũ thì chỉ cần **sửa `effectiveFrom` thành `2026-07-01`** và thêm một dòng cho H1. Đây chính là giá trị của mô hình effective-dated: đổi 1 dòng dữ liệu, không đổi code.
+2. ~~`withholdingTaxThreshold = 2.000.000` và `lunchAllowanceTaxFreeCap = 730.000` ở dòng 2026 **cố tình giữ nguyên số cũ**~~ — **CẬP NHẬT 2026-09-14:** hai số này đã được BA chốt đổi thành **5.000.000** và **1.200.000** trong cùng ngày (BUG-dltl-004, theo NĐ 253/2026/NĐ-CP), nên `[CHỜ BA]` đã gỡ và bảng trên mang số mới. Ghi chú gốc giữ lại để hiểu vì sao bản thiết kế đầu tiên để số cũ: lúc đó hai field này còn thuộc phạm vi `srs-du-lieu-tinh-luong.md` chưa sửa. Phản biện **P-02** coi như đã đóng.
+3. Ngày hiệu lực `2026-01-01` bám `BR-tkt-017` ("kỳ tính thuế 2026 trở đi"). **`OQ-tkt-02` ĐÃ CHỐT 2026-09-14 — chủ dự án quyết áp biểu mới cho TOÀN BỘ năm 2026**, không tách H1/H2. Vì vậy giữ đúng 2 dòng như bảng trên, `effectiveFrom = 2026-01-01`. Nếu sau này cơ quan thuế hướng dẫn khác, mô hình effective-dated cho phép sửa bằng **một dòng dữ liệu** (đổi `effectiveFrom` thành `2026-07-01` + thêm dòng H1), không đụng code.
 
 ### 7.2. `hrm_other_income_categories` — 12 danh mục (BR-tkt-002, nguyên văn số liệu SRS)
 
