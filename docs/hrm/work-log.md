@@ -507,3 +507,22 @@
 - Kiểm chứng: `prisma validate` hợp lệ · `npm run typecheck` exit 0 · `hrm:seed-thue` chạy lượt 2 cho "đã thêm 0, giữ nguyên 14" (chạy-lại-cùng-kết-quả).
 - Bước tiếp theo: bước 1 (`resolveTaxPolicy` + `E-tkt-015` + `GET /tax-policies`) và bước 2 (hạ tầng 21 mã lỗi `E-tkt-*`). **CHƯA làm** — hai thứ này chặn mọi service phía sau nên phải xong trước khi chạm endpoint nghiệp vụ.
 - Commit: chưa commit
+
+## [2026-09-14 23:06] backend-engineer — to_khai_thue bước 1+2: ADR-012 và hạ tầng 21 mã lỗi
+
+- Nhiệm vụ: bước 1 (`resolveTaxPolicy` + `E-tkt-015` + `GET /tax-policies`) và bước 2 (hạ tầng mã lỗi) của thứ tự việc ở tài liệu đối soát. Gộp hai bước vì bước 1 cần `E-tkt-015`, mà tài liệu cũng dặn làm hạ tầng lỗi TRƯỚC khi chạm service — làm sau thì phải sờ lại từng service.
+- MỚI — hạ tầng mã lỗi:
+  - `src/constants/hrm/to_khai_thue/toKhaiThueErrors.ts` — đủ 21 mã `E-tkt-001…021`. **Khác `PAYROLL_ERROR_CODES` một điểm có chủ đích: HTTP status gắn liền với mã, không phải tham số của chỗ ném.** SRS đã quy định sẵn status từng mã mà mã lại được ném ở nhiều service; để status là tham số thì sớm muộn có chỗ ném đúng mã sai status — loại lỗi không test nào bắt trừ khi kiểm từng endpoint.
+  - `src/helpers/hrm/toKhaiThueErrors.ts` — lớp `ToKhaiThueError` theo khuôn `PayrollError`.
+  - `src/plugins/errorHandler.plugin.ts` — nới nhánh có sẵn thành `PayrollError || ToKhaiThueError`. Hai lớp cùng hình dạng (mã + status) nên đi chung một nhánh, KHÔNG nhân đôi khối trả lời; cũng KHÔNG tách lớp cha chung vì sẽ phải động vào `PayrollError` đang chạy ổn của phân hệ khác.
+- MỚI — ADR-012 (`src/services/client/hrm/to_khai_thue/taxPolicy.service.ts`):
+  - `resolveTaxPolicy(db, periodStartDate)` — NƠI TRA CỨU DUY NHẤT. Mốc so sánh là `period.startDate`, KHÔNG phải `paymentDate` từng bản ghi: cả kỳ tháng phải dùng một biểu, nếu không hai bản ghi cùng tháng tính theo hai biểu và thu nhập tính thuế lũy tiến mất nghĩa. Thiếu chính sách ⇒ `E-tkt-015` (500) kèm ngày và tên lệnh cần chạy, thay vì rơi vào 500 vô danh.
+  - `veTaxPolicyDto` + `getTaxPolicies` — tiền trả ra là `number`, không phải chuỗi Decimal (hợp đồng Mục 0.3).
+- Đã sửa: `controller.ts` + `route.ts` thêm `GET /to-khai-thue/tax-policies` (endpoint #22, qua `dbCoQuyenLuongPayroll` như mọi endpoint khác). `taxCalculation.service.ts` — bỏ đọc `GeneralSetting` singleton và 2 hằng dự phòng, chuyển sang `resolveTaxPolicy`; biểu thuế truyền vào `tinhThueLuyTien` nay lấy từ chính sách hiệu lực. Đây mới thật sự là "cài ADR-012": trước đó singleton chỉ giữ được MỘT bộ số nên không tính lại được kỳ lịch sử theo luật của kỳ đó.
+- MỚI — `src/__tests__/hrm/hrmTaxPolicy.test.ts`, 5 ca: hình dạng truy vấn tra cứu (sai một chi tiết là lấy nhầm chính sách mà vẫn chạy êm) · nhánh thiếu dữ liệu ném đúng `E-tkt-015`/500 và thông điệp có nêu ngày + lệnh · DTO trả số chứ không phải chuỗi · thứ tự sắp xếp · đủ 21 mã lỗi liên tục không khe trống, đúng status, mọi mã có thông điệp nghiệp vụ thật.
+- Phép chọn dòng theo ngày do Postgres làm nên test không kiểm phần đó; đã kiểm bằng dữ liệu thật ở phiên trước (kỳ 2025 ra biểu 7 bậc, kỳ 2026 ra biểu 5 bậc).
+- Đã chạy `prettier --write` cho các file MỚI của 2 phiên này — file mới thì không có cớ gì lệch định dạng, dù phần còn lại của repo còn 29 file lệch sẵn (hook để chế độ chỉ-cảnh-báo vì vậy).
+- Liên kết: ADR-012 · BR-tkt-017 · E-tkt-001…021 · NFR-tkt-004 · api-contract endpoint #22 · `doi-soat-ma-nhap-to-khai-thue.md` Mục 10 bước 1-2.
+- Kiểm chứng: `npm run typecheck` exit 0 · `npm run lint` 4 lỗi = đúng baseline mã nháp chưa commit, 0 lỗi mới · `npm test` 939 ca pass (tăng 5), vẫn đúng 2 ca đỏ có sẵn TC-hrm-301/TC-hrm-316.
+- Bước tiếp theo: bước 3 — danh mục thu nhập (5 endpoint + seed lười `AC-tkt-003` dùng lại `DANH_MUC_THU_NHAP_SEED` đã có + `usageCount` + chặn xóa `E-tkt-002`).
+- Commit: chưa commit

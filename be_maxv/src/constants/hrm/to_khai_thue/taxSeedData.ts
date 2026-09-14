@@ -68,10 +68,7 @@ export interface DanhMucThuNhapSeed {
   code: string;
   name: string;
   taxTreatmentGroup:
-    | 'EXEMPT_FULL'
-    | 'EXEMPT_CAPPED'
-    | 'TAXABLE_FULL'
-    | 'WITHHOLDING_FLAT';
+    'EXEMPT_FULL' | 'EXEMPT_CAPPED' | 'TAXABLE_FULL' | 'WITHHOLDING_FLAT';
   exemptCapAmount?: number;
   exemptCapPeriod?: 'MONTHLY' | 'YEARLY';
   withholdingRate?: number;
@@ -85,9 +82,21 @@ export interface DanhMucThuNhapSeed {
  * không áp dụng tham số đó". KHÔNG dùng `0` — `0` là một ngưỡng hợp lệ (khấu trừ từ đồng đầu tiên).
  */
 export const DANH_MUC_THU_NHAP_SEED: DanhMucThuNhapSeed[] = [
-  { code: 'TN01', name: 'Làm thêm giờ / ca đêm', taxTreatmentGroup: 'EXEMPT_FULL' },
-  { code: 'TN02', name: 'Trợ cấp thôi việc / mất việc', taxTreatmentGroup: 'EXEMPT_FULL' },
-  { code: 'TN03', name: 'Trợ cấp thất nghiệp', taxTreatmentGroup: 'EXEMPT_FULL' },
+  {
+    code: 'TN01',
+    name: 'Làm thêm giờ / ca đêm',
+    taxTreatmentGroup: 'EXEMPT_FULL',
+  },
+  {
+    code: 'TN02',
+    name: 'Trợ cấp thôi việc / mất việc',
+    taxTreatmentGroup: 'EXEMPT_FULL',
+  },
+  {
+    code: 'TN03',
+    name: 'Trợ cấp thất nghiệp',
+    taxTreatmentGroup: 'EXEMPT_FULL',
+  },
   {
     code: 'TN04',
     name: 'Công tác phí thực thanh toán có chứng từ',
@@ -98,7 +107,11 @@ export const DANH_MUC_THU_NHAP_SEED: DanhMucThuNhapSeed[] = [
     name: 'Khoản chi chung không ghi tên cá nhân (xe đưa đón, học phí con, khám sức khỏe)',
     taxTreatmentGroup: 'EXEMPT_FULL',
   },
-  { code: 'TN06', name: 'Trang phục hiện vật có hóa đơn', taxTreatmentGroup: 'EXEMPT_FULL' },
+  {
+    code: 'TN06',
+    name: 'Trang phục hiện vật có hóa đơn',
+    taxTreatmentGroup: 'EXEMPT_FULL',
+  },
   {
     code: 'TN07',
     name: 'Thưởng sáng kiến được cơ quan nhà nước công nhận',

@@ -66,7 +66,9 @@ async function xuLyMotTenant(
   let chinhSachDaCo = 0;
   for (const cs of CHINH_SACH_THUE_SEED) {
     const moc = new Date(`${cs.effectiveFrom}T00:00:00.000Z`);
-    const daCo = await db.taxPolicy.findUnique({ where: { effectiveFrom: moc } });
+    const daCo = await db.taxPolicy.findUnique({
+      where: { effectiveFrom: moc },
+    });
     if (daCo) {
       chinhSachDaCo++;
       continue;
@@ -91,7 +93,9 @@ async function xuLyMotTenant(
   let danhMucThem = 0;
   let danhMucDaCo = 0;
   for (const dm of DANH_MUC_THU_NHAP_SEED) {
-    const daCo = await db.otherIncomeCategory.findUnique({ where: { code: dm.code } });
+    const daCo = await db.otherIncomeCategory.findUnique({
+      where: { code: dm.code },
+    });
     if (daCo) {
       danhMucDaCo++;
       continue;
