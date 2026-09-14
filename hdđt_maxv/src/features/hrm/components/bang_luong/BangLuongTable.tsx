@@ -30,9 +30,11 @@ interface Props {
  * Bảng lương của kỳ — dùng `HrmDataTable` (bọc `@mui/x-data-grid` Community).
  *
  * Hai cột đầu (Mã NV, Họ và tên) dính trái qua tính năng pinning của DataGrid.
- * Đủ 21 cột đều là cột thật (không còn khoản nào chỉ xem được qua tooltip) —
- * cột nào không cần trong "Rút gọn" thì ẩn qua `cotTheoMuc`, người dùng vẫn tự
- * bật lại qua nút chọn cột của DataGrid nếu muốn xem thêm ở chế độ Rút gọn.
+ * Đủ 21 cột đều là cột thật (không còn khoản nào chỉ xem được qua tooltip).
+ * "Rút gọn" chỉ hiện 9 cột cố định (không gồm Lương %/Chuyên cần) — `cotTheoMuc`
+ * LỌC BỚT mảng cột trước khi đưa vào DataGrid, nên hai cột đó không có trong
+ * danh sách nút chọn cột ở chế độ này; muốn xem phải chuyển sang "Đầy đủ",
+ * KHÔNG bật lại được từ nút chọn cột khi đang ở Rút gọn.
  */
 export default function BangLuongTable({ rows, cheDo, rutGon, isLoading, error }: Props) {
   const cot = useMemo(() => cotTheoMuc(rutGon), [rutGon]);
@@ -52,6 +54,10 @@ export default function BangLuongTable({ rows, cheDo, rutGon, isLoading, error }
           field: c.key,
           headerName: c.tien ? `${c.header} (${hauTo})` : c.header,
           minWidth: c.minWidth,
+          // Cột dính trái (stickyWidth) cần `width` cố định khớp đúng số `HrmDataTable`
+          // dùng để tính offset `left` — thiếu `width` thì DataGrid tự co về 100px trong khi
+          // offset tính theo `minWidth`, gây 2 cột dính đè lên nhau vài px (RVW I1).
+          ...(c.stickyWidth ? { width: c.stickyWidth } : undefined),
           align: c.align ?? "right",
           headerAlign: c.align ?? "right",
           sortable: true,
