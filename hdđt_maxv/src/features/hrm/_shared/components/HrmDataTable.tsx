@@ -62,6 +62,13 @@ export default function HrmDataTable<T extends GridValidRowModel>({
   // `@mui/x-data-grid` Community KHÔNG hỗ trợ initialState.pinnedColumns (chỉ Pro) —
   // dùng lại kỹ thuật sticky CSS thủ công của BangLuongTable.tsx cũ (hàm dinhTrai()),
   // dựa vào data-field mà DataGrid gắn sẵn trên header/cell.
+  // Yêu cầu bắt buộc đi kèm (xem <DataGrid> bên dưới):
+  // - disableVirtualization: cột "dính" CSS thuần không được exempt khỏi column
+  //   virtualization (đó là cơ chế của Pro state.pinnedColumns) — cuộn ngang xa quá
+  //   buffer sẽ bị unmount khỏi DOM, để lại khoảng trống. Grid đã bound theo trang
+  //   (tối đa 100 dòng/trang) nên tắt virtualization chấp nhận được.
+  // - disableColumnResize: offset `left` tính 1 lần từ `columns` (static), không theo
+  //   width thực tế đang render — resize cột sẽ làm lệch offset.
   const pinnedSx = pinnedLeftColumns?.length
     ? (() => {
         let left = 0;
@@ -97,6 +104,8 @@ export default function HrmDataTable<T extends GridValidRowModel>({
           rowHeight={rowHeight}
           density="compact"
           disableRowSelectionOnClick
+          disableColumnResize
+          disableVirtualization
           pageSizeOptions={pageSizeOptions}
           initialState={{
             pagination: { paginationModel: { pageSize: initialPageSize, page: 0 } },
