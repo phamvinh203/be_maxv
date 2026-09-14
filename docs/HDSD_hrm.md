@@ -393,7 +393,7 @@ Vào **HRM › Bảng lương**, kỳ lương lấy theo ô tháng ở góc ph�
 |---|---|
 | Họ và tên, Bộ phận/Chức vụ, NPT | Thông tin định danh và số người phụ thuộc đang giảm trừ. |
 | Lương, Ngày công, Giờ tăng ca, Tiền tăng ca, Lương theo ngày, Lương theo sản phẩm, Thưởng, KPI | Các khoản thu nhập theo từng nguồn, khớp với dữ liệu đã nhập ở khu Dữ liệu tính lương. |
-| **Thu nhập** | Tổng toàn bộ các khoản thu nhập cộng lại — **di chuột vào số này sẽ hiện chú thích (tooltip)** liệt kê đủ 7 khoản cấu thành: Lương theo ngày, Tăng ca, Sản phẩm, Thưởng, KPI, Lương % và Chuyên cần. Hai khoản Lương % và Chuyên cần không có cột riêng trên bảng, chỉ thấy được qua tooltip này. |
+| **Thu nhập** | Tổng toàn bộ 7 khoản thu nhập cộng lại: Lương theo ngày, Tăng ca, Sản phẩm, Thưởng, KPI, Lương % và Chuyên cần — mỗi khoản đều có cột riêng trên bảng (bật/tắt cột qua nút chọn cột nếu đang ở chế độ "Đầy đủ"). |
 | Bảo hiểm, Công đoàn, KPCĐ (cty) | Các khoản trích nộp bảo hiểm/công đoàn. |
 | Các khoản bù trừ | Tổng các khoản ứng/bù trừ đã áp ở Mục 5.8 — số màu đỏ có dấu trừ là bị khấu trừ, số màu xanh có dấu cộng là được bù thêm. |
 | Thuế TNCN | Số thuế thu nhập cá nhân phải khấu trừ trong kỳ. |
