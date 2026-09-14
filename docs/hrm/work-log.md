@@ -546,3 +546,22 @@
 - **Chưa đạt, ghi rõ để không tưởng nhầm là xong:** điều kiện nghiệm thu của QA là grep được 21 mã `E-tkt-*` trong **phản hồi HTTP thật**. Bộ ca hiện tại kiểm ở tầng service/validator, chưa có ca HTTP nào cho 5 endpoint này — cần bộ đồ gá API (tenant + vé đăng nhập) như `hrmSettingsShiftsHolidaysApi.test.ts` đang có. Thuộc phase tester-qa.
 - **Phần wiring chưa commit:** `routes/hrm/to_khai_thue/toKhaiThue.route.ts` đã nối 5 endpoint trong cây làm việc nhưng KHÔNG commit — file đó thuộc bộ nháp mà tài liệu đối soát kết luận phải viết lại. Cả `GET /tax-policies` của bước 1 cũng đang chờ cùng lý do. Khi làm xong bước 4-6 thì viết lại route/controller một lượt và toàn bộ trở nên gọi được.
 - Commit: chưa commit
+
+## [2026-09-14 23:39] backend-engineer — to_khai_thue bước 4: bản ghi thu nhập ngoài lương
+
+- Nhiệm vụ: engine 4 nhóm xử lý thuế (BR-tkt-007/008) + `preview` + CRUD + snapshot ADR-013 tầng bản ghi + chống trùng + guard khóa kỳ. Đây là phần nặng nhất của lộ trình; Bảng tính thuế ở bước 5 đọc `taxableAmount`/`taxDeducted` do bước này ghi ra.
+- MỚI (`be_maxv/src/`):
+  - `services/.../to_khai_thue/otherIncomeTax.ts` — engine **HÀM THUẦN**: mọi thứ cần biết nằm trong tham số, kể cả phần trần đã dùng trong kỳ; truy vấn CSDL để ở service. Nhờ vậy 4 nhánh + mọi biên kiểm được bằng ca kiểm thuần. `NFR-tkt-004` cấm công thức thuế nằm hai nơi — đây là nơi DUY NHẤT.
+  - `services/.../to_khai_thue/otherIncomeRecord.service.ts` — 6 thao tác + tra phần trần đã dùng + guard khóa.
+  - `validators/.../otherIncomeRecord.validator.ts`, `controllers/.../otherIncomeRecord.controller.ts`, `__tests__/hrm/hrmOtherIncomeTax.test.ts` (13 ca).
+- Bốn điểm sửa so với mã nháp, đáng ghi vì đều là lỗi tính tiền:
+  1. **Trường nhập là `amount` DUY NHẤT.** Nháp cho gửi cả `grossAmount` lẫn `netAmount` — mở đường cho client gửi cặp số không khớp mà máy chủ không biết tin cái nào. Cũng KHÔNG nhận `taxDeductionType`: để client gửi nghĩa là client tự chọn mình bị khấu trừ bao nhiêu.
+  2. **Ngưỡng khấu trừ tra từ danh mục**, không hằng số. Nháp khấu trừ 10% từ đồng đầu tiên — sai cả luật cũ lẫn mới.
+  3. **Trần miễn thuế tính LŨY KẾ** theo cùng người + cùng danh mục trong tháng/năm, không phải cho mỗi lần chi. Chia theo lần chi thì một người nhận 3 lần trong tháng được miễn gấp ba.
+  4. **Khoản khấu trừ riêng KHÔNG cộng lũy tiến** vào Bảng tính thuế — hai cơ chế độc lập, cộng vào nữa là đánh thuế hai lần trên cùng một khoản (đúng lỗi L-03 của mã nháp).
+- **QUYẾT ĐỊNH CẦN CHỦ DỰ ÁN XÁC NHẬN — `GAP-QA-tkt-01`:** khoản `TAXABLE_FULL` trả theo NET hiện bị **CHẶN** (E-tkt-004 kèm câu giải thích), thay vì gán `gross = net` như mã nháp. Lý do: quy đổi NET→GROSS ở nhánh lũy tiến phụ thuộc VÒNG vào thuế suất biên của cả tháng nên không giải được ở mức từng bản ghi; để im lặng thì kế toán nhập NET 10 triệu sẽ thấy gross 10 triệu và tin là đúng trong khi số thuế thật cao hơn. Đây là **phương án tạm, chặn ở đúng một chỗ** trong `otherIncomeTax.ts` — BA chốt cách quy đổi thì mở lại.
+- Chi tiết kỹ thuật đáng nhớ: cột `incomeType` cũ còn NOT NULL tới M-4 nên bản ghi mới điền bằng TÊN danh mục (mã mới không đọc cột này); `update` bỏ chính bản ghi đang sửa ra khỏi phần trần đã dùng, nếu không sửa một khoản ăn ca sẽ tự trừ vào trần của chính nó; chống trùng dựa `P2002` của unique index CSDL chứ không `findFirst` trước `create` (hai request song song cùng vượt qua bước kiểm rồi cùng ghi).
+- Liên kết: BR-tkt-005…009 · AC-tkt-006…015, AC-tkt-019 · E-tkt-003/004/005/006/007/016/017/021 · ADR-013 tầng bản ghi · api-contract Mục 3 · GAP-QA-tkt-01.
+- Kiểm chứng: `npm run typecheck` exit 0 · `npm run lint` 4 lỗi = baseline mã nháp, 0 lỗi mới · `npm test` 961 ca pass (tăng 13), vẫn đúng 2 ca đỏ có sẵn.
+- **Chưa có ca HTTP** (như bước 3) và **phần nối route vẫn ngoài commit** — 12 endpoint đã code (1+5+6) hiện chỉ chạy trong cây làm việc, chờ đợt viết lại route/controller sau bước 6.
+- Commit: chưa commit
