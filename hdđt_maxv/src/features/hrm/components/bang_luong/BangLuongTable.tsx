@@ -1,4 +1,5 @@
 import { useCallback, useMemo } from "react";
+import Alert from "@mui/material/Alert";
 import Box from "@mui/material/Box";
 import Stack from "@mui/material/Stack";
 import Typography from "@mui/material/Typography";
@@ -176,16 +177,23 @@ export default function BangLuongTable({ rows, cheDo, rutGon, isLoading, error }
   );
 
   return (
-    <HrmDataTable<DongBangLuong>
-      rows={rows}
-      columns={columns}
-      getRowId={(row) => row.ma_nv}
-      loading={isLoading && rows.length === 0}
-      error={error ?? null}
-      empty={!isLoading && rows.length === 0}
-      emptyMessage="Không có nhân viên nào khớp bộ lọc."
-      pinnedLeftColumns={["ma_nv", "ho_ten"]}
-      footer={rows.length > 0 ? tongCong : undefined}
-    />
+    <>
+      {error && rows.length > 0 && (
+        <Alert severity="warning" sx={{ mb: 1 }}>
+          {error}
+        </Alert>
+      )}
+      <HrmDataTable<DongBangLuong>
+        rows={rows}
+        columns={columns}
+        getRowId={(row) => row.ma_nv}
+        loading={isLoading && rows.length === 0}
+        error={rows.length === 0 ? (error ?? null) : null}
+        empty={!isLoading && rows.length === 0}
+        emptyMessage="Không có nhân viên nào khớp bộ lọc."
+        pinnedLeftColumns={["ma_nv", "ho_ten"]}
+        footer={rows.length > 0 ? tongCong : undefined}
+      />
+    </>
   );
 }

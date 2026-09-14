@@ -8,6 +8,7 @@ import {
 } from "@mui/x-data-grid";
 import Box from "@mui/material/Box";
 import AsyncState from "./AsyncState";
+import { useDisplaySettings } from "../../../../theme/displaySettings";
 
 interface HrmDataTableProps<T extends GridValidRowModel> {
   rows: T[];
@@ -59,6 +60,8 @@ export default function HrmDataTable<T extends GridValidRowModel>({
   pageSizeOptions = [10, 25, 50, 100],
   initialPageSize = 25,
 }: HrmDataTableProps<T>) {
+  const { settings } = useDisplaySettings();
+
   // `@mui/x-data-grid` Community KHÔNG hỗ trợ initialState.pinnedColumns (chỉ Pro) —
   // dùng lại kỹ thuật sticky CSS thủ công của BangLuongTable.tsx cũ (hàm dinhTrai()),
   // dựa vào data-field mà DataGrid gắn sẵn trên header/cell.
@@ -102,7 +105,7 @@ export default function HrmDataTable<T extends GridValidRowModel>({
           columns={columns}
           getRowId={getRowId}
           rowHeight={rowHeight}
-          density="compact"
+          density={settings.density}
           disableRowSelectionOnClick
           disableColumnResize
           disableVirtualization

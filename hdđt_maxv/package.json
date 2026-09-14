@@ -24,7 +24,8 @@
     "react-dom": "^19.2.7",
     "react-hook-form": "^7.88.0",
     "react-router-dom": "^7.18.1",
-    "react-toastify": "^11.1.0"
+    "react-toastify": "^11.1.0",
+    "zod": "4.4.3"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",

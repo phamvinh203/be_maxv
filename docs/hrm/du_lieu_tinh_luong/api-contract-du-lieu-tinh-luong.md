@@ -725,7 +725,7 @@ Mọi endpoint trên: **200 OK** `{ success:true, data:{ …PayrollPeriod } }` �
 | `tien_tang_ca` | `otAmount` | |
 | **`luong_theo_ngay`** | **`proratedWorkSalary + allowanceInPeriodTotal`** ⭐ | `proratedWorkSalary` **chỉ** là phần hợp đồng (SRS 15.5 chốt giữ nguyên nghĩa). Bản mock FE gộp cả phụ cấp vào cột này ⇒ muốn khớp mock thì **phải cộng thêm** `allowanceInPeriodTotal`. Xem ADR-010 Q-3 |
 | `luong_san_pham` · `thuong` · `kpi` | `pieceworkSalary` · `bonusSalary` · `kpiSalary` | |
-| `luong_phan_tram` · `chuyen_can` | `commissionSalary` · `diligenceSalary` | không có cột riêng, đã nằm trong "Thu nhập" |
+| `luong_phan_tram` · `chuyen_can` | `commissionSalary` · `diligenceSalary` | có cột riêng trong bảng lương UI và file Excel xuất; vẫn nằm trong tổng "Thu nhập" |
 | `thu_nhap` | `grossIncome` | đã gồm `allowanceInPeriodTotal` |
 | **`thu_nhap_chiu_thue`** | **suy ra**: `grossIncome − otTaxExemptAmount − lunchAllowanceExemptAmount − otherAllowanceTaxExemptAmount` ⭐ | **4** số hạng, không phải 3 (thêm `otherAllowanceTaxExemptAmount` sau khi chốt `Q-1`). **KHÔNG** dùng `taxableIncome` (đã trừ giảm trừ gia cảnh ở nhánh lũy tiến) — xem 8.1.2 |
 | `luong_bhxh` | `insuranceSalaryBase` | gốc **theo hợp đồng**, chưa kẹp trần |
