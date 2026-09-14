@@ -9,6 +9,10 @@ import {
   tinhKhoanPhuCapTheoKy,
   tinhThueLuyTien,
 } from '../../services/client/hrm/du_lieu_tinh_luong/payrollCalculation.service';
+import {
+  BIEU_THUE_7_BAC_CU,
+  BIEU_THUE_CHUAN_5_BAC,
+} from '../../services/client/hrm/cau_hinh_mac_dinh/generalSettings.service';
 
 /**
  * KIỂM THỬ ENGINE THUẦN (không qua HTTP) cho pipeline 10 bước của Bảng lương tổng hợp
@@ -50,8 +54,12 @@ const DEFAULT_SETTING = {
   unionFeeEmployeeRate: new Prisma.Decimal(1.0),
   unionFeeMaxAmount: new Prisma.Decimal(234_000),
   unionFeeCompanyRate: new Prisma.Decimal(2.0),
-  personalDeduction: new Prisma.Decimal(11_000_000),
-  dependentDeduction: new Prisma.Decimal(4_400_000),
+  personalDeduction: new Prisma.Decimal(15_500_000),
+  dependentDeduction: new Prisma.Decimal(6_200_000),
+  taxBrackets: BIEU_THUE_CHUAN_5_BAC,
+  // Hai ngưỡng dưới là SỐ CỦA CÔNG TY GIẢ ĐỊNH trong test, KHÔNG phải mặc định pháp lý (nay là
+  // 1.200.000 và 5.000.000 — xem `khoiTaoCauHinhMacDinh`). Giữ nguyên số cũ để các ca kiểm tra
+  // đúng CƠ CHẾ đọc cấu hình/chặn trần, không phải kiểm lại con số luật.
   lunchAllowanceTaxFreeCap: new Prisma.Decimal(730_000),
   withholdingTaxRate: new Prisma.Decimal(10.0),
   withholdingTaxThreshold: new Prisma.Decimal(2_000_000),
@@ -303,24 +311,48 @@ test('TC-blth-004: Set lương tồn tại nhưng CHƯA APPROVED -> không đư�
 });
 
 /* ════════════════════════════════════════════════════════════════════
- * Nhóm 2 — Biểu thuế TNCN 7 bậc (đối chiếu, regression)
+ * Nhóm 2 — Biểu thuế TNCN 5 bậc (đối chiếu, regression)
  * ════════════════════════════════════════════════════════════════════ */
 
-test('TC-blth-006..012: biểu thuế 7 bậc — đúng từng bậc theo Điều 22 Luật Thuế TNCN', () => {
-  assert.equal(tinhThueLuyTien(5_000_000), 250_000); // bậc 1
-  assert.equal(tinhThueLuyTien(10_000_000), 750_000); // bậc 2
-  assert.equal(tinhThueLuyTien(18_000_000), 1_950_000); // bậc 3
-  assert.equal(tinhThueLuyTien(32_000_000), 4_750_000); // bậc 4
-  assert.equal(tinhThueLuyTien(52_000_000), 9_750_000); // bậc 5
-  assert.equal(tinhThueLuyTien(80_000_000), 18_150_000); // bậc 6
-  assert.equal(tinhThueLuyTien(100_000_000), 25_150_000); // bậc 7, mở
+test('TC-blth-006..012: biểu thuế 5 bậc — đúng từng bậc theo Luật Thuế TNCN 109/2025/QH15', () => {
+  assert.equal(tinhThueLuyTien(5_000_000), 250_000); // trong bậc 1
+  assert.equal(tinhThueLuyTien(10_000_000), 500_000); // hết bậc 1 (10tr × 5%)
+  assert.equal(tinhThueLuyTien(18_000_000), 1_300_000); // bậc 2
+  assert.equal(tinhThueLuyTien(32_000_000), 2_900_000); // bậc 3
+  assert.equal(tinhThueLuyTien(52_000_000), 6_900_000); // bậc 3
+  assert.equal(tinhThueLuyTien(80_000_000), 14_500_000); // bậc 4
+  assert.equal(tinhThueLuyTien(100_000_000), 20_500_000); // hết bậc 4
+  assert.equal(tinhThueLuyTien(150_000_000), 38_000_000); // bậc 5, mở
 });
 
-test('TC-blth-013: biểu 7 bậc KHÔNG được trùng kết quả biểu 5 bậc cắt cụt ở 25%', () => {
-  const bay_bac = tinhThueLuyTien(100_000_000);
-  const nam_bac_sai =
+test('TC-blth-013: biểu chuẩn KHÔNG được trùng kết quả hai biểu lỗi thời', () => {
+  const chuan = tinhThueLuyTien(100_000_000);
+
+  // (a) Biểu 5 bậc cắt cụt ở 25% — lỗi mã cũ, chưa bao giờ đúng luật nào.
+  const namBacCatCut =
     5_000_000 * 0.05 + 5_000_000 * 0.1 + 8_000_000 * 0.15 + 14_000_000 * 0.2 + (100_000_000 - 32_000_000) * 0.25;
-  assert.notEqual(bay_bac, Math.round(nam_bac_sai));
+  assert.notEqual(chuan, Math.round(namBacCatCut));
+
+  // (b) Biểu 7 bậc Điều 22 — từng đúng luật tới hết kỳ tính thuế 2025. Con số 25.150.000 là kết
+  // quả mà bản hardcode cũ trả về: engine sau khi đọc biểu từ cấu hình phải tính lại y hệt khi
+  // được đưa đúng bộ số đó — đây là phép kiểm số học của đợt sửa BUG-dltl-003.
+  const bayBacDieu22 = tinhThueLuyTien(100_000_000, BIEU_THUE_7_BAC_CU);
+  assert.equal(bayBacDieu22, 25_150_000);
+  assert.notEqual(chuan, bayBacDieu22);
+});
+
+test('BUG-dltl-003: biểu thuế đọc từ cấu hình, biểu méo mó thì lùi về biểu chuẩn', () => {
+  // Công ty tự đặt biểu phẳng 2 bậc 10% — engine phải theo, không được dùng biểu chuẩn.
+  const bieuRieng = [
+    { khoang: 20_000_000, thueSuat: 10 },
+    { khoang: null, thueSuat: 10 },
+  ];
+  assert.equal(tinhThueLuyTien(30_000_000, bieuRieng), 3_000_000);
+
+  // Cột Json méo mó (sửa tay, thiếu trường) KHÔNG được tính ra số rác.
+  for (const meoMo of [null, [], 'chuỗi lạ', [null, null], [{ a: 1 }], 42]) {
+    assert.equal(tinhThueLuyTien(100_000_000, meoMo), 20_500_000);
+  }
 });
 
 /* ════════════════════════════════════════════════════════════════════
@@ -388,7 +420,7 @@ test('TC-blth-019: trich_bhxh=false -> cả 2 trần = 0đ (giữ nguyên hành 
 });
 
 /* ════════════════════════════════════════════════════════════════════
- * Nhóm 4 — Miễn thuế OT vượt chuẩn (BR-dltl-025, ADR-010 QĐ-1)
+ * Nhóm 4 — Miễn thuế tiền làm thêm giờ (BR-dltl-025, ADR-010 QĐ-1; miễn 100% từ 2026)
  * ════════════════════════════════════════════════════════════════════ */
 
 function contractOt(luongChinh = 15_600_000, overrides: Record<string, unknown> = {}) {
@@ -410,13 +442,14 @@ function contractOt(luongChinh = 15_600_000, overrides: Record<string, unknown> 
   ];
 }
 
-test('TC-blth-020: OT ngày thường 150% — otHourlyRate=75.000đ, miễn thuế đúng phần vượt chuẩn', async () => {
+test('TC-blth-020: OT ngày thường 150% — otHourlyRate=75.000đ, miễn thuế TOÀN BỘ tiền OT', async () => {
   const row = await calcNV0001({
     employees: [makeEmployee({ hop_dong: contractOt() })],
     overtimes: [overtimeRecord(10, 15, 150)],
   });
   assert.equal(row.otAmount, 1_125_000);
-  assert.equal(row.otTaxExemptAmount, 375_000);
+  // BUG-dltl-004: luật cũ chỉ miễn phần chênh lệch (375.000), từ 2026 miễn cả tiền OT.
+  assert.equal(row.otTaxExemptAmount, 1_125_000);
 });
 
 test('TC-blth-021: OT ngày nghỉ 200%', async () => {
@@ -425,7 +458,7 @@ test('TC-blth-021: OT ngày nghỉ 200%', async () => {
     overtimes: [overtimeRecord(5, 10, 200, 'chu_nhat_ngay')],
   });
   assert.equal(row.otAmount, 750_000);
-  assert.equal(row.otTaxExemptAmount, 375_000);
+  assert.equal(row.otTaxExemptAmount, 750_000);
 });
 
 test('TC-blth-022: OT ngày lễ 300%', async () => {
@@ -434,7 +467,7 @@ test('TC-blth-022: OT ngày lễ 300%', async () => {
     overtimes: [overtimeRecord(4, 12, 300, 'ngay_le_ngay')],
   });
   assert.equal(row.otAmount, 900_000);
-  assert.equal(row.otTaxExemptAmount, 600_000);
+  assert.equal(row.otTaxExemptAmount, 900_000);
 });
 
 test('TC-blth-023: cộng dồn cả 3 loại OT trong 1 kỳ', async () => {
@@ -447,7 +480,7 @@ test('TC-blth-023: cộng dồn cả 3 loại OT trong 1 kỳ', async () => {
     ],
   });
   assert.equal(row.otAmount, 2_775_000);
-  assert.equal(row.otTaxExemptAmount, 1_350_000);
+  assert.equal(row.otTaxExemptAmount, 2_775_000);
   assert.equal(row.otRawHours, 19);
 });
 

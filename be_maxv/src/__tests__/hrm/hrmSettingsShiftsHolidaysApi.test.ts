@@ -274,18 +274,18 @@ test('7.1 Cấu hình mặc định — TC-hrm-273…287', async (t) => {
     assert.equal(d.id, 'DEFAULT');
     assert.equal(d.baseSalary, '2340000');
     assert.equal(d.regionMinSalary, '4960000');
-    assert.equal(d.personalDeduction, '11000000');
-    assert.equal(d.dependentDeduction, '4400000');
+    assert.equal(d.personalDeduction, '15500000');
+    assert.equal(d.dependentDeduction, '6200000');
     assert.equal(d.standardHoursPerDay, '8');
     // ADR-010 QĐ-2 (2026-09-10) — 3 tham số mới của Bảng lương tổng hợp (BR-dltl-026/027).
-    assert.equal(d.lunchAllowanceTaxFreeCap, '730000');
+    assert.equal(d.lunchAllowanceTaxFreeCap, '1200000');
     assert.equal(d.withholdingTaxRate, '10');
-    assert.equal(d.withholdingTaxThreshold, '2000000');
+    assert.equal(d.withholdingTaxThreshold, '5000000');
     assert.ok(Object.keys(d).length > 30, `phải có > 30 tham số, đang có ${Object.keys(d).length}`);
-    // Biểu thuế chuẩn: 7 bậc, bậc cuối mở (null), trần 35% — BR-hrm-081 / ADR-009.
-    assert.equal(d.taxBrackets.length, 7, 'BR-hrm-081: biểu chuẩn phải có 7 bậc');
-    assert.equal(d.taxBrackets[6].khoang, null, 'bậc cuối phải là bậc mở (khoang = null)');
-    assert.equal(d.taxBrackets[6].thueSuat, 35, 'trần thuế suất phải là 35%');
+    // Biểu thuế chuẩn: 5 bậc, bậc cuối mở (null), trần 35% — BR-hrm-081 / ADR-009.
+    assert.equal(d.taxBrackets.length, 5, 'BR-hrm-081: biểu chuẩn phải có 5 bậc');
+    assert.equal(d.taxBrackets[4].khoang, null, 'bậc cuối phải là bậc mở (khoang = null)');
+    assert.equal(d.taxBrackets[4].thueSuat, 35, 'trần thuế suất phải là 35%');
   });
 
   await t.test('TC-hrm-274 — GET lần 2 khớp 100% bản ghi đã lưu', async () => {
@@ -435,23 +435,21 @@ test('7.1 Cấu hình mặc định — TC-hrm-273…287', async (t) => {
     assert.equal(giam.status, 400, giam.raw);
   });
 
-  await t.test('TC-hrm-281 — biểu 7 bậc chuẩn -> 200, KHÔNG cảnh báo', async () => {
-    const r = await goi('TC-hrm-281', 'PUT 7 bậc chuẩn', 'PUT', `${BASE}/settings/general`, {
+  await t.test('TC-hrm-281 — biểu 5 bậc chuẩn -> 200, KHÔNG cảnh báo', async () => {
+    const r = await goi('TC-hrm-281', 'PUT 5 bậc chuẩn', 'PUT', `${BASE}/settings/general`, {
       ve: veOwnerA,
       payload: {
         taxBrackets: [
-          { khoang: 5000000, thueSuat: 5 },
-          { khoang: 10000000, thueSuat: 10 },
-          { khoang: 18000000, thueSuat: 15 },
-          { khoang: 32000000, thueSuat: 20 },
-          { khoang: 52000000, thueSuat: 25 },
-          { khoang: 80000000, thueSuat: 30 },
+          { khoang: 10000000, thueSuat: 5 },
+          { khoang: 30000000, thueSuat: 10 },
+          { khoang: 60000000, thueSuat: 20 },
+          { khoang: 100000000, thueSuat: 30 },
           { khoang: null, thueSuat: 35 },
         ],
       },
     });
     assert.equal(r.status, 200, r.raw);
-    assert.equal(r.json.data.taxBrackets.length, 7);
+    assert.equal(r.json.data.taxBrackets.length, 5);
     assert.equal(
       r.json.data.warning,
       undefined,
@@ -483,14 +481,14 @@ test('7.1 Cấu hình mặc định — TC-hrm-273…287', async (t) => {
     assert.equal(d.standardHoursPerDay, '8');
     assert.equal(d.saturdayPolicy, 'HALF_DAY');
     assert.equal(d.unionFeeEmployeeRate, '1');
-    assert.equal(d.taxBrackets.length, 7);
-    assert.equal(d.taxBrackets[6].khoang, null);
-    assert.equal(d.taxBrackets[6].thueSuat, 35);
+    assert.equal(d.taxBrackets.length, 5);
+    assert.equal(d.taxBrackets[4].khoang, null);
+    assert.equal(d.taxBrackets[4].thueSuat, 35);
     // ADR-010 QĐ-2 (data-model Mục 11.2) — restore-default PHẢI đặt lại đủ 3 cột mới, kể cả khi
     // TC-hrm-275/ADR-010-QD2 (chạy trước) đã sửa chúng thành 800000/12/2500000.
-    assert.equal(d.lunchAllowanceTaxFreeCap, '730000');
+    assert.equal(d.lunchAllowanceTaxFreeCap, '1200000');
     assert.equal(d.withholdingTaxRate, '10');
-    assert.equal(d.withholdingTaxThreshold, '2000000');
+    assert.equal(d.withholdingTaxThreshold, '5000000');
     assert.equal(d.warning, undefined, 'khôi phục thì không bao giờ kèm cảnh báo');
   });
 

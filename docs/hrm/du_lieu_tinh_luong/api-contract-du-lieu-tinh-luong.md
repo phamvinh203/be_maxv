@@ -742,16 +742,16 @@ Mọi endpoint trên: **200 OK** `{ success:true, data:{ …PayrollPeriod } }` �
 
 ```
 tongMienThue = otTaxExemptAmount + lunchAllowanceExemptAmount + otherAllowanceTaxExemptAmount
-                (OT vượt chuẩn)     (ăn ca trong trần)          (phụ cấp khai miễn thuế)
+              (toàn bộ tiền OT)     (ăn ca trong trần)          (phụ cấp khai miễn thuế)
 ```
 
 Ba cấu phần **không giao nhau**: một khoản phụ cấp chỉ vào đúng một trong hai giỏ cuối, ưu tiên ăn ca (ADR-010 QĐ-9.3). Frontend muốn hiện chi tiết "vì sao miễn bằng này" thì liệt kê đủ ba dòng, **không** tự cộng lại từ dữ liệu Cài đặt lương.
 
 | `withholdingTaxApplied` | `taxableIncome` nghĩa là | Công thức thuế |
 |:--:|---|---|
-| `false` (lũy tiến) | Thu nhập **tính thuế** = `grossIncome − tongMienThue − (giảm trừ bản thân + NPT + bảo hiểm bắt buộc)`, kẹp sàn 0 | `tinhThueLuyTien()` — biểu 7 bậc |
+| `false` (lũy tiến) | Thu nhập **tính thuế** = `grossIncome − tongMienThue − (giảm trừ bản thân + NPT + bảo hiểm bắt buộc)`, kẹp sàn 0 | `tinhThueLuyTien()` — biểu 5 bậc Luật 109/2025/QH15, đọc từ `GeneralSetting.taxBrackets` |
 | `true` (khấu trừ 10%) | **Thu nhập khấu trừ** = `grossIncome − tongMienThue` — luật **không cho** trừ giảm trừ gia cảnh ở nhánh này (`AC-dltl-18`) | `round(taxableIncome × withholdingTaxRate%)` |
-| HĐ thử việc/thời vụ **dưới ngưỡng** 2.000.000 ⇒ `withholdingTaxApplied = false` (theo `AC-dltl-19`) | Vẫn ghi thu nhập khấu trừ, để giải trình vì sao thuế bằng 0 | `0` |
+| HĐ thử việc/thời vụ **dưới ngưỡng** `withholdingTaxThreshold` (mặc định 5.000.000 từ 2026-09-14) ⇒ `withholdingTaxApplied = false` (theo `AC-dltl-19`) | Vẫn ghi thu nhập khấu trừ, để giải trình vì sao thuế bằng 0 | `0` |
 
 > ⚠️ Hệ quả của `AC-dltl-19`: `withholdingTaxApplied = false` gộp chung **hai** tình huống khác hẳn nhau — "HĐ chính thức, tính lũy tiến" và "HĐ thử việc nhưng dưới ngưỡng". Giao diện muốn hiển thị phương pháp tính phải xét thêm `contractType`. Không đổi giá trị cờ (đã có AC và bộ ca kiểm của QA bám vào).
 
@@ -853,7 +853,7 @@ Không làm phần này thì 6 cột mới ở DB **không ai đặt được gi
 |---|---|---|
 | `GET /settings/general` | Trả thêm **3** trường: `lunchAllowanceTaxFreeCap`, `withholdingTaxRate`, `withholdingTaxThreshold` (đọc về là **chuỗi** — Decimal, đúng quy ước 20 cột Decimal hiện có) | `docs/hrm/architecture/api-contract.md` Mục 7D.0 |
 | `PUT /settings/general` | Nhận thêm 3 trường (optional, gửi lên là **số**). Thẩm định: `>= 0`, riêng `withholdingTaxRate` `0…100` ⇒ `E-hrm-083` (mới). Quyền: **`OWNER` duy nhất** (ADR-009) | như trên |
-| `POST /settings/general/restore-default` | Đặt lại đủ 3 trường về `730000 / 10.00 / 2000000` | như trên |
+| `POST /settings/general/restore-default` | Đặt lại đủ 3 trường về `1200000 / 10.00 / 5000000` `[SỬA 2026-09-14]` | như trên |
 | `GET /salary-items` · `POST` · `PATCH` | Thêm `isMealAllowance: boolean` (mặc định `false`) | `docs/hrm/cai_dat_luong/api-contract-cai-dat-luong.md` |
 | Màn "Cài đặt lương › Khoản lương" (`hdđt_maxv`) | Thêm ô chọn "Khoản ăn ca (miễn thuế tới trần)" cho khoản `BENEFIT_ALLOWANCE`/`FIXED_ALLOWANCE` | — |
 

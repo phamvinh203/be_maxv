@@ -293,7 +293,7 @@ Ba tầng không thống nhất ở trạng thái `PENDING_REVIEW`: 8 phân hệ
 | EC-dltl-04 | `snapshotPayrollSheet` chạy khi có 0 nhân viên đang hoạt động | `calculatedLines.length > 0` mới `createMany` — an toàn, không lỗi | Giữ nguyên |
 | EC-dltl-05 | Reopen 1 kỳ đã `LOCKED`, sau đó khóa lại (`lock`) mà không sửa gì | `snapshotPayrollSheet` xóa hết `PayrollSheetLine` cũ rồi tạo lại từ đầu — số liệu giống hệt lần trước nếu không có gì đổi | Đúng như kỳ vọng, không cần sửa |
 | EC-dltl-06 *(mới, 2026-09-10)* | Nhân viên có `loai_hd = 'xac_dinh'` (HĐ xác định thời hạn) nhưng thời hạn hợp đồng (`ngay_ket_thuc − ngay_bat_dau`) dưới 3 tháng | Theo phạm vi CHỐT ở BR-dltl-026, vẫn áp nhánh cũ (biểu lũy tiến + giảm trừ gia cảnh) vì chỉ xét `loai_hd ∈ {thu_viec, thoi_vu}` | Luật (Điều 25 TT111/2013) có thể yêu cầu khấu trừ 10% cho trường hợp này — **chưa CHỐT**, cần kế toán trưởng xác nhận nếu phát sinh thực tế; KHÔNG chặn tiến độ đợt này |
-| EC-dltl-07 *(mới, 2026-09-10)* | Nhân viên có `loai_hd = 'khoan'` (hợp đồng khoán việc) | Theo phạm vi CHỐT ở BR-dltl-026, áp nhánh cũ (biểu lũy tiến), không rơi vào khấu trừ 10% | Luật có khái niệm "không ký HĐLĐ" cũng thuộc diện khấu trừ 10% — `khoan` CÓ THỂ thuộc diện này nhưng **chưa CHỐT**, cùng nhóm với EC-dltl-06, cần xác nhận riêng nếu phát sinh |
+| EC-dltl-07 *(mới, 2026-09-10, ĐÃ ĐÓNG 2026-09-14)* | Nhân viên có `loai_hd = 'khoan'` (hợp đồng khoán việc) | Theo phạm vi CHỐT ở BR-dltl-026, áp nhánh cũ (biểu lũy tiến), không rơi vào khấu trừ 10% | **Đóng qua BA Final Sign-off của sub-cụm `to_khai_thue`** (2026-09-14, xem `docs/hrm/to_khai_thue/srs-to-khai-thue.md` BR-tkt-011): xác nhận hợp đồng khoán đi nhánh lũy tiến, có giảm trừ gia cảnh — hành vi hiện tại (cột 3) là ĐÚNG, không cần sửa. `EC-dltl-06` (hợp đồng `xac_dinh` <3 tháng) là câu hỏi khác, vẫn treo |
 
 ---
 
@@ -343,9 +343,9 @@ Yêu cầu: hoàn thiện chức năng **Bảng lương tổng hợp** trong `be
 | Mã BR mới | Quy tắc | Trạng thái hiện tại | Ảnh hưởng tới thực lĩnh |
 |---|---|---|---|
 | BR-dltl-024 | **Hai trần bảo hiểm độc lập**: BHXH+BHYT trần = `baseSalary × 20` (hiện 2.34tr × 20 = 46.8tr, NĐ 73/2024); BHTN trần = `regionMinSalary × 20` (hiện 4.96tr × 20 = 99.2tr, theo vùng) | ❌ **Không có** — `employeeInsuranceRate` gộp cả 3 loại (BHXH+BHYT+BHTN) thành 1 tỷ lệ, nhân thẳng với `insuranceSalaryBase` không trần nào. `GeneralSetting` đã sẵn `baseSalary`/`regionMinSalary` (không cần field DB mới, chỉ cần tách logic) | Nhân viên lương đóng bảo hiểm > 46.8tr/tháng bị trừ **bảo hiểm vượt mức luật định** — sai cả 2 chiều (NLĐ đóng thừa, DN cũng ghi nhận chi phí thừa) |
-| BR-dltl-025 | **Miễn thuế phần tăng ca vượt chuẩn** (Điều 3 TT111/2013): chỉ phần **chênh lệch** giữa tiền OT thực trả và tiền công giờ bình thường tương ứng mới bị tính thuế; phần trả thêm do hệ số (150%/200%/300%...) được miễn | ❌ **Không có** — `otAmount` tính đủ 100% cộng vào `grossIncome` rồi chịu thuế toàn bộ. Thiếu dữ liệu: engine chỉ giữ `convertedHours` (đã nhân hệ số), **không giữ `hours` gốc** trong kết quả trả về nên không tách được phần chênh lệch miễn thuế | Thuế TNCN bị tính **thừa** trên toàn bộ nhân viên có tăng ca |
-| BR-dltl-026 | **Khấu trừ 10% tại nguồn cho HĐ thử việc/thời vụ** khi thu nhập ≥ 2.000.000đ/lần trả, KHÔNG áp dụng biểu lũy tiến, KHÔNG trừ giảm trừ gia cảnh (Điều 25 TT111/2013) | ❌ **Không có** — `personalIncomeTax` luôn gọi `tinhThueLuyTien()` (biểu lũy tiến) khi `activeContract.tinh_tncn = true`, không rẽ nhánh theo `loai_hd`. Field `hrm_hop_dong.loai_hd` **đã có sẵn** giá trị `thu_viec`/`thoi_vu` (đã xác nhận qua schema) | Nhân viên thử việc/thời vụ bị tính thuế **sai phương pháp hoàn toàn** (áp nhầm biểu lũy tiến + giảm trừ gia cảnh cho đối tượng luật quy định phải khấu trừ thẳng 10%) |
-| BR-dltl-027 | **Trần miễn thuế phụ cấp ăn trưa/ăn ca 730.000đ/tháng** (TT26/2016/TT-BLĐTBXH) — phần vượt trần bị tính vào thu nhập chịu thuế | ❌ **Không có** — hệ quả trực tiếp của gap lớn hơn: engine **hoàn toàn chưa đọc** `EmployeeSalaryItem` nhóm `FIXED_ALLOWANCE`/`BENEFIT_ALLOWANCE` (chỉ đọc `KPI_PERFORMANCE` và `ATTENDANCE_ALLOWANCE`) — nay ĐÃ CHỐT phải đọc (xem Mục 15.4, OQ-dltl-011 resolved) nên trần này bắt buộc phải cài cùng lúc | Nếu nối nhóm phụ cấp mà quên trần, phụ cấp ăn trưa > 730k vẫn bị khai miễn thuế toàn bộ — sai luật |
+| BR-dltl-025 `[SỬA 2026-09-14]` | **Miễn thuế tiền làm thêm giờ**: từ kỳ tính thuế 2026 (NĐ 253/2026/NĐ-CP) miễn **toàn bộ** tiền OT, không chỉ phần chênh lệch do hệ số như luật cũ (Điều 3 TT111/2013) | ❌ **Không có** — `otAmount` tính đủ 100% cộng vào `grossIncome` rồi chịu thuế toàn bộ. Thiếu dữ liệu: engine chỉ giữ `convertedHours` (đã nhân hệ số), **không giữ `hours` gốc** trong kết quả trả về nên không tách được phần chênh lệch miễn thuế | Thuế TNCN bị tính **thừa** trên toàn bộ nhân viên có tăng ca |
+| BR-dltl-026 `[SỬA 2026-09-14]` | **Khấu trừ 10% tại nguồn cho HĐ thử việc/thời vụ** khi thu nhập ≥ **5.000.000đ**/lần trả (NĐ 253/2026/NĐ-CP Điều 50 khoản 2, tăng từ 2.000.000đ), KHÔNG áp dụng biểu lũy tiến, KHÔNG trừ giảm trừ gia cảnh | ❌ **Không có** — `personalIncomeTax` luôn gọi `tinhThueLuyTien()` (biểu lũy tiến) khi `activeContract.tinh_tncn = true`, không rẽ nhánh theo `loai_hd`. Field `hrm_hop_dong.loai_hd` **đã có sẵn** giá trị `thu_viec`/`thoi_vu` (đã xác nhận qua schema) | Nhân viên thử việc/thời vụ bị tính thuế **sai phương pháp hoàn toàn** (áp nhầm biểu lũy tiến + giảm trừ gia cảnh cho đối tượng luật quy định phải khấu trừ thẳng 10%) |
+| BR-dltl-027 `[SỬA 2026-09-14]` | **Trần miễn thuế phụ cấp ăn trưa/ăn ca 1.200.000đ/tháng** (NĐ 253/2026/NĐ-CP, tăng từ 730.000đ của TT 26/2016/TT-BLĐTBXH) — phần vượt trần bị tính vào thu nhập chịu thuế | ❌ **Không có** — hệ quả trực tiếp của gap lớn hơn: engine **hoàn toàn chưa đọc** `EmployeeSalaryItem` nhóm `FIXED_ALLOWANCE`/`BENEFIT_ALLOWANCE` (chỉ đọc `KPI_PERFORMANCE` và `ATTENDANCE_ALLOWANCE`) — nay ĐÃ CHỐT phải đọc (xem Mục 15.4, OQ-dltl-011 resolved) nên trần này bắt buộc phải cài cùng lúc | Nếu nối nhóm phụ cấp mà quên trần, phụ cấp ăn trưa > 730k vẫn bị khai miễn thuế toàn bộ — sai luật |
 
 **Quyết định biểu thuế TNCN/giảm trừ gia cảnh — ĐÃ CHỐT (không còn "không tự quyết"):** xem Mục 15.8. Giữ nguyên luật hiện hành 7 bậc, 11.000.000đ/4.400.000đ. Bộ số liệu 2026 mới (5 bậc, 15.500.000đ/6.200.000đ) mà `docs/nestjs/payroll` có nhắc tới **KHÔNG được áp dụng**.
 
@@ -377,31 +377,31 @@ AC-dltl-12: Given `luong_bhxh = 120.000.000`, `trich_bhxh = true`, When tính l�
 AC-dltl-13: Given `luong_bhxh = 70.000.000` (vượt trần BHXH/BHYT nhưng chưa vượt trần BHTN), When tính lương, Then chỉ `insuranceCapAppliedBhxhByt = true`; `capBhtn = 70.000.000` (không bị kẹp).
 AC-dltl-14: Given `luong_bhxh = 20.000.000` (dưới cả 2 trần), When tính lương, Then `employeeInsuranceDeduction = round(20.000.000×10.5%) = 2.100.000` — khớp kết quả công thức gộp cũ (không regression cho trường hợp phổ biến).
 
-**BR-dltl-025 — Miễn thuế phần tăng ca vượt chuẩn**
+**BR-dltl-025 — Miễn thuế tiền làm thêm giờ** `[SỬA 2026-09-14 — miễn TOÀN BỘ thay vì chỉ phần vượt chuẩn]`
 
-Nguồn dữ liệu: `OvertimeRecord.hours` (giờ GỐC — đã có trong DB, engine hiện chỉ đọc `convertedHours`) · `OvertimeRecord.convertedHours` · biến `hourlyRate` đã có sẵn trong engine (`baseSalaryMonthly / (standardWorkDays × standardHoursPerDay)`, xem lưu ý ở Mục 15.4 về `baseSalaryMonthly`).
+> **Lịch sử thay đổi:** bản gốc (2026-09-10) theo Điều 3 Thông tư 111/2013/TT-BTC chỉ miễn **phần chênh lệch** do hệ số OT. Từ kỳ tính thuế 2026, Nghị định 253/2026/NĐ-CP miễn **toàn bộ** tiền làm thêm giờ/làm ban đêm. Đây là **luật đổi**, không phải sửa lỗi đặc tả. Xem `docs/hrm/to_khai_thue/srs-to-khai-thue.md` Mục 4 (nhóm `EXEMPT_FULL`) — hai tài liệu nay nói cùng một điều.
+
+Nguồn dữ liệu: `OvertimeRecord.convertedHours` · biến `hourlyRate` đã có sẵn trong engine (`baseSalaryMonthly / (standardWorkDays × standardHoursPerDay)`, xem lưu ý ở Mục 15.4 về `baseSalaryMonthly`). Trường `OvertimeRecord.hours` (giờ GỐC) không còn tham gia công thức thuế nhưng vẫn phải đọc để trả `otRawHours` cho giao diện.
 
 Công thức (chèn trước bước tính `personalIncomeTax`; KHÔNG đổi `otAmount`/`grossIncome`/`netTakeHomeSalary`):
 ```
 Với mỗi OvertimeRecord r của nhân viên trong kỳ:
-  tienOT_r    = round(hourlyRate × r.convertedHours)   // khớp cách cộng dồn otAmount hiện tại
-  tienChuan_r = round(hourlyRate × r.hours)             // tiền công giờ CHUẨN (giờ gốc, hệ số 100%)
-  tienMienThue_r = max(0, tienOT_r − tienChuan_r)
+  tienOT_r = round(hourlyRate × r.convertedHours)   // khớp cách cộng dồn otAmount hiện tại
 
-otTaxExemptAmount = Σ tienMienThue_r (mọi bản ghi OT của nhân viên trong kỳ)   // field MỚI
+otTaxExemptAmount = Σ tienOT_r = otAmount   // MIỄN 100% — bằng đúng tiền OT đã trả trong kỳ
 
 taxableIncome = max(0, grossIncome − otTaxExemptAmount − totalDeductions)
 // totalDeductions giữ nguyên = personalDeduction + dependentCount×dependentDeduction + employeeInsuranceDeduction
 // grossIncome/otAmount/netTakeHomeSalary GIỮ NGUYÊN — chỉ taxableIncome giảm, thực lĩnh không đổi
 ```
 
-AC-dltl-15: Given `hourlyRate = 100.000đ/giờ`, 1 dòng OT ngày thường (`hours = 10`, `convertedHours = 15`), When tính lương, Then `tienOT_r = 1.500.000`, `tienChuan_r = 1.000.000`, `otTaxExemptAmount = 500.000`, `taxableIncome` giảm đúng 500.000đ so với cách tính cũ (toàn bộ `otAmount` chịu thuế).
+AC-dltl-15 `[SỬA 2026-09-14]`: Given `hourlyRate = 100.000đ/giờ`, 1 dòng OT ngày thường (`hours = 10`, `convertedHours = 15`), When tính lương, Then `tienOT_r = 1.500.000` và `otTaxExemptAmount = 1.500.000` — toàn bộ tiền OT được miễn, `taxableIncome` giảm đúng 1.500.000đ (bản cũ chỉ giảm 500.000đ phần chênh lệch).
 AC-dltl-16: Given nhân viên không có dòng OT nào trong kỳ, When tính lương, Then `otTaxExemptAmount = 0`, `taxableIncome` không đổi.
-AC-dltl-17: Given nhân viên có 3 dòng OT thuộc 3 loại khác nhau, When tính lương, Then `otTaxExemptAmount` = tổng miễn thuế của cả 3 dòng cộng lại.
+AC-dltl-17 `[SỬA 2026-09-14]`: Given nhân viên có 3 dòng OT thuộc 3 loại khác nhau, When tính lương, Then `otTaxExemptAmount = otAmount` (tổng tiền OT cả 3 dòng), không phụ thuộc hệ số từng loại.
 
 **BR-dltl-026 — Khấu trừ 10% tại nguồn cho HĐ thử việc/thời vụ (phạm vi CHỐT: `loai_hd ∈ {thu_viec, thoi_vu}`)**
 
-Nguồn dữ liệu: `hrm_hop_dong.loai_hd` (đã có, giá trị `thu_viec`/`thoi_vu` xác nhận qua schema `hrm_hop_dong:987-990`). Ngưỡng khấu trừ 2.000.000đ/lần trả (Điều 25 Khoản 1 Điểm i TT111/2013/TT-BTC, giữ nguyên luật hiện hành) — `GeneralSetting` **chưa có field lưu ngưỡng này**; Architect cân nhắc thêm field mới (vd `probationWithholdingThreshold`) hoặc hardcode kèm chú thích căn cứ pháp lý — đây là quyết định KỸ THUẬT, ngưỡng NGHIỆP VỤ (2.000.000đ) đã chốt.
+Nguồn dữ liệu: `hrm_hop_dong.loai_hd` (đã có, giá trị `thu_viec`/`thoi_vu` xác nhận qua schema `hrm_hop_dong:987-990`). Ngưỡng khấu trừ **5.000.000đ/lần trả** `[SỬA 2026-09-14 — từ 2.000.000đ]` theo Nghị định 253/2026/NĐ-CP Điều 50 khoản 2 (hiệu lực 01/07/2026, thay Điều 25 Khoản 1 Điểm i TT 111/2013). Ngưỡng và tỷ lệ lưu ở `GeneralSetting.withholdingTaxThreshold`/`withholdingTaxRate` (Architect đã chốt ở `ADR-010` QĐ-2, không hardcode).
 
 Công thức (thay nhánh rẽ hiện tại ở `payrollCalculation.service.ts:299`, hiện luôn gọi `tinhThueLuyTien()` bất kể `loai_hd`):
 ```
@@ -411,7 +411,7 @@ Nếu activeContract.tinh_tncn ≠ true:          // cờ hợp đồng "không 
   personalIncomeTax = 0
   withholdingTaxApplied = false
 Ngược lại nếu activeContract.loai_hd ∈ {'thu_viec', 'thoi_vu'}:
-  Nếu thuNhapKheKhauTru ≥ 2.000.000:
+  Nếu thuNhapKheKhauTru ≥ withholdingTaxThreshold (mặc định 5.000.000):
     personalIncomeTax = round(thuNhapKheKhauTru × 10%)
     withholdingTaxApplied = true   // field MỚI, boolean
     // TUYỆT ĐỐI KHÔNG áp personalDeduction/dependentDeduction, KHÔNG dùng tinhThueLuyTien()
@@ -426,11 +426,13 @@ Ngược lại (loai_hd ∈ {khong_xac_dinh, xac_dinh, khoan} — nhánh CŨ gi�
 
 **Phạm vi CHƯA áp dụng, ghi nhận rõ (không phải bỏ sót):** `xac_dinh` ngắn hạn (<3 tháng) và `khoan` (khoán việc) có thể cũng thuộc diện khấu trừ 10% theo luật — đánh dấu EC-dltl-06/07 (Mục 12), cần kế toán trưởng xác nhận riêng nếu phát sinh, KHÔNG chặn tiến độ đợt này.
 
-AC-dltl-18: Given `loai_hd = 'thu_viec'`, `grossIncome = 3.000.000`, `otTaxExemptAmount = 0`, When tính lương, Then `personalIncomeTax = 300.000`, `withholdingTaxApplied = true`, KHÔNG bị trừ giảm trừ gia cảnh dù có khai người phụ thuộc.
-AC-dltl-19: Given `loai_hd = 'thoi_vu'`, `grossIncome = 1.500.000` (dưới ngưỡng 2.000.000), When tính lương, Then `personalIncomeTax = 0`, `withholdingTaxApplied = false`.
+AC-dltl-18 `[SỬA 2026-09-14 — số ví dụ theo ngưỡng mới]`: Given `loai_hd = 'thu_viec'`, `grossIncome = 6.000.000`, `otTaxExemptAmount = 0`, When tính lương, Then `personalIncomeTax = 600.000`, `withholdingTaxApplied = true`, KHÔNG bị trừ giảm trừ gia cảnh dù có khai người phụ thuộc.
+AC-dltl-19 `[SỬA 2026-09-14]`: Given `loai_hd = 'thoi_vu'`, `grossIncome = 1.500.000` (dưới ngưỡng 5.000.000), When tính lương, Then `personalIncomeTax = 0`, `withholdingTaxApplied = false`.
 AC-dltl-20: Given `loai_hd = 'xac_dinh'` (HĐ chính thức), When tính lương, Then áp nhánh cũ (`tinhThueLuyTien`, có giảm trừ gia cảnh) — hành vi hiện tại không đổi cho loại hợp đồng này.
 
-**BR-dltl-027 — Trần miễn thuế phụ cấp ăn trưa 730.000đ/tháng**
+**BR-dltl-027 — Trần miễn thuế phụ cấp ăn trưa 1.200.000đ/tháng** `[SỬA 2026-09-14 — từ 730.000đ]`
+
+> Căn cứ mới: Nghị định 253/2026/NĐ-CP (thay Thông tư 26/2016/TT-BLĐTBXH), hiệu lực từ kỳ tính thuế 2026. Trần lưu ở `GeneralSetting.lunchAllowanceTaxFreeCap`, công thức quy đổi theo công **không đổi**. Lưu ý phân biệt với `to_khai_thue`: trần 1.200.000đ ở đây áp cho phụ cấp ăn ca **định kỳ trong bảng lương**; khoản ăn ca chi ngoài lương đi theo BR-tkt-007 nhóm `EXEMPT_CAPPED` với cùng ngưỡng.
 
 Điều kiện tiên quyết: chỉ có ý nghĩa SAU khi engine đọc nhóm phụ cấp cố định theo OQ-dltl-011 (Mục 15.4).
 
@@ -442,7 +444,7 @@ Công thức (giả định đã có cách nhận diện, vd cờ `isMealAllowan
 ```
 mealAllowanceAmount = Σ EmployeeSalaryItem.amount của set lương APPROVED hiện hành, với salaryItem.isMealAllowance = true
 
-hanMucMienThue = round(730.000 × min(1, actualWorkDays / standardWorkDays))   // quy đổi theo công thực tế, nhất quán cách proratedWorkSalary đã làm
+hanMucMienThue = round(lunchAllowanceTaxFreeCap × min(1, actualWorkDays / standardWorkDays))   // mặc định 1.200.000; quy đổi theo công thực tế, nhất quán cách proratedWorkSalary đã làm
 
 lunchAllowanceTaxableAmount = max(0, mealAllowanceAmount − hanMucMienThue)     // field MỚI — phần VƯỢT trần
 lunchAllowanceExemptAmount  = mealAllowanceAmount − lunchAllowanceTaxableAmount
@@ -453,9 +455,9 @@ taxableIncome = max(0, grossIncome − otTaxExemptAmount − lunchAllowanceExemp
 // không phải hai (`otherAllowanceTaxExemptAmount` xem định nghĩa dưới)
 ```
 
-AC-dltl-21: Given `mealAllowanceAmount = 1.000.000`, đủ công (`actualWorkDays = standardWorkDays`), When tính lương, Then `hanMucMienThue = 730.000`, `lunchAllowanceTaxableAmount = 270.000` cộng vào thu nhập chịu thuế.
+AC-dltl-21 `[SỬA 2026-09-14 — số ví dụ theo trần mới]`: Given `mealAllowanceAmount = 1.500.000`, đủ công (`actualWorkDays = standardWorkDays`), When tính lương, Then `hanMucMienThue = 1.200.000`, `lunchAllowanceTaxableAmount = 300.000` cộng vào thu nhập chịu thuế.
 AC-dltl-22: Given `mealAllowanceAmount = 500.000` (dưới trần), When tính lương, Then `lunchAllowanceTaxableAmount = 0`, toàn bộ được miễn thuế.
-AC-dltl-23: Given nhân viên nghỉ nửa tháng (`actualWorkDays = standardWorkDays/2`), When tính lương, Then `hanMucMienThue = round(730.000×0.5) = 365.000` — trần miễn thuế quy đổi theo công, không giữ nguyên 730.000 cho người làm nửa tháng.
+AC-dltl-23 `[SỬA 2026-09-14]`: Given nhân viên nghỉ nửa tháng (`actualWorkDays = standardWorkDays/2`), When tính lương, Then `hanMucMienThue = round(1.200.000×0.5) = 600.000` — trần miễn thuế quy đổi theo công, không giữ nguyên 1.200.000 cho người làm nửa tháng.
 
 **Quyết định nghiệp vụ 3 (`Q-1`, chốt bởi chủ dự án 2026-09-10) — Miễn thuế phụ cấp cố định theo khai báo `isTaxable`/`taxTreatment`, field mới `otherAllowanceTaxExemptAmount`**
 

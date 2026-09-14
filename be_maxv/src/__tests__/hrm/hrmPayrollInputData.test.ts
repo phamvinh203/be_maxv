@@ -100,8 +100,8 @@ const DEFAULT_GENERAL_SETTING = {
   unionFeeEmployeeRate: new Prisma.Decimal(1.0),
   unionFeeMaxAmount: new Prisma.Decimal(234000),
   unionFeeCompanyRate: new Prisma.Decimal(2.0),
-  personalDeduction: new Prisma.Decimal(11000000),
-  dependentDeduction: new Prisma.Decimal(4400000),
+  personalDeduction: new Prisma.Decimal(15500000),
+  dependentDeduction: new Prisma.Decimal(6200000),
   otRateWeekdayDay: new Prisma.Decimal(150),
   otRateWeekdayNight: new Prisma.Decimal(200),
   otRateWeekendDay: new Prisma.Decimal(200),
@@ -654,12 +654,12 @@ test('Vòng đời Kỳ lương (PayrollPeriod Lifecycle) và Khóa sổ Snapsho
   assert.equal(periods[0].status, 'DRAFT');
 });
 
-test('Bất biến Tài chính: Thuế lũy tiến 7 bậc và Chặn sàn Chuyên cần (gọi thật payrollCalculation/payrollInputs service)', async () => {
-  // Test 1: Biểu thuế lũy tiến — gọi trực tiếp hàm sản xuất thật (KHÔNG đụng trong đợt sửa này).
+test('Bất biến Tài chính: Thuế lũy tiến 5 bậc và Chặn sàn Chuyên cần (gọi thật payrollCalculation/payrollInputs service)', async () => {
+  // Test 1: Biểu thuế lũy tiến — gọi trực tiếp hàm sản xuất thật.
   assert.equal(tinhThueLuyTien(0), 0);
   assert.equal(tinhThueLuyTien(4_000_000), 200_000); // Bậc 1: 5%
-  assert.equal(tinhThueLuyTien(8_000_000), 550_000); // Bậc 2: 250k + 300k
-  assert.equal(tinhThueLuyTien(15_000_000), 1_500_000); // Bậc 3
+  assert.equal(tinhThueLuyTien(8_000_000), 400_000); // Vẫn bậc 1 (bậc 1 tới 10tr)
+  assert.equal(tinhThueLuyTien(15_000_000), 1_000_000); // Bậc 2: 500k + 500k
 
   // Test 2: Bất biến Chặn sàn Chuyên cần (BR-dltl-016) — SỬA test giả (review-findings.md
   // RVW-010/BUG-dltl-006): trước đây test tự tính lại công thức bằng biến cục bộ rồi assert với

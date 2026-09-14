@@ -13,7 +13,7 @@ import {
 } from '../../utils/cau_hinh_mac_dinh/amLich.util';
 import {
   BIEU_THUE_5_BAC_CU,
-  BIEU_THUE_CHUAN_7_BAC,
+  BIEU_THUE_CHUAN_5_BAC,
   getSettings,
   khoiTaoCauHinhMacDinh,
   laBieuThueTrungKhop,
@@ -390,50 +390,49 @@ test('khoiTaoCauHinhMacDinh: các tham số pháp luật Việt Nam 2024 chuẩn
   const def = khoiTaoCauHinhMacDinh();
   assert.equal(def.baseSalary, 2340000); // NĐ 73/2024
   assert.equal(def.regionMinSalary, 4960000); // NĐ 74/2024
-  assert.equal(def.personalDeduction, 11000000); // NQ 954/2020
-  assert.equal(def.dependentDeduction, 4400000);
+  assert.equal(def.personalDeduction, 15500000); // NQ 110/2025, từ kỳ tính thuế 2026
+  assert.equal(def.dependentDeduction, 6200000);
   assert.equal(def.standardHoursPerDay, 8.0);
   assert.equal(def.insuranceEmployeeSocial, 8.0);
   assert.equal(def.insuranceCompanySocial, 17.5);
   // ADR-010 QĐ-2 (2026-09-10) — 3 tham số mới của Bảng lương tổng hợp.
-  assert.equal(def.lunchAllowanceTaxFreeCap, 730000); // TT 26/2016/TT-BLĐTBXH
-  assert.equal(def.withholdingTaxRate, 10.0); // Điều 25 TT 111/2013
-  assert.equal(def.withholdingTaxThreshold, 2000000); // Điều 25 Khoản 1 Điểm i TT 111/2013
+  assert.equal(def.lunchAllowanceTaxFreeCap, 1200000); // NĐ 253/2026/NĐ-CP
+  assert.equal(def.withholdingTaxRate, 10.0); // NĐ 253/2026/NĐ-CP Điều 50 (giữ 10%)
+  assert.equal(def.withholdingTaxThreshold, 5000000); // NĐ 253/2026/NĐ-CP Điều 50 khoản 2
 });
 
-test('AC-hrm-67: biểu thuế mặc định là ĐÚNG 7 bậc Điều 22, trần 35%, bậc cuối là bậc mở', () => {
+test('AC-hrm-67: biểu thuế mặc định là ĐÚNG 5 bậc Luật 109/2025/QH15, trần 35%, bậc cuối là bậc mở', () => {
   const bieu = khoiTaoCauHinhMacDinh().taxBrackets;
 
   assert.equal(
     bieu.length,
-    7,
-    'Biểu 5 bậc cắt cụt ở 25% là SAI LUẬT (BR-hrm-081)',
+    5,
+    'phải là biểu 5 bậc của Luật 109/2025/QH15 — KHÔNG phải biểu 7 bậc Điều 22 đã hết hiệu lực, ' +
+      'cũng KHÔNG phải biểu 5 bậc cắt cụt ở 25% (BR-hrm-081)',
   );
   assert.deepEqual(bieu, [
-    { khoang: 5000000, thueSuat: 5 },
-    { khoang: 10000000, thueSuat: 10 },
-    { khoang: 18000000, thueSuat: 15 },
-    { khoang: 32000000, thueSuat: 20 },
-    { khoang: 52000000, thueSuat: 25 },
-    { khoang: 80000000, thueSuat: 30 },
+    { khoang: 10000000, thueSuat: 5 },
+    { khoang: 30000000, thueSuat: 10 },
+    { khoang: 60000000, thueSuat: 20 },
+    { khoang: 100000000, thueSuat: 30 },
     { khoang: null, thueSuat: 35 },
   ]);
 
   // Bậc mở mã hóa bằng `null`, TUYỆT ĐỐI không phải mốc 999999999999 (ADR-009 QĐ 1).
-  assert.equal(bieu[6].khoang, null);
+  assert.equal(bieu[4].khoang, null);
   assert.ok(!bieu.some((b) => b.khoang === MOC_TUONG_THICH_BAC_MO));
   assert.equal(Math.max(...bieu.map((b) => b.thueSuat)), 35);
 
   // Bộ mặc định phải là BẢN SAO: sửa nó không được làm bẩn hằng dùng chung.
   bieu[0].thueSuat = 99;
-  assert.equal(BIEU_THUE_CHUAN_7_BAC[0].thueSuat, 5);
+  assert.equal(BIEU_THUE_CHUAN_5_BAC[0].thueSuat, 5);
 });
 
 test('AC-hrm-67: biểu mặc định tự thỏa đủ 4 điều kiện toàn vẹn của BR-hrm-082', () => {
-  assert.equal(soatToanVenBieuThue(BIEU_THUE_CHUAN_7_BAC), null);
+  assert.equal(soatToanVenBieuThue(BIEU_THUE_CHUAN_5_BAC), null);
   assert.ok(
     updateGeneralSettingsSchema.safeParse({
-      taxBrackets: BIEU_THUE_CHUAN_7_BAC,
+      taxBrackets: BIEU_THUE_CHUAN_5_BAC,
     }).success,
   );
 });
@@ -512,10 +511,10 @@ test('AC-hrm-68 / BR-hrm-082 đk 2 (E-hrm-080): ngưỡng lũy kế phải tăng
 });
 
 test('AC-hrm-69 / BR-hrm-082 đk 4 (E-hrm-082): bậc cuối phải là bậc mở', () => {
-  // Biểu 7 bậc nhưng bậc cuối có trần hữu hạn 100tr ⇒ thu nhập trên 100tr không có bậc nào áp.
+  // Biểu chuẩn nhưng bậc cuối có trần hữu hạn 150tr ⇒ thu nhập trên 150tr không có bậc nào áp.
   const cuoiHuuHan: TaxBracketItem[] = [
-    ...BIEU_THUE_CHUAN_7_BAC.slice(0, 6),
-    { khoang: 100000000, thueSuat: 35 },
+    ...BIEU_THUE_CHUAN_5_BAC.slice(0, 4),
+    { khoang: 150000000, thueSuat: 35 },
   ];
   assert.equal(
     soatToanVenBieuThue(cuoiHuuHan),
@@ -586,7 +585,7 @@ test('ADR-009 QĐ 1 quy tắc 4: mốc 999999999999 ở bậc CUỐI được ch
 });
 
 test('AC-hrm-70 / BR-hrm-083: nhận diện biểu lệch chuẩn để sinh cảnh báo', () => {
-  assert.ok(laBieuThueTrungKhop(BIEU_THUE_CHUAN_7_BAC, BIEU_THUE_CHUAN_7_BAC));
+  assert.ok(laBieuThueTrungKhop(BIEU_THUE_CHUAN_5_BAC, BIEU_THUE_CHUAN_5_BAC));
 
   // Biểu 5 bậc lệch chuẩn của AC-hrm-70 (5% · 15% · 25% · 30% · 35%) — hợp lệ về cấu trúc.
   const lechChuan: TaxBracketItem[] = [
@@ -601,13 +600,13 @@ test('AC-hrm-70 / BR-hrm-083: nhận diện biểu lệch chuẩn để sinh c�
     null,
     'lệch chuẩn vẫn phải LƯU ĐƯỢC',
   );
-  assert.ok(!laBieuThueTrungKhop(lechChuan, BIEU_THUE_CHUAN_7_BAC));
+  assert.ok(!laBieuThueTrungKhop(lechChuan, BIEU_THUE_CHUAN_5_BAC));
 
   // Chỉ lệch đúng MỘT ngưỡng cũng là lệch chuẩn.
-  const lechMotO = BIEU_THUE_CHUAN_7_BAC.map((b, i) =>
-    i === 2 ? { ...b, khoang: 20000000 } : { ...b },
+  const lechMotO = BIEU_THUE_CHUAN_5_BAC.map((b, i) =>
+    i === 2 ? { ...b, khoang: 65000000 } : { ...b },
   );
-  assert.ok(!laBieuThueTrungKhop(lechMotO, BIEU_THUE_CHUAN_7_BAC));
+  assert.ok(!laBieuThueTrungKhop(lechMotO, BIEU_THUE_CHUAN_5_BAC));
 
   assert.equal(
     HRM_CANH_BAO.BIEU_THUE_LECH_CHUAN,
@@ -634,8 +633,8 @@ test('FR-hrm-055: chỉ biểu 5 bậc cũ TRÙNG KHỚP NGUYÊN VĂN mới đư
   );
   assert.ok(!laBieuThueTrungKhop(namBacBacMo, BIEU_THUE_5_BAC_CU));
 
-  // Biểu chuẩn 7 bậc không bao giờ bị nhầm là biểu cũ (bảo đảm chạy lại cho cùng kết quả).
-  assert.ok(!laBieuThueTrungKhop(BIEU_THUE_CHUAN_7_BAC, BIEU_THUE_5_BAC_CU));
+  // Biểu chuẩn hiện hành không bao giờ bị nhầm là biểu cũ (bảo đảm chạy lại cho cùng kết quả).
+  assert.ok(!laBieuThueTrungKhop(BIEU_THUE_CHUAN_5_BAC, BIEU_THUE_5_BAC_CU));
 
   // Dữ liệu méo mó đọc từ cột Json không được làm hàm nổ, và luôn coi là KHÔNG trùng khớp.
   assert.ok(!laBieuThueTrungKhop(null, BIEU_THUE_5_BAC_CU));
@@ -1019,7 +1018,7 @@ function dbCauHinhGia(coBanGhi: boolean, nhatKy: string[] = []) {
   };
 }
 
-test('BE-06: GET trên tenant trắng dùng upsert (không phải create) và nạp biểu 7 bậc', async () => {
+test('BE-06: GET trên tenant trắng dùng upsert (không phải create) và nạp biểu 5 bậc chuẩn', async () => {
   const { db, nhatKy } = dbCauHinhGia(false);
   const kq = await getSettings(db);
 
@@ -1027,8 +1026,8 @@ test('BE-06: GET trên tenant trắng dùng upsert (không phải create) và n�
   // hình. `upsert` thì không.
   assert.deepEqual(nhatKy, ['findUnique', 'upsert(soTruongUpdate=0)']);
   const bieu = (kq as unknown as { taxBrackets: TaxBracketItem[] }).taxBrackets;
-  assert.equal(bieu.length, 7);
-  assert.equal(bieu[6].khoang, null);
+  assert.equal(bieu.length, 5);
+  assert.equal(bieu[4].khoang, null);
 });
 
 test('BE-06: GET khi đã có bản ghi thì KHÔNG ghi gì', async () => {
@@ -1143,7 +1142,7 @@ test('AC-hrm-70 / BE-11: PUT trả warning đúng ba tình huống', async () =>
 
   // (b) Gửi đúng biểu chuẩn -> cũng bỏ hẳn trường.
   const rChuan = await updateSettings(dbCauHinhGia(true).db, {
-    taxBrackets: BIEU_THUE_CHUAN_7_BAC,
+    taxBrackets: BIEU_THUE_CHUAN_5_BAC,
   });
   assert.ok(!('warning' in rChuan));
 
@@ -1160,11 +1159,11 @@ test('AC-hrm-70 / BE-11: PUT trả warning đúng ba tình huống', async () =>
   assert.equal(rLech.warning, HRM_CANH_BAO.BIEU_THUE_LECH_CHUAN);
 });
 
-test('AC-hrm-67 / BE-09: restore-default ghi biểu 7 bậc và KHÔNG bao giờ kèm warning', async () => {
+test('AC-hrm-67 / BE-09: restore-default ghi biểu 5 bậc chuẩn và KHÔNG bao giờ kèm warning', async () => {
   const kq = await restoreDefault(dbCauHinhGia(true).db);
   const bieu = (kq as unknown as { taxBrackets: TaxBracketItem[] }).taxBrackets;
-  assert.equal(bieu.length, 7);
-  assert.equal(bieu[6].khoang, null);
+  assert.equal(bieu.length, 5);
+  assert.equal(bieu[4].khoang, null);
   assert.ok(!('warning' in (kq as object)));
 });
 

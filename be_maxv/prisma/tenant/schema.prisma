@@ -923,6 +923,7 @@ model hrm_nhan_vien {
   diligenceRecords  DiligenceRecord[]
   adjustmentRecords SalaryAdjustmentRecord[]
   payrollSheetLines PayrollSheetLine[]
+  otherIncomeRecords OtherIncomeRecord[]
 
   @@index([ma_pb])
   @@index([so_cccd])
@@ -1129,21 +1130,24 @@ model GeneralSetting {
   unionFeeEmployeeRate          Decimal       @default(1.0) @db.Decimal(5, 2)
   unionFeeMaxAmount             Decimal       @default(234000) @db.Decimal(15, 2)
   unionFeeCompanyRate           Decimal       @default(2.0) @db.Decimal(5, 2)
-  personalDeduction             Decimal       @default(11000000) @db.Decimal(15, 2)
-  dependentDeduction            Decimal       @default(4400000) @db.Decimal(15, 2)
+  /// Giảm trừ gia cảnh theo NQ 110/2025/UBTVQH15, hiệu lực từ kỳ tính thuế 2026 (trước là
+  /// 11.000.000/4.400.000 theo NQ 954/2020/UBTVQH14).
+  personalDeduction             Decimal       @default(15500000) @db.Decimal(15, 2)
+  dependentDeduction            Decimal       @default(6200000) @db.Decimal(15, 2)
   taxBrackets                   Json          @db.JsonB
 
-  /// BR-dltl-027 — Trần miễn thuế TNCN của phụ cấp ăn ca/ăn trưa mỗi tháng (TT 26/2016:
-  /// 730.000đ). Phần vượt trần tính vào thu nhập chịu thuế. Trần này được QUY ĐỔI THEO CÔNG
-  /// khi tính (AC-dltl-23) — cột lưu mức tháng đầy đủ. ADR-010 QĐ-2.
-  lunchAllowanceTaxFreeCap       Decimal      @default(730000)  @db.Decimal(15, 2)
+  /// BR-dltl-027 — Trần miễn thuế TNCN của phụ cấp ăn ca/ăn trưa mỗi tháng (NĐ 253/2026/NĐ-CP:
+  /// 1.200.000đ, trước là 730.000đ theo TT 26/2016). Phần vượt trần tính vào thu nhập chịu thuế.
+  /// Trần này được QUY ĐỔI THEO CÔNG khi tính (AC-dltl-23) — cột lưu mức tháng đầy đủ. ADR-010 QĐ-2.
+  lunchAllowanceTaxFreeCap       Decimal      @default(1200000) @db.Decimal(15, 2)
 
-  /// BR-dltl-026 — Thuế suất khấu trừ tại nguồn cho HĐ thử việc/thời vụ (Điều 25 TT 111/2013:
-  /// 10%). Đơn vị PHẦN TRĂM (10.00 = 10%) — cùng quy ước với các cột insurance.. / unionFee..
+  /// BR-dltl-026 — Thuế suất khấu trừ tại nguồn cho HĐ thử việc/thời vụ (NĐ 253/2026/NĐ-CP
+  /// Điều 50: 10%). Đơn vị PHẦN TRĂM (10.00 = 10%) — cùng quy ước với các cột insurance../unionFee..
   withholdingTaxRate             Decimal      @default(10.0)    @db.Decimal(5, 2)
 
-  /// BR-dltl-026 — Ngưỡng thu nhập mỗi lần trả bắt đầu phải khấu trừ 10% (2.000.000đ).
-  withholdingTaxThreshold        Decimal      @default(2000000) @db.Decimal(15, 2)
+  /// BR-dltl-026 — Ngưỡng thu nhập mỗi lần trả bắt đầu phải khấu trừ 10% (NĐ 253/2026/NĐ-CP
+  /// Điều 50 khoản 2: 5.000.000đ, hiệu lực 01/07/2026 — trước là 2.000.000đ).
+  withholdingTaxThreshold        Decimal      @default(5000000) @db.Decimal(15, 2)
 
   createdAt                     DateTime      @default(now())
   updatedAt                     DateTime      @default(now()) @updatedAt
@@ -1436,6 +1440,7 @@ model PayrollPeriod {
   diligenceRecords  DiligenceRecord[]
   adjustmentRecords SalaryAdjustmentRecord[]
   payrollSheetLines PayrollSheetLine[]
+  otherIncomeRecords OtherIncomeRecord[]
   moduleLocks       PayrollModuleLock[]
 
   @@index([status])
@@ -1804,3 +1809,100 @@ model PayrollSheetLine {
   @@index([ma_nv])
   @@map("hrm_payroll_sheet_lines")
 }
+
+// ============================================================
+//  HRM › THU NHẬP NGOÀI LƯƠNG, BẢNG TÍNH THUẾ & TỜ KHAI TNCN (TT 80/2021)
+// ============================================================
+
+/// Phương thức tính/khấu trừ thuế TNCN cho thu nhập ngoài lương & thù lao
+enum TaxDeductionType {
+  PROGRESSIVE    // Lũy tiến từng phần (NV có HĐLĐ >= 3 tháng - gộp vào bảng lương)
+  FLAT_10        // Khấu trừ 10% tại nguồn (cá nhân cư trú không HĐLĐ hoặc < 3 tháng, >= 2tr/lần)
+  FLAT_20        // Khấu trừ 20% tại nguồn (cá nhân không cư trú)
+  EXEMPT_COMMIT  // Tạm miễn khấu trừ do có Cam kết 08/CK-TNCN (có MST, cư trú)
+  NO_DEDUCTION   // Dưới ngưỡng 2tr/lần (cá nhân cư trú, không khấu trừ)
+}
+
+/// Bảng Thu nhập ngoài lương & thù lao vãng lai theo kỳ
+model OtherIncomeRecord {
+  id                   String            @id @default(uuid()) @db.VarChar(64)
+  periodId             String            @db.VarChar(64)
+  ma_nv                String?           @db.VarChar(24) // Nullable nếu là cá nhân vãng lai ngoài công ty
+
+  // Snapshot thông tin người nhận (tránh mất/lệch khi sửa danh mục NV)
+  fullName             String            @db.VarChar(254)
+  taxCode              String?           @db.VarChar(20)
+  idCardNumber         String?           @db.VarChar(20)
+  address              String?           @db.VarChar(500)
+  phone                String?           @db.VarChar(20)
+  email                String?           @db.VarChar(100)
+  isResident           Boolean           @default(true)
+
+  incomeType           String            @db.VarChar(50) // thù lao, hoa hồng, thưởng...
+  paymentDate          DateTime          @db.Date        // Date để chống lệch múi giờ
+  paymentType          String            @default("GROSS") @db.VarChar(10) // GROSS | NET
+
+  grossAmount          Decimal           @default(0) @db.Decimal(18, 2)
+  taxDeductionType     TaxDeductionType  @default(FLAT_10)
+  taxRate              Decimal           @default(0) @db.Decimal(5, 2)  // 10.00, 20.00, 0.00
+  taxDeducted          Decimal           @default(0) @db.Decimal(18, 2)
+  netAmount            Decimal           @default(0) @db.Decimal(18, 2)
+
+  hasCommitment08      Boolean           @default(false)
+  eWithholdingCertNo   String?           @db.VarChar(50) // Số chứng từ khấu trừ thuế điện tử
+  eWithholdingCertDate DateTime?         @db.Date
+  note                 String?           @db.VarChar(500)
+
+  createdAt            DateTime          @default(now())
+  updatedAt            DateTime          @default(now()) @updatedAt
+  createdByUserId      String?           @db.VarChar(64)
+
+  period               PayrollPeriod     @relation(fields: [periodId], references: [id], onDelete: Cascade)
+  nhan_vien            hrm_nhan_vien?    @relation(fields: [ma_nv], references: [ma_nv], onDelete: SetNull, onUpdate: Cascade)
+
+  @@index([periodId])
+  @@index([periodId, ma_nv])
+  @@index([taxCode])
+  @@index([idCardNumber])
+  @@index([paymentDate])
+  @@map("hrm_other_income_records")
+}
+
+/// Tờ khai thuế TNCN Mẫu 05/KK-TNCN (TT 80/2021/TT-BTC)
+model hrm_to_khai_tncn05 {
+  nam         Int
+  ky_loai     String    @db.VarChar(8)  // thang | quy
+  ky_so       Int                       // 1..12 (tháng) hoặc 1..4 (quý)
+  so_lan      Int       @default(0)     // 0 = chính thức, 1, 2... = bổ sung
+
+  trang_thai  String    @default("nhap") @db.VarChar(16) // nhap | chot
+
+  /// Bộ chỉ tiêu CUỐI đem nộp: { ct16, ct17, ..., ct32 }
+  ct          Json      @db.JsonB
+  /// Số máy tự động tổng hợp từ Bảng tính thuế
+  ct_may      Json      @db.JsonB
+  /// Ô kế toán cố tình sửa tay + lý do: { ct21: { gia: 150000000, lyDo: "..." } }
+  ghi_de      Json      @db.JsonB
+
+  // Các cột bóc tách để SELECT danh sách siêu nhanh (không scan JSONB)
+  ct16        Int       @default(0)     // Tổng số lao động
+  ct21        Decimal   @default(0) @db.Decimal(18, 2) // Tổng TNCT trả cho cá nhân
+  ct29        Decimal   @default(0) @db.Decimal(18, 2) // Tổng thuế TNCN đã khấu trừ
+
+  canh_bao    Json?     @db.JsonB       // Mảng cảnh báo nghiệp vụ string[]
+  nguoi_ky    String?   @db.VarChar(100)
+  ngay_ky     DateTime? @db.Date
+  tinh_luc    DateTime?
+
+  khoa_so_boi String?   @db.VarChar(64)
+  khoa_so_luc DateTime?
+
+  datetime0   DateTime  @default(now())
+  datetime2   DateTime  @updatedAt
+
+  @@id([nam, ky_loai, ky_so, so_lan])
+  @@index([nam, ky_loai])
+  @@index([trang_thai])
+  @@map("hrm_to_khai_tncn05")
+}
+

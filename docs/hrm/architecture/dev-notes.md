@@ -541,11 +541,12 @@ GET /payroll/calculate?periodId=..
 
 1. **Hai trần bảo hiểm ĐỘC LẬP** — BHXH+BHYT trần `baseSalary×20` (46,8tr), BHTN trần
    `regionMinSalary×20` (99,2tr). Tính RIÊNG rồi cộng, KHÔNG kẹp 1 trần chung.
-2. **Miễn thuế OT vượt chuẩn** — chỉ phần OT trả CAO HƠN đơn giá giờ thường mới miễn, tính TỪNG
-   dòng `OvertimeRecord`, không cộng gộp rồi mới trừ.
-3. **Khấu trừ 10% cho HĐ `thu_viec`/`thoi_vu`** khi thu nhập ≥ ngưỡng — KHÔNG giảm trừ gia cảnh.
-4. **Trần miễn thuế ăn ca 730k/tháng** (quy đổi theo công) — nhận diện bằng cờ
-   `SalaryItem.isMealAllowance`, KHÔNG dò tên khoản.
+2. **Miễn thuế tiền OT** `[SỬA 2026-09-14]` — từ kỳ tính thuế 2026 miễn TOÀN BỘ tiền làm thêm giờ
+   (`otTaxExemptAmount = otAmount`). Bản cũ chỉ miễn phần trả cao hơn đơn giá giờ thường.
+3. **Khấu trừ 10% cho HĐ `thu_viec`/`thoi_vu`** khi thu nhập ≥ ngưỡng (mặc định 5.000.000đ/lần
+   trả từ 2026-09-14, trước là 2.000.000đ) — KHÔNG giảm trừ gia cảnh.
+4. **Trần miễn thuế ăn ca 1,2tr/tháng** `[SỬA 2026-09-14, trước là 730k]` (quy đổi theo công) —
+   nhận diện bằng cờ `SalaryItem.isMealAllowance`, KHÔNG dò tên khoản.
 5. **QĐ-9 (chủ dự án chốt `Q-1` 2026-09-10):** ô tick "chịu thuế TNCN" (`SalaryItem.isTaxable`) và
    "Phân loại" (`SalaryStructureItem.taxTreatment`) ở màn Cấu trúc lương **có hiệu lực thật** —
    khoản phụ cấp cố định khai miễn thuế bị trừ khỏi thu nhập tính thuế. Phép hợp nhất là **OR**:
