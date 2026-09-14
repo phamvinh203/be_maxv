@@ -469,3 +469,19 @@
 - Liên kết: BUG-dltl-004 (task_85b3ae1d) · BR-dltl-025 · BR-dltl-026 · BR-dltl-027 · AC-dltl-15/17/18/19/21/23 · ADR-010 QĐ-1/QĐ-2 · BR-tkt-002 · BR-tkt-008 · ADR-012 (hoãn).
 - Kiểm chứng: `npm run typecheck` exit 0 · `npm run lint` 4 lỗi = đúng baseline (mã nháp `to_khai_thue/` chưa commit), 0 lỗi mới · `npm test` 934 ca pass, còn đúng 2 ca đỏ có sẵn TC-hrm-301/TC-hrm-316 (không liên quan thuế, đã đối chiếu baseline ở phiên trước) · script chuẩn hóa chạy 2 lượt cho kết quả ổn định.
 - Commit: chưa commit
+
+## [2026-09-14 20:50] frontend (kích hoạt riêng theo yêu cầu chủ dự án) — nốt cuối BUG-dltl-003/004 ở phía giao diện
+
+- Nhiệm vụ: màn Cài đặt chung vẫn hiển thị khung pháp lý cũ trong khi máy chủ đã tính theo luật 2026. Phát hiện khi đối soát mã nháp `to_khai_thue` (xem `to_khai_thue/doi-soat-ma-nhap-to-khai-thue.md` Mục 12). Đây là **code đã commit**, không phải mã nháp.
+- Lưu ý quy trình: `frontend-engineer` đang TẠM NGỪNG theo CLAUDE.md. Đợt này chủ dự án kích hoạt riêng cho đúng việc sửa hằng số/chữ hiển thị — **không** phải mở lại phase FE.
+- Đã sửa (`hdđt_maxv/src/features/hrm/`):
+  - `api/cau_hinh_mac_dinh/cauHinhQueries.ts`:200-255 — `cauHinhMacDinhGoc()`: giảm trừ 11tr/4,4tr → **15,5tr/6,2tr**, trần ăn ca 730k → **1,2tr**, ngưỡng khấu trừ 2tr → **5tr**, biểu **7 bậc → 5 bậc** (10tr-5% · 30tr-10% · 60tr-20% · 100tr-30% · mở-35%). Viết lại JSDoc: nêu rõ biểu chuẩn nay là 5 bậc theo Luật 109/2025/QH15 và cảnh báo đừng nhầm với **hai** biểu lỗi thời (7 bậc Điều 22 từng đúng luật; 5 bậc cắt cụt 25% là lỗi mã) — trùng số bậc với biểu cắt cụt là ngẫu nhiên. Dòng 48 — sửa chú thích mã cảnh báo.
+  - `components/cau_hinh_mac_dinh/CauHinhPanel.tsx`:69, 180 — **2 chỗ chữ hiện ra cho người dùng**: toast cảnh báo lệch chuẩn và hộp xác nhận "Khôi phục mặc định" đều còn ghi "7 bậc chuẩn (Điều 22)".
+  - `components/cau_hinh_mac_dinh/sections/ThueSection.tsx`:146-147 — câu mô tả dưới bảng biểu thuế: "Biểu chuẩn hiện hành có 7 bậc" → 5 bậc.
+  - `api/cau_hinh_mac_dinh/cauHinhApi.ts`:82 · `api/du_lieu_tinh_luong/payrollCalculationApi.ts`:72 — 2 chú thích.
+- Mở rộng ngoài file được chỉ định, có chủ đích: chủ dự án chỉ nêu `cauHinhQueries.ts`, nhưng sửa hằng số mà để nguyên 3 chỗ chữ vẫn ghi "7 bậc" thì màn hình tự mâu thuẫn — số hiện 5 bậc, chữ nói 7 bậc. Đã sửa cùng đợt.
+- Đã rà toàn bộ `hdđt_maxv/src` (trừ mã nháp `to_khai_thue`): **không còn** hằng số 11tr/4,4tr/730k/2tr nào khác.
+- Kiểm chứng: `npx tsc -b` exit 0 · `npm run lint` 16 lỗi — **tất cả** nằm trong mã nháp `to_khai_thue` chưa commit (`BangTinhThuePanel`, `ThuNhapNgoaiLuong*`, `ToKhai*`, `types/toKhaiThue.ts`), **0 lỗi** trong 5 file vừa sửa. **CHƯA kiểm trên trình duyệt** — không có tài khoản đăng nhập và DB dev chưa có kỳ lương mẫu (cùng vướng mắc đã ghi ở phiên 2026-09-14 12:39). Cần chủ dự án tự mở màn Cài đặt chung xác nhận trực quan.
+- Chưa đụng tới: 14 vị trí số liệu lỗi thời trong mã nháp `to_khai_thue` (xem tài liệu đối soát Mục 7) — thuộc đợt bật lại FE, không phải việc này.
+- Liên kết: BUG-dltl-003 · BUG-dltl-004 · BR-hrm-081 · `doi-soat-ma-nhap-to-khai-thue.md` Mục 12.
+- Commit: chưa commit

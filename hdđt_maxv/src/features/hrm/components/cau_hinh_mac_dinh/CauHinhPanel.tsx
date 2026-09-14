@@ -66,7 +66,7 @@ export default function CauHinhPanel() {
       // (BR-hrm-083). `canhBao` vắng mặt là chuyện bình thường — không được coi là lỗi.
       if (canhBao === CANH_BAO_BIEU_THUE_LECH_CHUAN) {
         toast.warning(
-          "Biểu thuế vừa lưu khác biểu chuẩn 7 bậc theo Điều 22 Luật Thuế TNCN. Hãy đối chiếu lại trước khi tính lương.",
+          "Biểu thuế vừa lưu khác biểu chuẩn 5 bậc theo Luật Thuế TNCN số 109/2025/QH15. Hãy đối chiếu lại trước khi tính lương.",
         );
       }
     } catch (err) {
@@ -177,8 +177,8 @@ export default function CauHinhPanel() {
             các hệ số tăng ca, tỷ lệ bảo hiểm và mức giảm trừ đã tùy chỉnh.
             <br />
             <br />
-            Biểu thuế sẽ được nạp lại thành <strong>7 bậc chuẩn</strong> (Điều 22 Luật Thuế TNCN,
-            trần 35%).
+            Biểu thuế sẽ được nạp lại thành <strong>5 bậc chuẩn</strong> (Luật Thuế TNCN số
+            109/2025/QH15, trần 35%).
             <br />
             <br />
             <strong>Không hoàn tác được.</strong> Tiếp tục?

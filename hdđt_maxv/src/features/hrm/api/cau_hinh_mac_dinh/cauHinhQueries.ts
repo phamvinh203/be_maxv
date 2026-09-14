@@ -45,7 +45,7 @@ import {
   type DayPolicyApi,
 } from "./cauHinhApi";
 
-/** Mã cảnh báo máy chủ trả khi biểu thuế lưu vào khác biểu chuẩn 7 bậc (BR-hrm-083). */
+/** Mã cảnh báo máy chủ trả khi biểu thuế lưu vào khác biểu chuẩn 5 bậc (BR-hrm-083). */
 export const CANH_BAO_BIEU_THUE_LECH_CHUAN = "CANH_BAO_BIEU_THUE_LECH_CHUAN";
 
 // ─────────────────────── Bảng ánh xạ enum ───────────────────────
@@ -200,10 +200,14 @@ function veKieuBe(fe: CauHinhMacDinh): UpdateGeneralSettingsApiBody {
 /**
  * Bộ giá trị chuẩn pháp luật Việt Nam — dùng làm khung tạm trong lúc chờ `GET` trả về.
  *
- * Biểu thuế là **7 bậc** theo Điều 22 Luật Thuế TNCN (`BR-hrm-081`), trần 35%, bậc cuối là bậc
- * mở. Bản 5 bậc dừng ở 25% trước đây là biểu chuẩn **bị cắt cụt ba bậc trên**, khấu trừ thiếu
- * với mọi người có thu nhập tính thuế trên 52tr/tháng — không tương ứng với bất kỳ biểu thuế
- * nào của pháp luật.
+ * Biểu thuế là **5 bậc** theo Luật Thuế TNCN số 109/2025/QH15 (`BR-hrm-081`), trần 35%, bậc cuối
+ * là bậc mở, hiệu lực từ kỳ tính thuế 2026.
+ *
+ * ⚠️ Đừng nhầm với hai biểu LỖI THỜI cùng nằm trong lịch sử của màn này: biểu **7 bậc** theo Điều
+ * 22 Luật 04/2007/QH12 (từng đúng luật tới hết kỳ tính thuế 2025) và biểu 5 bậc **cắt cụt ở 25%**
+ * (lỗi mã cũ, chưa bao giờ đúng luật nào). Trùng số bậc với biểu cắt cụt là ngẫu nhiên — giá trị
+ * hoàn toàn khác. Nguồn chuẩn duy nhất ở máy chủ: `BIEU_THUE_CHUAN_5_BAC`
+ * (`be_maxv/src/services/client/hrm/cau_hinh_mac_dinh/generalSettings.service.ts`).
  *
  * ⚠️ Đây KHÔNG phải nút "Khôi phục mặc định": khôi phục là thao tác **ghi**, phải gọi
  * `useKhoiPhucCauHinh` để máy chủ nạp bộ chuẩn của chính nó rồi ghi nhật ký.
@@ -236,21 +240,21 @@ export function cauHinhMacDinhGoc(): CauHinhMacDinh {
     doan_phi_nv: 1,
     tran_co_so_doan_phi: 234000,
     kinh_phi_cong_doan_ct: 2,
-    giam_tru_ban_than: 11000000,
-    giam_tru_npt: 4400000,
-    // ADR-010: trần miễn thuế ăn trưa (TT 26/2016/TT-BLĐTBXH), tỷ lệ + ngưỡng khấu trừ tại
-    // nguồn HĐ thử việc/thời vụ (Điều 25 TT 111/2013). `ty_le_khau_tru_thu_viec` là số nguyên
-    // phần trăm (10 = 10%), CÙNG đơn vị với `bhxh_nv`/`bhyt_nv` ở trên — KHÔNG phải 0.10.
-    tran_mien_thue_an_trua: 730000,
+    // Giảm trừ gia cảnh theo NQ 110/2025/UBTVQH15 (thay NQ 954/2020: 11tr/4,4tr).
+    giam_tru_ban_than: 15500000,
+    giam_tru_npt: 6200000,
+    // ADR-010: trần miễn thuế ăn trưa + tỷ lệ và ngưỡng khấu trừ tại nguồn HĐ thử việc/thời vụ,
+    // nay theo NĐ 253/2026/NĐ-CP (thay TT 26/2016/TT-BLĐTBXH và Điều 25 TT 111/2013: 730k/2tr).
+    // `ty_le_khau_tru_thu_viec` là số nguyên phần trăm (10 = 10%), CÙNG đơn vị với
+    // `bhxh_nv`/`bhyt_nv` ở trên — KHÔNG phải 0.10.
+    tran_mien_thue_an_trua: 1200000,
     ty_le_khau_tru_thu_viec: 10,
-    nguong_khau_tru_thu_viec: 2000000,
+    nguong_khau_tru_thu_viec: 5000000,
     bac_thue: [
-      { khoang: 5000000, thue_suat: 5 },
-      { khoang: 10000000, thue_suat: 10 },
-      { khoang: 18000000, thue_suat: 15 },
-      { khoang: 32000000, thue_suat: 20 },
-      { khoang: 52000000, thue_suat: 25 },
-      { khoang: 80000000, thue_suat: 30 },
+      { khoang: 10000000, thue_suat: 5 },
+      { khoang: 30000000, thue_suat: 10 },
+      { khoang: 60000000, thue_suat: 20 },
+      { khoang: 100000000, thue_suat: 30 },
       { khoang: null, thue_suat: 35 },
     ],
   };
