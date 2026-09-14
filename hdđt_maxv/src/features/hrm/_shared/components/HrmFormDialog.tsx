@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import { useForm, type DefaultValues } from "react-hook-form";
+import { useForm, type DefaultValues, type FieldValues } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import type { z } from "zod";
 import Button from "@mui/material/Button";
@@ -10,8 +10,7 @@ import DialogContent from "@mui/material/DialogContent";
 import DialogTitle from "@mui/material/DialogTitle";
 import Stack from "@mui/material/Stack";
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-interface HrmFormDialogProps<TSchema extends z.ZodType<any, any, any>> {
+interface HrmFormDialogProps<TSchema extends z.ZodType<FieldValues>> {
   open: boolean;
   title: string;
   schema: TSchema;
@@ -49,8 +48,7 @@ interface HrmFormDialogProps<TSchema extends z.ZodType<any, any, any>> {
  * />
  * ```
  */
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-export default function HrmFormDialog<TSchema extends z.ZodType<any, any, any>>({
+export default function HrmFormDialog<TSchema extends z.ZodType<FieldValues>>({
   open,
   title,
   schema,
@@ -61,7 +59,7 @@ export default function HrmFormDialog<TSchema extends z.ZodType<any, any, any>>(
   submitLabel = "Lưu",
 }: HrmFormDialogProps<TSchema>) {
   const form = useForm<z.infer<TSchema>>({
-    resolver: zodResolver(schema) as any, // eslint-disable-line @typescript-eslint/no-explicit-any
+    resolver: zodResolver(schema as any), // eslint-disable-line @typescript-eslint/no-explicit-any
     defaultValues,
   });
 
