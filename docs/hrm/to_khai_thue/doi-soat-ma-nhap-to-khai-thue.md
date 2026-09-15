@@ -153,6 +153,8 @@ Bám ràng buộc phụ thuộc thật, không theo số thứ tự endpoint.
 | **6** | Tờ khai quý: `GET` 4 trạng thái + `cacThang` + thông tin người nộp thuế · `periods` · `overrides` · `export` Excel+PDF ngoài transaction · `detail-sheet` · `mark-submitted` | — |
 | **7** | Dọn: xóa 6 route thừa, xóa `xuatXmlTncn05.ts` + handler, gắn `assertAdminOrOwner` cho `unlock`/`export`/`mark-submitted`, gom `toDto()` (đang chép 6 lần) | — |
 
+> **Trạng thái 2026-09-15:** đã làm xong cả 8 bước. Khác kế hoạch ở 2 điểm: (1) mã nháp **không xóa hẳn** mà cất vào git stash — nó chưa từng được commit nên xóa là mất vĩnh viễn; (2) quyền ADMIN/OWNER kiểm bằng `assertQuanTriToKhaiThue` ở đầu controller (mang mã `E-tkt-014`) thay vì `assertAdminOrOwner`, áp cho cả endpoint thứ 23 tải lại file. Chi tiết từng bước và commit ở `docs/hrm/work-log.md`.
+
 ---
 
 ## 11. Điểm còn treo

@@ -82,13 +82,31 @@ export function veTaxPolicyDto(p: TaxPolicy): TaxPolicyDto {
   };
 }
 
+/** Một dòng của `GET /tax-policies` — kèm cờ dòng nào đang áp dụng hôm nay (api-contract Mục 6.1). */
+export type TaxPolicyListDto = TaxPolicyDto & { dangApDung: boolean };
+
 /**
  * Danh sách chính sách thuế, mới nhất trước — phục vụ `GET /tax-policies`.
  * Bảng này chỉ vài dòng trong nhiều năm nên không phân trang.
+ *
+ * `dangApDung` = dòng có mốc MỚI NHẤT đã tới, tính theo NGÀY Việt Nam — cùng luật chọn dòng với
+ * `resolveTaxPolicy`. Dòng có mốc tương lai (nạp sẵn cho năm sau) chưa áp dụng.
  */
-export async function getTaxPolicies(db: Db): Promise<TaxPolicyDto[]> {
+export async function getTaxPolicies(
+  db: Db,
+  homNay: Date = new Date(),
+): Promise<TaxPolicyListDto[]> {
   const rows = await db.taxPolicy.findMany({
     orderBy: { effectiveFrom: 'desc' },
   });
-  return rows.map(veTaxPolicyDto);
+  const ngay = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Asia/Ho_Chi_Minh',
+  }).format(homNay);
+  const idDangApDung = rows.find(
+    (r) => r.effectiveFrom.toISOString().slice(0, 10) <= ngay,
+  )?.id;
+  return rows.map((r) => ({
+    ...veTaxPolicyDto(r),
+    dangApDung: r.id === idDangApDung,
+  }));
 }

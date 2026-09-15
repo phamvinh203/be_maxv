@@ -759,7 +759,7 @@ gọi thêm service có sẵn thay vì `db.<model>.create()` trực tiếp cho c
   thật) và mock `calculatePayrollPreview`/`ghiDeBangLuong`; mock DB của `hrmPayrollInputData.test.ts`
   phải có `payrollModuleLock.findUnique` (guard tra ở mọi đường ghi).
 
-### 1.12. Tờ khai thuế TNCN (`to_khai_thue`) — bước 1…6 (2026-09-14 → 09-15, backend-engineer)
+### 1.12. Tờ khai thuế TNCN (`to_khai_thue`) — bước 1…7 (2026-09-14 → 09-15, backend-engineer)
 
 **Mô hình trước khi đọc code** (chi tiết ở `docs/hrm/to_khai_thue/data-model-to-khai-thue.md`):
 - **Chính sách thuế theo mốc hiệu lực** (`hrm_tax_policies`, ADR-012): biểu thuế + giảm trừ của một
@@ -780,7 +780,7 @@ gọi thêm service có sẵn thay vì `db.<model>.create()` trực tiếp cho c
 | Tra chính sách thuế của kỳ | `taxPolicy.service.ts::resolveTaxPolicy(db, period.startDate)` | Thiếu dòng ⇒ 500 `E-tkt-015` kèm lệnh `npm run hrm:seed-thue` |
 | Danh mục loại thu nhập (5 endpoint) | `/to-khai-thue/income-categories` → `incomeCategory.service.ts` | Mã `TNxx` tự sinh: quét lỗ hổng + thử lại khi trùng |
 | Tính thuế 1 bản ghi | `otherIncomeTax.ts::tinhThueThuNhapNgoaiLuong` | Hàm thuần — nơi DUY NHẤT có công thức 4 nhóm |
-| Bản ghi thu nhập ngoài lương (6 endpoint) | `otherIncomeRecord.service.ts` | ⚠️ Route vẫn trỏ controller nháp tới bước 7 |
+| Bản ghi thu nhập ngoài lương (6 endpoint) | `/to-khai-thue/other-income` → `otherIncomeRecord.service.ts` | Không có đường ghi/xóa hàng loạt — xóa loạt chứng từ thuế không FR nào phủ |
 | Tính dòng Bảng tính thuế | `taxSheetRows.ts::tinhBangTinhThueThang` | Hàm thuần, dùng chung cho xem Nháp VÀ lúc chốt ⇒ số thấy = số đóng băng |
 | Xem Bảng tính thuế tháng | `GET /to-khai-thue/tax-calculation` → `taxSheet.service.ts::getTaxSheet` | Có khóa ⇒ đọc snapshot; không ⇒ `getPayrollSheetLines` + bản ghi ngoài lương + hồ sơ NV |
 | Chốt tháng | `POST .../tax-calculation/lock` → `lockTaxSheet` | Kỳ lương phải `LOCKED`+; tính ngoài giao dịch, ghi khóa TRƯỚC dòng |
@@ -792,6 +792,8 @@ gọi thêm service có sẵn thay vì `db.<model>.create()` trực tiếp cho c
 | Bảng chi tiết · đánh dấu đã nộp · lịch sử kỳ | `detail-sheet` → `getBangChiTiet` · `mark-submitted` → `danhDauDaNop` · `periods` → `listKyToKhai` | Đánh dấu nộp là `updateMany` có điều kiện `trang_thai = EXPORTED` |
 | Quyền (mọi controller sub-cụm) | `helpers/hrm/toKhaiThueAccess.ts` — `dbToKhaiThue` · `assertQuanTriToKhaiThue` | Lỗi mang `E-tkt-014` |
 | File Excel | `helpers/hrm/xlsxDonGian.ts::taoXlsx` trên `helpers/zip.ts::taoZip` | Không thêm thư viện — giữ mốc 0 lỗ hổng `npm audit` |
+| Nối route (23 endpoint) | `routes/hrm/to_khai_thue/toKhaiThue.route.ts`, đăng ký trong `routes/hrm/hrm.route.ts` | Xác thực + guard module `hrm` kế thừa hook của `hrm.route.ts`; quyền 2 mức ở đầu controller |
+| Danh sách chính sách thuế | `GET /to-khai-thue/tax-policies` → `taxPolicy.controller.ts` → `taxPolicy.service.ts::getTaxPolicies` | `dangApDung` = mốc mới nhất đã tới theo ngày Việt Nam |
 | Đếm người phụ thuộc trong kỳ | `helpers/hrm/nguoiPhuThuocTrongKy.ts::demNguoiPhuThuocTrongKy` | Engine lương CHƯA dùng — BUG-dltl-005 |
 | Lỗi nghiệp vụ | `ToKhaiThueError('E-tkt-xxx')`, kiểm đầu vào qua `toKhaiThueValidate.ts::kiemTraTkt` | Status gắn cứng theo mã ở `constants/hrm/to_khai_thue/toKhaiThueErrors.ts` |
 
@@ -811,12 +813,19 @@ gọi thêm service có sẵn thay vì `db.<model>.create()` trực tiếp cho c
 - Tờ khai `EXPORTED`/`SUBMITTED` là bất biến: không tính lại, không ghi đè, không lùi trạng thái — kể
   cả khi dựng file lỗi sau commit (người dùng tải lại bằng `GET .../05-kk-tncn/file`).
 - Không gọi thẳng `dbCoQuyenLuongPayroll` / `assertAdminOrOwner` trong sub-cụm này — lỗi mất mã `E-tkt-014`.
+- Thêm endpoint mới phải thêm cả dòng vào bảng `ENDPOINT` của `hrmToKhaiThueRoutes.test.ts` (kèm mức quyền) —
+  thiếu dòng là ma trận quyền không còn phủ endpoint đó.
+- Mã nháp cũ (`toKhaiThue.controller.ts`, `toKhaiThue.validator.ts`, `otherIncome.service.ts`,
+  `taxCalculation.service.ts`, `toKhaiTncn05.service.ts`, `types.ts`, `xuatXmlTncn05.ts`) đã cất vào git
+  stash ở bước 7. KHÔNG phục hồi vào `src/`: viết cho mô hình nghiệp vụ cũ, có lỗ hổng quyền ở handler xuất
+  XML (xem `docs/hrm/to_khai_thue/doi-soat-ma-nhap-to-khai-thue.md`).
 
 **Test:** `hrmTaxPolicy` · `hrmIncomeCategory` · `hrmOtherIncomeTax` (thuần) · `hrmTaxSheetRows`
 (thuần, kiểm bất biến từng dòng) · `hrmTaxSheetLock` (DB giả lập: thứ tự kiểm lỗi, khóa ghi trước dòng,
 bị chặn thì không ghi gì) · `hrmTaxDeclarationCalc` (thuần: 17 chỉ tiêu, ghi đè, cân đối) ·
 `hrmTaxDeclaration` (DB giả lập: vòng đời 4 trạng thái, khóa đọc trước khi ghi) · `hrmXlsxDonGian`
-(đọc lại zip/xlsx bằng bộ đọc ZIP của dự án). Chưa có ca HTTP.
+(đọc lại zip/xlsx bằng bộ đọc ZIP của dự án) · `hrmToKhaiThueRoutes` (HTTP qua `app.inject`: đủ 23 route, 8 route
+nháp đã bỏ, ma trận quyền 2 mức, DB giả nổ nếu bị đụng trước khi qua quyền). Chưa có ca HTTP chạy trên DB thật.
 
 ---
 

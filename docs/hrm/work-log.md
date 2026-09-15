@@ -623,4 +623,22 @@
 - Liên kết: FR-tkt-013…018 · BR-tkt-014…018 · AC-tkt-022…028 · TC-tkt-076…096 · E-tkt-010/011/012/013/014/017/019/020 · OQ-tkt-05 · data-model Mục 3.5, 5.3, 8.
 - Kiểm chứng: `prisma validate` ✓ · `tsc --noEmit` exit 0 · `eslint` trên file bước 6 exit 0 · `npm test` 1011 ca, 1007 pass (tăng 27), 4 đỏ = đúng 2 ca có sẵn TC-hrm-301/316 + 2 nhóm cha; 3 test dựng cả app vẫn chạy ⇒ 8 route mới đăng ký không trùng. **Chưa có ca HTTP**, chưa mở thử file Excel/PDF bằng Excel/trình đọc PDF thật.
 - Sau commit: dựng file mẫu (số liệu giả, không chạm DB) để kiểm độc lập — 2 file `.xlsx` mở được bằng bộ đọc zip của .NET, 12/12 phần XML phân tích hợp lệ; xem bản PDF thấy khối chữ ký bị tách trang (tên người ký rơi một mình sang trang 2) ⇒ thêm `break-inside: avoid` cho khối chữ ký ở `services/.../taxDeclarationFile.ts`, dựng lại đã liền khối. Vẫn chưa mở bằng Microsoft Excel thật.
-- Commit: `e7922ee`; phần sửa khối chữ ký ở commit ngay sau
+- Commit: `e7922ee` · sửa khối chữ ký `3ff4232`
+
+## [2026-09-15 10:56] backend-engineer — to_khai_thue bước 7: dọn mã nháp, nối route chính thức
+
+- Nhiệm vụ: bước cuối của lộ trình đối soát — bỏ route nháp, nối cả 23 endpoint của hợp đồng vào một file route, dọn mã nháp cũ, và commit phần nối route (trước giờ nằm ngoài commit).
+- MỚI (`be_maxv/src/`):
+  - `routes/hrm/to_khai_thue/toKhaiThue.route.ts` — viết lại: đúng 23 endpoint (22 của Mục 1 + tải lại file Mục 5.8), mọi handler từ controller mới; bỏ 8 route nháp (`other-income/batch-apply`, `delete-all`, `delete-employee`, `05-kk-tncn/ghi-de` ×2, `chot`, `mo-khoa`, `export-xml`).
+  - `controllers/.../taxPolicy.controller.ts` — `GET /tax-policies` (trước nằm trong controller nháp).
+  - `__tests__/hrm/hrmToKhaiThueRoutes.test.ts` (4 ca) — HTTP qua `app.inject`, DB giả nổ nếu bị đụng: đủ 23 route và 8 route nháp đã bỏ; ma trận quyền Mục 9 điểm 8 (thiếu quyền lương ⇒ 23/23 trả 403 `E-tkt-014`; có quyền lương nhưng không phải ADMIN/OWNER ⇒ đúng 4 endpoint mức 2 bị chặn; OWNER qua hết).
+- SỬA:
+  - `routes/hrm/hrm.route.ts` — đăng ký `hrmToKhaiThueRoutes` (dòng này có từ thời mã nháp, nay mới commit).
+  - `services/.../taxPolicy.service.ts` — thêm `dangApDung` cho `GET /tax-policies` (hợp đồng Mục 6.1 đòi, bước 1+2 bỏ sót): dòng có mốc mới nhất đã tới theo ngày Việt Nam. `__tests__/hrm/hrmTaxPolicy.test.ts` +1 ca: mốc tương lai không bị đánh dấu; qua giao thừa theo giờ Việt Nam thì chuyển dòng.
+- DỌN mã nháp: 7 file (~2.060 dòng, CHƯA TỪNG commit) — `toKhaiThue.controller.ts`, `toKhaiThue.validator.ts`, `otherIncome.service.ts`, `taxCalculation.service.ts`, `toKhaiTncn05.service.ts`, `types.ts`, `xuatXmlTncn05.ts` — **không xóa hẳn** mà `git stash push -u`, nhãn `to_khai_thue: ma nhap cu da viet lai o buoc 3-6 (cat khi don buoc 7)`, lấy lại được bằng `git stash apply`. Lý do: file chưa commit thì xóa là mất vĩnh viễn. Handler `export-xml` có lỗ hổng quyền (L-25) đi theo luôn.
+- Hệ quả đo được: `eslint src --quiet` từ 4 lỗi (cả 4 nằm trong mã nháp) còn **0 lỗi**.
+- Tài liệu: api-contract Mục 0.1 (lý do kiểm quyền ở controller), 0.6 (đã thực hiện), Mục 1 (+ dòng 23), Mục 9 điểm 8 (ma trận 23 endpoint / 4 endpoint mức 2) · dev-notes 1.12 · CONTEXT_SUMMARY (bảng tiến độ + bước tiếp theo) · `doi-soat-ma-nhap-to-khai-thue.md` Mục 10 (hoàn tất + 2 điểm khác kế hoạch).
+- Lưu ý: giao diện nháp `hdđt_maxv` vẫn gọi các route đã bỏ (frontend đang tạm ngừng). Chưa có ca HTTP chạy trên DB thật — việc của tester-qa Phase B.
+- Liên kết: api-contract Mục 0.1, 0.6, 1, 6.1, 9 · A-tkt-08 · E-tkt-014 · L-25 · doi-soat Mục 10.
+- Kiểm chứng: `tsc --noEmit` exit 0 · `eslint src --quiet` exit 0 · `npm test` 1016 ca, 1012 pass (tăng 5), 4 đỏ = đúng 2 ca có sẵn TC-hrm-301/316 + 2 nhóm cha.
+- Commit: chưa commit

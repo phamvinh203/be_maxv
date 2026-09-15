@@ -41,7 +41,7 @@ links:
 - **Xuất tờ khai** ⇒ khóa **vĩnh viễn** 3 tháng, không có đường lùi (BR-tkt-015) ⇒ ADMIN/OWNER (cùng mức `archive`).
 - **Đánh dấu đã nộp** ⇒ tuyên bố pháp lý với cơ quan thuế ⇒ ADMIN/OWNER (cùng mức `mark-paid`).
 
-> **Cài đặt thực tế (2026-09-15):** cả hai mức đi qua `helpers/hrm/toKhaiThueAccess.ts` (`dbToKhaiThue`, `assertQuanTriToKhaiThue`) ở **đầu controller**, để lỗi mang đúng `E-tkt-014` — `dbCoQuyenLuongPayroll` / `assertAdminOrOwner` gốc ném lỗi mã `E-hrm-058` / không mã. Ai được làm gì giữ nguyên như bảng trên; kiểm ở controller thay vì `preHandler` vì file route của sub-cụm vẫn là bản nháp chờ viết lại (bước 7).
+> **Cài đặt thực tế (2026-09-15):** cả hai mức đi qua `helpers/hrm/toKhaiThueAccess.ts` (`dbToKhaiThue`, `assertQuanTriToKhaiThue`) ở **đầu controller**, để lỗi mang đúng `E-tkt-014` — `dbCoQuyenLuongPayroll` / `assertAdminOrOwner` gốc ném lỗi mã `E-hrm-058` / không mã. Ai được làm gì giữ nguyên như bảng trên; kiểm ở controller thay vì `preHandler` để quyền đi cùng handler — nối handler sang route khác cũng không lọt quyền (giữ nguyên khi viết lại file route ở bước 7, 2026-09-15). Ma trận quyền được kiểm tự động qua HTTP giả lập ở `hrmToKhaiThueRoutes.test.ts`.
 
 ### 0.2. Hình dạng lỗi — **bắt buộc 1 dạng duy nhất có `code`**
 
@@ -103,6 +103,8 @@ Không dùng `Idempotency-Key`. Ba thao tác cần chống lặp đều đã có
 | `GET .../05-kk-tncn/export-xml` | **Bỏ** | Không có trong FR-tkt-014 (chỉ Excel + PDF) — BA đã quyết định bỏ hẳn XML tại Final Sign-off 2026-09-14 (data-model P-13) |
 | — | **Thêm mới** | Danh mục (5) · preview (1) · chốt/mở tháng (2) · xuất + bảng chi tiết + lịch sử kỳ + đánh dấu nộp (4) · chính sách thuế (1) |
 
+> **Đã thực hiện 2026-09-15 (bước 7):** file route chỉ còn 23 endpoint của hợp đồng; 8 route nháp (`batch-apply`, `delete-all`, `delete-employee`, `ghi-de` ×2, `chot`, `mo-khoa`, `export-xml`) đã bỏ. Mã nháp phía máy chủ không commit mà cất vào git stash. Giao diện nháp (`hdđt_maxv`) vẫn gọi các route đã bỏ — sửa khi bật lại frontend.
+
 ---
 
 ## 1. Bảng tổng hợp 22 endpoint
@@ -131,6 +133,7 @@ Không dùng `Idempotency-Key`. Ba thao tác cần chống lặp đều đã có
 | 20 | `GET` | `/to-khai-thue/05-kk-tncn/detail-sheet` | Lương | FR-tkt-015 |
 | 21 | `POST` | `/to-khai-thue/05-kk-tncn/mark-submitted` | **A/O** | FR-tkt-017 |
 | 22 | `GET` | `/to-khai-thue/tax-policies` | Lương | hạ tầng (ADR-012) |
+| 23 | `GET` | `/to-khai-thue/05-kk-tncn/file` | **A/O** | FR-tkt-014 — tải lại file đã xuất (Mục 5.8, thêm 2026-09-15) |
 
 > **Về #22:** chỉ **đọc** danh sách chính sách thuế theo mốc hiệu lực (để màn Bảng tính thuế hiển thị "đang áp biểu nào"). Việc **ghi** chính sách thuế đi qua màn **Cài đặt chung** đã có (`FR-hrm-045/046/047`) sau bước M-3 của lộ trình di trú. Sub-cụm này **không** mở endpoint ghi, tránh hai cửa ghi vào cùng một bảng cấu hình.
 
@@ -629,4 +632,4 @@ interface TaxPolicyDto {
 5. **`AC-tkt-017` sẽ fail cho tới khi P-01 được xử lý** — `tinhThueLuyTien()` đang chạy biểu 7 bậc cũ (ra 700.000 thay vì 475.000). Ghi nhận là lỗi đã biết ở `issues-and-bugs.md`; **không** sửa production code chỉ để test pass.
 6. **Ca đua bắt buộc test:** double-click endpoint 9 với payload y hệt ⇒ đúng 1 bản ghi + 1 lần 409 `E-tkt-005`; hai người cùng bấm endpoint 13 ⇒ 1 lần 200 + 1 lần 409 `E-tkt-018`.
 7. **Sau endpoint 19 thì endpoint 14 phải luôn 403 `E-tkt-009`** cho **cả 3 tháng** của quý đó — không đảo ngược được. Test cả 3 tháng, không chỉ tháng cuối.
-8. **Phân quyền:** với `OWNER_EMPLOYEE` **tắt** cờ `xemLuong` ⇒ cả 22 endpoint phải 403; với `OWNER_EMPLOYEE` **có** cờ `xemLuong` ⇒ đúng 3 endpoint (14, 19, 21) phải 403, 19 endpoint còn lại phải 200.
+8. **Phân quyền:** với `OWNER_EMPLOYEE` **tắt** cờ `xemLuong` ⇒ cả 23 endpoint phải 403 `E-tkt-014`; với `OWNER_EMPLOYEE` **có** cờ `xemLuong` ⇒ đúng 4 endpoint (14, 19, 21, 23) phải 403 `E-tkt-014`, 19 endpoint còn lại không bị chặn quyền. *(Cập nhật 2026-09-15: thêm endpoint 23; ma trận này đã có ca kiểm HTTP giả lập ở backend — Phase B vẫn phải chạy trên DB thật.)*

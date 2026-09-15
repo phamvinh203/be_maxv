@@ -130,6 +130,39 @@ test('GET /tax-policies: sắp xếp mốc mới nhất trước', async () => {
   assert.equal(ds[1].effectiveFrom, '1900-01-01');
 });
 
+test('GET /tax-policies: dangApDung đánh đúng MỘT dòng — mốc mới nhất đã tới theo ngày Việt Nam, bỏ qua mốc tương lai', async () => {
+  const db = {
+    taxPolicy: {
+      findMany: async () => [
+        chinhSach({
+          id: 'tp-2027',
+          effectiveFrom: new Date('2027-01-01T00:00:00.000Z'),
+        }),
+        chinhSach(),
+        chinhSach({
+          id: 'tp-cu',
+          effectiveFrom: new Date('1900-01-01T00:00:00.000Z'),
+        }),
+      ],
+    },
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  } as any;
+
+  const ds = await getTaxPolicies(db, new Date('2026-09-15T03:00:00.000Z'));
+  assert.deepEqual(
+    ds.map((d) => [d.id, d.dangApDung]),
+    [
+      ['tp-2027', false],
+      ['tp-2026', true],
+      ['tp-cu', false],
+    ],
+  );
+
+  // 17:30 UTC ngày 31/12/2026 đã là 00:30 ngày 01/01/2027 ở Việt Nam ⇒ biểu 2027 bắt đầu áp dụng.
+  const quaNam = await getTaxPolicies(db, new Date('2026-12-31T17:30:00.000Z'));
+  assert.equal(quaNam.find((d) => d.dangApDung)?.id, 'tp-2027');
+});
+
 test('Hạ tầng mã lỗi: đủ 21 mã E-tkt-* và HTTP status khớp SRS Mục 8', () => {
   const ma = Object.keys(TO_KHAI_THUE_ERRORS);
   assert.equal(ma.length, 21, 'SRS quy định đúng 21 mã lỗi');
