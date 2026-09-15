@@ -2035,8 +2035,8 @@ model TaxCalculationLine {
   periodId String  @db.VarChar(64)
   ma_nv    String? @db.VarChar(24)
 
-  /// Khóa định danh NGƯỜI trong kỳ: `ma_nv` với nhân viên nội bộ, `'VL:' + lower(btrim(fullName))`
-  /// với cá nhân vãng lai. Một vãng lai có NHIỀU khoản chi trả trong tháng nhưng chỉ được đếm MỘT
+  /// Khóa định danh NGƯỜI trong kỳ: `ma_nv` với nhân viên nội bộ; cá nhân vãng lai là `'VL:'` + CCCD, không có
+  /// thì MST, không có nữa mới dùng họ tên — chữ thường, bỏ khoảng trắng đầu cuối (ADR-013 sửa đổi 2026-09-15). Một vãng lai có NHIỀU khoản chi trả trong tháng nhưng chỉ được đếm MỘT
   /// lần ở chỉ tiêu [16] của tờ khai — nên dòng bảng tính thuế là THEO NGƯỜI, không theo bản ghi.
   recipientKey String @db.VarChar(300)
 

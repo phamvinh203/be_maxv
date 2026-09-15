@@ -15,11 +15,11 @@ links:
 
 # HR — Test Report (Phase B): Thu nhập ngoài lương, Bảng tính thuế & Tờ khai TNCN (`to_khai_thue`)
 
-Kiểm định động 23 endpoint của sub-cụm. **Lượt 1** chạy trên commit `11e2ab1`, tìm 3 lỗi sản phẩm và 2 vấn đề cần quyết. Chủ dự án chốt 3 quyết định, backend sửa (chưa commit); **lượt 2** chạy lại toàn bộ lúc 13:51 ngày 2026-09-15. Mọi con số dưới đây do chính phiên này chạy lại, không dùng số tự báo cáo.
+Kiểm định động 23 endpoint của sub-cụm. **Lượt 1** chạy trên commit `11e2ab1`, tìm 3 lỗi sản phẩm và 2 vấn đề cần quyết. Chủ dự án chốt 3 quyết định, backend sửa; **lượt 2** chạy lại toàn bộ lúc 13:51 ngày 2026-09-15 (commit `9fd34ec`). Code-reviewer trả 7 finding cần sửa (RVW-721…727); backend sửa; **lượt 3** chạy lại toàn bộ cùng ngày, kèm 10 ca mới cho các finding (Mục 2a). Lượt review lại thêm RVW-732…736; backend sửa 4 điểm theo quyết định chủ dự án (chưa commit); **lượt 4** chạy lại toàn bộ lúc 16:30 (Mục 2b). Mọi con số dưới đây do chính phiên này chạy lại, không dùng số tự báo cáo.
 
 ## 1. Phạm vi và cách chạy
 
-- **Bộ kiểm thử:** `be_maxv/src/__tests__/hrm/hrmToKhaiThueApi.test.ts` (mới, chưa commit). Gọi HTTP thật trong tiến trình bằng `app.inject`, đi trọn đường: hook đăng nhập, `requireModule('hrm')`, controller, validator, service, Postgres, errorHandler.
+- **Bộ kiểm thử:** `be_maxv/src/__tests__/hrm/hrmToKhaiThueApi.test.ts` (commit `9fd34ec`; ca của lượt 3 chưa commit). Gọi HTTP thật trong tiến trình bằng `app.inject`, đi trọn đường: hook đăng nhập, `requireModule('hrm')`, controller, validator, service, Postgres, errorHandler.
 - **Lệnh chạy** (từ `be_maxv/`, biến `NHAT_KY_TKT` tùy chọn để lưu nguyên văn mọi lượt gọi):
 
 ```bash
@@ -47,9 +47,67 @@ Khoản ngoài lương tháng 9/2026: NV0001 thưởng 5.000.000 · NV0003 thư�
 
 ## 2. Kết luận
 
-**Lượt 2 đạt cổng Phase B.** 120/120 ca lá đạt, 0 lỗi, 13 bỏ qua có lý do (Mục 8). Hồi quy toàn backend chỉ còn đúng 4 lỗi cũ có từ trước Phase B. Cả 5 điểm của lượt 1 đã đóng (chi tiết ở `issues-and-bugs-to-khai-thue.md`).
+**Lượt 4 đạt cổng Phase B.** 132/132 ca lá đạt, 0 lỗi, 13 bỏ qua có lý do (Mục 8) — thêm 2 ca cho RVW-732, RVW-735 và siết 1 ca cũ cho RVW-736. Hồi quy toàn backend vẫn chỉ còn đúng 4 lỗi cũ có từ trước Phase B. Lượt 3 (130/130) đóng RVW-721…727; lượt 2 (120/120) đóng cả 5 điểm của lượt 1 (chi tiết ở `issues-and-bugs-to-khai-thue.md`).
 
-Còn mở, không chặn: ISSUE-tkt-003 (mở lại tháng xóa ghi đè chỉ tiêu) · ISSUE-tkt-005 (`npm audit`) · TC-tkt-107 và nhánh xuất PDF qua endpoint chưa chạy · mã lỗi chọn cho hợp đồng Mục 3.4 dòng 4b/5c chờ Architect xác nhận. Bước tiếp theo: code-reviewer.
+Còn mở, không chặn: ISSUE-tkt-003 (mở lại tháng xóa ghi đè chỉ tiêu) · ISSUE-tkt-005 (`npm audit`) · TC-tkt-107 và nhánh xuất PDF qua endpoint chưa chạy · mã lỗi chọn cho hợp đồng Mục 3.4 dòng 4b/5c, `E-dltl-029` và `E-dltl-030` chờ Architect xác nhận · tenant thật chưa rà soát và chưa áp chỉ số chống trùng `hrm_oir_chong_trung_v2` (cần chủ dự án duyệt `npm run hrm:ra-soat` rồi `npm run hrm:constraints`, trình tự ở ADR-013 "Sửa đổi 2026-09-15" mục 4) · RVW-733 (🟢, DB giả truyền `db` làm `tx`) để sau. Code-reviewer review lại lượt 3: ⚠️ Approve with comments. Review lại lần 2 (phần sửa RVW-732…736): ⚠️ Approve with comments, thêm RVW-737…739 (xem `review-findings.md`). Lưu ý cho bộ kiểm thử (RVW-738): dòng vãng lai đã chốt duy nhất trên tenant kiểm thử là "Nguyễn Văn A" — chưa có ca tên mang chữ hoa ngoài ASCII và ca vãng lai có CCCD chốt ở v2.
+
+## 2b. Lượt 4 — sau khi sửa RVW-732, RVW-734, RVW-735, RVW-736 (2026-09-15 16:30)
+
+### 2b.1 Kết quả tổng
+
+| Hạng mục | Kết quả |
+|---|---|
+| Bộ `hrmToKhaiThueApi.test.ts` | 145 ca lá: **132 đạt · 0 lỗi · 13 bỏ qua có lý do** (node:test đếm thêm 11 nhóm cha: 156 test, 143 đạt), 19 giây |
+| Lượt gọi HTTP | 240: 131 thành công (2xx), 108 lỗi nghiệp vụ 4xx, 1 lỗi 5xx — `E-tkt-015` cố ý dựng ở KR-tkt-23 |
+| Unit test liên quan (13 file) | 144/144 — thêm 3 ca: thứ tự dòng Bảng tính thuế · nạp lười ở `GET /tax-policies` · chặn xóa kỳ còn khoản ngoài lương |
+| Hồi quy `npm test` toàn backend | 1191 test · 1174 đạt · 4 lỗi · 13 bỏ qua. 4 lỗi = đúng mốc trước Phase B (TC-hrm-301, TC-hrm-316 và 2 nhóm cha). Lượt 3 là 1186 · 1169; thêm 5 test = 2 ca HTTP + 3 ca unit |
+| `tsc --noEmit` | 0 lỗi |
+| `eslint` các file vừa sửa | 0 lỗi (cảnh báo có sẵn: `console` ở script seed, `any` ở `payrollPeriods.service.ts`:40) |
+
+### 2b.2 Ca mới và ca đổi kỳ vọng
+
+| Ca | Kiểm | Kết quả | Finding |
+|---|---|---|---|
+| TC-tkt-061 (thêm khẳng định) | Thứ tự dòng Bảng tính thuế T9 lúc Nháp | 6 dòng HĐLĐ từ 3 tháng theo họ tên (Đỗ Văn Bảy, Hoàng Văn Năm, Lê Văn Ba, Nguyễn Văn Một, Phạm Thị Bốn, Vũ Thị Sáu) → thời vụ → vãng lai; TC-tkt-066 khẳng định bảng Đã chốt trùng đúng thứ tự | RVW-736 |
+| RVW-735 | Xóa kỳ T11 (`DRAFT`, còn 1 khoản ngoài lương) · xóa kỳ 1/2027 trống | 409 `E-dltl-030` "còn 1 khoản", kỳ và khoản còn nguyên · 200 | RVW-735 |
+| RVW-732 | Rà soát tenant A: sạch → gắn CCCD cho dòng vãng lai T9 → gỡ tạm index v2, dựng khoản cùng CCCD gõ tên khác → áp lại ràng buộc | 0 / 0 · mục khóa cũ báo 9/2026, quý đã xuất · mục khoản trùng báo 1 nhóm, áp ràng buộc báo `vuongDuLieu` 23505 chứ không ném · dọn xong áp lại sạch | RVW-732 |
+| KR-tkt-23, RVW-725 | Dựng chính sách thuế bằng hàm ánh xạ chung `veDuLieuChinhSach` | Vẫn đạt | RVW-734 |
+
+## 2a. Lượt 3 — sau khi sửa findings review RVW-721…727 (2026-09-15 15:34)
+
+### 2a.1 Kết quả tổng
+
+| Hạng mục | Kết quả |
+|---|---|
+| Bộ `hrmToKhaiThueApi.test.ts` | 143 ca lá: **130 đạt · 0 lỗi · 13 bỏ qua có lý do** (node:test đếm thêm 11 nhóm cha: 154 test, 141 đạt), 39 giây |
+| Ca mới của lượt 3 | 10/10 đạt (Mục 2a.2) |
+| Lượt gọi HTTP | 237: 129 thành công (2xx), 107 lỗi nghiệp vụ 4xx, 1 lỗi 5xx — `E-tkt-015` cố ý dựng ở KR-tkt-23. Không có lỗi 500 vô danh |
+| Unit test liên quan (12 file) | 115/115 — thêm 13 ca: giao dịch ghi khoản ngoài lương 3 · biên đầu vào 3 · mở lại / xóa kỳ lương 3 · thứ tự khóa khi chốt tháng 1 · engine thuế 1 · ghi đè chỉ tiêu 1 · nạp lười chính sách thuế 1 |
+| Hồi quy `npm test` toàn backend | 1186 test · 1169 đạt · 4 lỗi · 13 bỏ qua. 4 lỗi = đúng mốc trước Phase B (TC-hrm-301, TC-hrm-316 và 2 nhóm cha). Lượt 2 là 1163 · 1146; thêm 23 test = 10 ca HTTP + 13 ca unit |
+| `tsc --noEmit` | 0 lỗi |
+| `eslint` các file vừa sửa | 0 lỗi (1 cảnh báo `any` có sẵn ở `payrollPeriods.service.ts`:40) |
+
+### 2a.2 Ca mới và ca đổi kỳ vọng
+
+| Ca | Kiểm | Kết quả | Finding |
+|---|---|---|---|
+| RVW-721 (tháng đã chốt) | Mở lại kỳ lương T9 | 409 `E-dltl-029`, kỳ vẫn `LOCKED`, còn đủ 8 dòng thuế | RVW-721 |
+| RVW-721 (sau khi mở Bảng tính thuế) | Mở lại kỳ lương T9, rồi khóa sổ lại | 200 `DRAFT`; các ca sau vẫn khớp bộ số Q3 | RVW-721 |
+| RVW-721 (lưới an toàn) | Kỳ T11 `DRAFT` còn khóa `TAX_SHEET` (dựng thẳng DB) ⇒ xóa kỳ | 409 `E-dltl-029`, kỳ và khoản ngoài lương còn nguyên | RVW-721 |
+| RVW-721 (kịch bản A) | Quý III đã xuất ⇒ mở lại kỳ lương T8 | 409 `E-dltl-029`, kỳ vẫn `LOCKED` | RVW-721 |
+| RVW-723 (danh mục) | Trần miễn thuế / ngưỡng khấu trừ 10.000 tỷ | 400 `E-tkt-003` cả hai | RVW-723 |
+| RVW-723 (số tiền) | `amount` 0,004 · 1.500.000,5 · 1.000 tỷ; và 999.999.999.999 | 400 `E-tkt-004` ×3; số trần 200 | RVW-723 |
+| RVW-723 (NET 99,99%) | Tính thử NET 999.999.999.999 với tỷ lệ 99,99% | 400 `E-tkt-004` "vượt giới hạn" | RVW-723 |
+| TC-tkt-087 (thêm 2 khẳng định) | Ghi đè `ct16` = 3 tỷ người, `ct22` = 1e17 | 400 `E-tkt-012` cả hai, không ghi | RVW-723 |
+| RVW-724 | Ngày 31/09 vào kỳ T10 · ngày chứng từ 45/13 · tính thử ngày 45/13 | 400 `E-tkt-004` ×3, không lưu | RVW-724 |
+| KR-tkt-06 (thêm khẳng định) | Thứ tự danh sách T9; trang 1; kỳ không tồn tại | R5, R1, R3, R4, R2; trang 1 = R5, R1; 400 `E-tkt-017` | RVW-726 |
+| RVW-727 | Hai "Nguyễn Văn Hùng" khác CCCD, cùng loại / ngày / 600.000; cùng CCCD gõ tên khác | 201, 201; 409 `E-tkt-005`; Bảng tính thuế T10 có 2 dòng `VL:001203000001`, `VL:001203000002` | RVW-727 |
+| KR-tkt-23 (dựng lại) | Tenant B chỉ có một mốc chính sách 2099-01-01 | 500 `E-tkt-015` kèm hướng dẫn, không tự nạp đè | RVW-725 |
+| RVW-725 | Tenant B cấp mới, bảng chính sách rỗng ⇒ GET Bảng tính thuế | 200, biểu 2026-01-01; tự có 2 mốc 1900-01-01 và 2026-01-01 | RVW-725 |
+| TC-tkt-110 | Bỏ bước nạp chính sách bằng tay | Vẫn đạt: 0 dòng, khóa sổ + chốt tháng được | RVW-725 |
+
+- Các ca đua dữ liệu TC-tkt-020 (double-click), TC-075 (chốt song song), TC-084 và KR-tkt-21 vẫn đạt sau khi chốt tháng chuyển sang khóa dòng kỳ lương.
+- Chỉ số chống trùng mới `hrm_oir_chong_trung_v2` được kiểm trên 2 tenant cấp mới trong lượt chạy. Tenant thật chưa áp — ngoài phạm vi bộ kiểm thử.
 
 ## 3. Lượt 2 — sau khi sửa (2026-09-15 13:51)
 

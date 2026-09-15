@@ -3,6 +3,10 @@ import type {
   PrismaClient,
   TaxPolicy,
 } from '../../../../generated/tenant';
+import {
+  CHINH_SACH_THUE_SEED,
+  veDuLieuChinhSach,
+} from '../../../../constants/hrm/to_khai_thue/taxSeedData';
 import { ToKhaiThueError } from '../../../../helpers/hrm/toKhaiThueErrors';
 import type { TaxBracketItem } from '../../../../validators/hrm/cau_hinh_mac_dinh/generalSettings.validator';
 
@@ -17,6 +21,19 @@ type Db = PrismaClient | Prisma.TransactionClient;
  */
 
 /**
+ * Nạp bộ chính sách chuẩn (`CHINH_SACH_THUE_SEED`) cho tenant CHƯA có dòng nào — RVW-725: công ty cấp mới
+ * không phải chờ vận hành chạy `npm run hrm:seed-thue` mới mở được Bảng tính thuế. Cùng khuôn seed lười của
+ * danh mục thu nhập. `skipDuplicates` (khóa `effectiveFrom` unique): hai lượt đọc đầu tiên chạy cùng lúc
+ * không nhân đôi dữ liệu.
+ */
+async function napChinhSachChuan(db: Db): Promise<void> {
+  await db.taxPolicy.createMany({
+    data: CHINH_SACH_THUE_SEED.map(veDuLieuChinhSach),
+    skipDuplicates: true,
+  });
+}
+
+/**
  * Chính sách đang hiệu lực tại thời điểm **bắt đầu kỳ lương**.
  *
  * Mốc so sánh là `period.startDate`, KHÔNG phải `paymentDate` của từng bản ghi: cả kỳ tháng phải
@@ -26,17 +43,24 @@ type Db = PrismaClient | Prisma.TransactionClient;
  * Không có `effectiveTo`: dòng có `effectiveFrom` lớn hơn kế tiếp tự động thay thế dòng trước,
  * nên mô hình này không thể sinh khoảng trống hay chồng lấn.
  *
- * Thiếu chính sách là lỗi HẠ TẦNG (tenant chưa chạy `npm run hrm:seed-thue`), không phải lỗi của
- * người dùng — ném `E-tkt-015` có mã thay vì để rơi vào 500 vô danh.
+ * Bảng RỖNG (tenant chưa từng nạp) ⇒ nạp bộ chuẩn rồi tra lại. Bảng ĐÃ có dòng mà không dòng nào
+ * hiệu lực tới ngày đầu kỳ là lỗi HẠ TẦNG — ném `E-tkt-015` có mã, không tự đoán số.
  */
 export async function resolveTaxPolicy(
   db: Db,
   periodStartDate: Date,
 ): Promise<TaxPolicy> {
-  const policy = await db.taxPolicy.findFirst({
-    where: { effectiveFrom: { lte: periodStartDate } },
-    orderBy: { effectiveFrom: 'desc' },
-  });
+  const tim = () =>
+    db.taxPolicy.findFirst({
+      where: { effectiveFrom: { lte: periodStartDate } },
+      orderBy: { effectiveFrom: 'desc' },
+    });
+
+  let policy = await tim();
+  if (!policy && (await db.taxPolicy.count()) === 0) {
+    await napChinhSachChuan(db);
+    policy = await tim();
+  }
 
   if (!policy) {
     throw new ToKhaiThueError(
@@ -87,7 +111,8 @@ export type TaxPolicyListDto = TaxPolicyDto & { dangApDung: boolean };
 
 /**
  * Danh sách chính sách thuế, mới nhất trước — phục vụ `GET /tax-policies`.
- * Bảng này chỉ vài dòng trong nhiều năm nên không phân trang.
+ * Bảng này chỉ vài dòng trong nhiều năm nên không phân trang. Bảng rỗng thì nạp bộ chuẩn như
+ * `resolveTaxPolicy`, để màn danh sách không hiện "chưa có biểu thuế" với công ty cấp mới.
  *
  * `dangApDung` = dòng có mốc MỚI NHẤT đã tới, tính theo NGÀY Việt Nam — cùng luật chọn dòng với
  * `resolveTaxPolicy`. Dòng có mốc tương lai (nạp sẵn cho năm sau) chưa áp dụng.
@@ -96,9 +121,15 @@ export async function getTaxPolicies(
   db: Db,
   homNay: Date = new Date(),
 ): Promise<TaxPolicyListDto[]> {
-  const rows = await db.taxPolicy.findMany({
-    orderBy: { effectiveFrom: 'desc' },
-  });
+  const doc = () =>
+    db.taxPolicy.findMany({
+      orderBy: { effectiveFrom: 'desc' },
+    });
+  let rows = await doc();
+  if (rows.length === 0) {
+    await napChinhSachChuan(db);
+    rows = await doc();
+  }
   const ngay = new Intl.DateTimeFormat('en-CA', {
     timeZone: 'Asia/Ho_Chi_Minh',
   }).format(homNay);

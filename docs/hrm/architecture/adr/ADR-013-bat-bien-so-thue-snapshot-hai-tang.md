@@ -2,7 +2,7 @@
 type: adr
 feature: hrm
 status: accepted
-updated: 2026-09-14
+updated: 2026-09-15
 ---
 
 # ADR-013: Bất biến số thuế — snapshot hai tầng và tái dùng khóa bảng kê cho Bảng tính thuế tháng
@@ -68,7 +68,7 @@ Nhật ký (`ghiNhatKyKyLuong`) ghi **ngoài** transaction, tái dùng hạ tầ
 
 ### 5. Dòng Bảng tính thuế là **theo NGƯỜI**, khóa bằng `recipientKey`
 
-`recipientKey` = `ma_nv` (nhân viên nội bộ) hoặc `'VL:' + lower(btrim(fullName))` (cá nhân vãng lai), với `@@unique([periodId, recipientKey])`.
+`recipientKey` = `ma_nv` (nhân viên nội bộ) hoặc `'VL:'` + định danh chữ thường, bỏ khoảng trắng đầu cuối (cá nhân vãng lai), với `@@unique([periodId, recipientKey])`. Định danh vãng lai ưu tiên **CCCD**, không có thì **MST**, không có nữa mới dùng **họ tên** — xem "Sửa đổi 2026-09-15" cuối ADR.
 
 Đây là chỗ **lệch có chủ đích** so với `srs-to-khai-thue.md` Mục 4.3 (đề xuất `otherIncomeRecordId` nullable): một cá nhân vãng lai có thể nhận **nhiều** khoản trong cùng tháng — chính `AC-tkt-008` khẳng định điều đó là hợp lệ — trong khi chỉ tiêu `[16]` của tờ khai đếm **số người lao động**. Khóa theo bản ghi sẽ đếm một người thành hai lao động và làm sai tờ khai nộp cho cơ quan thuế.
 
@@ -110,7 +110,7 @@ Bỏ. Một dòng mỗi tháng chỉ để giữ `status` + `lockedByUserId` + `
 **Mất:**
 - Một giá trị enum nằm ngoài danh sách hằng cùng tên — **phải ghi chú thật rõ trong schema**, vì người đọc sau này rất dễ "dọn dẹp" bằng cách thêm `TAX_SHEET` vào `PAYROLL_MODULES` và phá cả hai hàng rào cùng lúc.
 - `hrm_tax_calculation_lines` là dữ liệu suy được nên về lý thuyết có thể lệch với nguồn nếu ai đó sửa tay CSDL (đánh đổi cố ý, giống hệt `PayrollSheetLine`).
-- `recipientKey` cho vãng lai dựa trên **họ tên chuẩn hóa** ⇒ hai người **trùng tên** trong cùng một tháng sẽ bị gộp thành một dòng. Hạn chế đã biết; giảm thiểu bằng cảnh báo ở giao diện khi trùng tên mà khác CCCD — **chưa làm ở đợt này**, ghi ra để không quên.
+- ~~`recipientKey` cho vãng lai dựa trên **họ tên chuẩn hóa** ⇒ hai người **trùng tên** trong cùng một tháng sẽ bị gộp thành một dòng.~~ Đã thay bằng khóa CCCD → MST → họ tên (sửa đổi 2026-09-15). Hạn chế còn lại: cùng một người lần có lần không khai CCCD/MST sẽ thành **hai** khóa — hai dòng Bảng tính thuế, `[16]` đếm hai người.
 
 ## Consequences
 
@@ -128,3 +128,26 @@ Bỏ. Một dòng mỗi tháng chỉ để giữ `status` + `lockedByUserId` + `
 - `be_maxv/src/services/client/hrm/du_lieu_tinh_luong/payrollClosing.service.ts:136-151`.
 - `be_maxv/src/validators/hrm/du_lieu_tinh_luong/payrollClosing.validator.ts:10`.
 - `be_maxv/src/constants/hrm/payrollModules.ts:25`.
+
+## Sửa đổi 2026-09-15 (review RVW-721, RVW-722, RVW-727 — chủ dự án chốt)
+
+**1. Khóa định danh vãng lai (RVW-727).** `recipientKey` và chỉ số chống trùng `hrm_oir_chong_trung_v2` dùng CÙNG một luật: `'VL:'` + CCCD, không có thì MST, không có nữa mới dùng họ tên (chữ thường, bỏ khoảng trắng đầu cuối). Bản đầu chỉ theo họ tên nên hai cộng tác viên trùng tên, khác CCCD, cùng loại/ngày/số tiền thì người thứ hai bị từ chối 409 — không có cách nhập đúng; nhập lệch được thì lại bị gộp một dòng. Đánh đổi đã chấp nhận: cùng một người lần có lần không khai giấy tờ sẽ thành hai khóa. Tenant đang chạy phải áp lại ràng buộc (`npm run hrm:constraints`) mới có chỉ số mới; tới lúc đó chỉ số cũ vẫn chặn trùng theo họ tên.
+
+**2. Kỳ lương gốc đứng yên khi tháng đã chốt (RVW-721).** Mục 4 giả định kỳ lương đã khóa sổ thì số lương không đổi, nhưng chiều ngược lại không được giữ ở đâu: kỳ lương vẫn mở lại được, rồi xóa được, sau khi Bảng tính thuế đã chốt — kể cả khi tờ khai quý đã xuất. Nay mở lại / xóa kỳ lương bị chặn 409 `E-dltl-029` khi tháng còn khóa `TAX_SHEET`: phải mở lại Bảng tính thuế trước; tờ khai quý đã xuất thì kỳ lương khóa vĩnh viễn, đúng tinh thần BR-tkt-015.
+
+**3. Dòng kỳ lương là điểm phối hợp duy nhất (RVW-721, RVW-722):**
+
+| Thao tác | Khóa dòng kỳ lương ở đầu giao dịch | Kiểm và ghi trong cùng giao dịch |
+|---|---|---|
+| Chốt Bảng tính thuế tháng | `FOR UPDATE` | kỳ còn mở ⇒ E-tkt-008 · đã chốt ⇒ E-tkt-018 · tính dòng · ghi khóa rồi ghi dòng |
+| Thêm / sửa / xóa thu nhập ngoài lương | `FOR SHARE` | khóa `TAX_SHEET`/`OTHER_INCOME` ⇒ E-tkt-007 · tính snapshot · ghi |
+| Mở lại / xóa kỳ lương | `FOR UPDATE` | khóa `TAX_SHEET` ⇒ E-dltl-029 · đổi trạng thái / xóa |
+
+Tính dòng nay nằm TRONG giao dịch chốt (bản đầu tính ngoài giao dịch cho giao dịch ngắn): kỳ đã khóa sổ nên phần lương chỉ đọc snapshot. Đổi lại không còn ca "khoản ghi chen giữa lúc tính và lúc khóa" mà data-model Mục 5.3 từng chấp nhận — thực tế ca đó còn để lọt cả lệnh ghi SAU khi tháng đã chốt.
+
+**4. Bước chuyển tiếp khi đổi cách gộp người (RVW-732).** Dòng chốt từ nay ghim `engineVersion = 'v2'` (vãng lai theo CCCD → MST → họ tên); dòng `'v1'` gộp theo họ tên. Tờ khai quý gộp người qua 3 tháng theo `recipientKey`, nên quý có cả tháng chốt ở v1 lẫn v2 sẽ đếm một cộng tác viên có CCCD thành hai người ở [16]/[19]. Trình tự bắt buộc trước khi áp index v2 lên tenant đang chạy:
+1. `npm run hrm:ra-soat` — mục `bang-thue-khoa-vang-lai-cu` liệt kê tháng đã chốt còn dòng vãng lai mang khóa kiểu cũ (kèm cờ quý đã xuất); mục `khoan-ngoai-trung-v2` liệt kê khoản sẽ vướng index mới.
+2. Tháng thuộc quý CHƯA xuất: Mở lại rồi Chốt lại để tính lại theo v2. Quý đã xuất đã đóng băng bộ số nên chỉ ghi nhận.
+3. Dọn khoản trùng (nếu có), rồi `npm run hrm:constraints`. Index v2 vướng dữ liệu thì tenant vẫn giữ index v1.
+
+**5. Chứng từ thuế không bị xóa theo kỳ lương (RVW-735).** Xóa kỳ lương `DRAFT` mà kỳ còn khoản thu nhập ngoài lương ⇒ 409 `E-dltl-030`: khoản ngoài lương có thể đã phát hành chứng từ khấu trừ cho cá nhân, phải xóa từng khoản có chủ đích.

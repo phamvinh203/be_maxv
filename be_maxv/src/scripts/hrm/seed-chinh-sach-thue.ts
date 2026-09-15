@@ -1,9 +1,10 @@
 import { sysPrisma } from '../../config/db.sys';
 import { getTenantDb, disconnectAllTenants } from '../../helpers/tenantClient';
-import type { Prisma, PrismaClient } from '../../generated/tenant';
+import type { PrismaClient } from '../../generated/tenant';
 import {
   CHINH_SACH_THUE_SEED,
   DANH_MUC_THU_NHAP_SEED,
+  veDuLieuChinhSach,
 } from '../../constants/hrm/to_khai_thue/taxSeedData';
 
 /**
@@ -65,9 +66,10 @@ async function xuLyMotTenant(
   let chinhSachThem = 0;
   let chinhSachDaCo = 0;
   for (const cs of CHINH_SACH_THUE_SEED) {
-    const moc = new Date(`${cs.effectiveFrom}T00:00:00.000Z`);
+    // Cùng phép ánh xạ với nạp lười của `taxPolicy.service.ts` (RVW-734).
+    const dongChinhSach = veDuLieuChinhSach(cs);
     const daCo = await db.taxPolicy.findUnique({
-      where: { effectiveFrom: moc },
+      where: { effectiveFrom: dongChinhSach.effectiveFrom },
     });
     if (daCo) {
       chinhSachDaCo++;
@@ -75,19 +77,7 @@ async function xuLyMotTenant(
     }
     chinhSachThem++;
     if (chayThu) continue;
-    await db.taxPolicy.create({
-      data: {
-        effectiveFrom: moc,
-        personalDeduction: cs.personalDeduction,
-        dependentDeduction: cs.dependentDeduction,
-        taxBrackets: cs.taxBrackets as unknown as Prisma.InputJsonValue,
-        withholdingTaxRate: cs.withholdingTaxRate,
-        withholdingTaxThreshold: cs.withholdingTaxThreshold,
-        voluntaryPensionMonthlyCap: cs.voluntaryPensionMonthlyCap,
-        lunchAllowanceTaxFreeCap: cs.lunchAllowanceTaxFreeCap,
-        legalBasisNote: cs.legalBasisNote,
-      },
-    });
+    await db.taxPolicy.create({ data: dongChinhSach });
   }
 
   let danhMucThem = 0;

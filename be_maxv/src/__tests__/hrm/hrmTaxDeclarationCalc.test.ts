@@ -223,6 +223,28 @@ test('Giá trị ghi đè: âm hoặc đếm người không nguyên -> E-tkt-01
   );
 });
 
+test('RVW-723: ghi đè vượt cột lưu (ct16 Int, tiền Decimal(18,2)) -> E-tkt-012; đúng trần vẫn nhận', () => {
+  const loi012 = (e: unknown) =>
+    e instanceof ToKhaiThueError && e.code === 'E-tkt-012';
+  assert.throws(
+    () => chuanHoaGhiDe({ ct16: { gia: 3_000_000_000, lyDo: LY_DO } }),
+    loi012,
+  );
+  assert.throws(
+    () => chuanHoaGhiDe({ ct22: { gia: 1e17, lyDo: LY_DO } }),
+    loi012,
+  );
+  assert.equal(
+    chuanHoaGhiDe({ ct16: { gia: 2_147_483_647, lyDo: LY_DO } }).ct16?.gia,
+    2_147_483_647,
+  );
+  assert.equal(
+    chuanHoaGhiDe({ ct22: { gia: 999_999_999_999_999, lyDo: LY_DO } }).ct22
+      ?.gia,
+    999_999_999_999_999,
+  );
+});
+
 test('Kiểm cân đối bắt ghi đè làm lệch: [17] > [16] chỉ CẢNH BÁO, không chặn', () => {
   const ct = hopNhatGhiDe(tinhChiTieuMay(QUY_III), {
     ct17: { gia: 9, lyDo: LY_DO },

@@ -75,7 +75,7 @@ Prisma `Decimal` serialize ra JSON thành **chuỗi**, và sub-cụm trước đ
 
 **Sắp xếp:** do máy chủ quyết định, **không** nhận `sort`/`order` từ client — đúng lập luận ADR-005 ("thứ tự là luật nghiệp vụ, cho client đổi là mở đường cho kết quả không xác định"). Thứ tự cố định:
 - `other-income`: `paymentDate DESC, createdAt DESC`
-- `tax-calculation`: `loai_lao_dong, ho_ten`
+- `tax-calculation`: `loai_lao_dong, ho_ten` — họ tên theo bảng chữ cái tiếng Việt, trùng thì theo `id`; áp cho cả tháng Nháp lẫn Đã chốt `[làm rõ 2026-09-15 — RVW-736: bản đầu xếp nhân viên theo mã, vãng lai theo khóa]`
 - `income-categories`: `code ASC`
 - `05-kk-tncn/periods`: `nam DESC, ky_so DESC`
 
@@ -85,7 +85,7 @@ Không dùng `Idempotency-Key`. Ba thao tác cần chống lặp đều đã có
 
 | Thao tác | Chống lặp bằng |
 |---|---|
-| Tạo bản ghi thu nhập ngoài lương | unique index `hrm_oir_chong_trung` ⇒ **409 `E-tkt-005`** (EC-tkt-07) |
+| Tạo bản ghi thu nhập ngoài lương | unique index `hrm_oir_chong_trung_v2` ⇒ **409 `E-tkt-005`** (EC-tkt-07) |
 | Chốt Bảng tính thuế tháng | `@@unique([periodId, module])` ⇒ **409 `E-tkt-018`** |
 | Xuất tờ khai quý | `upsert` có điều kiện `trang_thai = READY_TO_EXPORT` ⇒ **409 `E-tkt-020`** |
 
@@ -294,7 +294,7 @@ interface CreateOtherIncomeBody {
   isResident?: boolean;             // mặc định true
   paymentDate: string;              // YYYY-MM-DD, phải nằm trong tháng của periodId
   paymentType?: 'GROSS' | 'NET';    // mặc định GROSS
-  amount: number;                   // > 0 — số tiền NHẬP VÀO, hiểu theo paymentType
+  amount: number;                   // số nguyên đồng, 1 … 999.999.999.999 — số tiền NHẬP VÀO, hiểu theo paymentType
   hasCommitment08?: boolean;
   forceWithholding?: boolean;       // BR-tkt-008, đã duyệt tại BA Final Sign-off 2026-09-14
   eWithholdingCertNo?: string; eWithholdingCertDate?: string;
@@ -309,14 +309,14 @@ interface CreateOtherIncomeBody {
 | # | Kiểm | Lỗi |
 |---|---|---|
 | 1 | Kỳ đã có khóa `TAX_SHEET` hoặc `OTHER_INCOME` | **403 `E-tkt-007`** |
-| 2 | Thiếu `fullName` / `paymentDate` / `otherIncomeCategoryId`; `amount ≤ 0`; `paymentDate` ngoài tháng của kỳ | **400 `E-tkt-004`** (AC-tkt-006) |
+| 2 | Thiếu `fullName` / `paymentDate` / `otherIncomeCategoryId`; `amount ≤ 0`; `paymentDate` ngoài tháng của kỳ · `[BỔ SUNG 2026-09-15 — RVW-723/724]` `amount` không phải số nguyên đồng hoặc từ 1.000.000.000.000 trở lên; `paymentDate` / `eWithholdingCertDate` không phải ngày có thật (vd `2026-02-31`); số trước thuế quy ngược từ NET vượt 999.999.999.999.999 | **400 `E-tkt-004`** (AC-tkt-006) |
 | 3 | Danh mục không tồn tại hoặc `INACTIVE` | **400 `E-tkt-003`** |
 | 4 | Nhóm ≠ `WITHHOLDING_FLAT` mà `ma_nv` null | **400 `E-tkt-021`** (BR-tkt-009 · AC-tkt-015 — mã do BA duyệt bổ sung 2026-09-14) |
 | 4b | `ma_nv` khác null mà không có nhân viên, hoặc nhân viên đã xóa mềm. `ma_nv` được in hoa trước khi kiểm (như mọi màn hồ sơ nhân sự); chuỗi rỗng coi là vãng lai | **404 `E-tkt-016`** `[BỔ SUNG 2026-09-15 — BUG-tkt-001, chờ Architect xác nhận mã]` |
 | 5 | `hasCommitment08 = true` mà thiếu `taxCode` / `isResident = false` / nhóm ≠ `WITHHOLDING_FLAT` | **400 `E-tkt-006`** (AC-tkt-014 — ngữ nghĩa mở rộng, BA duyệt 2026-09-14) |
 | 5b | `isResident = false` — cá nhân không cư trú (khấu trừ 20%) ngoài phạm vi đợt này, SRS Mục 2.2 | **400 `E-tkt-004`** `[BỔ SUNG 2026-09-15 — BUG-tkt-003, chủ dự án chọn chặn tới khi làm nhánh 20%]` |
 | 5c | Khoản thuộc diện khấu trừ, trả `NET` mà tỷ lệ khấu trừ của danh mục = 100% (khấu trừ hết nên không quy đổi được về số trước thuế; trả `GROSS` vẫn nhận) | **400 `E-tkt-004`** `[BỔ SUNG 2026-09-15 — BUG-tkt-002, chờ Architect xác nhận mã]` |
-| 6 | Vi phạm unique `hrm_oir_chong_trung` (`P2002`) | **409 `E-tkt-005`** (AC-tkt-007) |
+| 6 | Vi phạm unique `hrm_oir_chong_trung_v2` (`P2002`): cùng kỳ + cùng người (mã NV; vãng lai theo CCCD → MST → họ tên — RVW-727) + cùng loại + ngày + số tiền trước thuế | **409 `E-tkt-005`** (AC-tkt-007) |
 
 **201** `{ success: true, data: OtherIncomeRecordDto }`.
 
@@ -382,14 +382,15 @@ interface BangTinhThueTongHopDto {
 **Body** `{ periodId: string }` · **Quyền** quyền xem dữ liệu lương.
 
 ```
-1. payrollPeriodStatus < LOCKED                      -> 400 E-tkt-008   (AC-tkt-018)
-2. đã có khóa TAX_SHEET                              -> 409 E-tkt-018
-3. [TRANSACTION]
-     policy = resolveTaxPolicy(db, period.startDate)         // 500 E-tkt-015 nếu không có
+[TRANSACTION]                                        -- sửa 2026-09-15 (RVW-721/722): kiểm + tính đều TRONG giao dịch
+  0. SELECT … FROM hrm_payroll_periods WHERE id FOR UPDATE   -- xếp hàng với ghi thu nhập ngoài lương / mở lại / xóa kỳ lương
+  1. payrollPeriodStatus < LOCKED                    -> 400 E-tkt-008   (AC-tkt-018)
+  2. đã có khóa TAX_SHEET                            -> 409 E-tkt-018
+  3. policy = resolveTaxPolicy(db, period.startDate)   // bảng rỗng ⇒ tự nạp bộ chuẩn (RVW-725); có dòng mà không mốc hiệu lực ⇒ 500 E-tkt-015
      tính toàn bộ dòng (lương + thu nhập ngoài lương)
+     create     hrm_payroll_module_locks { periodId, module: 'TAX_SHEET', lockedByUserId }   -- TRƯỚC dòng
      deleteMany hrm_tax_calculation_lines WHERE periodId
      createMany hrm_tax_calculation_lines (gắn taxPolicyId, lockedByUserId, lockedAt)
-     create     hrm_payroll_module_locks { periodId, module: 'TAX_SHEET', lockedByUserId }
 4. ghiNhatKyKyLuong(req, 'TAX_SHEET_LOCKED', periodId, { soDong })   -- NGOÀI transaction
 ```
 
@@ -576,6 +577,8 @@ interface TaxPolicyDto {
 }
 ```
 
+> `[BỔ SUNG 2026-09-15 — RVW-725]` Bảng chính sách rỗng (công ty cấp mới) thì lần đọc đầu tiên — danh sách này, Bảng tính thuế hoặc Chốt tháng — tự nạp bộ chuẩn `CHINH_SACH_THUE_SEED` (mốc 1900-01-01 và 2026-01-01). Đây là nạp dữ liệu khởi tạo một lần, không phải cửa ghi cấu hình.
+>
 > Ghi chính sách đi qua màn **Cài đặt chung** (`FR-hrm-045/046/047`) sau bước M-3 của lộ trình di trú (data-model Mục 6). Sub-cụm này **không** mở cửa ghi thứ hai vào bảng cấu hình.
 
 ---
@@ -595,10 +598,10 @@ interface TaxPolicyDto {
 | `E-tkt-009` | 403 | Mở lại tháng khi quý đã xuất tờ khai | 14 | BR-tkt-013 · AC-tkt-021 |
 | `E-tkt-010` | 400 | Xuất tờ khai / bảng chi tiết khi chưa đủ 3 tháng chốt | 19, 20 | BR-tkt-014 · AC-tkt-022 |
 | `E-tkt-011` | 400 | Ghi đè chỉ tiêu thiếu lý do | 17 | BR-tkt-018 · AC-tkt-026 |
-| `E-tkt-012` | 400 | Ghi đè chỉ tiêu không thuộc 13 chỉ tiêu gốc | 17 | BR-tkt-018 · AC-tkt-027 |
+| `E-tkt-012` | 400 | Ghi đè chỉ tiêu không thuộc 13 chỉ tiêu gốc · `[BỔ SUNG 2026-09-15 — RVW-723]` giá trị âm, số người không nguyên, số người vượt 2.147.483.647 hoặc tiền vượt 999.999.999.999.999 | 17 | BR-tkt-018 · AC-tkt-027 |
 | `E-tkt-013` | 400 | Đánh dấu đã nộp khi chưa ở trạng thái Đã xuất | 21 | BR-tkt-015 · AC-tkt-028 |
 | `E-tkt-014` | 403 | Không đủ quyền (quyền lương hoặc ADMIN/OWNER) | mọi | A-tkt-08 |
-| `E-tkt-015` | 500 | Không tìm thấy chính sách thuế hiệu lực cho kỳ | 12, 13 | Đã duyệt vào SRS 2026-09-14 |
+| `E-tkt-015` | 500 | Không tìm thấy chính sách thuế hiệu lực cho kỳ · `[sửa 2026-09-15 — RVW-725]` chỉ còn khi bảng chính sách ĐÃ có dòng mà không mốc nào tới ngày đầu kỳ; bảng rỗng (công ty cấp mới) thì máy chủ tự nạp bộ chuẩn rồi tính tiếp | 12, 13 | Đã duyệt vào SRS 2026-09-14 |
 | `E-tkt-016` | 404 | Không tìm thấy bản ghi/danh mục theo `id` · `[BỔ SUNG 2026-09-15]` mã nhân viên không có hoặc đã xóa mềm khi tính thử/thêm/sửa khoản ngoài lương (Mục 3.4 dòng 4b) | 2, 4, 5, 7, 8, 9, 10, 11 | Đã duyệt vào SRS 2026-09-14 |
 | `E-tkt-017` | 400 | `periodId` không tồn tại trong tenant | 6, 12, 13, 14 | Đã duyệt vào SRS 2026-09-14 |
 | `E-tkt-018` | 409 | Chốt tháng đã chốt / mở tháng chưa chốt | 13, 14 | Đã duyệt vào SRS 2026-09-14 |

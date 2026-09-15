@@ -6,6 +6,10 @@ import {
   type ChiTieuTncn05,
   type CtTag,
 } from '../../../../constants/hrm/to_khai_thue/chiTieuTncn05';
+import {
+  SO_NGUOI_TOI_DA,
+  TIEN_TOI_DA,
+} from '../../../../constants/hrm/to_khai_thue/gioiHanSo';
 import { ToKhaiThueError } from '../../../../helpers/hrm/toKhaiThueErrors';
 
 /**
@@ -254,6 +258,14 @@ export function chuanHoaGhiDe(
       throw new ToKhaiThueError(
         'E-tkt-012',
         `Chỉ tiêu [${so}] đếm số người nên phải là số nguyên.`,
+      );
+    }
+    // RVW-723: trần theo cột lưu (`ct16` Int; `ct21`/`ct29` Decimal(18,2)) — lọt qua là Postgres báo tràn giữa
+    // giao dịch ghi, ra 500 vô danh.
+    if (o.gia > (demNguoi ? SO_NGUOI_TOI_DA : TIEN_TOI_DA)) {
+      throw new ToKhaiThueError(
+        'E-tkt-012',
+        `Giá trị ghi đè của chỉ tiêu [${so}] vượt giới hạn cho phép.`,
       );
     }
     // Tiền làm tròn tới đồng — cùng quy ước với mọi phép tính khác của sub-cụm (api-contract Mục 0.3).

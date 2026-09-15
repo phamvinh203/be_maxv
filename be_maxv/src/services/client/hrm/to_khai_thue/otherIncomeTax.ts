@@ -1,3 +1,4 @@
+import { TIEN_TOI_DA } from '../../../../constants/hrm/to_khai_thue/gioiHanSo';
 import { ToKhaiThueError } from '../../../../helpers/hrm/toKhaiThueErrors';
 import type { NhomXuLyThue } from '../../../../validators/hrm/to_khai_thue/incomeCategory.validator';
 
@@ -58,6 +59,23 @@ export function tinhThueThuNhapNgoaiLuong(
   dm: ThamSoDanhMuc,
   dv: DauVaoTinhThue,
 ): KetQuaTinhThue {
+  const kq = tinhTheoNhom(dm, dv);
+  // RVW-723: chốt chặn cuối cho mọi nhánh — quy ngược NET với tỷ lệ sát 100% hoặc số đầu vào khổng lồ cho ra số
+  // vô hạn / vượt cột Decimal(18,2): tính thử trả `null`, ghi thì tràn cột thành 500 vô danh.
+  if (
+    ![kq.grossAmount, kq.netAmount, kq.taxDeducted].every(
+      (n) => Number.isFinite(n) && Math.abs(n) <= TIEN_TOI_DA,
+    )
+  ) {
+    throw new ToKhaiThueError(
+      'E-tkt-004',
+      'Số tiền sau khi quy đổi vượt giới hạn cho phép — hãy kiểm tra lại số tiền và tỷ lệ khấu trừ của loại thu nhập.',
+    );
+  }
+  return kq;
+}
+
+function tinhTheoNhom(dm: ThamSoDanhMuc, dv: DauVaoTinhThue): KetQuaTinhThue {
   const soTien = dv.amount;
 
   switch (dm.taxTreatmentGroup) {

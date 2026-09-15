@@ -8,6 +8,10 @@ import {
 } from '../../services/client/hrm/to_khai_thue/taxPolicy.service';
 import { ToKhaiThueError } from '../../helpers/hrm/toKhaiThueErrors';
 import { TO_KHAI_THUE_ERRORS } from '../../constants/hrm/to_khai_thue/toKhaiThueErrors';
+import {
+  CHINH_SACH_THUE_SEED,
+  veDuLieuChinhSach,
+} from '../../constants/hrm/to_khai_thue/taxSeedData';
 
 /**
  * Tra cứu chính sách thuế theo mốc hiệu lực (ADR-012, BR-tkt-017) + hạ tầng mã lỗi `E-tkt-*`.
@@ -63,9 +67,16 @@ test('ADR-012: tra cứu gửi đúng hình dạng truy vấn — mốc <= ngày
   assert.equal(kq.id, 'tp-2026');
 });
 
-test('ADR-012: thiếu chính sách -> E-tkt-015 với HTTP 500, KHÔNG lặng lẽ lấy số mặc định', async () => {
+test('ADR-012: bảng ĐÃ có dòng mà không dòng nào hiệu lực -> E-tkt-015 với HTTP 500, KHÔNG lặng lẽ lấy số mặc định', async () => {
+  let daNap = false;
   const db = {
-    taxPolicy: { findFirst: async () => null },
+    taxPolicy: {
+      findFirst: async () => null,
+      count: async () => 1,
+      createMany: async () => {
+        daNap = true;
+      },
+    },
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
   } as any;
 
@@ -80,6 +91,37 @@ test('ADR-012: thiếu chính sách -> E-tkt-015 với HTTP 500, KHÔNG lặng l
       assert.match(err.message, /hrm:seed-thue/);
       return true;
     },
+  );
+  assert.equal(daNap, false, 'bảng đã có dữ liệu thì không được tự nạp đè');
+});
+
+test('RVW-725: tenant chưa có dòng chính sách nào -> tự nạp bộ chuẩn rồi tra lại, không ném E-tkt-015', async () => {
+  let duLieuNap: Array<{ effectiveFrom: Date }> = [];
+  let luotTim = 0;
+  const db = {
+    taxPolicy: {
+      findFirst: async () => (luotTim++ === 0 ? null : chinhSach()),
+      count: async () => 0,
+      createMany: async (args: {
+        data: Array<{ effectiveFrom: Date }>;
+        skipDuplicates: boolean;
+      }) => {
+        assert.equal(
+          args.skipDuplicates,
+          true,
+          'hai lượt nạp đồng thời không được vỡ vì trùng mốc hiệu lực',
+        );
+        duLieuNap = args.data;
+      },
+    },
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  } as any;
+
+  const kq = await resolveTaxPolicy(db, new Date('2026-09-01T00:00:00.000Z'));
+  assert.equal(kq.id, 'tp-2026');
+  assert.deepEqual(
+    duLieuNap.map((d) => d.effectiveFrom.toISOString().slice(0, 10)),
+    ['1900-01-01', '2026-01-01'],
   );
 });
 
@@ -161,6 +203,41 @@ test('GET /tax-policies: dangApDung đánh đúng MỘT dòng — mốc mới nh
   // 17:30 UTC ngày 31/12/2026 đã là 00:30 ngày 01/01/2027 ở Việt Nam ⇒ biểu 2027 bắt đầu áp dụng.
   const quaNam = await getTaxPolicies(db, new Date('2026-12-31T17:30:00.000Z'));
   assert.equal(quaNam.find((d) => d.dangApDung)?.id, 'tp-2027');
+});
+
+test('RVW-734: GET /tax-policies trên bảng rỗng -> nạp đúng bộ chuẩn (cùng ánh xạ với script M-2) rồi trả danh sách', async () => {
+  let duLieuNap: unknown;
+  let luotDoc = 0;
+  const db = {
+    taxPolicy: {
+      findMany: async () =>
+        luotDoc++ === 0
+          ? []
+          : [
+              chinhSach(),
+              chinhSach({
+                id: 'tp-cu',
+                effectiveFrom: new Date('1900-01-01T00:00:00.000Z'),
+              }),
+            ],
+      createMany: async (args: { data: unknown; skipDuplicates: boolean }) => {
+        assert.equal(args.skipDuplicates, true);
+        duLieuNap = args.data;
+      },
+    },
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  } as any;
+
+  const ds = await getTaxPolicies(db, new Date('2026-09-15T03:00:00.000Z'));
+  assert.deepEqual(duLieuNap, CHINH_SACH_THUE_SEED.map(veDuLieuChinhSach));
+  assert.equal(luotDoc, 2, 'nạp xong phải đọc lại, không trả mảng rỗng');
+  assert.deepEqual(
+    ds.map((d) => [d.effectiveFrom, d.dangApDung]),
+    [
+      ['2026-01-01', true],
+      ['1900-01-01', false],
+    ],
+  );
 });
 
 test('Hạ tầng mã lỗi: đủ 21 mã E-tkt-* và HTTP status khớp SRS Mục 8', () => {

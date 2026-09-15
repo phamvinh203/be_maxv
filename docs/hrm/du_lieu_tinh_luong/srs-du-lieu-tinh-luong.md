@@ -636,6 +636,8 @@ Chủ dự án yêu cầu (2026-09-11, kèm ảnh màn tham chiếu): dựng mà
 |---|---|:---:|---|
 | E-dltl-027 | Bảng kê này đã được chốt số cho kỳ lương, không thể thay đổi dữ liệu. Mở chốt bảng kê trước khi sửa. | 403 | PayrollError |
 | E-dltl-028 | Trạng thái chốt của bảng kê vừa thay đổi (chốt lại bảng kê đã chốt / mở chốt bảng kê đang mở) | 409 | PayrollError, câu thông báo nêu tên bảng kê |
+| E-dltl-029 `[MỚI 2026-09-15 — RVW-721]` | Tháng đã chốt Bảng tính thuế TNCN nên không mở lại / xóa được kỳ lương — mở lại Bảng tính thuế trước | 409 | PayrollError; kiểm dưới khóa dòng kỳ `FOR UPDATE` (`payrollPeriodLockGuard.ts::khoaKyDeMoLaiHoacXoa`) |
+| E-dltl-030 `[MỚI 2026-09-15 — RVW-735]` | Kỳ lương còn khoản thu nhập ngoài lương (chứng từ thuế) nên không xóa được — xóa từng khoản trước | 409 | PayrollError, thông báo nêu số khoản; đếm dưới khóa dòng kỳ `FOR UPDATE` (`payrollPeriods.service.ts::deletePayrollPeriod`) |
 
 ### 16.5. User Story & Acceptance Criteria
 

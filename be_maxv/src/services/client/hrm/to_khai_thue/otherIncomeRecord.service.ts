@@ -27,8 +27,21 @@ export async function kyDaKhoa(db: Db, periodId: string): Promise<boolean> {
   return khoa !== null;
 }
 
-async function chanKhiKyDaKhoa(db: Db, periodId: string): Promise<void> {
-  if (await kyDaKhoa(db, periodId)) throw new ToKhaiThueError('E-tkt-007');
+/**
+ * Mở kỳ để GHI khoản ngoài lương, gọi ở đầu giao dịch ghi (RVW-722): khóa đọc chung dòng kỳ lương
+ * (`FOR SHARE`) rồi mới kiểm khóa tháng. Chốt tháng giữ khóa ghi (`FOR UPDATE`) trên cùng dòng kỳ nên hai
+ * bên buộc xếp hàng: lượt ghi đến sau thấy khóa `TAX_SHEET` vừa commit, lượt Chốt đến sau tính trên dữ liệu
+ * đã commit. Kiểm ngoài giao dịch như trước thì một khoản vẫn lọt vào tháng vừa chốt, hoặc bị xóa khỏi tháng
+ * trong khi snapshot còn giữ. Cùng khuôn `khoaKyDeGhiDuLieu` của bảng kê lương.
+ */
+async function moKyDeGhi(
+  tx: Prisma.TransactionClient,
+  periodId: string,
+): Promise<void> {
+  const ky = await tx.$queryRaw<{ id: string }[]>`
+    SELECT id FROM "hrm_payroll_periods" WHERE id = ${periodId} FOR SHARE`;
+  if (ky.length === 0) throw new ToKhaiThueError('E-tkt-017');
+  if (await kyDaKhoa(tx, periodId)) throw new ToKhaiThueError('E-tkt-007');
 }
 
 export interface OtherIncomeRecordDto {
@@ -131,9 +144,21 @@ function veDto(r: HangCoDanhMuc): OtherIncomeRecordDto {
   };
 }
 
-/** Khóa gom người nhận — nhân viên nội bộ theo `ma_nv`, vãng lai theo tên chuẩn hóa (ADR-013). */
-export function khoaNguoiNhan(maNv: string | null, hoTen: string): string {
-  return maNv ?? `VL:${hoTen.trim().toLowerCase()}`;
+/**
+ * Khóa gom người nhận (ADR-013): nhân viên nội bộ theo `ma_nv`; cá nhân vãng lai theo CCCD, không có thì
+ * MST, không có nữa mới dùng họ tên chuẩn hóa — hai CTV trùng tên khác CCCD là hai người (RVW-727, chủ dự
+ * án chốt 2026-09-15). PHẢI khớp biểu thức của index `hrm_oir_chong_trung_v2` (`hrmTenantConstraints.ts`):
+ * lệch nhau thì chống trùng và gộp dòng Bảng tính thuế hiểu "một người" theo hai cách.
+ */
+export function khoaNguoiNhan(
+  maNv: string | null,
+  hoTen: string,
+  cccd?: string | null,
+  mst?: string | null,
+): string {
+  if (maNv !== null) return maNv;
+  const dinhDanh = cccd?.trim() || mst?.trim() || hoTen.trim();
+  return `VL:${dinhDanh.toLowerCase()}`;
 }
 
 /**
@@ -150,6 +175,8 @@ async function daMienTrongKy(
     paymentDate: Date;
     maNv: string | null;
     fullName: string;
+    idCardNumber?: string | null;
+    taxCode?: string | null;
     boQuaId?: string;
   },
 ): Promise<number> {
@@ -170,13 +197,27 @@ async function daMienTrongKy(
       ...(args.boQuaId ? { id: { not: args.boQuaId } } : {}),
       ...(args.maNv ? { ma_nv: args.maNv } : { ma_nv: null }),
     },
-    select: { exemptAmount: true, fullName: true, ma_nv: true },
+    select: {
+      exemptAmount: true,
+      fullName: true,
+      ma_nv: true,
+      idCardNumber: true,
+      taxCode: true,
+    },
   });
 
-  // Vãng lai không có `ma_nv` nên phải gom theo tên chuẩn hóa ở tầng ứng dụng.
-  const khoa = khoaNguoiNhan(args.maNv, args.fullName);
+  // Vãng lai không có `ma_nv` nên phải gom theo khóa người nhận ở tầng ứng dụng.
+  const khoa = khoaNguoiNhan(
+    args.maNv,
+    args.fullName,
+    args.idCardNumber,
+    args.taxCode,
+  );
   return rows
-    .filter((r) => khoaNguoiNhan(r.ma_nv, r.fullName) === khoa)
+    .filter(
+      (r) =>
+        khoaNguoiNhan(r.ma_nv, r.fullName, r.idCardNumber, r.taxCode) === khoa,
+    )
     .reduce((s, r) => s + Number(r.exemptAmount), 0);
 }
 
@@ -185,6 +226,7 @@ export interface TinhThuInput {
   ma_nv?: string | null;
   fullName: string;
   taxCode?: string | null;
+  idCardNumber?: string | null;
   isResident?: boolean;
   paymentDate: string;
   paymentType?: 'GROSS' | 'NET';
@@ -265,6 +307,8 @@ async function tinhSnapshot(
           paymentDate,
           maNv,
           fullName: input.fullName,
+          idCardNumber: input.idCardNumber,
+          taxCode: input.taxCode,
           boQuaId,
         })
       : 0;
@@ -299,13 +343,12 @@ export async function previewOtherIncome(
   db: Db,
   input: TinhThuInput,
 ): Promise<KetQuaTinhThue> {
-  const { ketQua, tenDanhMuc } = await tinhSnapshot(db, input);
+  const { ketQua } = await tinhSnapshot(db, input);
   return ketQua;
 }
 
 export interface CreateOtherIncomeInput extends TinhThuInput {
   periodId: string;
-  idCardNumber?: string | null;
   address?: string | null;
   phone?: string | null;
   email?: string | null;
@@ -385,81 +428,90 @@ function duLieuChung(
 }
 
 export async function createOtherIncome(
-  db: Db,
+  db: PrismaClient,
   input: CreateOtherIncomeInput,
 ): Promise<OtherIncomeRecordDto> {
-  // Thứ tự kiểm bám đúng bảng ở hợp đồng Mục 3.4 — mã lỗi trả về phụ thuộc thứ tự này.
-  await chanKhiKyDaKhoa(db, input.periodId);
-  await soatKyVaNgay(db, input.periodId, input.paymentDate);
-  const { ketQua, tenDanhMuc } = await tinhSnapshot(db, input);
+  return db.$transaction(async (tx) => {
+    // Thứ tự kiểm bám đúng bảng ở hợp đồng Mục 3.4 — mã lỗi trả về phụ thuộc thứ tự này.
+    await moKyDeGhi(tx, input.periodId);
+    await soatKyVaNgay(tx, input.periodId, input.paymentDate);
+    const { ketQua, tenDanhMuc } = await tinhSnapshot(tx, input);
 
-  try {
-    const row = await db.otherIncomeRecord.create({
-      data: {
-        periodId: input.periodId,
-        createdByUserId: input.createdByUserId ?? null,
-        ...duLieuChung(input, ketQua, tenDanhMuc),
-      },
-      include: KEM_DANH_MUC,
-    });
-    return veDto(row);
-  } catch (err) {
-    // Chống trùng là UNIQUE INDEX ở CSDL (`hrm_oir_chong_trung`), không phải `findFirst` trước
-    // `create`: hai request song song cùng vượt qua bước kiểm rồi cùng ghi. Double-click là
-    // kịch bản đua điển hình — EC-tkt-07.
-    if (laLoiTrungKhoa(err)) throw new ToKhaiThueError('E-tkt-005');
-    throw err;
-  }
+    try {
+      const row = await tx.otherIncomeRecord.create({
+        data: {
+          periodId: input.periodId,
+          createdByUserId: input.createdByUserId ?? null,
+          ...duLieuChung(input, ketQua, tenDanhMuc),
+        },
+        include: KEM_DANH_MUC,
+      });
+      return veDto(row);
+    } catch (err) {
+      // Chống trùng là UNIQUE INDEX ở CSDL (`hrm_oir_chong_trung_v2`), không phải `findFirst` trước
+      // `create`: hai request song song cùng vượt qua bước kiểm rồi cùng ghi. Double-click là
+      // kịch bản đua điển hình — EC-tkt-07.
+      if (laLoiTrungKhoa(err)) throw new ToKhaiThueError('E-tkt-005');
+      throw err;
+    }
+  });
 }
 
 export type UpdateOtherIncomeInput = Omit<CreateOtherIncomeInput, 'periodId'>;
 
 export async function updateOtherIncome(
-  db: Db,
+  db: PrismaClient,
   id: string,
   input: UpdateOtherIncomeInput,
 ): Promise<OtherIncomeRecordDto> {
-  const cu = await db.otherIncomeRecord.findUnique({
-    where: { id },
-    select: { periodId: true },
-  });
-  if (!cu) throw new ToKhaiThueError('E-tkt-016');
-
-  await chanKhiKyDaKhoa(db, cu.periodId);
-  await soatKyVaNgay(db, cu.periodId, input.paymentDate);
-  // Tính lại snapshot theo danh mục HIỆN TẠI; bỏ chính bản ghi này ra khỏi phần trần đã dùng,
-  // nếu không sửa một khoản ăn ca sẽ tự trừ vào trần của chính nó.
-  const { ketQua, tenDanhMuc } = await tinhSnapshot(
-    db,
-    { ...input, periodId: cu.periodId } as TinhThuInput,
-    id,
-  );
-
-  try {
-    const row = await db.otherIncomeRecord.update({
+  return db.$transaction(async (tx) => {
+    const cu = await tx.otherIncomeRecord.findUnique({
       where: { id },
-      data: duLieuChung(
-        { ...input, periodId: cu.periodId },
-        ketQua,
-        tenDanhMuc,
-      ),
-      include: KEM_DANH_MUC,
+      select: { periodId: true },
     });
-    return veDto(row);
-  } catch (err) {
-    if (laLoiTrungKhoa(err)) throw new ToKhaiThueError('E-tkt-005');
-    throw err;
-  }
+    if (!cu) throw new ToKhaiThueError('E-tkt-016');
+
+    await moKyDeGhi(tx, cu.periodId);
+    await soatKyVaNgay(tx, cu.periodId, input.paymentDate);
+    // Tính lại snapshot theo danh mục HIỆN TẠI; bỏ chính bản ghi này ra khỏi phần trần đã dùng,
+    // nếu không sửa một khoản ăn ca sẽ tự trừ vào trần của chính nó.
+    const { ketQua, tenDanhMuc } = await tinhSnapshot(
+      tx,
+      { ...input, periodId: cu.periodId } as TinhThuInput,
+      id,
+    );
+
+    try {
+      const row = await tx.otherIncomeRecord.update({
+        where: { id },
+        data: duLieuChung(
+          { ...input, periodId: cu.periodId },
+          ketQua,
+          tenDanhMuc,
+        ),
+        include: KEM_DANH_MUC,
+      });
+      return veDto(row);
+    } catch (err) {
+      if (laLoiTrungKhoa(err)) throw new ToKhaiThueError('E-tkt-005');
+      throw err;
+    }
+  });
 }
 
-export async function deleteOtherIncome(db: Db, id: string): Promise<void> {
-  const cu = await db.otherIncomeRecord.findUnique({
-    where: { id },
-    select: { periodId: true },
+export async function deleteOtherIncome(
+  db: PrismaClient,
+  id: string,
+): Promise<void> {
+  await db.$transaction(async (tx) => {
+    const cu = await tx.otherIncomeRecord.findUnique({
+      where: { id },
+      select: { periodId: true },
+    });
+    if (!cu) throw new ToKhaiThueError('E-tkt-016');
+    await moKyDeGhi(tx, cu.periodId);
+    await tx.otherIncomeRecord.delete({ where: { id } });
   });
-  if (!cu) throw new ToKhaiThueError('E-tkt-016');
-  await chanKhiKyDaKhoa(db, cu.periodId);
-  await db.otherIncomeRecord.delete({ where: { id } });
 }
 
 export async function getOtherIncomeById(
@@ -527,11 +579,19 @@ export async function listOtherIncomes(
       : {}),
   };
 
-  const [rows, tong, locked] = await Promise.all([
+  const [ky, rows, tong, locked] = await Promise.all([
+    // Kỳ không tồn tại (hoặc của công ty khác) phải báo E-tkt-017 — trả 200 rỗng thì giao diện hiểu là
+    // "kỳ trống, nhập được" (hợp đồng Mục 7, RVW-726).
+    db.payrollPeriod.findUnique({
+      where: { id: query.periodId },
+      select: { id: true },
+    }),
     db.otherIncomeRecord.findMany({
       where,
       include: KEM_DANH_MUC,
-      orderBy: [{ paymentDate: 'asc' }, { createdAt: 'asc' }],
+      // Thứ tự là luật nghiệp vụ (hợp đồng Mục 0.4): khoản mới nhất trước. `id` cuối cùng giữ phân
+      // trang ổn định khi hai khoản trùng thời điểm tạo.
+      orderBy: [{ paymentDate: 'desc' }, { createdAt: 'desc' }, { id: 'desc' }],
       skip: query.offset,
       take: query.limit,
     }),
@@ -544,6 +604,7 @@ export async function listOtherIncomes(
     }),
     kyDaKhoa(db, query.periodId),
   ]);
+  if (!ky) throw new ToKhaiThueError('E-tkt-017');
 
   return {
     records: rows.map(veDto),

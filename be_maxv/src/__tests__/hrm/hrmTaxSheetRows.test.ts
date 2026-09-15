@@ -1,6 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
+  soSanhDongBangThue,
   tinhBangTinhThueThang,
   type DongBangTinhThueTinh,
   type DongLuongDauVao,
@@ -367,6 +368,32 @@ test('recipientKey: vãng lai 2 khoản cùng tên lệch hoa/thường -> MỘT
     'ghi theo khoản đã thực sự bị khấu trừ',
   );
   kiemBatBien(ds[0]);
+});
+
+test('RVW-736: thứ tự dòng theo hợp đồng Mục 0.4 — loại lao động, rồi họ tên theo bảng chữ cái tiếng Việt', () => {
+  const dong = (loai: string, ho_ten: string, recipientKey: string) =>
+    ({ loai_lao_dong: loai, ho_ten, recipientKey }) as DongBangTinhThueTinh;
+  const ds = [
+    dong('VANG_LAI', 'Nguyễn Văn A', 'VL:001203000009'),
+    dong('HOP_DONG_3_THANG_TRO_LEN', 'Đỗ Văn Bảy', 'NV0007'),
+    dong('THOI_VU_THU_VIEC', 'Trần Thị Hai', 'NV0002'),
+    dong('HOP_DONG_3_THANG_TRO_LEN', 'Dương Văn Cường', 'NV0010'),
+    dong('VANG_LAI', 'Bùi Thị Én', 'VL:8000000001'),
+    dong('HOP_DONG_3_THANG_TRO_LEN', 'Ánh Nguyệt', 'NV0011'),
+  ].sort(soSanhDongBangThue);
+  // Sắp theo khóa như trước thì NV0007 đứng trước NV0010, và vãng lai có CCCD `0012…` đứng trước MST `8000…`.
+  // "Đ" là chữ cái riêng, đứng sau "D".
+  assert.deepEqual(
+    ds.map((d) => d.ho_ten),
+    [
+      'Ánh Nguyệt',
+      'Dương Văn Cường',
+      'Đỗ Văn Bảy',
+      'Trần Thị Hai',
+      'Bùi Thị Én',
+      'Nguyễn Văn A',
+    ],
+  );
 });
 
 test('Nhân viên chỉ có khoản ngoài lương, KHÔNG có dòng lương -> vẫn lên bảng', () => {

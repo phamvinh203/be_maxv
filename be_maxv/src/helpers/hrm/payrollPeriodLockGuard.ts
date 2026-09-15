@@ -135,6 +135,28 @@ export async function khoaKyDeChotSo(
 }
 
 /**
+ * Kiểm quyết định cho MỞ LẠI / XÓA kỳ lương — gọi ở đầu giao dịch (`FOR UPDATE`), trả trạng thái đọc dưới khóa.
+ * Kỳ lương là nguồn của Bảng tính thuế tháng (ADR-013): tháng đã chốt Bảng tính thuế thì kỳ phải đứng yên, nếu
+ * không số thuế đã chốt (và tờ khai quý đã xuất) lệch với bảng lương mà không có tín hiệu nào — 409 `E-dltl-029`,
+ * mở lại Bảng tính thuế trước (RVW-721). Chốt tháng (`lockTaxSheet`) khóa cùng dòng kỳ `FOR UPDATE` nên hai bên
+ * xếp hàng: bên đến sau thấy kết quả bên kia đã commit.
+ */
+export async function khoaKyDeMoLaiHoacXoa(
+  tx: Prisma.TransactionClient,
+  periodId: string,
+): Promise<{ status: PayrollPeriodStatus }> {
+  const ky = await docKyCoKhoa(tx, periodId, 'UPDATE');
+  const daChotThue = await tx.payrollModuleLock.findUnique({
+    where: { periodId_module: { periodId, module: 'TAX_SHEET' } },
+    select: { id: true },
+  });
+  if (daChotThue) {
+    throw new PayrollError(PAYROLL_ERROR_CODES.E_DLTL_029, undefined, HttpStatus.CONFLICT);
+  }
+  return ky;
+}
+
+/**
  * Guard ghi của 8 bảng kê có dữ liệu riêng của kỳ (BR-dltl-030): kỳ phải còn ghi được (như
  * `assertPayrollPeriodWritable`) VÀ bảng kê đó chưa bị chốt số trên màn "Chốt kỳ lương".
  * Đã chốt -> 403 `E-dltl-027`. Mọi đường ghi của `/payroll-data/*` phải qua guard này thay cho

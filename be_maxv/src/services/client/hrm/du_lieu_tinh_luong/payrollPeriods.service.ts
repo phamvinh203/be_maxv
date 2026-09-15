@@ -10,6 +10,7 @@ import { HttpStatus } from '../../../../constants/httpStatus';
 import {
   getPayrollPeriodOrThrow,
   getPayrollPeriodStatusOrThrow,
+  khoaKyDeMoLaiHoacXoa,
 } from '../../../../helpers/hrm/payrollPeriodLockGuard';
 import type {
   CreatePayrollPeriodInput,
@@ -104,19 +105,38 @@ export async function updatePayrollPeriod(db: PrismaClient, id: string, input: U
   });
 }
 
-export async function deletePayrollPeriod(db: PrismaClient, id: string) {
-  const period = await getPayrollPeriodStatusOrThrow(db, id);
-
-  if (period.status !== 'DRAFT') {
+function kiemXoaDuoc(status: PayrollPeriodStatus) {
+  if (status !== 'DRAFT') {
     throw new PayrollError(
       PAYROLL_ERROR_CODES.E_DLTL_001,
       'Chỉ có thể xóa kỳ lương ở trạng thái Nháp (DRAFT).',
       HttpStatus.FORBIDDEN,
     );
   }
+}
 
-  return db.payrollPeriod.delete({
-    where: { id },
+export async function deletePayrollPeriod(db: PrismaClient, id: string) {
+  const period = await getPayrollPeriodStatusOrThrow(db, id);
+  kiemXoaDuoc(period.status);
+
+  return db.$transaction(async (tx) => {
+    // Kiểm LẠI dưới khóa dòng kỳ — xóa cứng cascade cả 12 bảng con: khóa sổ chen giữa thì không được xóa kỳ đã
+    // chụp bảng lương; kỳ DRAFT còn khóa `TAX_SHEET` (dữ liệu từ trước khi mở lại kỳ bị chặn) thì mất luôn dòng
+    // thuế đã chốt — lưới an toàn RVW-721.
+    const { status } = await khoaKyDeMoLaiHoacXoa(tx, id);
+    kiemXoaDuoc(status);
+    // RVW-735 (chủ dự án chốt 2026-09-15): khoản thu nhập ngoài lương là chứng từ thuế, có thể đã phát hành chứng từ
+    // khấu trừ cho cá nhân — không để xóa kỳ cuốn theo. Lượt ghi khoản giữ `FOR SHARE` trên cùng dòng kỳ nên phép
+    // đếm dưới khóa này không lọt khoản vừa thêm.
+    const soKhoan = await tx.otherIncomeRecord.count({ where: { periodId: id } });
+    if (soKhoan > 0) {
+      throw new PayrollError(
+        PAYROLL_ERROR_CODES.E_DLTL_030,
+        `Kỳ lương còn ${soKhoan} khoản thu nhập ngoài lương nên không xóa được. Xóa từng khoản ở màn Thu nhập ngoài lương trước.`,
+        HttpStatus.CONFLICT,
+      );
+    }
+    return tx.payrollPeriod.delete({ where: { id } });
   });
 }
 
@@ -216,10 +236,14 @@ export async function reopenPayrollPeriod(db: PrismaClient, id: string) {
     throw new BadRequestError('Chỉ có thể mở lại kỳ lương đã ở trạng thái LOCKED.');
   }
 
-  return chuyenTrangThai(db, id, ['LOCKED'], {
-    status: 'DRAFT',
-    lockedByUserId: null,
-    lockedAt: null,
+  return db.$transaction(async (tx) => {
+    // RVW-721: tháng đã chốt Bảng tính thuế thì không mở lại được (409 E-dltl-029) — xem `khoaKyDeMoLaiHoacXoa`.
+    await khoaKyDeMoLaiHoacXoa(tx, id);
+    return chuyenTrangThai(tx, id, ['LOCKED'], {
+      status: 'DRAFT',
+      lockedByUserId: null,
+      lockedAt: null,
+    });
   });
 }
 

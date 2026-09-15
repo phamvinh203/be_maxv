@@ -11,6 +11,10 @@ import {
   lockAllPayrollModules,
   lockPayrollModule,
 } from '../../services/client/hrm/du_lieu_tinh_luong/payrollClosing.service';
+import {
+  deletePayrollPeriod,
+  reopenPayrollPeriod,
+} from '../../services/client/hrm/du_lieu_tinh_luong/payrollPeriods.service';
 
 /**
  * vbsec 2026-09-10 (LOW, payrollInputs.service.ts:256): guard khóa kỳ (`assertPayrollModuleWritable`) chạy
@@ -73,7 +77,23 @@ function taoDb(
         }
         return kq;
       },
+      // Mở lại / xóa kỳ lương (RVW-721).
+      updateMany: async ({ where, data }: any) => {
+        if (where.id !== ky.id || !where.status.in.includes(ky.status)) {
+          return { count: 0 };
+        }
+        nhatKy.push('update kỳ');
+        Object.assign(ky, data);
+        return { count: 1 };
+      },
+      findUniqueOrThrow: async () => ({ ...ky }),
+      delete: async () => {
+        nhatKy.push('delete kỳ');
+        return { ...ky };
+      },
     },
+    // Xóa kỳ lương đếm khoản thu nhập ngoài lương trước khi xóa (RVW-735); ca kiểm cần thì gán lại `count`.
+    otherIncomeRecord: { count: async () => 0 },
     payrollModuleLock: {
       findUnique: async ({ where }: any) =>
         locks.has(where.periodId_module.module) ? { id: 'lock' } : null,
@@ -221,4 +241,83 @@ test('chốt số khi kỳ vừa bị khóa sổ chen giữa -> 403 E-dltl-001, 
     (e: any) => e?.code === 'E-dltl-001' && e.statusCode === 403,
   );
   assert.equal(db.locks.size, 0);
+});
+
+test('RVW-721: tháng đã chốt Bảng tính thuế -> mở lại / xóa kỳ lương 409 E-dltl-029, kỳ giữ nguyên', async () => {
+  const moLai = taoDb();
+  moLai.ky.status = 'LOCKED';
+  moLai.locks.add('TAX_SHEET');
+  await assert.rejects(
+    reopenPayrollPeriod(moLai, 'p-1'),
+    (e: any) => e?.code === 'E-dltl-029' && e.statusCode === 409,
+  );
+  assert.equal(moLai.ky.status, 'LOCKED');
+
+  // Kỳ DRAFT còn khóa TAX_SHEET: dữ liệu cũ, từ trước khi mở lại kỳ bị chặn.
+  const xoa = taoDb();
+  xoa.locks.add('TAX_SHEET');
+  await assert.rejects(
+    deletePayrollPeriod(xoa, 'p-1'),
+    (e: any) => e?.code === 'E-dltl-029' && e.statusCode === 409,
+  );
+  assert.ok(!xoa.nhatKy.includes('delete kỳ'));
+});
+
+test('RVW-721: mở lại / xóa kỳ lương khóa GHI dòng kỳ trong giao dịch TRƯỚC khi đọc khóa TAX_SHEET và ghi', async () => {
+  const ghiLaiDocKhoa = (db: any) => {
+    const goc = db.payrollModuleLock.findUnique;
+    db.payrollModuleLock.findUnique = async (args: any) => {
+      db.nhatKy.push('đọc khóa');
+      return goc(args);
+    };
+    return db;
+  };
+
+  const moLai = ghiLaiDocKhoa(taoDb());
+  moLai.ky.status = 'LOCKED';
+  await reopenPayrollPeriod(moLai, 'p-1');
+  assert.deepEqual(moLai.nhatKy, [
+    'BEGIN',
+    'FOR UPDATE',
+    'đọc khóa',
+    'update kỳ',
+    'COMMIT',
+  ]);
+  assert.equal(moLai.ky.status, 'DRAFT');
+
+  const xoa = ghiLaiDocKhoa(taoDb());
+  await deletePayrollPeriod(xoa, 'p-1');
+  assert.deepEqual(xoa.nhatKy, [
+    'BEGIN',
+    'FOR UPDATE',
+    'đọc khóa',
+    'delete kỳ',
+    'COMMIT',
+  ]);
+});
+
+test('xóa kỳ lương khi kỳ vừa bị khóa sổ chen giữa -> 403 E-dltl-001, không xóa', async () => {
+  const db = taoDb(khoaSoChenGiua);
+  await assert.rejects(
+    deletePayrollPeriod(db, 'p-1'),
+    (e: any) => e?.code === 'E-dltl-001' && e.statusCode === 403,
+  );
+  assert.ok(!db.nhatKy.includes('delete kỳ'), db.nhatKy.join(' > '));
+});
+
+test('RVW-735: kỳ DRAFT còn khoản thu nhập ngoài lương -> xóa kỳ 409 E-dltl-030, không xóa', async () => {
+  const db = taoDb();
+  db.otherIncomeRecord.count = async ({ where }: any) => {
+    db.nhatKy.push('đếm khoản');
+    return where.periodId === 'p-1' ? 2 : 0;
+  };
+  await assert.rejects(
+    deletePayrollPeriod(db, 'p-1'),
+    (e: any) =>
+      e?.code === 'E-dltl-030' &&
+      e.statusCode === 409 &&
+      /còn 2 khoản/.test(e.message),
+  );
+  // Đếm DƯỚI khóa dòng kỳ: lượt thêm khoản giữ `FOR SHARE` cùng dòng nên không lọt khoản vừa ghi.
+  assert.deepEqual(db.nhatKy, ['BEGIN', 'FOR UPDATE', 'đếm khoản', 'COMMIT']);
 });

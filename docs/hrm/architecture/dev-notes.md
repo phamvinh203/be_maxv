@@ -767,8 +767,10 @@ gọi thêm service có sẵn thay vì `db.<model>.create()` trực tiếp cho c
 - **Hai tầng snapshot bất biến** (ADR-013): (1) bản ghi thu nhập ngoài lương chụp nhóm xử lý thuế +
   phần miễn/chịu thuế lúc lưu — sửa danh mục sau không đổi ngược số cũ; (2) `hrm_tax_calculation_lines`
   CHỈ có dòng khi tháng đã chốt — chưa chốt thì tính trực tiếp mỗi lần đọc.
-- **Dòng bảng tính thuế là theo NGƯỜI**: `recipientKey` = `ma_nv`, hoặc `'VL:' + lower(trim(họ tên))`
-  với cá nhân vãng lai — không theo bản ghi.
+- **Dòng bảng tính thuế là theo NGƯỜI**: `recipientKey` = `ma_nv`, hoặc với cá nhân vãng lai `'VL:'` + CCCD →
+  MST → họ tên (lấy cái có trước, chữ thường, bỏ khoảng trắng) — không theo bản ghi. Hai bản của cùng một luật
+  phải khớp nhau: `otherIncomeRecord.service.ts::khoaNguoiNhan` (gộp dòng, trần miễn thuế) và index
+  `hrm_oir_chong_trung_v2` trong `hrmTenantConstraints.ts` (chống trùng) — RVW-727.
 - **Thu nhập ngoài lương tách 2 phần** (chủ dự án chốt 2026-09-15): phần cộng lũy tiến
   (`taxableAmount`) và phần khấu trừ riêng (gross khoản `WITHHOLDING_FLAT`). Cả hai nằm trong
   `thu_nhap_ngoai`; chỉ phần đầu vào nền lũy tiến.
@@ -777,13 +779,13 @@ gọi thêm service có sẵn thay vì `db.<model>.create()` trực tiếp cho c
 
 | Thao tác | Route → hàm | Ghi chú |
 |---|---|---|
-| Tra chính sách thuế của kỳ | `taxPolicy.service.ts::resolveTaxPolicy(db, period.startDate)` | Thiếu dòng ⇒ 500 `E-tkt-015` kèm lệnh `npm run hrm:seed-thue` |
+| Tra chính sách thuế của kỳ | `taxPolicy.service.ts::resolveTaxPolicy(db, period.startDate)` | Bảng RỖNG (công ty cấp mới) ⇒ tự nạp `CHINH_SACH_THUE_SEED` rồi tra lại (RVW-725; `skipDuplicates` cho hai lượt nạp cùng lúc). Đã có dòng mà không mốc nào tới đầu kỳ ⇒ 500 `E-tkt-015` kèm lệnh `npm run hrm:seed-thue` |
 | Danh mục loại thu nhập (5 endpoint) | `/to-khai-thue/income-categories` → `incomeCategory.service.ts` | Mã `TNxx` tự sinh: quét lỗ hổng + thử lại khi trùng |
 | Tính thuế 1 bản ghi | `otherIncomeTax.ts::tinhThueThuNhapNgoaiLuong` | Hàm thuần — nơi DUY NHẤT có công thức 4 nhóm |
 | Bản ghi thu nhập ngoài lương (6 endpoint) | `/to-khai-thue/other-income` → `otherIncomeRecord.service.ts` | Không có đường ghi/xóa hàng loạt — xóa loạt chứng từ thuế không FR nào phủ |
 | Tính dòng Bảng tính thuế | `taxSheetRows.ts::tinhBangTinhThueThang` | Hàm thuần, dùng chung cho xem Nháp VÀ lúc chốt ⇒ số thấy = số đóng băng |
 | Xem Bảng tính thuế tháng | `GET /to-khai-thue/tax-calculation` → `taxSheet.service.ts::getTaxSheet` | Có khóa ⇒ đọc snapshot; không ⇒ `getPayrollSheetLines` + bản ghi ngoài lương + hồ sơ NV |
-| Chốt tháng | `POST .../tax-calculation/lock` → `lockTaxSheet` | Kỳ lương phải `LOCKED`+; tính ngoài giao dịch, ghi khóa TRƯỚC dòng |
+| Chốt tháng | `POST .../tax-calculation/lock` → `lockTaxSheet` | Kỳ lương phải `LOCKED`+. MỘT giao dịch: `FOR UPDATE` dòng kỳ lương → kiểm trạng thái + khóa → tính dòng → ghi khóa TRƯỚC dòng (RVW-721/722) |
 | Mở lại tháng | `POST .../tax-calculation/unlock` → `unlockTaxSheet` | `assertQuanTriToKhaiThue` + lý do ≥ 20 ký tự; xóa snapshot + tờ khai chưa xuất của quý |
 | Xem tờ khai quý | `GET /to-khai-thue/05-kk-tncn` → `taxDeclaration.service.ts::getToKhai` | Chưa đủ 3 tháng chốt ⇒ không có dòng; đủ ⇒ tự tạo `READY_TO_EXPORT`, tính lại mỗi lần đọc; đã xuất ⇒ đọc nguyên |
 | Tính 17 chỉ tiêu | `taxDeclarationCalc.ts::tinhChiTieuMay` · `hopNhatGhiDe` · `kiemTraCanDoi` | Hàm thuần; gộp theo NGƯỜI; ô tổng hợp luôn suy lại; [24] [25] [32] = 0 |
@@ -795,6 +797,12 @@ gọi thêm service có sẵn thay vì `db.<model>.create()` trực tiếp cho c
 | Nối route (23 endpoint) | `routes/hrm/to_khai_thue/toKhaiThue.route.ts`, đăng ký trong `routes/hrm/hrm.route.ts` | Xác thực + guard module `hrm` kế thừa hook của `hrm.route.ts`; quyền 2 mức ở đầu controller |
 | Danh sách chính sách thuế | `GET /to-khai-thue/tax-policies` → `taxPolicy.controller.ts` → `taxPolicy.service.ts::getTaxPolicies` | `dangApDung` = mốc mới nhất đã tới theo ngày Việt Nam |
 | Kiểm đầu vào khoản ngoài lương | `otherIncomeRecord.service.ts::tinhSnapshot` | Dùng chung cho tính thử / thêm / sửa: danh mục ACTIVE → nhóm ↔ đối tượng (021) → nhân viên có thật, chưa xóa mềm (016) → Cam kết 08 (006) → chặn không cư trú (004). Luật mới thêm vào ĐÂY, không vào từng endpoint. `ma_nv` in hoa ở validator như mọi màn hồ sơ nhân sự |
+| Ghi khoản ngoài lương (thêm / sửa / xóa) | `otherIncomeRecord.service.ts::moKyDeGhi` | Mở đầu MỌI giao dịch ghi: `FOR SHARE` dòng kỳ lương rồi mới kiểm khóa tháng (E-tkt-007). Kiểm ngoài giao dịch là để lọt khoản vào tháng vừa chốt (RVW-722) |
+| Mở lại / xóa kỳ lương khi tháng đã chốt thuế | `helpers/hrm/payrollPeriodLockGuard.ts::khoaKyDeMoLaiHoacXoa` | Gọi ở đầu giao dịch `reopenPayrollPeriod` / `deletePayrollPeriod`: `FOR UPDATE` dòng kỳ, còn khóa `TAX_SHEET` ⇒ 409 `E-dltl-029` (RVW-721) — kỳ lương là nguồn của số thuế đã chốt. Xóa kỳ còn đếm khoản thu nhập ngoài lương dưới cùng khóa ⇒ 409 `E-dltl-030` (RVW-735) |
+| Thứ tự dòng Bảng tính thuế | `taxSheetRows.ts::soSanhDongBangThue` | Loại lao động → họ tên (`localeCompare` tiếng Việt) → khóa. `getTaxSheet` sắp CẢ hai nhánh Nháp / Đã chốt bằng hàm này (RVW-736) — đừng sắp riêng từng nhánh |
+| Rà soát trước khi áp ràng buộc | `services/shared/hrmTenantConstraints.ts::MUC_RA_SOAT` (`npm run hrm:ra-soat`) | Mục `khoan-ngoai-trung-v2` (khoản sẽ vướng index chống trùng v2) và `bang-thue-khoa-vang-lai-cu` (tháng đã chốt còn khóa vãng lai kiểu `v1`). Biểu thức khóa vãng lai chỉ ở `sqlKhoaVangLai` (RVW-732) |
+| Dữ liệu ghi chính sách thuế từ seed | `constants/hrm/to_khai_thue/taxSeedData.ts::veDuLieuChinhSach` | Một phép ánh xạ cho script M-2, nạp lười và bộ kiểm thử (RVW-734) |
+| Giới hạn số theo kiểu cột | `constants/hrm/to_khai_thue/gioiHanSo.ts` | Dùng ở validator (`amount`, trần/ngưỡng danh mục), `chuanHoaGhiDe` và chốt chặn cuối của `tinhThueThuNhapNgoaiLuong` (RVW-723). Thêm cột tiền mới thì lấy trần ở đây, đừng rải số |
 | Đếm người phụ thuộc trong kỳ | `helpers/hrm/nguoiPhuThuocTrongKy.ts::demNguoiPhuThuocTrongKy` | Dùng chung cho Bảng tính thuế tháng VÀ engine lương `payrollCalculation.service.ts` (ISSUE-tkt-001, 2026-09-15) — hai nơi đếm khác nhau là hai số thuế cho cùng người |
 | Lỗi nghiệp vụ | `ToKhaiThueError('E-tkt-xxx')`, kiểm đầu vào qua `toKhaiThueValidate.ts::kiemTraTkt` | Status gắn cứng theo mã ở `constants/hrm/to_khai_thue/toKhaiThueErrors.ts` |
 

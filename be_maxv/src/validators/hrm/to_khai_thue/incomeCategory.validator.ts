@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { TIEN_DANH_MUC_TOI_DA } from '../../../constants/hrm/to_khai_thue/gioiHanSo';
 
 /**
  * Kiểm đầu vào cho 5 endpoint Danh mục loại thu nhập ngoài lương
@@ -40,10 +41,19 @@ export const createIncomeCategoryBodySchema = z.object({
     .optional(),
   name: z.string().trim().min(1).max(200),
   taxTreatmentGroup: z.enum(NHOM_XU_LY_THUE),
-  exemptCapAmount: z.number().nonnegative().optional(),
+  // Trần theo cột Decimal(15,2) (RVW-723) — vượt thì Postgres báo tràn cột, ra 500 vô danh.
+  exemptCapAmount: z
+    .number()
+    .nonnegative()
+    .max(TIEN_DANH_MUC_TOI_DA)
+    .optional(),
   exemptCapPeriod: chuKyTran.optional(),
   withholdingRate: z.number().min(0).max(100).optional(),
-  withholdingThreshold: z.number().nonnegative().optional(),
+  withholdingThreshold: z
+    .number()
+    .nonnegative()
+    .max(TIEN_DANH_MUC_TOI_DA)
+    .optional(),
   legalBasisNote: z.string().trim().max(500).optional(),
   status: trangThai.optional(),
 });

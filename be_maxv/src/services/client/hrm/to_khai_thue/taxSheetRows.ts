@@ -79,6 +79,28 @@ export interface ChinhSachDauVao {
   taxBrackets: unknown;
 }
 
+/**
+ * Thứ tự dòng Bảng tính thuế — hợp đồng Mục 0.4: loại lao động (mã tăng dần: HĐLĐ từ 3 tháng → thời vụ / thử việc →
+ * vãng lai), rồi họ tên theo bảng chữ cái tiếng Việt; trùng tên thì theo khóa người nhận cho ổn định. Dùng cho CẢ nhánh
+ * tính trực tiếp lẫn nhánh đọc snapshot (RVW-736) — sắp theo khóa như trước thì dòng vãng lai xếp theo số CCCD/MST.
+ */
+export function soSanhDongBangThue(
+  a: DongBangTinhThueTinh,
+  b: DongBangTinhThueTinh,
+): number {
+  if (a.loai_lao_dong !== b.loai_lao_dong) {
+    return a.loai_lao_dong < b.loai_lao_dong ? -1 : 1;
+  }
+  return (
+    a.ho_ten.localeCompare(b.ho_ten, 'vi') ||
+    (a.recipientKey < b.recipientKey
+      ? -1
+      : a.recipientKey > b.recipientKey
+        ? 1
+        : 0)
+  );
+}
+
 export interface DongBangTinhThueTinh {
   recipientKey: string;
   ma_nv: string | null;
@@ -139,7 +161,7 @@ export function tinhBangTinhThueThang(args: {
 
   const khoanTheoNguoi = new Map<string, KhoanNgoaiDauVao[]>();
   for (const k of args.khoanNgoai) {
-    const khoa = khoaNguoiNhan(k.ma_nv, k.fullName);
+    const khoa = khoaNguoiNhan(k.ma_nv, k.fullName, k.idCardNumber, k.taxCode);
     const ds = khoanTheoNguoi.get(khoa);
     if (ds) ds.push(k);
     else khoanTheoNguoi.set(khoa, [k]);
@@ -151,7 +173,10 @@ export function tinhBangTinhThueThang(args: {
   const khoaVangLai = new Set<string>();
   for (const k of args.khoanNgoai) {
     if (k.ma_nv) maNoiBo.add(k.ma_nv);
-    else khoaVangLai.add(khoaNguoiNhan(null, k.fullName));
+    else
+      khoaVangLai.add(
+        khoaNguoiNhan(null, k.fullName, k.idCardNumber, k.taxCode),
+      );
   }
 
   const dong: DongBangTinhThueTinh[] = [];

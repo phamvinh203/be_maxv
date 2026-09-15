@@ -662,4 +662,50 @@
   4. ISSUE-tkt-004 của QA lượt 1 kết luận sai (HRM có quy ước in hoa `ma_nv`); mã "BUG-dltl-005" ở các ghi chú cũ trùng mã lỗi lịch công chuẩn nên việc này mang mã ISSUE-tkt-001.
 - Liên kết: BUG-tkt-001/002/003 · ISSUE-tkt-001/002/004 · TC-tkt-015, 021, 033, 047, 050, 077, 096, 117, 118 · KR-tkt-08, 11 · E-tkt-004, 006, 016 · A-tkt-05 · api-contract Mục 2.3, 3.4, 7.
 - Kiểm chứng: 3 unit test mới chạy ĐỎ trước khi sửa (`Missing expected exception` · `5 !== 4` · `3 !== 1`) rồi xanh · `tsc --noEmit` exit 0 · `eslint --quiet` trên 10 file đã sửa exit 0 · Phase B lượt 2 `hrmToKhaiThueApi.test.ts` 144 test, 131 pass, 0 đỏ, 13 bỏ qua (133 ca lá: 120 đạt) · `npm test` 1163 ca, 1146 pass, 4 đỏ = đúng 2 ca có sẵn TC-hrm-301/316 + 2 nhóm cha.
+- Commit: `9fd34ec`
+
+## [2026-09-15 15:34] backend-engineer — fix RVW-721 · RVW-722 · RVW-723 · RVW-724 · RVW-725 · RVW-726 · RVW-727 (sau code review)
+
+- Nhiệm vụ: sửa 1 finding 🔴 và 6 finding 🟡 của code-reviewer (`review-findings.md` mục `to_khai_thue` 2026-09-15), theo 2 quyết định chủ dự án cùng ngày: tháng đã chốt Bảng tính thuế thì chặn mở lại / xóa kỳ lương, phải mở lại Bảng tính thuế trước · khóa định danh vãng lai ưu tiên CCCD, rồi MST, cuối cùng họ tên.
+- Đã sửa (`be_maxv/src/`):
+  - `helpers/hrm/payrollPeriodLockGuard.ts`:144 — RVW-721: `khoaKyDeMoLaiHoacXoa` khóa `FOR UPDATE` dòng kỳ, còn khóa `TAX_SHEET` ⇒ 409 `E-dltl-029` (mã mới ở `constants/hrm/payrollErrors.ts`:35, :69).
+  - `services/client/hrm/du_lieu_tinh_luong/payrollPeriods.service.ts`:108, :118, :221 — RVW-721: mở lại / xóa kỳ lương chạy trong giao dịch qua guard trên; xóa kiểm lại `DRAFT` dưới khóa.
+  - `services/client/hrm/to_khai_thue/taxSheet.service.ts`:343 — RVW-721/722: `lockTaxSheet` gói trong một giao dịch: `FOR UPDATE` dòng kỳ → kiểm trạng thái và khóa → tính dòng → ghi khóa rồi ghi dòng; `layKy` nhận `Db` (:38).
+  - `services/client/hrm/to_khai_thue/otherIncomeRecord.service.ts`:37, :430, :462, :502 — RVW-722: `moKyDeGhi` (`FOR SHARE` dòng kỳ rồi kiểm khóa tháng) mở đầu giao dịch thêm / sửa / xóa. :153 — RVW-727: `khoaNguoiNhan` theo CCCD → MST → họ tên; `daMienTrongKy` gom theo khóa mới. :552, :594 — RVW-726: sắp `paymentDate desc, createdAt desc, id desc`; kỳ không tồn tại ⇒ `E-tkt-017`.
+  - `services/client/hrm/to_khai_thue/taxSheetRows.ts`:142, :156 — RVW-727: gộp dòng vãng lai theo khóa mới.
+  - `services/shared/hrmTenantConstraints.ts`:206-233 — RVW-727: index `hrm_oir_chong_trung_v2` (cùng biểu thức với `khoaNguoiNhan`) + khối `DO` gỡ index v1 chỉ khi v2 đã có.
+  - `constants/hrm/to_khai_thue/gioiHanSo.ts` (mới) · `validators/hrm/to_khai_thue/otherIncomeRecord.validator.ts`:44 · `incomeCategory.validator.ts`:48, :55 · `services/client/hrm/to_khai_thue/taxDeclarationCalc.ts`:265 · `otherIncomeTax.ts`:58 — RVW-723: trần theo kiểu cột ở validator, ghi đè chỉ tiêu và chốt chặn cuối của engine; `amount` nguyên đồng.
+  - `validators/hrm/to_khai_thue/taxDeclaration.validator.ts`:10 · `otherIncomeRecord.validator.ts`:37 — RVW-724: `paymentDate` / `eWithholdingCertDate` dùng chung `ngay` có kiểm ngày có thật.
+  - `services/client/hrm/to_khai_thue/taxPolicy.service.ts`:26, :67, :137 — RVW-725: bảng chính sách rỗng ⇒ nạp `CHINH_SACH_THUE_SEED` (`skipDuplicates`) rồi tra lại; có dòng mà không mốc hiệu lực vẫn `E-tkt-015`.
+  - `prisma/tenant/schema.prisma` — chỉ sửa chú thích `recipientKey`, không đổi cấu trúc.
+  - Test: mới `__tests__/hrm/hrmOtherIncomeGiaoDich.test.ts` (3 ca) và `hrmToKhaiThueValidator.test.ts` (3 ca) · `kyLuongGhiTrongGiaoDich.test.ts`:244, :264, :297 · `hrmTaxSheetLock.test.ts`:141 (DB giả thêm `$queryRaw` + nhật ký thứ tự) · `hrmOtherIncomeTax.test.ts`:211 và ca `recipientKey` · `hrmTaxDeclarationCalc.test.ts`:226 · `hrmTaxPolicy.test.ts`:66, :94 · `hrmToKhaiThueApi.test.ts`:580, :748, :771, :792, :1046, :1056, :1409, :1471, :1509, :1668, :1811, :1996, :2010 (lý do từng ca ở `to_khai_thue/test-report-to-khai-thue.md` Mục 2a.2).
+- Tài liệu: api-contract-to-khai-thue Mục 3.4 (dòng 2, 6), 4.2, 6.1, Mục 7 (`E-tkt-012`, `E-tkt-015`) · data-model-to-khai-thue Mục 3.3, 3.4, 5.3, 6, bảng truy vết · ADR-013 (Mục 5, Trade-offs, "Sửa đổi 2026-09-15") · srs-to-khai-thue (BR-tkt-006, `E-tkt-015`) · api-contract-du-lieu-tinh-luong Mục 1.5, 1.6(d) · srs-du-lieu-tinh-luong (`E-dltl-029`) · dev-notes Mục 1.12 · test-cases TC-tkt-063 · test-report lượt 3 · review-findings (FIXED từng mục).
+- Điểm đáng ghi:
+  1. Dòng kỳ lương là điểm phối hợp duy nhất: ghi khoản ngoài lương giữ `FOR SHARE`; chốt tháng, mở lại / xóa kỳ lương giữ `FOR UPDATE`. Đường ghi mới nào vào dữ liệu của tháng cũng phải mở giao dịch bằng cùng khóa này.
+  2. Chốt tháng nay tính dòng TRONG giao dịch (timeout mặc định 5 giây của Prisma) — kỳ đã khóa sổ nên phần lương chỉ đọc snapshot.
+  3. Tenant thật `maxv_0106861880_app` CHƯA áp index `hrm_oir_chong_trung_v2` — cần chủ dự án duyệt chạy `npm run hrm:constraints`. Tới lúc đó index v1 vẫn chặn trùng theo họ tên, còn Bảng tính thuế đã gộp theo khóa mới.
+  4. `E-dltl-029` (409) là mã backend chọn — chờ Architect xác nhận, như các mã dòng 4b/5c trước.
+  5. Không làm schema tiền dùng chung như review gợi ý: `amount` (nguyên đồng, > 0) và trần/ngưỡng danh mục (không âm, cho số lẻ như cột) là hai luật khác nhau.
+- Liên kết: RVW-721…727 · E-dltl-029 · E-tkt-003, 004, 005, 007, 008, 012, 015, 017, 018 · TC-tkt-020, 063, 067/068, 075, 087, 110 · KR-tkt-06, 23 · ADR-013 · AC-tkt-018/019.
+- Kiểm chứng: `tsc --noEmit` exit 0 · `eslint` các file đã sửa 0 lỗi (1 cảnh báo `any` có sẵn) · 12 file unit liên quan 115/115 · Phase B lượt 3 `hrmToKhaiThueApi.test.ts` 154 test, 141 pass, 0 đỏ, 13 bỏ qua (143 ca lá: 130 đạt); 237 lượt gọi, 5xx duy nhất là `E-tkt-015` cố ý · `npm test` 1186 ca, 1169 pass, 4 đỏ = đúng TC-hrm-301/316 + 2 nhóm cha có từ trước, 13 bỏ qua.
+- Commit: chưa commit
+
+## [2026-09-15 16:30] backend-engineer — fix RVW-732 · RVW-734 · RVW-735 · RVW-736 (sau lượt review lại)
+
+- Nhiệm vụ: xử lý các finding mới của lượt review lại (verdict ⚠️ Approve with comments) theo quyết định chủ dự án cùng ngày: sửa phần mã RVW-732 ngay (rà soát / chốt lại trên tenant thật duyệt riêng) · làm RVW-734 và RVW-736 · RVW-735 chọn chặn xóa kỳ còn khoản thu nhập ngoài lương · RVW-733 để sau · commit một lần sau khi test và review lại.
+- Đã sửa (`be_maxv/src/`):
+  - `services/client/hrm/to_khai_thue/taxSheet.service.ts`:38 — RVW-732: `PHIEN_BAN_BANG_THUE` lên `'v2'` (vãng lai gộp theo CCCD → MST → họ tên). :262, :272-274 — RVW-736: cả hai nhánh `getTaxSheet` sắp bằng `soSanhDongBangThue`; bỏ `soSanhDong`.
+  - `services/client/hrm/to_khai_thue/taxSheetRows.ts`:87 — RVW-736: `soSanhDongBangThue` (loại lao động → họ tên theo tiếng Việt → khóa).
+  - `services/shared/hrmTenantConstraints.ts`:111 — RVW-732: `sqlKhoaVangLai`, biểu thức khóa vãng lai duy nhất cho index v2 (:223) và 2 câu quét mới :502 `SQL_QUET_KHOAN_NGOAI_TRUNG`, :518 `SQL_QUET_BANG_THUE_KHOA_VANG_LAI_CU`, đưa vào `MUC_RA_SOAT` (:539, mục `khoan-ngoai-trung-v2`, `bang-thue-khoa-vang-lai-cu`).
+  - `constants/hrm/to_khai_thue/taxSeedData.ts`:34 — RVW-734: `veDuLieuChinhSach`, dùng ở `services/client/hrm/to_khai_thue/taxPolicy.service.ts`:31 và `scripts/hrm/seed-chinh-sach-thue.ts`:70.
+  - `services/client/hrm/du_lieu_tinh_luong/payrollPeriods.service.ts`:131 — RVW-735: xóa kỳ còn khoản thu nhập ngoài lương ⇒ 409 `E-dltl-030` (mã mới `constants/hrm/payrollErrors.ts`:36, :71), đếm dưới khóa dòng kỳ.
+  - Test: `__tests__/hrm/hrmTaxSheetLock.test.ts`:195 (`engineVersion` v2) · `hrmTaxPolicy.test.ts`:208 · `hrmTaxSheetRows.test.ts`:373 · `kyLuongGhiTrongGiaoDich.test.ts`:308 (DB giả thêm `otherIncomeRecord.count`) · `hrmToKhaiThueApi.test.ts`:1181 (TC-061 thêm khẳng định thứ tự), :1522 (RVW-735), :2044 (RVW-732), `dongChinhSach` dùng `veDuLieuChinhSach`.
+- Tài liệu: ADR-013 "Sửa đổi 2026-09-15" mục 4 (bước chuyển tiếp) và mục 5 · data-model-to-khai-thue Mục 3.4 (`engineVersion`), 5.3, 6 · api-contract-to-khai-thue Mục 0.4 · api-contract-du-lieu-tinh-luong Mục 1.5 · srs-du-lieu-tinh-luong (`E-dltl-030`) · dev-notes Mục 1.12 · test-report lượt 4 · review-findings (FIXED RVW-732, 734, 735, 736).
+- Điểm đáng ghi:
+  1. Trước khi áp index v2 lên tenant đang chạy phải theo đúng trình tự ở ADR-013 mục 4: `npm run hrm:ra-soat` → mở lại + chốt lại tháng thuộc quý chưa xuất còn khóa vãng lai kiểu cũ → dọn khoản trùng → `npm run hrm:constraints`. Chưa chạy trên tenant thật.
+  2. Câu quét khóa cũ so dòng đã chốt với công thức hiện hành, tính trên `so_cccd` / `mst_ca_nhan` / `ho_ten` của chính dòng, nên chỉ báo đúng dòng lệch chứ không báo mọi dòng vãng lai.
+  3. `E-dltl-030` (409) là mã backend chọn — chờ Architect xác nhận cùng `E-dltl-029`.
+  4. RVW-733 (DB giả nên truyền `tx` riêng) chưa làm theo quyết định.
+- Liên kết: RVW-732, 734, 735, 736 · E-dltl-030 · TC-tkt-061, 066 · KR-tkt-23 · ADR-013.
+- Kiểm chứng: `tsc --noEmit` exit 0 · `eslint` các file đã sửa 0 lỗi (cảnh báo có sẵn) · 13 file unit liên quan 144/144 · Phase B lượt 4 `hrmToKhaiThueApi.test.ts` 156 test, 143 pass, 0 đỏ, 13 bỏ qua (145 ca lá: 132 đạt); 240 lượt gọi, 5xx duy nhất là `E-tkt-015` cố ý · `npm test` 1191 ca, 1174 pass, 4 đỏ = đúng TC-hrm-301/316 + 2 nhóm cha có từ trước, 13 bỏ qua.
 - Commit: chưa commit

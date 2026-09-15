@@ -194,8 +194,10 @@ sửa 2026-09-09.
 
 - `:9` → ctrl `:41-45` → svc `:111-125` · Chỉ khi `DRAFT`
 - **200 OK**: `{ success:true, data:{ …bản ghi vừa xóa } }`
-- **403**: `{ code:"E-dltl-001", message:"Chỉ có thể xóa kỳ lương ở trạng thái Nháp (DRAFT)." }` (`:115-119`) · **404**: `E-dltl-025`
-- **Cascade**: xóa kéo theo cả 8 bảng biến động + `PayrollSheetLine` (`schema.prisma:1392-1400`, `onDelete: Cascade`). **Không có xác nhận 2 bước** — client phải tự hỏi lại người dùng.
+- **403**: `{ code:"E-dltl-001", message:"Chỉ có thể xóa kỳ lương ở trạng thái Nháp (DRAFT)." }` (`:115-119`) · **404**: `E-dltl-025` · **409** `E-dltl-029` — tháng còn khóa `TAX_SHEET` (Bảng tính thuế đã chốt; chỉ gặp ở dữ liệu cũ, vì kỳ đã chốt thuế không còn mở về `DRAFT` được) `[BỔ SUNG 2026-09-15 — RVW-721]`
+- Trạng thái kỳ được kiểm LẠI trong giao dịch, dưới khóa dòng kỳ (`FOR UPDATE`): khóa sổ chen giữa thì không xóa.
+- **409** `E-dltl-030` — kỳ còn khoản thu nhập ngoài lương (chứng từ thuế, có thể đã phát hành chứng từ khấu trừ cho cá nhân): xóa từng khoản ở màn Thu nhập ngoài lương trước. Thông báo nêu số khoản; đếm dưới cùng khóa dòng kỳ `[BỔ SUNG 2026-09-15 — RVW-735, chủ dự án chốt]`
+- **Cascade**: kỳ có 12 bảng con `onDelete: Cascade` — 8 bảng biến động, `PayrollSheetLine`, khóa bảng kê `PayrollModuleLock`, dòng Bảng tính thuế `TaxCalculationLine` và khoản `OtherIncomeRecord`. Hai bảng cuối không bao giờ còn dòng lúc xóa được (E-dltl-029, E-dltl-030) `[sửa 2026-09-15 — RVW-735: bản cũ chỉ ghi 8 bảng + PayrollSheetLine]`. **Không có xác nhận 2 bước** — client phải tự hỏi lại người dùng.
 
 ### 1.6. Chuyển trạng thái — 7 endpoint
 
@@ -204,7 +206,7 @@ sửa 2026-09-09.
 | a | `POST /payroll-periods/:id/submit` | `:12` | `:127-138` | `DRAFT` → `PENDING_REVIEW` | — | 400 `{message:"Chỉ có thể gửi đối soát kỳ lương từ trạng thái DRAFT."}` (không `code`) |
 | b | `POST /payroll-periods/:id/reject` | `:13` | `:140-151` | `PENDING_REVIEW` → `DRAFT` | — | 400 (không `code`) |
 | c | `POST /payroll-periods/:id/lock` | `:14` | `:156-176` | `DRAFT` **hoặc** `PENDING_REVIEW` → `LOCKED` | — | 400 (không `code`) |
-| d | `POST /payroll-periods/:id/reopen` | `:15` | `:181-201` | `LOCKED` → `DRAFT` | `{ reason: string ≥20 }` | 400 (không `code`); Zod nếu `reason` < 20 |
+| d | `POST /payroll-periods/:id/reopen` | `:15` | `:181-201` | `LOCKED` → `DRAFT` | `{ reason: string ≥20 }` | 400 (không `code`); Zod nếu `reason` < 20 · **409** `E-dltl-029` nếu tháng đã chốt Bảng tính thuế — mở lại Bảng tính thuế trước; tờ khai quý đã xuất thì kỳ không mở lại được nữa `[BỔ SUNG 2026-09-15 — RVW-721]` |
 | e | `POST /payroll-periods/:id/approve` | `:16` | `:203-218` | `LOCKED` → `APPROVED` | — | 400 (không `code`) |
 | f | `POST /payroll-periods/:id/mark-paid` | `:17` | `:220-231` | `APPROVED` → `PAID` | — | 400 (không `code`); **403** nếu không phải ADMIN/OWNER (từ 2026-09-11) |
 | g | `POST /payroll-periods/:id/archive` | `:18` | `:233-244` | `PAID` → `ARCHIVED` | — | 400 (không `code`); **403** nếu không phải ADMIN/OWNER (từ 2026-09-11) |

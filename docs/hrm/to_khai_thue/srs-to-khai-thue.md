@@ -182,7 +182,7 @@ Tab `to-khai-quyet-toan` (quyết toán năm, mẫu 05/QTT-TNCN) · Tab `doi-soa
 
 **BR-tkt-005** — Mỗi bản ghi thu nhập ngoài lương thuộc đúng 1 kỳ tháng (`payrollPeriodId`), gắn 1 trong 2 dạng đối tượng: nhân viên nội bộ (`ma_nv` khác null) hoặc cá nhân vãng lai (`ma_nv = null`, bắt buộc `fullName`). Thiếu `fullName`, `paymentDate`, hoặc `otherIncomeCategoryId` → 400 E-tkt-004.
 
-**BR-tkt-006** — Chống trùng lặp: từ chối tạo bản ghi trùng **hoàn toàn** với 1 bản ghi đã có (cùng đối tượng nhận + cùng kỳ tháng + cùng loại thu nhập + cùng ngày chi trả + cùng số tiền) nhằm chống nhập trùng do double-submit (409 E-tkt-005). **KHÔNG chặn** nhiều bản ghi hợp lệ khác ngày hoặc khác số tiền trong cùng kỳ + loại — vd 1 CTV nhận 2 khoản hoa hồng khác ngày trong cùng tháng vẫn hợp lệ (xem lý do lựa chọn phạm vi hẹp này ở Mục 14).
+**BR-tkt-006** — Chống trùng lặp: từ chối tạo bản ghi trùng **hoàn toàn** với 1 bản ghi đã có (cùng đối tượng nhận + cùng kỳ tháng + cùng loại thu nhập + cùng ngày chi trả + cùng số tiền) nhằm chống nhập trùng do double-submit (409 E-tkt-005). **KHÔNG chặn** nhiều bản ghi hợp lệ khác ngày hoặc khác số tiền trong cùng kỳ + loại — vd 1 CTV nhận 2 khoản hoa hồng khác ngày trong cùng tháng vẫn hợp lệ (xem lý do lựa chọn phạm vi hẹp này ở Mục 14). `[làm rõ 2026-09-15 — RVW-727, chủ dự án chốt]` "Cùng đối tượng nhận" của cá nhân vãng lai xác định theo CCCD, không có thì MST, không có nữa mới theo họ tên — hai người trùng tên khác CCCD là hai đối tượng.
 
 **BR-tkt-007** — Công thức tính thuế của 1 bản ghi thu nhập ngoài lương, theo đúng 4 nhóm xử lý (khớp logic đã nháp sẵn ở `ThuNhapNgoaiLuongDialog.tsx`):
 
@@ -337,7 +337,7 @@ Nếu categoryGroup = WITHHOLDING_FLAT:
 | E-tkt-012 | 400 | Ghi đè chỉ tiêu KHÔNG thuộc danh sách chỉ tiêu gốc được phép sửa | Từ chối ghi đè (BR-tkt-018) |
 | E-tkt-013 | 400 | Đánh dấu đã nộp khi tờ khai chưa ở trạng thái "Đã xuất tờ khai" | Từ chối thao tác (BR-tkt-015) |
 | E-tkt-014 | 403 | Người dùng không có quyền xem dữ liệu lương cố thao tác chốt/mở lại/xuất/đánh dấu nộp | Từ chối thao tác (A-tkt-08) |
-| E-tkt-015 `[MỚI 2026-09-14]` | 500 | Không tìm thấy chính sách thuế hiệu lực cho kỳ (mô hình effective-dated của ADR-012) | Lỗi hạ tầng có mã, không rơi vào 500 vô danh |
+| E-tkt-015 `[MỚI 2026-09-14]` | 500 | Không tìm thấy chính sách thuế hiệu lực cho kỳ (mô hình effective-dated của ADR-012) | Lỗi hạ tầng có mã, không rơi vào 500 vô danh. `[sửa 2026-09-15 — RVW-725]` Công ty chưa có dòng chính sách nào thì hệ thống tự nạp bộ chuẩn — lỗi này chỉ còn khi đã có dòng mà không mốc nào hiệu lực tới đầu kỳ |
 | E-tkt-016 `[MỚI 2026-09-14]` | 404 | Không tìm thấy bản ghi/danh mục theo `id` | Áp cho mọi endpoint `/:id` |
 | E-tkt-017 `[MỚI 2026-09-14]` | 400 | `periodId` không tồn tại trong tenant | Phân biệt với 404 tài nguyên |
 | E-tkt-018 `[MỚI 2026-09-14]` | 409 | Chốt tháng đã chốt / mở tháng chưa chốt (đua 2 người) | BR-tkt-013 |

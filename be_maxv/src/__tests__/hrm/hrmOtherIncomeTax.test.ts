@@ -208,6 +208,30 @@ test('BUG-tkt-002: tỷ lệ 100% trả theo NET bị CHẶN E-tkt-004 — khôn
   assert.equal(gross.netAmount, 0);
 });
 
+test('RVW-723: quy ngược NET ra số vượt cột (tỷ lệ 99,99%) hoặc tràn số -> E-tkt-004, không trả số rỗng', () => {
+  const loi004 = (err: unknown) =>
+    err instanceof ToKhaiThueError && err.code === 'E-tkt-004';
+  assert.throws(
+    () =>
+      tinhThueThuNhapNgoaiLuong(
+        dm({ withholdingRate: 99.99 }),
+        dv({ amount: 999_999_999_999, paymentType: 'NET' }),
+      ),
+    loi004,
+  );
+  // Trước đây ra `{"grossAmount":1e+308,"taxDeducted":null}` — 1e308 × 10 tràn thành ∞.
+  assert.throws(
+    () => tinhThueThuNhapNgoaiLuong(dm(), dv({ amount: 1e308 })),
+    loi004,
+  );
+  // Số lớn mà vừa cột vẫn tính bình thường.
+  assert.equal(
+    tinhThueThuNhapNgoaiLuong(dm(), dv({ amount: 999_999_999_999 }))
+      .taxDeducted,
+    100_000_000_000,
+  );
+});
+
 test('Cá nhân không cư trú -> FLAT_20 (khai báo, ngoài phạm vi đợt này)', () => {
   const kq = tinhThueThuNhapNgoaiLuong(dm(), dv({ isResident: false }));
   assert.equal(kq.taxDeductionType, 'FLAT_20');
@@ -222,12 +246,26 @@ test('Khoản khấu trừ riêng KHÔNG cộng lũy tiến — nếu không là
 
 /* ── Khóa gom người nhận (ADR-013) ─────────────────────────────────── */
 
-test('recipientKey: nhân viên theo mã, vãng lai theo tên chuẩn hóa', () => {
-  assert.equal(khoaNguoiNhan('NV0001', 'Nguyễn Văn A'), 'NV0001');
-  // Cùng một người vãng lai khai tên lệch hoa/thường và thừa khoảng trắng vẫn phải ra một khóa —
-  // nếu không, chỉ tiêu [16] của tờ khai đếm thành hai lao động.
+test('recipientKey: nhân viên theo mã; vãng lai theo CCCD → MST → tên chuẩn hóa (RVW-727)', () => {
+  assert.equal(
+    khoaNguoiNhan('NV0001', 'Nguyễn Văn A', '001203000001'),
+    'NV0001',
+  );
+  // Không có giấy tờ: cùng một người khai tên lệch hoa/thường và thừa khoảng trắng vẫn phải ra một
+  // khóa — nếu không, chỉ tiêu [16] của tờ khai đếm thành hai lao động.
   assert.equal(
     khoaNguoiNhan(null, '  Trần Thị B '),
     khoaNguoiNhan(null, 'trần thị b'),
   );
+  // Hai CTV trùng tên khác CCCD là hai người — trước RVW-727 bị gộp một dòng và người thứ hai không nhập được.
+  assert.notEqual(
+    khoaNguoiNhan(null, 'Nguyễn Văn Hùng', '001203000001'),
+    khoaNguoiNhan(null, 'Nguyễn Văn Hùng', '001203000002'),
+  );
+  assert.equal(
+    khoaNguoiNhan(null, 'Tên khác', ' 001203000001 ', '8000000001'),
+    'VL:001203000001',
+  );
+  // CCCD rỗng thì lấy MST; không có cả hai mới dùng họ tên.
+  assert.equal(khoaNguoiNhan(null, 'A', '  ', '8000000001'), 'VL:8000000001');
 });

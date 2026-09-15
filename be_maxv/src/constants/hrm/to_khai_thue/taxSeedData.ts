@@ -1,3 +1,4 @@
+import type { Prisma } from '../../../generated/tenant';
 import {
   BIEU_THUE_7_BAC_CU,
   BIEU_THUE_CHUAN_5_BAC,
@@ -9,8 +10,8 @@ import type { TaxBracketItem } from '../../../validators/hrm/cau_hinh_mac_dinh/g
  *
  * Đặt ở constants dùng chung vì có HAI nơi tiêu thụ và chúng KHÔNG được lệch nhau:
  *   1. Script di trú M-2 (`scripts/hrm/seed-chinh-sach-thue.ts`) — nạp cho tenant đã có sẵn.
- *   2. Seed lười theo `AC-tkt-003` — lần đầu mở màn "Thu nhập ngoài lương" mà bảng rỗng thì tự
- *      sinh, cùng khuôn self-healing `BR-hrm-070`. (Sẽ viết ở bước 3 của lộ trình.)
+ *   2. Seed lười khi bảng rỗng — danh mục theo `AC-tkt-003` (`incomeCategory.service.ts`) và chính sách thuế
+ *      (`taxPolicy.service.ts`, RVW-725), cùng khuôn self-healing `BR-hrm-070`.
  * Chép bộ số này sang chỗ thứ ba là tạo nguồn sự thật thứ hai — đúng lỗi đã mắc với biểu thuế.
  */
 
@@ -24,6 +25,26 @@ export interface ChinhSachThueSeed {
   voluntaryPensionMonthlyCap: number;
   lunchAllowanceTaxFreeCap: number;
   legalBasisNote: string;
+}
+
+/**
+ * Một mốc seed → dữ liệu ghi `hrm_tax_policies`. MỘT phép ánh xạ cho script M-2, nạp lười và bộ kiểm thử (RVW-734):
+ * thêm cột chính sách mà quên một bản chép thì công ty cấp mới âm thầm nhận giá trị mặc định của cột.
+ */
+export function veDuLieuChinhSach(
+  cs: ChinhSachThueSeed,
+): Prisma.TaxPolicyCreateManyInput {
+  return {
+    effectiveFrom: new Date(`${cs.effectiveFrom}T00:00:00.000Z`),
+    personalDeduction: cs.personalDeduction,
+    dependentDeduction: cs.dependentDeduction,
+    taxBrackets: cs.taxBrackets as unknown as Prisma.InputJsonValue,
+    withholdingTaxRate: cs.withholdingTaxRate,
+    withholdingTaxThreshold: cs.withholdingTaxThreshold,
+    voluntaryPensionMonthlyCap: cs.voluntaryPensionMonthlyCap,
+    lunchAllowanceTaxFreeCap: cs.lunchAllowanceTaxFreeCap,
+    legalBasisNote: cs.legalBasisNote,
+  };
 }
 
 /**

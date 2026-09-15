@@ -378,16 +378,23 @@ model OtherIncomeRecord {
 **Chống trùng BR-tkt-006 / E-tkt-005 — phải là ràng buộc CSDL, không phải kiểm ở service:**
 
 ```sql
--- hrmTenantConstraints.ts
-CREATE UNIQUE INDEX IF NOT EXISTS hrm_oir_chong_trung
+-- hrmTenantConstraints.ts — v2 (RVW-727, chủ dự án chốt 2026-09-15): khóa vãng lai ưu tiên CCCD > MST > họ tên
+CREATE UNIQUE INDEX IF NOT EXISTS hrm_oir_chong_trung_v2
   ON hrm_other_income_records (
     "periodId",
-    COALESCE("ma_nv", 'VL:' || lower(btrim("fullName"))),
+    COALESCE(
+      "ma_nv",
+      'VL:' || lower(COALESCE(NULLIF(btrim("idCardNumber"), ''), NULLIF(btrim("taxCode"), ''), btrim("fullName")))
+    ),
     "otherIncomeCategoryId",
     "paymentDate",
     "grossAmount"
   );
+-- Gỡ bản v1 (khóa chỉ theo họ tên) CHỈ khi v2 đã tạo được — v2 vướng dữ liệu cũ thì tenant vẫn giữ v1.
+DROP INDEX IF EXISTS hrm_oir_chong_trung;
 ```
+
+> **Sửa đổi 2026-09-15 (RVW-727):** bản v1 khóa vãng lai chỉ theo `lower(btrim("fullName"))` nên hai cộng tác viên trùng tên, khác CCCD, cùng loại/ngày/số tiền thì người thứ hai bị từ chối 409 — không có cách nhập đúng. Khóa v2 là **cùng một luật** với `khoaNguoiNhan` (`otherIncomeRecord.service.ts`), nơi gộp dòng Bảng tính thuế và cộng trần miễn thuế: đổi một nơi phải đổi cả hai. Đánh đổi chủ dự án đã chấp nhận: cùng một người lần có lần không khai CCCD/MST sẽ thành hai khóa (hai dòng Bảng tính thuế, `[16]` đếm hai) — kế toán khai đủ giấy tờ để tránh.
 
 | Điểm | Giải thích |
 |---|---|
@@ -415,8 +422,8 @@ model TaxCalculationLine {
   periodId String  @db.VarChar(64)
   ma_nv    String? @db.VarChar(24)
 
-  /// Khóa định danh NGƯỜI trong kỳ: `ma_nv` với nhân viên nội bộ, `'VL:' + lower(btrim(fullName))`
-  /// với cá nhân vãng lai. Một vãng lai có NHIỀU bản ghi chi trả trong tháng (AC-tkt-008) nhưng
+  /// Khóa định danh NGƯỜI trong kỳ: `ma_nv` với nhân viên nội bộ; cá nhân vãng lai là `'VL:'` + CCCD, không có
+  /// thì MST, không có nữa mới dùng họ tên — chữ thường, bỏ khoảng trắng đầu cuối (ADR-013 sửa đổi 2026-09-15). Một vãng lai có NHIỀU bản ghi chi trả trong tháng (AC-tkt-008) nhưng
   /// chỉ được đếm MỘT lần ở chỉ tiêu [16] của tờ khai — nên dòng bảng tính thuế là THEO NGƯỜI,
   /// không theo bản ghi. Đây là lý do bỏ `otherIncomeRecordId` mà SRS Mục 4.3 đề xuất (ADR-013 QĐ-5).
   recipientKey String @db.VarChar(300)
@@ -459,6 +466,7 @@ model TaxCalculationLine {
   /// Biểu thuế/giảm trừ ĐÃ DÙNG để ra con số trên. Thiếu cột này thì một năm sau không ai
   /// giải trình được vì sao thanh tra tính ra số khác (ADR-012).
   taxPolicyId    String @db.VarChar(64)
+  /// "v1" gộp vãng lai theo họ tên; "v2" (2026-09-15) theo CCCD → MST → họ tên — ADR-013 sửa đổi, mục 4.
   engineVersion  String @default("v1") @db.VarChar(16)
   lockedByUserId String @db.VarChar(64)
   lockedAt       DateTime @default(now())
@@ -630,7 +638,9 @@ giam_tru_bao_hiem  = employeeInsuranceDeduction + min(BH hưu trí tự nguyện
 
 | Thao tác | Trong 1 transaction | Ngoài transaction |
 |---|---|---|
-| Chốt Bảng tính thuế tháng | `create` khóa `TAX_SHEET` (trùng ⇒ 409 `E-tkt-018`) → `deleteMany` dòng cũ của kỳ → `createMany` dòng mới. Khóa ghi **trước**: người bấm sau vỡ unique ngay, không phí công ghi dòng | kiểm kỳ lương `LOCKED`+, tính toán thuần, `ghiNhatKyKyLuong(...)` |
+| Chốt Bảng tính thuế tháng | `SELECT … FOR UPDATE` dòng kỳ lương → kiểm kỳ lương `LOCKED`+ (E-tkt-008) và chưa có khóa (E-tkt-018) → tính dòng → `create` khóa `TAX_SHEET` (trùng ⇒ 409 `E-tkt-018`) → `deleteMany` dòng cũ của kỳ → `createMany` dòng mới `[sửa 2026-09-15 — RVW-721/722: bản đầu kiểm và tính NGOÀI giao dịch]` | `ghiNhatKyKyLuong(...)` |
+| Thêm / sửa / xóa thu nhập ngoài lương | `SELECT … FOR SHARE` dòng kỳ lương → kiểm khóa `TAX_SHEET`/`OTHER_INCOME` (E-tkt-007) → tính snapshot → ghi `[BỔ SUNG 2026-09-15 — RVW-722]` | — |
+| Mở lại / xóa kỳ lương (`du_lieu_tinh_luong`) | `SELECT … FOR UPDATE` dòng kỳ lương → còn khóa `TAX_SHEET` ⇒ 409 `E-dltl-029` → (riêng xóa) kỳ còn khoản thu nhập ngoài lương ⇒ 409 `E-dltl-030` → đổi trạng thái / xóa `[BỔ SUNG 2026-09-15 — RVW-721, RVW-735]` | nhật ký |
 | Mở lại Bảng tính thuế tháng | `delete` khóa `TAX_SHEET` (0 dòng ⇒ 409 `E-tkt-018`) → kiểm quý chưa xuất (đã xuất ⇒ 403 `E-tkt-009`, lùi cả giao dịch) → `deleteMany` dòng của kỳ → `deleteMany` tờ khai chưa xuất của quý (GAP-QA-tkt-06) | nhật ký |
 | Xuất tờ khai quý | kiểm đủ 3 khóa `TAX_SHEET` → `upsert` tờ khai (`ct_may`, `ct`, `canh_bao`, `trang_thai=EXPORTED`, `khoa_so_*`) | **kết xuất Excel/PDF (Puppeteer)** — tuyệt đối không nằm trong transaction, render mất vài giây sẽ giữ khóa hàng |
 | Ghi đè chỉ tiêu | `update` `ghi_de` + tính lại `ct` + 3 cột bóc tách | — |
@@ -640,13 +650,14 @@ giam_tru_bao_hiem  = employeeInsuranceDeduction + min(BH hưu trí tự nguyện
 
 | Đua | Chặn bằng |
 |---|---|
-| 2 người cùng bấm Chốt 1 tháng | `@@unique([periodId, module])` của `PayrollModuleLock` ⇒ `P2002` ⇒ **409** |
-| 2 người cùng tạo bản ghi trùng | unique index `hrm_oir_chong_trung` ⇒ `P2002` ⇒ **409 E-tkt-005** |
-| Chốt tháng trong khi có người đang thêm thu nhập ngoài lương | Dòng được tính ngay trước giao dịch ghi khóa (mức cô lập mặc định `READ COMMITTED`) ⇒ khoản thêm vào đúng khoảng giữa lúc tính và lúc khóa có hiệu lực sẽ không có trong snapshot. Ca hiếm chấp nhận được — bản ghi lọt sau sẽ bị chặn sửa ngay lần sau và kế toán Mở lại để tính lại |
+| 2 người cùng bấm Chốt 1 tháng | Khóa `FOR UPDATE` dòng kỳ lương ⇒ lượt sau chờ rồi thấy khóa `TAX_SHEET` ⇒ **409 E-tkt-018**; lưới cuối là `@@unique([periodId, module])` của `PayrollModuleLock` ⇒ `P2002` ⇒ **409** |
+| 2 người cùng tạo bản ghi trùng | unique index `hrm_oir_chong_trung_v2` ⇒ `P2002` ⇒ **409 E-tkt-005** |
+| Chốt tháng trong khi có người đang thêm / sửa / xóa thu nhập ngoài lương | Hai bên cùng khóa dòng kỳ lương: lượt ghi giữ `FOR SHARE`, lượt chốt chờ `FOR UPDATE` ⇒ lượt ghi commit xong mới tính dòng (snapshot có đủ khoản đó); lượt ghi đến sau khi chốt thấy khóa `TAX_SHEET` ⇒ **403 E-tkt-007** `[sửa 2026-09-15 — RVW-722: bản đầu chấp nhận khoản lọt giữa lúc tính và lúc khóa; thực tế còn lọt cả lệnh ghi SAU khi tháng đã chốt]` |
+| Mở lại / xóa kỳ lương đúng lúc chốt tháng | Cùng khóa `FOR UPDATE` dòng kỳ lương ⇒ xếp hàng: chốt trước thì mở lại / xóa kỳ thấy khóa `TAX_SHEET` ⇒ **409 E-dltl-029**; mở lại trước thì chốt thấy kỳ `DRAFT` ⇒ **400 E-tkt-008** `[BỔ SUNG 2026-09-15 — RVW-721]` |
 | 2 người cùng xuất 1 tờ khai quý | PK `(nam, ky_loai, ky_so, so_lan)` + `upsert` có điều kiện `trang_thai = READY_TO_EXPORT` ⇒ người thứ hai nhận **409** |
 | Mở lại 1 tháng đúng lúc người khác xuất tờ khai quý | Mở lại xóa dòng khóa `TAX_SHEET` trước khi kiểm quý, trong cùng giao dịch ⇒ giữ khóa hàng tới lúc xong. **Bước xuất phải đọc khóa 3 tháng bằng `SELECT … FOR SHARE`** — đọc thường ở `READ COMMITTED` không thấy lệnh xóa chưa commit và vẫn xuất được (ghi chú cho bước 6, 2026-09-15) |
 
-**Yêu cầu nhất quán (consistency):** Bảng tính thuế **chỉ** được chốt khi kỳ lương gốc đã `LOCKED` trở lên (E-tkt-008) — kỳ còn mở thì `calculatePayrollPreview` cho ra số khác nhau mỗi lần gọi, chốt lên số động là chốt lên cát.
+**Yêu cầu nhất quán (consistency):** Bảng tính thuế **chỉ** được chốt khi kỳ lương gốc đã `LOCKED` trở lên (E-tkt-008) — kỳ còn mở thì `calculatePayrollPreview` cho ra số khác nhau mỗi lần gọi, chốt lên số động là chốt lên cát. **Chiều ngược lại** `[BỔ SUNG 2026-09-15 — RVW-721]`: tháng đã chốt thì kỳ lương gốc **không** mở lại hay xóa được (409 `E-dltl-029`) — phải mở lại Bảng tính thuế trước; quý đã xuất thì kỳ lương khóa vĩnh viễn.
 
 ---
 
@@ -663,7 +674,7 @@ giam_tru_bao_hiem  = employeeInsuranceDeduction + min(BH hưu trí tự nguyện
 
 > **Rollback:** M-1 và M-2 chỉ thêm, không xóa ⇒ lùi được bằng cách bỏ qua. Từ **M-3 trở đi có phá vỡ tương thích ngược** — phải sao lưu CSDL tenant trước khi chạy, và M-4 **không** rollback được bằng schema (phải phục hồi từ bản sao lưu).
 >
-> **Lưu giữ dữ liệu (data retention):** không có luồng xóa tự động cho cả 5 bảng. Chứng từ thuế phải giữ tối thiểu 10 năm theo Luật Kế toán — xóa kỳ lương (`onDelete: Cascade`) chỉ làm được khi kỳ còn `DRAFT`, tức trước khi có bất kỳ số chốt nào.
+> **Lưu giữ dữ liệu (data retention):** không có luồng xóa tự động cho cả 5 bảng. Chứng từ thuế phải giữ tối thiểu 10 năm theo Luật Kế toán — xóa kỳ lương (`onDelete: Cascade`) chỉ làm được khi kỳ còn `DRAFT`, tháng không còn khóa `TAX_SHEET` (409 `E-dltl-029`, RVW-721) **và** kỳ không còn khoản thu nhập ngoài lương nào (409 `E-dltl-030`, RVW-735) — cả ba kiểm trong giao dịch, dưới khóa dòng kỳ (2026-09-15). Bản đầu chỉ dựa vào `DRAFT` nên xóa kỳ cuốn theo dòng thuế đã chốt và mọi khoản ngoài lương, kể cả khoản đã phát hành chứng từ khấu trừ.
 
 ---
 
@@ -923,7 +934,7 @@ Ba lựa chọn xin BA chốt: (a) thêm hai trường nhập ở màn nào đó
 | BR-tkt-003 | `code @unique` · `hrm_oic_ten_khong_trung` (raw SQL) · Zod `superRefine` theo nhóm | CSDL + validator |
 | BR-tkt-004 | FK `onDelete: Restrict` + kiểm trước ở service | CSDL + service |
 | BR-tkt-005 | `periodId` NOT NULL · `fullName` NOT NULL · `ma_nv` nullable | CSDL |
-| BR-tkt-006 | `hrm_oir_chong_trung` (unique index biểu thức) | CSDL |
+| BR-tkt-006 | `hrm_oir_chong_trung_v2` (unique index biểu thức; vãng lai theo CCCD → MST → họ tên) | CSDL |
 | BR-tkt-007 | `exemptAmount` / `taxableAmount` / `taxDeducted` tính lúc ghi | Service + cột snapshot |
 | BR-tkt-008 | `withholdingRate`/`withholdingThreshold` trên danh mục · `hasCommitment08` · `forceWithholding` | Service |
 | BR-tkt-009 | Zod `superRefine`: nhóm ≠ `WITHHOLDING_FLAT` ⇒ `ma_nv` bắt buộc (**E-tkt-021**, P-16) | Validator |

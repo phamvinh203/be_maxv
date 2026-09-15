@@ -6,7 +6,8 @@ const nam = z.coerce.number().int().min(2000).max(2100);
 const quy = z.coerce.number().int().min(1).max(4);
 // BR-tkt-016 / TC-tkt-082: chặn TƯỜNG MINH kỳ tháng mà giao diện cũ còn gửi — không lặng lẽ bỏ qua.
 const kyLoai = z.literal('quy').optional();
-const ngay = z
+/** Ngày YYYY-MM-DD CÓ THẬT, dùng chung cả sub-cụm — `new Date('2026-02-31')` tự trôi sang 03/03 nên phải đối chiếu ngược. */
+export const ngay = z
   .string()
   .regex(/^\d{4}-\d{2}-\d{2}$/, 'Ngày phải theo dạng YYYY-MM-DD')
   .refine(

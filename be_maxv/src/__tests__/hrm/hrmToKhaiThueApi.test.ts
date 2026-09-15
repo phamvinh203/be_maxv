@@ -30,10 +30,11 @@ import { sysPrisma } from '../../config/db.sys';
 import { hashPassword } from '../../utils/password';
 import { tenantSlug, tenantDbName } from '../../utils/dbName';
 import { provisionTenant, dropTenant } from '../../services/shared/provisioning.service';
+import { applyTenantConstraints, raSoatTenant } from '../../services/shared/hrmTenantConstraints';
 import { getTenantDb } from '../../helpers/tenantClient';
 import { readZipEntry } from '../../helpers/zip';
 import type { Prisma } from '../../generated/tenant';
-import { CHINH_SACH_THUE_SEED } from '../../constants/hrm/to_khai_thue/taxSeedData';
+import { CHINH_SACH_THUE_SEED, veDuLieuChinhSach } from '../../constants/hrm/to_khai_thue/taxSeedData';
 import { tinhThueLuyTien } from '../../services/client/hrm/du_lieu_tinh_luong/payrollCalculation.service';
 import { batBuocDbKiemThu, matKhauNgauNhien } from '../_hoTro/dbKiemThu';
 
@@ -184,21 +185,14 @@ const KY: Record<number, string> = {};
 const DM: Record<string, string> = {};
 const BG: Record<string, string> = {};
 
+/** Một dòng chính sách từ bộ seed chuẩn; đổi được mốc hiệu lực để dựng ca không mốc nào áp dụng (KR-tkt-23). */
+function dongChinhSach(cs: (typeof CHINH_SACH_THUE_SEED)[number], effectiveFrom: string = cs.effectiveFrom) {
+  return { ...veDuLieuChinhSach(cs), effectiveFrom: ngay(effectiveFrom) };
+}
+
 async function napChinhSachThue(db: ReturnType<typeof getTenantDb>) {
   for (const cs of CHINH_SACH_THUE_SEED) {
-    await db.taxPolicy.create({
-      data: {
-        effectiveFrom: ngay(cs.effectiveFrom),
-        personalDeduction: cs.personalDeduction,
-        dependentDeduction: cs.dependentDeduction,
-        taxBrackets: cs.taxBrackets as unknown as Prisma.InputJsonValue,
-        withholdingTaxRate: cs.withholdingTaxRate,
-        withholdingTaxThreshold: cs.withholdingTaxThreshold,
-        voluntaryPensionMonthlyCap: cs.voluntaryPensionMonthlyCap,
-        lunchAllowanceTaxFreeCap: cs.lunchAllowanceTaxFreeCap,
-        legalBasisNote: cs.legalBasisNote,
-      },
-    });
+    await db.taxPolicy.create({ data: dongChinhSach(cs) });
   }
 }
 
@@ -375,7 +369,7 @@ before(async () => {
   await sysPrisma.donViAccess.create({ data: { userId: keToan.id, donViId: donViA, xemLuong: true } });
   await sysPrisma.donViAccess.create({ data: { userId: nhanSu.id, donViId: donViA, xemLuong: false } });
 
-  // Tenant B CỐ Ý chưa có chính sách thuế — dùng cho E-tkt-015 trước khi nạp.
+  // Tenant B CỐ Ý chưa có chính sách thuế — KR-tkt-23 dựng E-tkt-015, RVW-725 kiểm máy chủ tự nạp bộ chuẩn.
   await napChinhSachThue(dbA());
   await napNhanSuTenantA();
 
@@ -574,6 +568,25 @@ test('Nhóm 1 — Danh mục loại thu nhập ngoài lương', async (t) => {
     kiemLoi(r, 400, 'E-tkt-003');
   });
 
+  await t.test('RVW-723 — trần miễn thuế / ngưỡng khấu trừ vượt cột Decimal(15,2) → 400 E-tkt-003, không 500 vô danh', async () => {
+    kiemLoi(
+      await goi('RVW-723', 'POST trần 10.000 tỷ', 'POST', `${TKT}/income-categories`, {
+        ve: veOwnerA,
+        payload: { name: 'QA trần quá lớn', taxTreatmentGroup: 'EXEMPT_CAPPED', exemptCapAmount: 10_000_000_000_000, exemptCapPeriod: 'MONTHLY' },
+      }),
+      400,
+      'E-tkt-003',
+    );
+    kiemLoi(
+      await goi('RVW-723', 'POST ngưỡng 10.000 tỷ', 'POST', `${TKT}/income-categories`, {
+        ve: veOwnerA,
+        payload: { name: 'QA ngưỡng quá lớn', taxTreatmentGroup: 'WITHHOLDING_FLAT', withholdingThreshold: 10_000_000_000_000 },
+      }),
+      400,
+      'E-tkt-003',
+    );
+  });
+
   await t.test('TC-tkt-118 — withholdingRate = 0 → 201 (hợp đồng Mục 2.3 nhận 0..100)', async () => {
     const r = await goi('TC-tkt-118', 'POST rate 0', 'POST', `${TKT}/income-categories`, {
       ve: veOwnerA,
@@ -723,7 +736,7 @@ test('Nhóm 2 — Bản ghi thu nhập ngoài lương', async (t) => {
     });
   });
 
-  await t.test('KR-tkt-06 — danh sách theo kỳ: tổng hợp trên TOÀN bộ lọc, X-Total-Count, phân trang; thiếu periodId → 400 E-tkt-004', async () => {
+  await t.test('KR-tkt-06 — danh sách theo kỳ: khoản MỚI NHẤT trước (RVW-726), tổng hợp trên TOÀN bộ lọc, X-Total-Count, phân trang; thiếu periodId → 400 E-tkt-004; kỳ không tồn tại → 400 E-tkt-017', async () => {
     const r = await goi('KR-tkt-06', 'GET danh sách T9', 'GET', `${TKT}/other-income?periodId=${KY[9]}`, { ve: veOwnerA });
     assert.equal(r.status, 200, r.raw);
     assert.equal(r.headers['x-total-count'], '5');
@@ -732,14 +745,60 @@ test('Nhóm 2 — Bản ghi thu nhập ngoài lương', async (t) => {
       totalRecords: 5, totalGross: 24_000_000, totalTax: 1_200_000, totalNet: 22_800_000,
     });
     assert.equal(r.json.data.periodLocked, false);
+    // Hợp đồng Mục 0.4: `paymentDate DESC, createdAt DESC` — R4 và R2 cùng ngày 10/09, R4 tạo sau nên đứng trước.
+    assert.deepEqual(r.json.data.records.map((x: any) => x.id), [BG.R5, BG.R1, BG.R3, BG.R4, BG.R2]);
 
     const trang = await goi('KR-tkt-06', 'GET limit=2', 'GET', `${TKT}/other-income?periodId=${KY[9]}&limit=2&offset=0`, { ve: veOwnerA });
     assert.equal(trang.status, 200, trang.raw);
-    assert.equal(trang.json.data.records.length, 2);
+    assert.deepEqual(trang.json.data.records.map((x: any) => x.id), [BG.R5, BG.R1], 'trang 1 là hai khoản mới nhất');
     assert.equal(trang.headers['x-total-count'], '5');
     assert.equal(trang.json.data.summary.totalGross, 24_000_000, 'summary theo toàn bộ lọc, không theo trang');
 
     kiemLoi(await goi('KR-tkt-06', 'GET thiếu periodId', 'GET', `${TKT}/other-income`, { ve: veOwnerA }), 400, 'E-tkt-004');
+    // Trả 200 rỗng thì giao diện hiểu là "kỳ trống, nhập được".
+    kiemLoi(await goi('KR-tkt-06', 'GET kỳ không tồn tại', 'GET', `${TKT}/other-income?periodId=khong-ton-tai`, { ve: veOwnerA }), 400, 'E-tkt-017');
+  });
+
+  await t.test('RVW-727 — hai CTV trùng tên KHÁC CCCD, cùng loại/ngày/số tiền → cả hai 201, Bảng tính thuế tách hai dòng; cùng CCCD dù gõ tên khác → 409 E-tkt-005', async () => {
+    const goc = {
+      periodId: KY[10], ...VL('Nguyễn Văn Hùng'), otherIncomeCategoryId: DM.TN12, paymentDate: '2026-10-12', paymentType: 'GROSS', amount: 600_000,
+    };
+    const a = await goi('RVW-727', 'POST Hùng CCCD …001', 'POST', `${TKT}/other-income`, { ve: veOwnerA, payload: { ...goc, idCardNumber: '001203000001' } });
+    assert.equal(a.status, 201, a.raw);
+    const b = await goi('RVW-727', 'POST Hùng CCCD …002', 'POST', `${TKT}/other-income`, { ve: veOwnerA, payload: { ...goc, idCardNumber: '001203000002' } });
+    assert.equal(b.status, 201, `người thứ hai trùng tên KHÁC CCCD không phải bản trùng: ${b.raw}`);
+    const c = await goi('RVW-727', 'POST CCCD …001, tên gõ khác', 'POST', `${TKT}/other-income`, {
+      ve: veOwnerA,
+      payload: { ...goc, fullName: 'Nguyễn V. Hùng', idCardNumber: '001203000001' },
+    });
+    // Lọt thì dọn ngay để kỳ T10 không mang bản trùng sang các ca sau.
+    if (c.status === 201) await dbA().otherIncomeRecord.delete({ where: { id: c.json.data.id } });
+    kiemLoi(c, 409, 'E-tkt-005');
+
+    const bang = await bangThue(veOwnerA, KY[10], 'RVW-727');
+    const hung = bang.danhSach.filter((d: any) => d.ma_nv === null && d.ho_ten.includes('Hùng'));
+    assert.deepEqual(hung.map((d: any) => d.id).sort(), ['VL:001203000001', 'VL:001203000002'], 'hai người, hai dòng — không gộp theo họ tên');
+  });
+
+  await t.test('RVW-724 — ngày không có thật (31/09, 45/13) → 400 E-tkt-004 ở tính thử và ghi; không bị cuộn thành 01/10 rồi lưu vào kỳ T10', async () => {
+    const goc = { periodId: KY[10], ...VL('Ngày Ảo'), otherIncomeCategoryId: DM.TN12, amount: 6_000_000 };
+    // V8 cuộn "2026-09-31" thành 01/10/2026 — trước đây lọt bước kiểm "đúng tháng của kỳ T10" và lưu sai ngày chứng từ.
+    const cuon = await goi('RVW-724', 'POST ngày 31/09 vào kỳ T10', 'POST', `${TKT}/other-income`, {
+      ve: veOwnerA,
+      payload: { ...goc, paymentDate: '2026-09-31' },
+    });
+    kiemLoi(cuon, 400, 'E-tkt-004');
+    const chungTu = await goi('RVW-724', 'POST ngày chứng từ 45/13', 'POST', `${TKT}/other-income`, {
+      ve: veOwnerA,
+      payload: { ...goc, paymentDate: '2026-10-05', eWithholdingCertNo: 'CT-QA-01', eWithholdingCertDate: '2026-13-45' },
+    });
+    kiemLoi(chungTu, 400, 'E-tkt-004');
+    kiemLoi(
+      await tinhThu('RVW-724', 'tính thử ngày 45/13', { ...VL('Ngày Ảo'), otherIncomeCategoryId: DM.TN12, amount: 6_000_000, paymentDate: '2026-13-45' }),
+      400,
+      'E-tkt-004',
+    );
+    assert.equal(await dbA().otherIncomeRecord.count({ where: { fullName: 'Ngày Ảo' } }), 0);
   });
 
   await t.test('TC-tkt-020 — double-click: 2 request y hệt song song → đúng 1 bản 201, 1 bản 409 E-tkt-005', async () => {
@@ -975,6 +1034,28 @@ test('Nhóm 3–4 — Công thức thuế theo bản ghi (4 nhánh BR-tkt-007, B
     }
   });
 
+  await t.test('RVW-723 — số tiền lẻ dưới đồng / không nguyên / từ 1.000 tỷ → 400 E-tkt-004; 999.999.999.999 vẫn tính được', async () => {
+    for (const soTien of [0.004, 1_500_000.5, 1_000_000_000_000]) {
+      const r = await tinhThu('RVW-723', `amount ${soTien}`, { ...NV('NV0003'), otherIncomeCategoryId: DM.TN01, amount: soTien });
+      kiemLoi(r, 400, 'E-tkt-004');
+    }
+    const tran = await tinhThu('RVW-723', 'amount 999.999.999.999', { ...NV('NV0003'), otherIncomeCategoryId: DM.TN01, amount: 999_999_999_999 });
+    assert.equal(tran.status, 200, tran.raw);
+    assert.equal(tran.json.data.grossAmount, 999_999_999_999);
+  });
+
+  await t.test('RVW-723 — tỷ lệ 99,99% trả NET: số trước thuế quy ngược vượt giới hạn → 400 E-tkt-004, không trả số rỗng', async () => {
+    const dm = await goi('RVW-723', 'POST danh mục khấu trừ 99,99%', 'POST', `${TKT}/income-categories`, {
+      ve: veOwnerA,
+      payload: { name: 'QA khấu trừ 99,99%', taxTreatmentGroup: 'WITHHOLDING_FLAT', withholdingRate: 99.99 },
+    });
+    assert.equal(dm.status, 201, dm.raw);
+    const r = await tinhThu('RVW-723', 'NET 999.999.999.999, tỷ lệ 99,99%', {
+      ...VL('Khách Quy Đổi'), otherIncomeCategoryId: dm.json.data.id, paymentType: 'NET', amount: 999_999_999_999,
+    });
+    kiemLoi(r, 400, 'E-tkt-004');
+  });
+
   for (const [tc, chi, mien, vuot] of [
     ['TC-tkt-036', 1_000_000, 1_000_000, 0],
     ['TC-tkt-037', 1_200_000, 1_200_000, 0],
@@ -1102,6 +1183,14 @@ test('Nhóm 5 — Bảng tính thuế tháng', async (t) => {
     assert.equal(bangT9Nhap.trangThai, 'NHAP');
     assert.equal(bangT9Nhap.coTheChot, false, 'kỳ lương T9 còn DRAFT ⇒ chưa chốt được');
     assert.equal(bangT9Nhap.bieuThueApDung.effectiveFrom, '2026-01-01');
+    // Hợp đồng Mục 0.4 (RVW-736): loại lao động, rồi họ tên theo bảng chữ cái tiếng Việt ("Đ" đứng sau "D").
+    assert.deepEqual(bangT9Nhap.danhSach.map((x: any) => x.loai_lao_dong), [
+      ...Array(6).fill('HOP_DONG_3_THANG_TRO_LEN'), 'THOI_VU_THU_VIEC', 'VANG_LAI',
+    ]);
+    assert.deepEqual(
+      bangT9Nhap.danhSach.filter((x: any) => x.loai_lao_dong === 'HOP_DONG_3_THANG_TRO_LEN').map((x: any) => x.ho_ten),
+      ['Đỗ Văn Bảy', 'Hoàng Văn Năm', 'Lê Văn Ba', 'Nguyễn Văn Một', 'Phạm Thị Bốn', 'Vũ Thị Sáu'],
+    );
     khop(dongCua(bangT9Nhap, 'NV0001'), {
       loai_lao_dong: 'HOP_DONG_3_THANG_TRO_LEN',
       thu_nhap_luong: 20_000_000,
@@ -1316,6 +1405,16 @@ test('Nhóm 6 — Chốt / mở lại Bảng tính thuế tháng', async (t) => 
     assert.deepEqual(r.kpi, bangT9Nhap.kpi);
   });
 
+  await t.test('RVW-721 — tháng đã chốt Bảng tính thuế: mở lại kỳ lương T9 → 409 E-dltl-029; kỳ vẫn LOCKED, snapshot thuế còn nguyên', async () => {
+    const r = await goi('RVW-721', 'POST reopen kỳ lương T9', 'POST', `${BASE}/payroll-periods/${KY[9]}/reopen`, {
+      ve: veOwnerA,
+      payload: { reason: LY_DO_MO_LAI },
+    });
+    kiemLoi(r, 409, 'E-dltl-029');
+    assert.equal((await dbA().payrollPeriod.findUnique({ where: { id: KY[9] } }))?.status, 'LOCKED');
+    assert.equal(await dbA().taxCalculationLine.count({ where: { periodId: KY[9] } }), 8);
+  });
+
   await t.test('TC-tkt-067/068 — tháng đã chốt: sửa / xóa / thêm khoản ngoài lương → 403 E-tkt-007', async () => {
     kiemLoi(await goi('TC-tkt-067', 'PUT R1', 'PUT', `${TKT}/other-income/${BG.R1}`, { ve: veOwnerA, payload: THAN.R1 }), 403, 'E-tkt-007');
     kiemLoi(await goi('TC-tkt-068', 'DELETE R1', 'DELETE', `${TKT}/other-income/${BG.R1}`, { ve: veOwnerA }), 403, 'E-tkt-007');
@@ -1368,6 +1467,16 @@ test('Nhóm 6 — Chốt / mở lại Bảng tính thuế tháng', async (t) => 
     assert.deepEqual(log?.chiTiet, { periodId: KY[9], reason: LY_DO_MO_LAI });
   });
 
+  await t.test('RVW-721 — mở lại Bảng tính thuế T9 xong thì mở lại kỳ lương được → 200 DRAFT; khóa sổ lại cho các ca sau', async () => {
+    const r = await goi('RVW-721', 'POST reopen kỳ lương T9 sau khi mở Bảng tính thuế', 'POST', `${BASE}/payroll-periods/${KY[9]}/reopen`, {
+      ve: veOwnerA,
+      payload: { reason: LY_DO_MO_LAI },
+    });
+    assert.equal(r.status, 200, r.raw);
+    assert.equal(r.json.data.status, 'DRAFT');
+    await khoaSoKyLuong(veOwnerA, KY[9]);
+  });
+
   await t.test('TC-tkt-070 — sau mở lại: sửa khoản T9 được bình thường → 200', async () => {
     const r = await goi('TC-tkt-070', 'PUT R1 thêm ghi chú', 'PUT', `${TKT}/other-income/${BG.R1}`, {
       ve: veOwnerA,
@@ -1394,6 +1503,36 @@ test('Nhóm 6 — Chốt / mở lại Bảng tính thuế tháng', async (t) => 
     });
     kiemLoi(lai, 409, 'E-tkt-018');
     await chotThang(veOwnerA, KY[8], 'KR-tkt-17');
+  });
+
+  await t.test('RVW-721 — lưới an toàn: kỳ DRAFT còn khóa TAX_SHEET (dữ liệu từ trước khi có chặn) → xóa kỳ lương 409 E-dltl-029, không cascade mất khoản ngoài lương', async () => {
+    // Qua API không còn dựng được trạng thái này (mở lại kỳ đã chốt thuế bị chặn) — ghi thẳng DB như dữ liệu cũ của tenant thật.
+    const khoa = await dbA().payrollModuleLock.create({ data: { periodId: KY[11], module: 'TAX_SHEET', lockedByUserId: ownerId } });
+    try {
+      const soKhoan = await dbA().otherIncomeRecord.count({ where: { periodId: KY[11] } });
+      assert.ok(soKhoan > 0, 'cần kỳ T11 có sẵn khoản ngoài lương (TC-tkt-039/040)');
+      kiemLoi(await goi('RVW-721', 'DELETE kỳ lương T11', 'DELETE', `${BASE}/payroll-periods/${KY[11]}`, { ve: veOwnerA }), 409, 'E-dltl-029');
+      assert.equal((await dbA().payrollPeriod.findUnique({ where: { id: KY[11] } }))?.status, 'DRAFT', 'kỳ không được bị xóa');
+      assert.equal(await dbA().otherIncomeRecord.count({ where: { periodId: KY[11] } }), soKhoan);
+    } finally {
+      await dbA().payrollModuleLock.delete({ where: { id: khoa.id } });
+    }
+  });
+
+  await t.test('RVW-735 — kỳ DRAFT còn khoản thu nhập ngoài lương → xóa kỳ lương 409 E-dltl-030, không mất khoản; kỳ trống thì xóa được', async () => {
+    const soKhoan = await dbA().otherIncomeRecord.count({ where: { periodId: KY[11] } });
+    assert.ok(soKhoan > 0, 'cần kỳ T11 có sẵn khoản ngoài lương (TC-tkt-039/040)');
+    const r = await goi('RVW-735', 'DELETE kỳ lương T11 còn khoản', 'DELETE', `${BASE}/payroll-periods/${KY[11]}`, { ve: veOwnerA });
+    kiemLoi(r, 409, 'E-dltl-030');
+    assert.match(r.json.message, new RegExp(`còn ${soKhoan} khoản`));
+    assert.equal((await dbA().payrollPeriod.findUnique({ where: { id: KY[11] } }))?.status, 'DRAFT');
+    assert.equal(await dbA().otherIncomeRecord.count({ where: { periodId: KY[11] } }), soKhoan);
+
+    // Kỳ không có khoản nào vẫn xóa được như trước — năm 2027 để không đụng lịch sử tờ khai 2026.
+    const kyTrong = await taoKy(veOwnerA, 1, 2027);
+    const xoa = await goi('RVW-735', 'DELETE kỳ lương 1/2027 trống', 'DELETE', `${BASE}/payroll-periods/${kyTrong}`, { ve: veOwnerA });
+    assert.equal(xoa.status, 200, xoa.raw);
+    assert.equal(await dbA().payrollPeriod.findUnique({ where: { id: kyTrong } }), null);
   });
 });
 
@@ -1546,6 +1685,9 @@ test('Nhóm 8 — Ghi đè chỉ tiêu tờ khai', async (t) => {
     kiemLoi(await ghiDe('TC-tkt-087', 'PUT ct99', { ct99: { gia: 1, lyDo: 'mã chỉ tiêu không tồn tại' } }), 400, 'E-tkt-012');
     kiemLoi(await ghiDe('TC-tkt-087', 'PUT ct30 âm', { ct30: { gia: -1, lyDo: 'giá trị âm không hợp lệ' } }), 400, 'E-tkt-012');
     kiemLoi(await ghiDe('TC-tkt-087', 'PUT ct16 = 7.5', { ct16: { gia: 7.5, lyDo: 'số người phải là số nguyên' } }), 400, 'E-tkt-012');
+    // RVW-723: vượt cột lưu (`ct16` Int, tiền Decimal(18,2)) — trước đây lọt kiểm rồi tràn cột giữa giao dịch ra 500.
+    kiemLoi(await ghiDe('TC-tkt-087', 'PUT ct16 = 3 tỷ người', { ct16: { gia: 3_000_000_000, lyDo: 'số người vượt cột Int của tờ khai' } }), 400, 'E-tkt-012');
+    kiemLoi(await ghiDe('TC-tkt-087', 'PUT ct22 = 1e17', { ct22: { gia: 1e17, lyDo: 'số tiền vượt cột Decimal(18,2)' } }), 400, 'E-tkt-012');
     const tk = await toKhaiQuy(veKeToanA, 3, 'TC-tkt-087');
     assert.deepEqual(Object.keys(tk.ghiDe), ['ct22'], 'lệnh bị từ chối không được ghi gì');
   });
@@ -1679,6 +1821,15 @@ test('Nhóm 9 — Xuất tờ khai, tải lại, đánh dấu đã nộp, lịch
     assert.equal(await dbA().payrollModuleLock.count({ where: { periodId: KY[8], module: 'TAX_SHEET' } }), 1);
     assert.equal(await dbA().taxCalculationLine.count({ where: { periodId: KY[8] } }), 7);
     khop(await bangThue(veKeToanA, KY[8], 'TC-tkt-071'), { trangThai: 'DA_CHOT', coTheMoLai: false });
+  });
+
+  await t.test('RVW-721 (kịch bản A) — quý đã xuất: mở lại kỳ lương T8 → 409 E-dltl-029; số thuế đã xuất không còn đường lệch khỏi bảng lương', async () => {
+    const r = await goi('RVW-721', 'POST reopen kỳ lương T8 (quý đã xuất)', 'POST', `${BASE}/payroll-periods/${KY[8]}/reopen`, {
+      ve: veOwnerA,
+      payload: { reason: LY_DO_MO_LAI },
+    });
+    kiemLoi(r, 409, 'E-dltl-029');
+    assert.equal((await dbA().payrollPeriod.findUnique({ where: { id: KY[8] } }))?.status, 'LOCKED');
   });
 
   await t.test('KR-tkt-20 — GET quý đã xuất đọc nguyên bộ số đã chốt + người xuất; tải lại file → trùng file lúc xuất', async () => {
@@ -1857,20 +2008,73 @@ test('Nhóm 11–12 — Cô lập tenant và biên dữ liệu', async (t) => {
     assert.equal(await dbA().otherIncomeRecord.count(), soA);
   });
 
-  await t.test('KR-tkt-23 — tenant chưa nạp chính sách thuế: bảng tính thuế → 500 E-tkt-015 có mã + hướng dẫn, không 500 vô danh', async () => {
+  await t.test('KR-tkt-23 — bảng chính sách CÓ dòng nhưng không mốc nào hiệu lực tới đầu kỳ → 500 E-tkt-015 có mã + hướng dẫn, không 500 vô danh', async () => {
     kyB = await taoKy(veOwnerB, 9);
-    const r = await goi('KR-tkt-23', 'B GET bảng thuế', 'GET', `${TKT}/tax-calculation?periodId=${kyB}`, { ve: veOwnerB });
-    kiemLoi(r, 500, 'E-tkt-015');
-    assert.match(r.json.message, /hrm:seed-thue/);
+    // Bảng RỖNG thì máy chủ tự nạp bộ chuẩn (RVW-725, ca kế tiếp) — nên dựng ca lỗi bằng đúng một mốc tương lai.
+    const tuongLai = await dbB().taxPolicy.create({ data: dongChinhSach(CHINH_SACH_THUE_SEED[1], '2099-01-01') });
+    try {
+      const r = await goi('KR-tkt-23', 'B GET bảng thuế', 'GET', `${TKT}/tax-calculation?periodId=${kyB}`, { ve: veOwnerB });
+      kiemLoi(r, 500, 'E-tkt-015');
+      assert.match(r.json.message, /hrm:seed-thue/);
+      assert.equal(await dbB().taxPolicy.count(), 1, 'bảng đã có dòng thì không được tự nạp đè');
+    } finally {
+      await dbB().taxPolicy.delete({ where: { id: tuongLai.id } });
+    }
+  });
+
+  await t.test('RVW-725 — công ty cấp mới chưa có dòng chính sách nào: Bảng tính thuế tự nạp bộ chuẩn → 200, không phải chạy script', async () => {
+    assert.equal(await dbB().taxPolicy.count(), 0);
+    const bang = await bangThue(veOwnerB, kyB, 'RVW-725');
+    assert.equal(bang.bieuThueApDung.effectiveFrom, '2026-01-01');
+    const daNap = await dbB().taxPolicy.findMany({ orderBy: { effectiveFrom: 'asc' }, select: { effectiveFrom: true } });
+    assert.deepEqual(
+      daNap.map((p) => p.effectiveFrom.toISOString().slice(0, 10)),
+      CHINH_SACH_THUE_SEED.map((cs) => cs.effectiveFrom),
+    );
   });
 
   await t.test('TC-tkt-110 — kỳ lương không có nhân viên nào: bảng thuế 0 dòng, không lỗi; khóa sổ + chốt tháng vẫn được', async () => {
-    await napChinhSachThue(dbB());
     const bang = await bangThue(veOwnerB, kyB, 'TC-tkt-110');
     assert.deepEqual(bang.danhSach, []);
     khop(bang.kpi, { tongNguoiLaoDong: 0, tongThueTncn: 0 });
     await khoaSoKyLuong(veOwnerB, kyB);
     khop(await chotThang(veOwnerB, kyB, 'TC-tkt-110'), { trangThai: 'DA_CHOT', soDong: 0 });
+  });
+
+  await t.test('RVW-732 — rà soát trước khi áp ràng buộc: tháng đã chốt còn khóa vãng lai kiểu cũ; khoản trùng theo khóa v2 bị báo và chặn tạo index', async () => {
+    const muc = async (ma: string) => (await raSoatTenant(DB_A)).theoMuc.find((m) => m.ma === ma);
+    assert.equal((await muc('bang-thue-khoa-vang-lai-cu'))?.soDong, 0, 'tháng chốt sau khi sửa đều mang khóa hiện hành');
+    assert.equal((await muc('khoan-ngoai-trung-v2'))?.soDong, 0);
+
+    // Tháng chốt ở v1 gộp vãng lai theo họ tên dù dòng có CCCD — mô phỏng bằng cách gắn CCCD cho dòng vãng lai T9 (quý III đã xuất).
+    const dongVl = await dbA().taxCalculationLine.findFirstOrThrow({ where: { periodId: KY[9], ma_nv: null } });
+    await dbA().taxCalculationLine.update({ where: { id: dongVl.id }, data: { so_cccd: '001203000009' } });
+    try {
+      khop((await muc('bang-thue-khoa-vang-lai-cu'))?.mau[0] as Record<string, unknown>, { nam: 2026, thang: 9, quy_da_xuat: true });
+    } finally {
+      await dbA().taxCalculationLine.update({ where: { id: dongVl.id }, data: { so_cccd: dongVl.so_cccd } });
+    }
+
+    // Khoản cùng CCCD, gõ tên khác, cùng loại / ngày / số tiền — index v2 chặn nên phải gỡ tạm index mới dựng được dữ liệu cũ.
+    await dbA().$executeRawUnsafe('DROP INDEX IF EXISTS "hrm_oir_chong_trung_v2"');
+    const goc = await dbA().otherIncomeRecord.findFirstOrThrow({ where: { idCardNumber: '001203000001' } });
+    const banSao: Record<string, unknown> = { ...goc, fullName: 'Nguyễn V. Hùng' };
+    delete banSao.id;
+    delete banSao.createdAt;
+    delete banSao.updatedAt;
+    const trung = await dbA().otherIncomeRecord.create({ data: banSao as Prisma.OtherIncomeRecordUncheckedCreateInput });
+    try {
+      assert.equal((await muc('khoan-ngoai-trung-v2'))?.soDong, 1);
+      const ap = await applyTenantConstraints(DB_A);
+      assert.ok(
+        ap.vuongDuLieu.some((v) => v.ten.includes('chong trung v2') && v.sqlstate === '23505'),
+        `index v2 phải báo vướng dữ liệu chứ không ném: ${JSON.stringify(ap.vuongDuLieu)}`,
+      );
+    } finally {
+      await dbA().otherIncomeRecord.delete({ where: { id: trung.id } });
+    }
+    const apLai = await applyTenantConstraints(DB_A);
+    assert.deepEqual(apLai.vuongDuLieu, [], 'dọn xong thì index v2 tạo lại được');
   });
 });
 

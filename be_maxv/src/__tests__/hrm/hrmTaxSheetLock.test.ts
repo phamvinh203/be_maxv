@@ -37,6 +37,8 @@ interface TuyChon {
 function giaLapDb(tc: TuyChon = {}) {
   const daGhi: string[] = [];
   const doiSo: Record<string, unknown> = {};
+  // Thứ tự mở giao dịch / khóa dòng kỳ / đọc kỳ — RVW-721/722.
+  const nhatKy: string[] = [];
   const ghi =
     (ten: string, ketQua?: unknown) =>
     async (arg?: unknown): Promise<unknown> => {
@@ -47,8 +49,20 @@ function giaLapDb(tc: TuyChon = {}) {
     };
 
   const db = {
+    $queryRaw: async (strings: TemplateStringsArray) => {
+      const cau = strings.join('?');
+      nhatKy.push(
+        /hrm_payroll_periods/.test(cau) && /FOR UPDATE/.test(cau)
+          ? 'FOR UPDATE kỳ'
+          : cau,
+      );
+      return [];
+    },
     payrollPeriod: {
-      findUnique: async () => (tc.ky === undefined ? KY_DA_KHOA : tc.ky),
+      findUnique: async () => {
+        nhatKy.push('đọc kỳ');
+        return tc.ky === undefined ? KY_DA_KHOA : tc.ky;
+      },
     },
     payrollModuleLock: {
       findUnique: async () =>
@@ -111,15 +125,26 @@ function giaLapDb(tc: TuyChon = {}) {
     },
     $transaction: async (
       fn: (tx: unknown) => Promise<unknown>,
-    ): Promise<unknown> => fn(db),
+    ): Promise<unknown> => {
+      nhatKy.push('BEGIN');
+      return fn(db);
+    },
   };
-  return { db: db as unknown as PrismaClient, daGhi, doiSo };
+  return { db: db as unknown as PrismaClient, daGhi, doiSo, nhatKy };
 }
 
 const loiMa = (ma: ToKhaiThueErrorCode) => (e: unknown) =>
   e instanceof ToKhaiThueError && e.code === ma;
 
 /* ── Chốt (FR-tkt-011) ─────────────────────────────────────────────── */
+
+test('RVW-721/722: Chốt khóa GHI dòng kỳ lương ngay đầu giao dịch, TRƯỚC khi đọc trạng thái kỳ', async () => {
+  const { db, nhatKy } = giaLapDb();
+  await lockTaxSheet(db, KY_DA_KHOA.id, 'u-1');
+  // Đọc trạng thái trước khi giữ khóa là đọc bản chụp có thể đã cũ: mở lại kỳ lương chen giữa thì Bảng tính
+  // thuế được chốt trên một kỳ đã về DRAFT (AC-tkt-018); lượt ghi khoản ngoài lương đang dở thì lọt khỏi snapshot.
+  assert.deepEqual(nhatKy.slice(0, 3), ['BEGIN', 'FOR UPDATE kỳ', 'đọc kỳ']);
+});
 
 test('Chốt: kỳ không tồn tại -> E-tkt-017', async () => {
   const { db } = giaLapDb({ ky: null });
@@ -165,7 +190,11 @@ test('Chốt: ghi khóa TRƯỚC dòng; dòng ghim biểu thuế + phiên bản 
   assert.equal(dong.periodId, KY_DA_KHOA.id);
   assert.equal(dong.recipientKey, 'NV0001');
   assert.equal(dong.taxPolicyId, 'tp-2026');
-  assert.equal(dong.engineVersion, 'v1');
+  assert.equal(
+    dong.engineVersion,
+    'v2',
+    'v2 = vãng lai gộp theo CCCD → MST → họ tên (RVW-732)',
+  );
   assert.equal(dong.lockedByUserId, 'u-1');
   // 20tr − 15,5tr bản thân − 2,1tr BH = 2,4tr ⇒ bậc 5% = 120.000. Decimal chưa chuẩn hóa sẽ ra
   // chuỗi nối hoặc NaN chứ không ra số này.

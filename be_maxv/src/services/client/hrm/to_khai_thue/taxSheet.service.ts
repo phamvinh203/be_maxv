@@ -12,6 +12,7 @@ import { layHoTenNguoiDung } from '../du_lieu_tinh_luong/payrollActivity.service
 import { getPayrollSheetLines } from '../du_lieu_tinh_luong/payrollCalculation.service';
 import { resolveTaxPolicy } from './taxPolicy.service';
 import {
+  soSanhDongBangThue,
   tinhBangTinhThueThang,
   type DongBangTinhThueTinh,
   type NhomXuLyThueNgoai,
@@ -28,14 +29,19 @@ import {
 
 type Db = PrismaClient | Prisma.TransactionClient;
 
-/** Phiên bản cách tính, ghim vào từng dòng chốt — "tách 2 phần" thu nhập ngoài lương là v1. */
-const PHIEN_BAN_BANG_THUE = 'v1';
+/**
+ * Phiên bản cách tính, ghim vào từng dòng chốt để một năm sau vẫn giải trình được vì sao ra số:
+ *   - v1 — "tách 2 phần" thu nhập ngoài lương; vãng lai gộp theo họ tên.
+ *   - v2 (2026-09-15, RVW-727/732) — vãng lai gộp theo CCCD → MST → họ tên. Quý chưa xuất mà có tháng chốt ở v1 thì
+ *     mở lại rồi chốt lại tháng đó (mục rà soát `bang-thue-khoa-vang-lai-cu`), nếu không tờ khai quý đếm trùng người.
+ */
+const PHIEN_BAN_BANG_THUE = 'v2';
 
 function laLoiTrungKhoa(err: unknown): boolean {
   return (err as { code?: string } | null)?.code === 'P2002';
 }
 
-async function layKy(db: PrismaClient, periodId: string) {
+async function layKy(db: Db, periodId: string) {
   const ky = await db.payrollPeriod.findUnique({
     where: { id: periodId },
     select: {
@@ -74,18 +80,6 @@ async function quyDaXuatToKhai(
 
 function soTien(v: unknown): number {
   return v === null || v === undefined ? 0 : Number(v);
-}
-
-/** Thứ tự dòng: nhân viên theo mã, rồi vãng lai theo khóa — trùng thứ tự của bộ tính dòng. */
-function soSanhDong(a: DongBangTinhThueTinh, b: DongBangTinhThueTinh): number {
-  const nhomA = a.ma_nv === null ? 1 : 0;
-  const nhomB = b.ma_nv === null ? 1 : 0;
-  if (nhomA !== nhomB) return nhomA - nhomB;
-  return a.recipientKey < b.recipientKey
-    ? -1
-    : a.recipientKey > b.recipientKey
-      ? 1
-      : 0;
 }
 
 /** Tính trực tiếp — dùng chung cho màn tháng chưa chốt VÀ cho lúc chốt (số thấy = số đóng băng). */
@@ -260,11 +254,12 @@ export async function getTaxSheet(db: PrismaClient, query: TaxSheetQuery) {
   let dong: DongBangTinhThueTinh[];
   let chinhSach: TaxPolicy;
 
+  // Hai nhánh cùng MỘT thứ tự dòng (hợp đồng Mục 0.4, RVW-736).
   if (khoa) {
     const dongDaChot = await db.taxCalculationLine.findMany({
       where: { periodId: ky.id },
     });
-    dong = dongDaChot.map(veDongTuSnapshot).sort(soSanhDong);
+    dong = dongDaChot.map(veDongTuSnapshot).sort(soSanhDongBangThue);
     // Biểu thuế hiển thị là biểu ĐÃ GHIM lúc chốt, không phải biểu đang hiệu lực hôm nay (ADR-012).
     chinhSach =
       dongDaChot.length > 0
@@ -274,7 +269,9 @@ export async function getTaxSheet(db: PrismaClient, query: TaxSheetQuery) {
         : await resolveTaxPolicy(db, ky.startDate);
   } else {
     chinhSach = await resolveTaxPolicy(db, ky.startDate);
-    dong = await tinhDongTrucTiep(db, ky, chinhSach);
+    dong = (await tinhDongTrucTiep(db, ky, chinhSach)).sort(
+      soSanhDongBangThue,
+    );
   }
 
   const [daXuat, hoTen] = await Promise.all([
@@ -334,29 +331,39 @@ export async function getTaxSheet(db: PrismaClient, query: TaxSheetQuery) {
 /**
  * Chốt Bảng tính thuế tháng (FR-tkt-011). Thứ tự bám hợp đồng Mục 4.2.
  *
- * Tính NGOÀI giao dịch, ghi TRONG giao dịch (data-model Mục 5.3): kỳ lương đã khóa sổ nên phần
- * lương đọc từ snapshot đóng băng; giữ giao dịch ngắn để không khóa hàng lâu. Ca đua đã chấp nhận:
- * có người thêm khoản ngoài lương đúng lúc bấm Chốt — khoản đó bị chặn ghi ngay sau khi khóa có
- * hiệu lực, kế toán Mở lại để tính lại.
+ * Toàn bộ nằm trong MỘT giao dịch mở đầu bằng khóa ghi dòng kỳ lương (`FOR UPDATE`, RVW-721/722):
+ *   - lượt ghi khoản ngoài lương đang dở giữ `FOR SHARE` trên cùng dòng ⇒ commit xong mới tới lượt chốt, số
+ *     tính ra có đủ khoản đó; lượt ghi đến sau thấy khóa `TAX_SHEET` và bị chặn (E-tkt-007);
+ *   - mở lại / xóa kỳ lương cũng khóa dòng này ⇒ trạng thái kỳ đọc ở đây là trạng thái thật lúc ghi khóa.
+ * Kỳ lương đã khóa sổ nên phần lương chỉ đọc snapshot — tính trong giao dịch vẫn nhanh.
  */
 export async function lockTaxSheet(
   db: PrismaClient,
   periodId: string,
   userId: string,
 ) {
-  const ky = await layKy(db, periodId);
-  // Chốt lên số của kỳ lương còn mở là chốt lên cát: engine lương ra số khác mỗi lần gọi.
-  if (kyLuongConMo(ky.status)) throw new ToKhaiThueError('E-tkt-008');
-  if (await khoaThueCuaKy(db, ky.id)) throw new ToKhaiThueError('E-tkt-018');
-
-  const chinhSach = await resolveTaxPolicy(db, ky.startDate);
-  const dong = await tinhDongTrucTiep(db, ky, chinhSach);
-  const chotLuc = new Date();
-
   try {
-    await db.$transaction(async (tx) => {
-      // Ghi khóa TRƯỚC: hai người cùng bấm thì người sau vỡ `@@unique([periodId, module])` ngay
-      // và cả giao dịch lùi lại — không ai ghi đè dòng snapshot của người kia.
+    return await db.$transaction(async (tx) => {
+      await tx.$queryRaw`SELECT id FROM "hrm_payroll_periods" WHERE id = ${periodId} FOR UPDATE`;
+      const ky = await layKy(tx, periodId);
+      // Chốt lên số của kỳ lương còn mở là chốt lên cát: engine lương ra số khác mỗi lần gọi.
+      if (kyLuongConMo(ky.status)) throw new ToKhaiThueError('E-tkt-008');
+      if (await khoaThueCuaKy(tx, ky.id)) {
+        throw new ToKhaiThueError('E-tkt-018');
+      }
+
+      const chinhSach = await resolveTaxPolicy(tx, ky.startDate);
+      // Cùng khuôn `snapshotPayrollSheet(tx as unknown as PrismaClient, …)`: kỳ đã khóa sổ nên nhánh đọc
+      // lương chỉ `findMany` snapshot, không mở giao dịch lồng.
+      const dong = await tinhDongTrucTiep(
+        tx as unknown as PrismaClient,
+        ky,
+        chinhSach,
+      );
+      const chotLuc = new Date();
+
+      // Ghi khóa TRƯỚC dòng: lưới cuối nếu hai lượt chốt vẫn cùng lọt — lượt sau vỡ
+      // `@@unique([periodId, module])` ngay, cả giao dịch lùi, không ai ghi đè dòng snapshot của người kia.
       await tx.payrollModuleLock.create({
         data: {
           periodId: ky.id,
@@ -379,19 +386,19 @@ export async function lockTaxSheet(
           })),
         });
       }
+
+      return {
+        periodId: ky.id,
+        trangThai: 'DA_CHOT' as const,
+        soDong: dong.length,
+        chotLuc: chotLuc.toISOString(),
+        taxPolicyId: chinhSach.id,
+      };
     });
   } catch (err) {
     if (laLoiTrungKhoa(err)) throw new ToKhaiThueError('E-tkt-018');
     throw err;
   }
-
-  return {
-    periodId: ky.id,
-    trangThai: 'DA_CHOT' as const,
-    soDong: dong.length,
-    chotLuc: chotLuc.toISOString(),
-    taxPolicyId: chinhSach.id,
-  };
 }
 
 /**

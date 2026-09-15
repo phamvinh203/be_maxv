@@ -1,5 +1,7 @@
 import { z } from 'zod';
+import { TIEN_KHOAN_TOI_DA } from '../../../constants/hrm/to_khai_thue/gioiHanSo';
 import { NHOM_XU_LY_THUE } from './incomeCategory.validator';
+import { ngay } from './taxDeclaration.validator';
 
 /**
  * Kiểm đầu vào cho 6 endpoint Bản ghi thu nhập ngoài lương (api-contract Mục 3).
@@ -10,10 +12,6 @@ import { NHOM_XU_LY_THUE } from './incomeCategory.validator';
  * không biết tin cái nào. Cũng KHÔNG nhận `taxDeductionType` — cách tính thuế do máy chủ suy từ
  * danh mục, để client gửi nghĩa là client tự chọn mình bị khấu trừ bao nhiêu.
  */
-
-const ngay = z
-  .string()
-  .regex(/^\d{4}-\d{2}-\d{2}$/, 'Ngày phải theo dạng YYYY-MM-DD');
 
 const nguoiNhan = {
   // In hoa như mọi validator `du_lieu_ca_nhan` — mã nhân viên luôn được lưu in hoa. Rỗng = vãng lai.
@@ -34,9 +32,16 @@ const nguoiNhan = {
 
 const khoanChi = {
   otherIncomeCategoryId: z.string().min(1).max(64),
+  // Ngày CÓ THẬT (RVW-724): chỉ kiểm dạng chuỗi thì "2026-02-31" lọt qua, V8 cuộn thành 03/03 và lưu sai ngày
+  // chứng từ; "2026-13-45" thành Date hỏng, Prisma từ chối ra 500.
   paymentDate: ngay,
   paymentType: z.enum(['GROSS', 'NET']).optional(),
-  amount: z.number().positive('Số tiền phải lớn hơn 0'),
+  // Nguyên đồng + có trần (RVW-723): số lẻ dưới đồng lưu thành 0,00; số quá lớn tràn cột Decimal ra 500.
+  amount: z
+    .number()
+    .int('Số tiền phải là số nguyên đồng')
+    .positive('Số tiền phải lớn hơn 0')
+    .max(TIEN_KHOAN_TOI_DA, 'Số tiền vượt giới hạn cho phép'),
   hasCommitment08: z.boolean().optional(),
   forceWithholding: z.boolean().optional(),
   eWithholdingCertNo: z.string().trim().max(50).nullish(),
