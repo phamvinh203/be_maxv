@@ -41,6 +41,8 @@ links:
 - **Xuất tờ khai** ⇒ khóa **vĩnh viễn** 3 tháng, không có đường lùi (BR-tkt-015) ⇒ ADMIN/OWNER (cùng mức `archive`).
 - **Đánh dấu đã nộp** ⇒ tuyên bố pháp lý với cơ quan thuế ⇒ ADMIN/OWNER (cùng mức `mark-paid`).
 
+> **Cài đặt thực tế (2026-09-15):** cả hai mức đi qua `helpers/hrm/toKhaiThueAccess.ts` (`dbToKhaiThue`, `assertQuanTriToKhaiThue`) ở **đầu controller**, để lỗi mang đúng `E-tkt-014` — `dbCoQuyenLuongPayroll` / `assertAdminOrOwner` gốc ném lỗi mã `E-hrm-058` / không mã. Ai được làm gì giữ nguyên như bảng trên; kiểm ở controller thay vì `preHandler` vì file route của sub-cụm vẫn là bản nháp chờ viết lại (bước 7).
+
 ### 0.2. Hình dạng lỗi — **bắt buộc 1 dạng duy nhất có `code`**
 
 ```jsonc
@@ -450,6 +452,8 @@ interface ToKhaiTncn05Dto {
 > `ctGocSuaDuoc` trả từ hằng số `CT_GOC_SUA_DUOC` của BE để FE **không** giữ bản sao thứ hai của danh sách 13 chỉ tiêu (`O_SUA_DUOC_TNCN05` hiện đang hardcode ở FE).
 >
 > `thongTinNguoiNopThue` đọc chéo `maxv2_sys.don_vi` — khác mọi trường còn lại của DTO này (nguồn DB tenant). Danh sách trường chính xác để Backend Engineer đối chiếu khi code (BA Final Sign-off 2026-09-14, data-model P-11).
+>
+> **Ghi nhận khi code (2026-09-15):** `coQuanThueQuanLy` hiện **luôn là chuỗi rỗng** — `don_vi` chưa có cột này (tờ khai GTGT cũng để trống); cần bổ sung nơi lưu ở đợt sau. `nam`/`quy` sai kiểu/khoảng, hoặc gửi `kyLoai` khác `'quy'` ⇒ **400 `E-tkt-017`** (TC-tkt-082).
 
 ### 5.2. `GET /to-khai-thue/05-kk-tncn/periods` (FR-tkt-018)
 
@@ -472,6 +476,7 @@ interface PutOverridesBody {
 | Mã chỉ tiêu **không** thuộc 13 mã `CT_GOC_SUA_DUOC` — gồm `ct18`, `ct21`, `ct26`, `ct29` | **400 `E-tkt-012`** (AC-tkt-027) |
 | Mã không thuộc `ct16..ct32`; `gia < 0`; `ct16`–`ct20` không phải số nguyên | **400 `E-tkt-012`** |
 | `trangThai` ≠ `READY_TO_EXPORT` | **403 `E-tkt-019`** — tờ khai đã xuất thì không sửa (EC-tkt-03) |
+| Quý chưa đủ 3 tháng chốt (chưa có tờ khai để ghi đè) | **400 `E-tkt-010`** `[bổ sung khi code 2026-09-15]` |
 
 **200** `ToKhaiTncn05Dto` với `ct` đã tính lại: 4 chỉ tiêu tổng hợp **luôn** suy lại từ chỉ tiêu con (`ct18=ct19+ct20`, `ct21=ct22+ct23`, `ct26=ct27+ct28`, `ct29=ct30+ct31`) — AC-tkt-025.
 
@@ -507,7 +512,7 @@ X-Content-Type-Options: nosniff
 
 ⚠️ **Kết xuất PDF chạy Puppeteer — tuyệt đối không đặt trong transaction.** Render mất vài giây sẽ giữ khóa hàng trên bảng tờ khai suốt thời gian đó.
 
-⚠️ **Lỗi kết xuất xảy ra SAU khi transaction commit** ⇒ trạng thái đã là `EXPORTED` nhưng người dùng chưa có file. Xử lý: trả **500** kèm `message` chỉ rõ *"Tờ khai đã chuyển trạng thái Đã xuất; tải lại file bằng `GET /05-kk-tncn/detail-sheet` hoặc gọi lại endpoint tải"*. **Không** rollback trạng thái — rollback sẽ mở lại khóa 3 tháng mà số liệu đã được chốt sang bộ `ct` chính thức.
+⚠️ **Lỗi kết xuất xảy ra SAU khi transaction commit** ⇒ trạng thái đã là `EXPORTED` nhưng người dùng chưa có file. Xử lý: trả **500** kèm `message` nói rõ tờ khai đã sang Đã xuất và hướng dẫn tải lại file bằng **`GET /05-kk-tncn/file` (Mục 5.8)** — `detail-sheet` là bảng chi tiết nhân viên, không phải mẫu tờ khai. **Không** rollback trạng thái — rollback sẽ mở lại khóa 3 tháng mà số liệu đã được chốt sang bộ `ct` chính thức.
 
 ### 5.6. `GET /to-khai-thue/05-kk-tncn/detail-sheet` (FR-tkt-015)
 
@@ -531,6 +536,19 @@ Bảng chi tiết **từng nhân viên nội bộ** — không phải mẫu chí
 **200** DTO với `trangThai: 'SUBMITTED'`, `nopBoi`, `nopLuc`.
 
 > Thao tác **thủ công**, hệ thống **không** xác thực với cơ quan thuế (BR-tkt-015). `message` phản hồi phải nói rõ điều này để kế toán không hiểu nhầm là đã nộp thành công qua hệ thống.
+
+### 5.8. `GET /to-khai-thue/05-kk-tncn/file` — Tải lại file tờ khai đã xuất — **ADMIN/OWNER** `[MỚI — chủ dự án duyệt 2026-09-15, endpoint thứ 23]`
+
+**Query** `nam` · `quy` · `format` (`excel` | `pdf`).
+
+Dựng lại file từ bộ `ct` **đã lưu lúc xuất** — không tính lại, không đổi trạng thái. Lý do có endpoint: Mục 5.5 chỉ trả file đúng một lần (gọi lại ⇒ 409 `E-tkt-020`), nên tải lỗi hoặc mất file thì trước đây không còn đường lấy lại bản chính thức.
+
+| Tình huống | Lỗi |
+|---|---|
+| Tờ khai chưa xuất (chưa có dòng, hoặc `READY_TO_EXPORT`) | **400 `E-tkt-013`** — thông điệp riêng: chỉ tải lại được tờ khai đã xuất |
+| Hàng đợi dựng PDF đang đầy | **429** |
+
+**200** — file nhị phân, cùng bộ header như Mục 5.5.
 
 ---
 

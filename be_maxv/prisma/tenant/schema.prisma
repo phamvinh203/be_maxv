@@ -2100,11 +2100,15 @@ model TaxCalculationLine {
 /// Tờ khai thuế TNCN Mẫu 05/KK-TNCN (TT 80/2021/TT-BTC)
 model hrm_to_khai_tncn05 {
   nam         Int
-  ky_loai     String    @db.VarChar(8)  // thang | quy
-  ky_so       Int                       // 1..12 (tháng) hoặc 1..4 (quý)
-  so_lan      Int       @default(0)     // 0 = chính thức, 1, 2... = bổ sung
+  /// BR-tkt-016 — CHỈ 'quy'. Giữ cột vì là một phần KHÓA CHÍNH; validator từ chối mọi giá trị khác.
+  ky_loai     String    @db.VarChar(8)
+  ky_so       Int                       // 1..4
+  /// 0 = tờ khai chính thức; >0 dành cho khai bổ sung — NGOÀI PHẠM VI đợt này (EC-tkt-03).
+  so_lan      Int       @default(0)
 
-  trang_thai  String    @default("nhap") @db.VarChar(16) // nhap | chot
+  /// READY_TO_EXPORT | EXPORTED | SUBMITTED (BR-tkt-014/015). Dòng chỉ TỒN TẠI khi đủ 3 tháng trong
+  /// quý đã chốt Bảng tính thuế; đã EXPORTED thì không bao giờ lùi (khóa vĩnh viễn 3 tháng).
+  trang_thai  String    @default("READY_TO_EXPORT") @db.VarChar(16)
 
   /// Bộ chỉ tiêu CUỐI đem nộp: { ct16, ct17, ..., ct32 }
   ct          Json      @db.JsonB
@@ -2123,8 +2127,13 @@ model hrm_to_khai_tncn05 {
   ngay_ky     DateTime? @db.Date
   tinh_luc    DateTime?
 
+  /// "Đã xuất tờ khai" (BR-tkt-015) — người/lúc xuất, cũng là mốc khóa vĩnh viễn 3 tháng trong quý.
   khoa_so_boi String?   @db.VarChar(64)
   khoa_so_luc DateTime?
+
+  /// "Đã nộp" (FR-tkt-017) — kế toán đánh dấu tay, KHÔNG xác thực với cơ quan thuế.
+  nop_boi     String?   @db.VarChar(64)
+  nop_luc     DateTime?
 
   datetime0   DateTime  @default(now())
   datetime2   DateTime  @updatedAt

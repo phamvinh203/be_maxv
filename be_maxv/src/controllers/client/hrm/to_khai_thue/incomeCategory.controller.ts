@@ -1,5 +1,5 @@
 import type { FastifyReply, FastifyRequest } from 'fastify';
-import { dbCoQuyenLuongPayroll } from '../../../../helpers/hrm/payrollAccessGuard';
+import { dbToKhaiThue } from '../../../../helpers/hrm/toKhaiThueAccess';
 import { kiemTraTkt } from '../../../../helpers/hrm/toKhaiThueValidate';
 import { sendCreated, sendOk } from '../../../../helpers/response';
 import * as service from '../../../../services/client/hrm/to_khai_thue/incomeCategory.service';
@@ -13,7 +13,7 @@ import {
 /**
  * Danh mục loại thu nhập ngoài lương — 5 endpoint (api-contract Mục 2).
  *
- * Mọi handler đi qua `dbCoQuyenLuongPayroll` (hợp đồng Mục 0.1). Lỗi kiểm đầu vào đi qua
+ * Mọi handler đi qua `dbToKhaiThue` (hợp đồng Mục 0.1). Lỗi kiểm đầu vào đi qua
  * `kiemTraTkt` để mang mã `E-tkt-*` thay vì hình dạng `ValidationError` không có `code`.
  */
 
@@ -21,7 +21,7 @@ export async function listIncomeCategories(
   req: FastifyRequest,
   reply: FastifyReply,
 ) {
-  const db = await dbCoQuyenLuongPayroll(req);
+  const db = await dbToKhaiThue(req);
   const query = kiemTraTkt(
     listIncomeCategoryQuerySchema,
     req.query,
@@ -34,7 +34,7 @@ export async function getIncomeCategoryById(
   req: FastifyRequest,
   reply: FastifyReply,
 ) {
-  const db = await dbCoQuyenLuongPayroll(req);
+  const db = await dbToKhaiThue(req);
   const { id } = kiemTraTkt(
     incomeCategoryIdParamsSchema,
     req.params,
@@ -47,7 +47,7 @@ export async function createIncomeCategory(
   req: FastifyRequest,
   reply: FastifyReply,
 ) {
-  const db = await dbCoQuyenLuongPayroll(req);
+  const db = await dbToKhaiThue(req);
   const body = kiemTraTkt(
     createIncomeCategoryBodySchema,
     req.body,
@@ -61,7 +61,7 @@ export async function updateIncomeCategory(
   req: FastifyRequest,
   reply: FastifyReply,
 ) {
-  const db = await dbCoQuyenLuongPayroll(req);
+  const db = await dbToKhaiThue(req);
   const { id } = kiemTraTkt(
     incomeCategoryIdParamsSchema,
     req.params,
@@ -79,7 +79,7 @@ export async function deleteIncomeCategory(
   req: FastifyRequest,
   reply: FastifyReply,
 ) {
-  const db = await dbCoQuyenLuongPayroll(req);
+  const db = await dbToKhaiThue(req);
   const { id } = kiemTraTkt(
     incomeCategoryIdParamsSchema,
     req.params,

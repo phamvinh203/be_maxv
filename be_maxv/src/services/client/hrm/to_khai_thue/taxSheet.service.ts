@@ -3,6 +3,7 @@ import type {
   PrismaClient,
   TaxPolicy,
 } from '../../../../generated/tenant';
+import { TO_KHAI_DA_XUAT } from '../../../../constants/hrm/to_khai_thue/chiTieuTncn05';
 import { kyLuongConMo } from '../../../../helpers/hrm/payrollPeriodLockGuard';
 import { ToKhaiThueError } from '../../../../helpers/hrm/toKhaiThueErrors';
 import type { TaxBracketItem } from '../../../../validators/hrm/cau_hinh_mac_dinh/generalSettings.validator';
@@ -29,13 +30,6 @@ type Db = PrismaClient | Prisma.TransactionClient;
 
 /** Phiên bản cách tính, ghim vào từng dòng chốt — "tách 2 phần" thu nhập ngoài lương là v1. */
 const PHIEN_BAN_BANG_THUE = 'v1';
-
-/**
- * Trạng thái tờ khai quý coi là "đã xuất": từ đó KHÔNG mở lại tháng nào trong quý được nữa.
- * `chot` là giá trị của giao diện nháp cũ còn trong cây làm việc — tính như đã xuất để không bao
- * giờ lặng lẽ mở một tờ khai đã khóa. Bỏ khi bước 6 viết lại vòng đời tờ khai.
- */
-const TO_KHAI_DA_XUAT = ['EXPORTED', 'SUBMITTED', 'chot'];
 
 function laLoiTrungKhoa(err: unknown): boolean {
   return (err as { code?: string } | null)?.code === 'P2002';
@@ -432,7 +426,7 @@ export async function unlockTaxSheet(db: PrismaClient, periodId: string) {
         nam: ky.year,
         ky_loai: 'quy',
         ky_so: quy,
-        trang_thai: { notIn: TO_KHAI_DA_XUAT },
+        trang_thai: { notIn: [...TO_KHAI_DA_XUAT] },
       },
     });
   });

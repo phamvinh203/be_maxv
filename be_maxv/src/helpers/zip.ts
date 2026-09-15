@@ -1,12 +1,13 @@
 /**
- * Đọc MỘT entry trong file ZIP nằm sẵn trong RAM. Đây KHÔNG phải thư viện ZIP đầy đủ — chỉ đủ dùng
- * cho gói `export-xml` của cổng thuế (vài trăm KB, 5 entry, nén deflate/store). Tự viết trên `zlib`
- * có sẵn của Node thay vì thêm dependency vì dự án giữ mốc 0 lỗ hổng `npm audit`.
+ * Đọc MỘT entry trong file ZIP nằm sẵn trong RAM, và GHI một ZIP nhỏ do chính máy chủ sinh ra
+ * (`taoZip` — vd file `.xlsx` tờ khai thuế). Đây KHÔNG phải thư viện ZIP đầy đủ — chỉ đủ dùng cho gói
+ * `export-xml` của cổng thuế (vài trăm KB, 5 entry, nén deflate/store) và file xuất vài chục KB. Tự
+ * viết trên `zlib` có sẵn của Node thay vì thêm dependency vì dự án giữ mốc 0 lỗ hổng `npm audit`.
  *
  * CHƯA hỗ trợ (ném lỗi rõ ràng thay vì trả dữ liệu sai): ZIP64, entry đặt mật khẩu, kiểu nén khác
  * store/deflate.
  */
-import { inflateRawSync } from "node:zlib";
+import { crc32, deflateRawSync, inflateRawSync } from "node:zlib";
 
 const EOCD_SIGNATURE = 0x06054b50;
 const CENTRAL_FILE_SIGNATURE = 0x02014b50;
@@ -188,4 +189,66 @@ export function readZipEntryByExtension(
 /** Tên mọi entry trong ZIP — để báo lỗi "trong gói có gì" mà không phải tải file về mở tay. */
 export function listZipEntryNames(zip: Buffer): string[] {
   return Array.from(duyetMucLuc(zip), (e) => e.name);
+}
+
+/** Bit 11 của "general purpose flags" = tên entry mã hóa UTF-8. */
+const FLAG_UTF8_NAME = 0x800;
+/** Ngày DOS 1980-01-01, giờ 00:00 — file xuất không cần mốc thời gian, cố định để nội dung ổn định. */
+const DOS_DATE_1980_01_01 = 0x21;
+
+/**
+ * Đóng gói các entry thành MỘT file ZIP trong RAM (nén deflate). Chỉ dành cho dữ liệu do chính máy
+ * chủ sinh, dung lượng nhỏ: KHÔNG ZIP64 (entry/tổng > 4 GB), KHÔNG mã hóa, KHÔNG thư mục rỗng.
+ */
+export function taoZip(entries: Array<{ name: string; data: Buffer }>): Buffer {
+  const phanDuLieu: Buffer[] = [];
+  const phanMucLuc: Buffer[] = [];
+  let offset = 0;
+
+  for (const { name, data } of entries) {
+    const ten = Buffer.from(name, "utf8");
+    const nen = deflateRawSync(data);
+    const crc = crc32(data);
+
+    const local = Buffer.alloc(LOCAL_HEADER_SIZE);
+    local.writeUInt32LE(LOCAL_FILE_SIGNATURE, 0);
+    local.writeUInt16LE(20, 4); // version needed to extract
+    local.writeUInt16LE(FLAG_UTF8_NAME, 6);
+    local.writeUInt16LE(METHOD_DEFLATE, 8);
+    local.writeUInt16LE(0, 10); // giờ
+    local.writeUInt16LE(DOS_DATE_1980_01_01, 12);
+    local.writeUInt32LE(crc, 14);
+    local.writeUInt32LE(nen.length, 18);
+    local.writeUInt32LE(data.length, 22);
+    local.writeUInt16LE(ten.length, 26);
+    local.writeUInt16LE(0, 28); // extra
+
+    const central = Buffer.alloc(CENTRAL_ENTRY_SIZE);
+    central.writeUInt32LE(CENTRAL_FILE_SIGNATURE, 0);
+    central.writeUInt16LE(20, 4); // version made by
+    central.writeUInt16LE(20, 6); // version needed to extract
+    central.writeUInt16LE(FLAG_UTF8_NAME, 8);
+    central.writeUInt16LE(METHOD_DEFLATE, 10);
+    central.writeUInt16LE(0, 12);
+    central.writeUInt16LE(DOS_DATE_1980_01_01, 14);
+    central.writeUInt32LE(crc, 16);
+    central.writeUInt32LE(nen.length, 20);
+    central.writeUInt32LE(data.length, 24);
+    central.writeUInt16LE(ten.length, 28);
+    // extra(30) · comment(32) · disk(34) · thuộc tính trong(36) · thuộc tính ngoài(38): để 0.
+    central.writeUInt32LE(offset, 42);
+
+    phanDuLieu.push(local, ten, nen);
+    phanMucLuc.push(central, ten);
+    offset += LOCAL_HEADER_SIZE + ten.length + nen.length;
+  }
+
+  const mucLuc = Buffer.concat(phanMucLuc);
+  const eocd = Buffer.alloc(EOCD_SIZE);
+  eocd.writeUInt32LE(EOCD_SIGNATURE, 0);
+  eocd.writeUInt16LE(entries.length, 8);
+  eocd.writeUInt16LE(entries.length, 10);
+  eocd.writeUInt32LE(mucLuc.length, 12);
+  eocd.writeUInt32LE(offset, 16);
+  return Buffer.concat([...phanDuLieu, mucLuc, eocd]);
 }

@@ -591,4 +591,35 @@
 - Liên kết: FR-tkt-009…012 · BR-tkt-010…013 · AC-tkt-017…021 · E-tkt-008/009/011/015/017/018 · ADR-013 tầng tháng · api-contract Mục 4 · GAP-QA-tkt-06 · A-tkt-05 · BUG-dltl-005.
 - Kiểm chứng: `prisma validate` ✓ · `tsc --noEmit` exit 0 · `eslint` trên file mới/sửa exit 0 · `npm test` 984 ca, 980 pass (tăng 19 so với bước 4), 4 đỏ = đúng 2 ca có sẵn TC-hrm-301/316 + 2 nhóm cha của chúng. 3 test dựng cả app (`buildApp`) vẫn chạy ⇒ 2 route mới đăng ký không trùng.
 - **Chưa có ca HTTP** — chốt/mở lại mới kiểm ở tầng service với DB giả lập.
+- Commit: `6c38845`
+
+## [2026-09-15 10:39] backend-engineer — to_khai_thue bước 6: Tờ khai thuế TNCN quý 05/KK-TNCN
+
+- Nhiệm vụ: 7 endpoint tờ khai quý (api-contract Mục 5) + 1 endpoint tải lại file (mới): xem 4 trạng thái (tự tạo dòng khi đủ 3 tháng chốt), lịch sử kỳ, ghi đè/xóa ghi đè, xuất Excel/PDF, bảng chi tiết nhân viên, đánh dấu đã nộp. Kèm cổng quyền `E-tkt-014` cho toàn sub-cụm.
+- **3 quyết định của chủ dự án trong phiên:** (1) chỉ tiêu [32] = 0 như [24]/[25] — theo nhãn mẫu là thuế khấu trừ trên phí bảo hiểm nhân thọ của DN bảo hiểm nước ngoài, còn công thức đề xuất ở data-model (Σ thuế người cư trú có HĐLĐ) sẽ điền sai số thuế lương vào ô đó; (2) thêm `GET /05-kk-tncn/file` tải lại file đã xuất — hợp đồng cũ chỉ cho tải đúng 1 lần (gọi lại ⇒ 409); (3) cho đồng bộ schema sau khi xem trước SQL.
+- MỚI (`be_maxv/src/`):
+  - `services/.../to_khai_thue/taxDeclarationCalc.ts` — HÀM THUẦN: 17 chỉ tiêu theo data-model Mục 8 (gộp theo NGƯỜI), hợp nhất ghi đè (ô tổng hợp luôn suy lại), 10 luật kiểm chéo chép nguyên từ mã nháp, kiểm ghi đè 011/012, gộp bảng chi tiết.
+  - `services/.../to_khai_thue/taxDeclaration.service.ts` — 8 thao tác; mọi đường ghi qua `moQuyDeGhi`.
+  - `services/.../to_khai_thue/taxDeclarationFile.ts` — Excel + PDF (HTML → `pdfRenderer`) cho tờ khai, Excel cho bảng chi tiết.
+  - `helpers/hrm/toKhaiThueAccess.ts` — `dbToKhaiThue` / `assertQuanTriToKhaiThue` ném `E-tkt-014`.
+  - `helpers/hrm/xlsxDonGian.ts` + `taoZip` trong `helpers/zip.ts` — ghi `.xlsx` không thêm thư viện (giữ mốc 0 lỗ hổng `npm audit`, cùng lý do với bộ đọc zip có sẵn).
+  - `constants/hrm/to_khai_thue/chiTieuTncn05.ts` — 17 mã, 13 chỉ tiêu gốc, 4 chỉ tiêu tổng hợp, nhãn in, trạng thái tờ khai.
+  - `validators/.../taxDeclaration.validator.ts`, `controllers/.../taxDeclaration.controller.ts`.
+  - Test: `hrmTaxDeclarationCalc` (11 ca), `hrmTaxDeclaration` (14 ca, DB giả lập), `hrmXlsxDonGian` (2 ca).
+- SỬA:
+  - `prisma/tenant/schema.prisma` — `hrm_to_khai_tncn05`: thêm `nop_boi`/`nop_luc`, mặc định `trang_thai` sang `READY_TO_EXPORT`, chú thích vòng đời. Đếm trước khi đổi: bảng rỗng, 0 khóa `TAX_SHEET` ⇒ không phải chuyển dữ liệu `nhap`/`chot`. SQL xem trước đúng 3 lệnh trên + 6 đối tượng trôi đã biết ⇒ `sync:tenants` rồi `hrm:constraints` (áp 14, có sẵn 2, 0 lỗi).
+  - `controllers/.../incomeCategory|otherIncomeRecord|taxSheet.controller.ts` — chuyển sang `dbToKhaiThue`/`assertQuanTriToKhaiThue`. Trước đó người không đủ quyền nhận `E-hrm-058`/lỗi không mã, trái Mục 7 hợp đồng — bỏ sót từ bước 3–5.
+  - `services/.../taxSheet.service.ts` + `__tests__/hrm/hrmTaxSheetLock.test.ts` — dùng hằng `TO_KHAI_DA_XUAT` chung, bỏ giá trị nháp `chot`.
+  - `routes/hrm/to_khai_thue/toKhaiThue.route.ts` (cây làm việc, ngoài commit) — thay 6 route nháp của tờ khai (`ghi-de`, `chot`, `mo-khoa`, `export-xml`…) bằng 8 route mới; 2 route dựng file có giới hạn tần suất.
+- Điểm đáng ghi:
+  1. **Khóa đọc 3 tháng rồi mới ghi, trong cùng giao dịch** (`FOR SHARE` các dòng khóa `TAX_SHEET`, rồi `FOR UPDATE` dòng tờ khai): đóng hẳn ca đua "mở lại tháng đúng lúc đang xuất" mà bước 5 đã ghi chú; hai người sửa ghi đè cùng lúc cũng không mất lượt ghi của nhau.
+  2. **Dựng file SAU commit**; hỏng thì 500 kèm hướng dẫn tải lại, KHÔNG lùi trạng thái (lùi là mở khóa 3 tháng trong khi bộ số đã chốt).
+  3. **Ô tổng hợp luôn suy lại**, kể cả khi dữ liệu cũ lỡ lưu ghi đè ở ô tổng — mã nháp cho ghi đè cả 17 ô (L-19).
+  4. Đánh dấu đã nộp là `updateMany` có điều kiện `trang_thai = EXPORTED`: kiểm + ghi trong một lệnh, bấm hai lần ra `E-tkt-013`.
+  5. Ngày ký mặc định lấy theo giờ Việt Nam — xuất lúc 6h sáng vẫn đúng ngày, không lùi một ngày theo UTC.
+  6. Sự cố trong phiên: chuỗi `\uXXXX` trong nội dung ghi file bị chuyển thành ký tự điều khiển thật ở `xlsxDonGian.ts` và test của nó (lint bắt được; ripgrep còn coi file có ký tự NUL là nhị phân nên bỏ qua khi tìm kiếm). Đã viết lại bằng so sánh mã số, quét lại toàn `src/` còn 0 ký tự điều khiển.
+- **Khoảng trống / chờ xác nhận:** (a) "cơ quan thuế quản lý" chưa có nơi lưu ⇒ để trống trên DTO và file; (b) phần đầu mẫu in theo tên trường, chưa đánh số [01]–[15] vì chưa đối chiếu được bản gốc Thông tư 89/2026/TT-BTC; (c) mã lỗi bổ sung ở chỗ hợp đồng chưa định nghĩa — `nam`/`quy` sai ⇒ `E-tkt-017`, ghi đè khi quý chưa đủ 3 tháng ⇒ `E-tkt-010`, tải lại file khi chưa xuất ⇒ `E-tkt-013` — đã ghi vào hợp đồng, chờ Architect xác nhận; (d) quyền mức 2 kiểm ở đầu controller thay vì `preHandler` tầng route vì file route còn là nháp.
+- Tài liệu: api-contract Mục 0.1 (cách cài quyền), 5.1, 5.3, 5.5, **5.8 mới** · data-model Mục 8 ([24] [25] [32]) · SRS OQ-tkt-05 · dev-notes Mục 1.12 · CONTEXT_SUMMARY.
+- Liên kết: FR-tkt-013…018 · BR-tkt-014…018 · AC-tkt-022…028 · TC-tkt-076…096 · E-tkt-010/011/012/013/014/017/019/020 · OQ-tkt-05 · data-model Mục 3.5, 5.3, 8.
+- Kiểm chứng: `prisma validate` ✓ · `tsc --noEmit` exit 0 · `eslint` trên file bước 6 exit 0 · `npm test` 1011 ca, 1007 pass (tăng 27), 4 đỏ = đúng 2 ca có sẵn TC-hrm-301/316 + 2 nhóm cha; 3 test dựng cả app vẫn chạy ⇒ 8 route mới đăng ký không trùng. **Chưa có ca HTTP**, chưa mở thử file Excel/PDF bằng Excel/trình đọc PDF thật.
 - Commit: chưa commit

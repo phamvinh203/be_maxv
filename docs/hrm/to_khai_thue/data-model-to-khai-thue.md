@@ -717,15 +717,15 @@ giam_tru_bao_hiem  = employeeInsuranceDeduction + min(BH hưu trí tự nguyện
 | **21** | Tổng TNCT trả cho cá nhân | Decimal | `= ct22 + ct23` | ❌ |
 | **22** | — cá nhân cư trú | Decimal | `Σ thu_nhap_chiu_thue` của người `cu_tru` | ✅ |
 | **23** | — cá nhân không cư trú | Decimal | `Σ thu_nhap_chiu_thue` của người `!cu_tru` | ✅ |
-| **24** | TNCT trả cho cá nhân thuộc diện phải khấu trừ | Decimal | **`0`** — chưa xác định được định nghĩa pháp lý | ✅ `[P-12, OQ-tkt-05]` |
-| **25** | (nt) | Decimal | **`0`** — như trên | ✅ `[P-12, OQ-tkt-05]` |
+| **24** | Trong đó: TNCT từ tiền phí mua bảo hiểm nhân thọ, bảo hiểm không bắt buộc khác của DN bảo hiểm không thành lập tại Việt Nam | Decimal | **`0`** — chưa có nguồn dữ liệu | ✅ `[P-12, OQ-tkt-05]` |
+| **25** | Trong đó: TNCT được miễn theo quy định của Hợp đồng dầu khí | Decimal | **`0`** — chưa có nguồn dữ liệu | ✅ `[P-12, OQ-tkt-05]` |
 | **26** | Tổng TNCT của cá nhân thuộc diện khấu trừ | Decimal | `= ct27 + ct28` | ❌ |
 | **27** | — cá nhân cư trú | Decimal | `Σ thu_nhap_chiu_thue` của người `cu_tru` ∧ `Σ thuế > 0` | ✅ |
 | **28** | — cá nhân không cư trú | Decimal | `Σ thu_nhap_chiu_thue` của người `!cu_tru` ∧ `Σ thuế > 0` | ✅ |
 | **29** | Tổng thuế TNCN đã khấu trừ | Decimal | `= ct30 + ct31` | ❌ |
 | **30** | — cá nhân cư trú | Decimal | `Σ tong_thue_tncn` của người `cu_tru` | ✅ |
 | **31** | — cá nhân không cư trú | Decimal | `Σ tong_thue_tncn` của người `!cu_tru` | ✅ |
-| **32** | Thuế đã khấu trừ trên TN tiền lương của cá nhân cư trú có HĐLĐ | Decimal | **`Σ tong_thue_tncn` của người `cu_tru` ∧ `loai_lao_dong = HOP_DONG_3_THANG_TRO_LEN`** `[ĐỀ XUẤT — P-12, OQ-tkt-05]` | ✅ |
+| **32** | Trong đó: Thuế TNCN đã khấu trừ trên tiền phí mua bảo hiểm nhân thọ, bảo hiểm không bắt buộc khác của DN bảo hiểm không thành lập tại Việt Nam | Decimal | **`0`** — chủ dự án chốt 2026-09-15 theo nhãn mẫu, kế toán ghi đè nếu có. Công thức đề xuất cũ (`Σ tong_thue_tncn` của người cư trú có HĐLĐ) **bỏ**: sẽ điền sai số thuế lương vào ô bảo hiểm nhân thọ | ✅ `[OQ-tkt-05]` |
 
 **Kiểm tra chéo tự động (`canh_bao`, giữ nguyên 9 luật đã có ở `toKhaiTncn05.service.ts:54-96`):**
 `ct17 ≤ ct16` · `ct18 = ct19+ct20` · `ct18 ≤ ct16` · `ct21 = ct22+ct23` · `ct26 = ct27+ct28` · `ct26 ≤ ct21` · `ct27 ≤ ct22` · `ct28 ≤ ct23` · `ct29 = ct30+ct31` · `ct32 ≤ ct30`.

@@ -191,8 +191,7 @@ test('Mở lại: tháng chưa chốt -> E-tkt-018', async () => {
 });
 
 test('Mở lại: quý đã xuất -> E-tkt-009, không xóa dòng hay tờ khai (AC-tkt-021)', async () => {
-  // `chot` là giá trị của giao diện nháp cũ — phải tính như đã xuất, không bao giờ lặng lẽ mở.
-  for (const trangThai of ['EXPORTED', 'SUBMITTED', 'chot']) {
+  for (const trangThai of ['EXPORTED', 'SUBMITTED']) {
     const { db, daGhi } = giaLapDb({
       trangThaiToKhaiQuy: ['READY_TO_EXPORT', trangThai],
     });
@@ -226,7 +225,7 @@ test('Mở lại: quý đang sẵn sàng xuất -> xóa dòng + tờ khai chưa 
   assert.equal(where.ky_so, 3, 'tháng 9 thuộc quý 3');
   assert.deepEqual(
     [...where.trang_thai.notIn].sort(),
-    ['EXPORTED', 'SUBMITTED', 'chot'].sort(),
+    ['EXPORTED', 'SUBMITTED'],
     'chỉ xóa tờ khai CHƯA xuất',
   );
 });

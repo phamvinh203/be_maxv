@@ -759,7 +759,7 @@ gọi thêm service có sẵn thay vì `db.<model>.create()` trực tiếp cho c
   thật) và mock `calculatePayrollPreview`/`ghiDeBangLuong`; mock DB của `hrmPayrollInputData.test.ts`
   phải có `payrollModuleLock.findUnique` (guard tra ở mọi đường ghi).
 
-### 1.12. Tờ khai thuế TNCN (`to_khai_thue`) — bước 1…5 (2026-09-14 → 09-15, backend-engineer)
+### 1.12. Tờ khai thuế TNCN (`to_khai_thue`) — bước 1…6 (2026-09-14 → 09-15, backend-engineer)
 
 **Mô hình trước khi đọc code** (chi tiết ở `docs/hrm/to_khai_thue/data-model-to-khai-thue.md`):
 - **Chính sách thuế theo mốc hiệu lực** (`hrm_tax_policies`, ADR-012): biểu thuế + giảm trừ của một
@@ -784,7 +784,14 @@ gọi thêm service có sẵn thay vì `db.<model>.create()` trực tiếp cho c
 | Tính dòng Bảng tính thuế | `taxSheetRows.ts::tinhBangTinhThueThang` | Hàm thuần, dùng chung cho xem Nháp VÀ lúc chốt ⇒ số thấy = số đóng băng |
 | Xem Bảng tính thuế tháng | `GET /to-khai-thue/tax-calculation` → `taxSheet.service.ts::getTaxSheet` | Có khóa ⇒ đọc snapshot; không ⇒ `getPayrollSheetLines` + bản ghi ngoài lương + hồ sơ NV |
 | Chốt tháng | `POST .../tax-calculation/lock` → `lockTaxSheet` | Kỳ lương phải `LOCKED`+; tính ngoài giao dịch, ghi khóa TRƯỚC dòng |
-| Mở lại tháng | `POST .../tax-calculation/unlock` → `unlockTaxSheet` | `assertAdminOrOwner` + lý do ≥ 20 ký tự; xóa snapshot + tờ khai chưa xuất của quý |
+| Mở lại tháng | `POST .../tax-calculation/unlock` → `unlockTaxSheet` | `assertQuanTriToKhaiThue` + lý do ≥ 20 ký tự; xóa snapshot + tờ khai chưa xuất của quý |
+| Xem tờ khai quý | `GET /to-khai-thue/05-kk-tncn` → `taxDeclaration.service.ts::getToKhai` | Chưa đủ 3 tháng chốt ⇒ không có dòng; đủ ⇒ tự tạo `READY_TO_EXPORT`, tính lại mỗi lần đọc; đã xuất ⇒ đọc nguyên |
+| Tính 17 chỉ tiêu | `taxDeclarationCalc.ts::tinhChiTieuMay` · `hopNhatGhiDe` · `kiemTraCanDoi` | Hàm thuần; gộp theo NGƯỜI; ô tổng hợp luôn suy lại; [24] [25] [32] = 0 |
+| Ghi đè / xóa ghi đè | `PUT`/`DELETE .../05-kk-tncn/overrides` → `putGhiDe` · `deleteGhiDe` | Kiểm 011/012 bằng `chuanHoaGhiDe` TRƯỚC mọi truy vấn; đã xuất ⇒ 019 |
+| Xuất · tải lại file | `POST .../export` → `xuatToKhai` rồi `taxDeclarationFile.ts::dungFileToKhai` · `GET .../file` → `layToKhaiDaXuat` | Đổi trạng thái trong giao dịch; dựng file SAU commit — hỏng thì 500 nhưng KHÔNG lùi trạng thái |
+| Bảng chi tiết · đánh dấu đã nộp · lịch sử kỳ | `detail-sheet` → `getBangChiTiet` · `mark-submitted` → `danhDauDaNop` · `periods` → `listKyToKhai` | Đánh dấu nộp là `updateMany` có điều kiện `trang_thai = EXPORTED` |
+| Quyền (mọi controller sub-cụm) | `helpers/hrm/toKhaiThueAccess.ts` — `dbToKhaiThue` · `assertQuanTriToKhaiThue` | Lỗi mang `E-tkt-014` |
+| File Excel | `helpers/hrm/xlsxDonGian.ts::taoXlsx` trên `helpers/zip.ts::taoZip` | Không thêm thư viện — giữ mốc 0 lỗ hổng `npm audit` |
 | Đếm người phụ thuộc trong kỳ | `helpers/hrm/nguoiPhuThuocTrongKy.ts::demNguoiPhuThuocTrongKy` | Engine lương CHƯA dùng — BUG-dltl-005 |
 | Lỗi nghiệp vụ | `ToKhaiThueError('E-tkt-xxx')`, kiểm đầu vào qua `toKhaiThueValidate.ts::kiemTraTkt` | Status gắn cứng theo mã ở `constants/hrm/to_khai_thue/toKhaiThueErrors.ts` |
 
@@ -798,12 +805,18 @@ gọi thêm service có sẵn thay vì `db.<model>.create()` trực tiếp cho c
   `veDongTuSnapshot` (nhánh đọc snapshot), bất biến trong `hrmTaxSheetRows.test.ts` — thiếu một chỗ là
   hai nhánh Nháp/Đã chốt lệch hình dạng.
 - Ném lỗi bằng `ToKhaiThueError(code)`, không truyền status tay.
-- Bước 6 (xuất tờ khai) phải đọc khóa `TAX_SHEET` của 3 tháng bằng `FOR SHARE` — xem data-model
-  Mục 5.3, dòng đua cuối cùng.
+- Mọi đường GHI của tờ khai quý đi qua `moQuyDeGhi`: khóa đọc 3 khóa tháng (`FOR SHARE`) rồi khóa ghi
+  dòng tờ khai (`FOR UPDATE`) trong cùng giao dịch. Đường ghi mới bỏ bước này là mở lại được một tháng
+  đúng lúc tờ khai đang được xuất (data-model Mục 5.3, dòng đua cuối cùng).
+- Tờ khai `EXPORTED`/`SUBMITTED` là bất biến: không tính lại, không ghi đè, không lùi trạng thái — kể
+  cả khi dựng file lỗi sau commit (người dùng tải lại bằng `GET .../05-kk-tncn/file`).
+- Không gọi thẳng `dbCoQuyenLuongPayroll` / `assertAdminOrOwner` trong sub-cụm này — lỗi mất mã `E-tkt-014`.
 
 **Test:** `hrmTaxPolicy` · `hrmIncomeCategory` · `hrmOtherIncomeTax` (thuần) · `hrmTaxSheetRows`
 (thuần, kiểm bất biến từng dòng) · `hrmTaxSheetLock` (DB giả lập: thứ tự kiểm lỗi, khóa ghi trước dòng,
-bị chặn thì không ghi gì). Chưa có ca HTTP.
+bị chặn thì không ghi gì) · `hrmTaxDeclarationCalc` (thuần: 17 chỉ tiêu, ghi đè, cân đối) ·
+`hrmTaxDeclaration` (DB giả lập: vòng đời 4 trạng thái, khóa đọc trước khi ghi) · `hrmXlsxDonGian`
+(đọc lại zip/xlsx bằng bộ đọc ZIP của dự án). Chưa có ca HTTP.
 
 ---
 
