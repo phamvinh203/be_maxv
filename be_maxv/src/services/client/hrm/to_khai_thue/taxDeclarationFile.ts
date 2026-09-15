@@ -125,7 +125,7 @@ table{width:100%;border-collapse:collapse}
 td,th{border:1px solid #000;padding:3pt 5pt;vertical-align:top}
 th{background:#eee}
 .giua{text-align:center}.so{text-align:right;white-space:nowrap}.dam td{font-weight:bold}
-.ky{margin-top:18pt;width:50%;margin-left:auto;text-align:center}
+.ky{margin-top:18pt;width:50%;margin-left:auto;text-align:center;break-inside:avoid;page-break-inside:avoid}
 </style></head><body>
 <h1>${TIEU_DE}</h1>
 <p class="phu">${esc(PHU_DE)}</p>

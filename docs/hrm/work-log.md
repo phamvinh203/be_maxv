@@ -622,4 +622,5 @@
 - Tài liệu: api-contract Mục 0.1 (cách cài quyền), 5.1, 5.3, 5.5, **5.8 mới** · data-model Mục 8 ([24] [25] [32]) · SRS OQ-tkt-05 · dev-notes Mục 1.12 · CONTEXT_SUMMARY.
 - Liên kết: FR-tkt-013…018 · BR-tkt-014…018 · AC-tkt-022…028 · TC-tkt-076…096 · E-tkt-010/011/012/013/014/017/019/020 · OQ-tkt-05 · data-model Mục 3.5, 5.3, 8.
 - Kiểm chứng: `prisma validate` ✓ · `tsc --noEmit` exit 0 · `eslint` trên file bước 6 exit 0 · `npm test` 1011 ca, 1007 pass (tăng 27), 4 đỏ = đúng 2 ca có sẵn TC-hrm-301/316 + 2 nhóm cha; 3 test dựng cả app vẫn chạy ⇒ 8 route mới đăng ký không trùng. **Chưa có ca HTTP**, chưa mở thử file Excel/PDF bằng Excel/trình đọc PDF thật.
-- Commit: chưa commit
+- Sau commit: dựng file mẫu (số liệu giả, không chạm DB) để kiểm độc lập — 2 file `.xlsx` mở được bằng bộ đọc zip của .NET, 12/12 phần XML phân tích hợp lệ; xem bản PDF thấy khối chữ ký bị tách trang (tên người ký rơi một mình sang trang 2) ⇒ thêm `break-inside: avoid` cho khối chữ ký ở `services/.../taxDeclarationFile.ts`, dựng lại đã liền khối. Vẫn chưa mở bằng Microsoft Excel thật.
+- Commit: `e7922ee`; phần sửa khối chữ ký ở commit ngay sau
