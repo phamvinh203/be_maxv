@@ -564,4 +564,31 @@
 - Liên kết: BR-tkt-005…009 · AC-tkt-006…015, AC-tkt-019 · E-tkt-003/004/005/006/007/016/017/021 · ADR-013 tầng bản ghi · api-contract Mục 3 · GAP-QA-tkt-01.
 - Kiểm chứng: `npm run typecheck` exit 0 · `npm run lint` 4 lỗi = baseline mã nháp, 0 lỗi mới · `npm test` 961 ca pass (tăng 13), vẫn đúng 2 ca đỏ có sẵn.
 - **Chưa có ca HTTP** (như bước 3) và **phần nối route vẫn ngoài commit** — 12 endpoint đã code (1+5+6) hiện chỉ chạy trong cây làm việc, chờ đợt viết lại route/controller sau bước 6.
+- Commit: `286284e`
+
+## [2026-09-15 09:51] backend-engineer — to_khai_thue bước 5: Bảng tính thuế tháng
+
+- Nhiệm vụ: 3 endpoint Bảng tính thuế tháng (api-contract Mục 4) — xem theo 2 nguồn (Nháp tính trực tiếp / Đã chốt đọc snapshot), chốt, mở lại — kèm ADR-013 tầng tháng (dòng snapshot + khóa `TAX_SHEET`).
+- **Quyết định của chủ dự án trong phiên — "tách 2 phần":** đặc tả đã ký để khoản `WITHHOLDING_FLAT` nằm ngoài `thu_nhap_ngoai` ⇒ dòng vãng lai ra thực nhận ÂM (thu nhập 0 − thuế đã khấu trừ) và tờ khai quý mất thu nhập ở chỉ tiêu [22]/[23]. Đã hỏi; chủ dự án chọn: khoản đó VẪN vào `thu_nhap_ngoai`/`thu_nhap_chiu_thue`, thêm cột `thu_nhap_khau_tru_rieng`, nền lũy tiến = `max(0, chịu thuế − khấu trừ riêng − giảm trừ)`. Hệ quả kéo theo: người lũy tiến có khoản khấu trừ riêng thì `thue_toan_phan` = số thuế đã khấu trừ đó (bỏ bất biến cũ `LUY_TIEN ⇒ thue_toan_phan = 0`).
+- MỚI (`be_maxv/src/`):
+  - `services/.../to_khai_thue/taxSheetRows.ts` — bộ tính dòng **HÀM THUẦN** `tinhBangTinhThueThang`: bảng quyết định 3 nhánh (data-model Mục 5.2), gộp theo người bằng `recipientKey`, dùng chung cho xem Nháp lẫn lúc chốt.
+  - `services/.../to_khai_thue/taxSheet.service.ts` — `getTaxSheet` / `lockTaxSheet` / `unlockTaxSheet`.
+  - `helpers/hrm/nguoiPhuThuocTrongKy.ts` — đếm người phụ thuộc theo kỳ đăng ký (A-tkt-05).
+  - `validators/.../taxSheet.validator.ts`, `controllers/.../taxSheet.controller.ts`.
+  - `__tests__/hrm/hrmTaxSheetRows.test.ts` (11 ca, kiểm bất biến số học trên từng dòng) + `__tests__/hrm/hrmTaxSheetLock.test.ts` (8 ca, DB giả lập).
+- SỬA:
+  - `prisma/tenant/schema.prisma` — `TaxCalculationLine.thu_nhap_khau_tru_rieng Decimal @default(0)`. Xem trước SQL: chỉ `ADD COLUMN … DEFAULT 0` + 6 đối tượng trôi đã biết ⇒ `sync:tenants` rồi `hrm:constraints` ngay sau cho `maxv_0106861880_app`: áp 14, có sẵn 2, 0 lỗi.
+  - `constants/hrm/payrollActivities.ts` + `services/.../du_lieu_tinh_luong/payrollActivity.service.ts` — 2 mã nhật ký `HRM_TAX_SHEET_LOCKED/UNLOCKED` + câu mô tả trên màn Lịch sử hoạt động.
+  - `routes/hrm/to_khai_thue/toKhaiThue.route.ts` (cây làm việc, ngoài commit) — `GET /to-khai-thue/tax-calculation` trỏ controller mới, thêm `POST …/lock` và `POST …/unlock`.
+- Điểm đáng ghi (đều là lỗi tính tiền hoặc toàn vẹn dữ liệu):
+  1. **Thời vụ/thử việc lấy thẳng thuế của engine lương**, không tính lại 10% (NFR-tkt-005). `thuc_nhan` nhánh này trừ cả BH bắt buộc — bản đầu quên vế BH, phát hiện khi đối chiếu SRS Mục 4.3, đã sửa và chốt bằng ca kiểm.
+  2. **Người phụ thuộc lọc theo kỳ đăng ký.** Engine lương hiện KHÔNG lọc (`payrollCalculation.service.ts` ~321 và ~593) ⇒ hai màn có thể lệch số người phụ thuộc. Không sửa lén engine — tách task riêng BUG-dltl-005.
+  3. **Chốt: tính ngoài giao dịch, ghi khóa TRƯỚC dòng** — hai người cùng bấm thì người sau vỡ unique ngay (409 E-tkt-018), không ai ghi đè dòng của người kia.
+  4. **Mở lại: xóa khóa trước rồi mới kiểm quý, cùng một giao dịch**; quý đã xuất ⇒ 403 E-tkt-009, lùi toàn bộ. Giá trị nháp cũ `chot` của `hrm_to_khai_tncn05` tính như đã xuất — không bao giờ lặng lẽ mở tờ khai đã khóa. Ghi chú cho bước 6: xuất tờ khai phải đọc khóa 3 tháng bằng `FOR SHARE` mới đóng hẳn ca đua.
+  5. `id` của dòng = `recipientKey` — giao diện cần `id`, còn uuid dòng snapshot đổi mỗi lần chốt lại.
+- Tài liệu: SRS Mục 4.3 + BR-tkt-007/012 · data-model Mục 3.4 (cột + bất biến), 5.1, 5.3, ghi chú P-04 · api-contract Mục 4.1 (DTO) và 4.3 (sửa "400" chép sai thành 409 `E-tkt-018` theo Mục 7; mã lỗi cho `lyDo`) · dev-notes Mục 1.12 · CONTEXT_SUMMARY.
+- **Chờ Architect/BA xác nhận:** (a) `lyDo` thiếu hoặc ngắn ⇒ 400 `E-tkt-011` (hợp đồng chưa gán mã); (b) người thời vụ/thử việc có khoản `TAXABLE_FULL` — theo data-model Mục 5.2 khoản đó không phát sinh thuế ở đâu cả; (c) người không có hợp đồng hiệu lực trong kỳ (vd đã nghỉ việc, nhận thưởng) ⇒ `tinh_tncn = false` ⇒ không tính lũy tiến — giống engine lương, nhưng có nguy cơ khấu trừ thiếu.
+- Liên kết: FR-tkt-009…012 · BR-tkt-010…013 · AC-tkt-017…021 · E-tkt-008/009/011/015/017/018 · ADR-013 tầng tháng · api-contract Mục 4 · GAP-QA-tkt-06 · A-tkt-05 · BUG-dltl-005.
+- Kiểm chứng: `prisma validate` ✓ · `tsc --noEmit` exit 0 · `eslint` trên file mới/sửa exit 0 · `npm test` 984 ca, 980 pass (tăng 19 so với bước 4), 4 đỏ = đúng 2 ca có sẵn TC-hrm-301/316 + 2 nhóm cha của chúng. 3 test dựng cả app (`buildApp`) vẫn chạy ⇒ 2 route mới đăng ký không trùng.
+- **Chưa có ca HTTP** — chốt/mở lại mới kiểm ở tầng service với DB giả lập.
 - Commit: chưa commit

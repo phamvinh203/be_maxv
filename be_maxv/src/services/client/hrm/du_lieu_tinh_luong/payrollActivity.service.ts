@@ -25,6 +25,8 @@ const LOAI_THEO_HANH_DONG: Record<HanhDongKyLuong, LoaiHoatDong> = {
   HRM_PAYROLL_MODULE_UNLOCKED: 'UNLOCK',
   HRM_PAYROLL_MODULES_LOCKED_ALL: 'LOCK',
   HRM_PAYROLL_CALCULATED: 'EDIT',
+  HRM_TAX_SHEET_LOCKED: 'LOCK',
+  HRM_TAX_SHEET_UNLOCKED: 'UNLOCK',
 };
 
 const SO_DONG_TOI_DA = 50;
@@ -63,6 +65,14 @@ function moTaHoatDong(hanhDong: HanhDongKyLuong, chiTiet: ChiTiet): string {
       return `Chốt số toàn kỳ (${docSo(chiTiet, 'count') ?? 0} bảng kê)`;
     case 'HRM_PAYROLL_CALCULATED':
       return `Đã tính lương cho ${docSo(chiTiet, 'calculatedEmployees') ?? 0} nhân viên`;
+    case 'HRM_TAX_SHEET_LOCKED':
+      return `Chốt Bảng tính thuế tháng (${docSo(chiTiet, 'count') ?? 0} dòng)`;
+    case 'HRM_TAX_SHEET_UNLOCKED': {
+      const lyDo = docChuoi(chiTiet, 'reason');
+      return lyDo
+        ? `Mở lại Bảng tính thuế tháng — lý do: ${lyDo}`
+        : 'Mở lại Bảng tính thuế tháng';
+    }
   }
 }
 

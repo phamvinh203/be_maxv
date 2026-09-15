@@ -431,7 +431,12 @@ model TaxCalculationLine {
 
   // ── Thu nhập ──
   thu_nhap_luong     Decimal @default(0) @db.Decimal(18, 2)
+  /// Mọi thu nhập ngoài lương CHỊU THUẾ của người đó trong kỳ = Σ taxableAmount + Σ grossAmount
+  /// của khoản WITHHOLDING_FLAT — khoản khấu trừ riêng NẰM TRONG cột này để lên chỉ tiêu [22]/[23].
   thu_nhap_ngoai     Decimal @default(0) @db.Decimal(18, 2)
+  /// Phần của `thu_nhap_ngoai` đã khấu trừ riêng theo tỷ lệ cố định (Σ grossAmount khoản
+  /// WITHHOLDING_FLAT) — KHÔNG vào nền lũy tiến. Quyết định "tách 2 phần", 2026-09-15.
+  thu_nhap_khau_tru_rieng Decimal @default(0) @db.Decimal(18, 2)
   tong_thu_nhap      Decimal @default(0) @db.Decimal(18, 2)
   thu_nhap_mien_thue Decimal @default(0) @db.Decimal(18, 2)
   thu_nhap_chiu_thue Decimal @default(0) @db.Decimal(18, 2)
@@ -483,12 +488,14 @@ model TaxCalculationLine {
 tong_thu_nhap      == thu_nhap_luong + thu_nhap_ngoai
 thu_nhap_chiu_thue == max(0, tong_thu_nhap - thu_nhap_mien_thue)
 tong_giam_tru      == giam_tru_ban_than + giam_tru_phu_thuoc + giam_tru_bao_hiem
-thu_nhap_tinh_thue == max(0, thu_nhap_chiu_thue - tong_giam_tru)   [chỉ nhánh LUY_TIEN]
+thu_nhap_khau_tru_rieng <= thu_nhap_ngoai
+thu_nhap_tinh_thue == max(0, thu_nhap_chiu_thue - thu_nhap_khau_tru_rieng - tong_giam_tru)   [chỉ nhánh LUY_TIEN]
 tong_thue_tncn     == thue_luy_tien + thue_toan_phan
-phuong_phap_tinh == LUY_TIEN  =>  thue_toan_phan == 0
-phuong_phap_tinh != LUY_TIEN  =>  thue_luy_tien == 0 AND tong_giam_tru == 0
+phuong_phap_tinh != LUY_TIEN  =>  thue_luy_tien == 0 AND tong_giam_tru == 0 AND thu_nhap_tinh_thue == 0
 loai_lao_dong == VANG_LAI     =>  ma_nv IS NULL AND thu_nhap_luong == 0
 ```
+
+> **Sửa 2026-09-15 (quyết định "tách 2 phần" của chủ dự án):** thêm cột `thu_nhap_khau_tru_rieng`; nền lũy tiến trừ lại phần này. **Bỏ bất biến cũ `LUY_TIEN ⇒ thue_toan_phan == 0`** — nhân viên HĐLĐ có khoản khấu trừ riêng thì `thue_toan_phan` mang đúng số thuế đã khấu trừ đó (khớp Mục 5.2); để 0 thì tờ khai quý mất số thuế. Bộ bất biến này được kiểm tự động trên từng dòng ở `hrmTaxSheetRows.test.ts`.
 
 ---
 
@@ -600,7 +607,9 @@ Kỳ tháng ĐÃ chốt (có dòng TAX_SHEET)
 ```
 thu_nhap_mien_thue = otTaxExemptAmount + lunchAllowanceExemptAmount + otherAllowanceTaxExemptAmount
 thu_nhap_luong     = grossIncome                       // thu nhập gộp từ lương chính
-thu_nhap_ngoai     = Σ taxableAmount của mọi OtherIncomeRecord trong kỳ của NGƯỜI đó
+thu_nhap_ngoai     = Σ taxableAmount + Σ grossAmount của khoản WITHHOLDING_FLAT (trong kỳ, của NGƯỜI đó)
+thu_nhap_khau_tru_rieng = Σ grossAmount của khoản WITHHOLDING_FLAT (trong kỳ, của NGƯỜI đó)
+thu_nhap_tinh_thue = max(0, thu_nhap_chiu_thue − thu_nhap_khau_tru_rieng − tong_giam_tru)   // chỉ LUY_TIEN
 giam_tru_bao_hiem  = employeeInsuranceDeduction + min(BH hưu trí tự nguyện, voluntaryPensionMonthlyCap)
                      + đóng góp từ thiện hợp lệ        // hai vế sau: chưa có nguồn nhập liệu, xem P-17
 ```
@@ -621,8 +630,8 @@ giam_tru_bao_hiem  = employeeInsuranceDeduction + min(BH hưu trí tự nguyện
 
 | Thao tác | Trong 1 transaction | Ngoài transaction |
 |---|---|---|
-| Chốt Bảng tính thuế tháng | kiểm kỳ lương `LOCKED`+ → `deleteMany` dòng cũ của kỳ → `createMany` dòng mới → `create` khóa `TAX_SHEET` | `ghiNhatKyKyLuong(...)` (nhật ký), tính toán thuần |
-| Mở lại Bảng tính thuế tháng | kiểm quý chưa `EXPORTED` → `delete` khóa `TAX_SHEET` → `deleteMany` dòng của kỳ | nhật ký |
+| Chốt Bảng tính thuế tháng | `create` khóa `TAX_SHEET` (trùng ⇒ 409 `E-tkt-018`) → `deleteMany` dòng cũ của kỳ → `createMany` dòng mới. Khóa ghi **trước**: người bấm sau vỡ unique ngay, không phí công ghi dòng | kiểm kỳ lương `LOCKED`+, tính toán thuần, `ghiNhatKyKyLuong(...)` |
+| Mở lại Bảng tính thuế tháng | `delete` khóa `TAX_SHEET` (0 dòng ⇒ 409 `E-tkt-018`) → kiểm quý chưa xuất (đã xuất ⇒ 403 `E-tkt-009`, lùi cả giao dịch) → `deleteMany` dòng của kỳ → `deleteMany` tờ khai chưa xuất của quý (GAP-QA-tkt-06) | nhật ký |
 | Xuất tờ khai quý | kiểm đủ 3 khóa `TAX_SHEET` → `upsert` tờ khai (`ct_may`, `ct`, `canh_bao`, `trang_thai=EXPORTED`, `khoa_so_*`) | **kết xuất Excel/PDF (Puppeteer)** — tuyệt đối không nằm trong transaction, render mất vài giây sẽ giữ khóa hàng |
 | Ghi đè chỉ tiêu | `update` `ghi_de` + tính lại `ct` + 3 cột bóc tách | — |
 | Đánh dấu đã nộp | `update` `trang_thai=SUBMITTED`, `nop_boi`, `nop_luc` | — |
@@ -633,8 +642,9 @@ giam_tru_bao_hiem  = employeeInsuranceDeduction + min(BH hưu trí tự nguyện
 |---|---|
 | 2 người cùng bấm Chốt 1 tháng | `@@unique([periodId, module])` của `PayrollModuleLock` ⇒ `P2002` ⇒ **409** |
 | 2 người cùng tạo bản ghi trùng | unique index `hrm_oir_chong_trung` ⇒ `P2002` ⇒ **409 E-tkt-005** |
-| Chốt tháng trong khi có người đang thêm thu nhập ngoài lương | Cùng transaction: dòng khóa ghi sau, `createMany` đọc dữ liệu ở mức cô lập mặc định của Prisma (`READ COMMITTED`). Ca hiếm chấp nhận được — bản ghi lọt sau sẽ bị chặn ghi ngay lần sau và kế toán Mở lại để tính lại |
+| Chốt tháng trong khi có người đang thêm thu nhập ngoài lương | Dòng được tính ngay trước giao dịch ghi khóa (mức cô lập mặc định `READ COMMITTED`) ⇒ khoản thêm vào đúng khoảng giữa lúc tính và lúc khóa có hiệu lực sẽ không có trong snapshot. Ca hiếm chấp nhận được — bản ghi lọt sau sẽ bị chặn sửa ngay lần sau và kế toán Mở lại để tính lại |
 | 2 người cùng xuất 1 tờ khai quý | PK `(nam, ky_loai, ky_so, so_lan)` + `upsert` có điều kiện `trang_thai = READY_TO_EXPORT` ⇒ người thứ hai nhận **409** |
+| Mở lại 1 tháng đúng lúc người khác xuất tờ khai quý | Mở lại xóa dòng khóa `TAX_SHEET` trước khi kiểm quý, trong cùng giao dịch ⇒ giữ khóa hàng tới lúc xong. **Bước xuất phải đọc khóa 3 tháng bằng `SELECT … FOR SHARE`** — đọc thường ở `READ COMMITTED` không thấy lệnh xóa chưa commit và vẫn xuất được (ghi chú cho bước 6, 2026-09-15) |
 
 **Yêu cầu nhất quán (consistency):** Bảng tính thuế **chỉ** được chốt khi kỳ lương gốc đã `LOCKED` trở lên (E-tkt-008) — kỳ còn mở thì `calculatePayrollPreview` cho ra số khác nhau mỗi lần gọi, chốt lên số động là chốt lên cát.
 
@@ -777,6 +787,8 @@ SRS Mục 4.3 định nghĩa `thuc_nhan = tong_thu_nhap − tong_thue_tncn − B
 Hệ quả: cột này sẽ **lệch với cột "Thực nhận" của Bảng lương** trên cùng một nhân viên, cùng một tháng, và kế toán chắc chắn sẽ hỏi vì sao. Đề nghị: đổi tên thành `thu_nhap_sau_thue` và ghi rõ đây là góc nhìn thuế, hoặc bỏ hẳn cột (Bảng lương đã có "Thực lĩnh" đúng nghĩa).
 
 > **Kết luận BA (2026-09-14):** giữ tên field `thuc_nhan` (tránh đổi schema đã code), nhưng SRS đã ghi rõ đây KHÔNG phải "Thực lĩnh" của Bảng lương — khác phạm vi (không gồm khoản miễn/khấu trừ riêng, không trừ đoàn phí/ứng-bù trừ).
+>
+> **Cập nhật 2026-09-15 (tách 2 phần):** gạch đầu dòng thứ ba ở trên không còn đúng — khoản `WITHHOLDING_FLAT` nay nằm trong `thu_nhap_ngoai`, nên có mặt trong `tong_thu_nhap` và `thuc_nhan`. Phần khác biệt với "Thực lĩnh" chỉ còn: khoản miễn, đoàn phí, ứng/bù trừ.
 
 **P-05 — `thue_toan_phan` có đường đếm thuế hai lần.**
 

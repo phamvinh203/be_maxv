@@ -759,6 +759,52 @@ gọi thêm service có sẵn thay vì `db.<model>.create()` trực tiếp cho c
   thật) và mock `calculatePayrollPreview`/`ghiDeBangLuong`; mock DB của `hrmPayrollInputData.test.ts`
   phải có `payrollModuleLock.findUnique` (guard tra ở mọi đường ghi).
 
+### 1.12. Tờ khai thuế TNCN (`to_khai_thue`) — bước 1…5 (2026-09-14 → 09-15, backend-engineer)
+
+**Mô hình trước khi đọc code** (chi tiết ở `docs/hrm/to_khai_thue/data-model-to-khai-thue.md`):
+- **Chính sách thuế theo mốc hiệu lực** (`hrm_tax_policies`, ADR-012): biểu thuế + giảm trừ của một
+  kỳ tra theo `period.startDate`, không theo ngày chi trả — cả tháng dùng đúng một biểu.
+- **Hai tầng snapshot bất biến** (ADR-013): (1) bản ghi thu nhập ngoài lương chụp nhóm xử lý thuế +
+  phần miễn/chịu thuế lúc lưu — sửa danh mục sau không đổi ngược số cũ; (2) `hrm_tax_calculation_lines`
+  CHỈ có dòng khi tháng đã chốt — chưa chốt thì tính trực tiếp mỗi lần đọc.
+- **Dòng bảng tính thuế là theo NGƯỜI**: `recipientKey` = `ma_nv`, hoặc `'VL:' + lower(trim(họ tên))`
+  với cá nhân vãng lai — không theo bản ghi.
+- **Thu nhập ngoài lương tách 2 phần** (chủ dự án chốt 2026-09-15): phần cộng lũy tiến
+  (`taxableAmount`) và phần khấu trừ riêng (gross khoản `WITHHOLDING_FLAT`). Cả hai nằm trong
+  `thu_nhap_ngoai`; chỉ phần đầu vào nền lũy tiến.
+- Khóa tháng dùng `hrm_payroll_module_locks` mã `TAX_SHEET`, cố ý KHÔNG nằm trong 12 bảng kê của màn
+  Chốt kỳ lương — "Chốt toàn kỳ" không được chốt luôn bảng thuế.
+
+| Thao tác | Route → hàm | Ghi chú |
+|---|---|---|
+| Tra chính sách thuế của kỳ | `taxPolicy.service.ts::resolveTaxPolicy(db, period.startDate)` | Thiếu dòng ⇒ 500 `E-tkt-015` kèm lệnh `npm run hrm:seed-thue` |
+| Danh mục loại thu nhập (5 endpoint) | `/to-khai-thue/income-categories` → `incomeCategory.service.ts` | Mã `TNxx` tự sinh: quét lỗ hổng + thử lại khi trùng |
+| Tính thuế 1 bản ghi | `otherIncomeTax.ts::tinhThueThuNhapNgoaiLuong` | Hàm thuần — nơi DUY NHẤT có công thức 4 nhóm |
+| Bản ghi thu nhập ngoài lương (6 endpoint) | `otherIncomeRecord.service.ts` | ⚠️ Route vẫn trỏ controller nháp tới bước 7 |
+| Tính dòng Bảng tính thuế | `taxSheetRows.ts::tinhBangTinhThueThang` | Hàm thuần, dùng chung cho xem Nháp VÀ lúc chốt ⇒ số thấy = số đóng băng |
+| Xem Bảng tính thuế tháng | `GET /to-khai-thue/tax-calculation` → `taxSheet.service.ts::getTaxSheet` | Có khóa ⇒ đọc snapshot; không ⇒ `getPayrollSheetLines` + bản ghi ngoài lương + hồ sơ NV |
+| Chốt tháng | `POST .../tax-calculation/lock` → `lockTaxSheet` | Kỳ lương phải `LOCKED`+; tính ngoài giao dịch, ghi khóa TRƯỚC dòng |
+| Mở lại tháng | `POST .../tax-calculation/unlock` → `unlockTaxSheet` | `assertAdminOrOwner` + lý do ≥ 20 ký tự; xóa snapshot + tờ khai chưa xuất của quý |
+| Đếm người phụ thuộc trong kỳ | `helpers/hrm/nguoiPhuThuocTrongKy.ts::demNguoiPhuThuocTrongKy` | Engine lương CHƯA dùng — BUG-dltl-005 |
+| Lỗi nghiệp vụ | `ToKhaiThueError('E-tkt-xxx')`, kiểm đầu vào qua `toKhaiThueValidate.ts::kiemTraTkt` | Status gắn cứng theo mã ở `constants/hrm/to_khai_thue/toKhaiThueErrors.ts` |
+
+**TUYỆT ĐỐI:**
+- Không tính lại thuế 10% của người thời vụ/thử việc trong Bảng tính thuế — lấy thẳng
+  `personalIncomeTax` của engine lương (NFR-tkt-005).
+- Không viết công thức thuế bản ghi ở chỗ thứ hai, kể cả FE — dùng `POST /other-income/preview`.
+- Không cộng khoản `WITHHOLDING_FLAT` vào nền lũy tiến; không để `thue_toan_phan = 0` cho người lũy
+  tiến có khoản khấu trừ riêng (tờ khai quý sẽ mất số thuế).
+- Thêm cột vào `hrm_tax_calculation_lines` phải thêm đủ 3 chỗ: `DongBangTinhThueTinh` (bộ tính),
+  `veDongTuSnapshot` (nhánh đọc snapshot), bất biến trong `hrmTaxSheetRows.test.ts` — thiếu một chỗ là
+  hai nhánh Nháp/Đã chốt lệch hình dạng.
+- Ném lỗi bằng `ToKhaiThueError(code)`, không truyền status tay.
+- Bước 6 (xuất tờ khai) phải đọc khóa `TAX_SHEET` của 3 tháng bằng `FOR SHARE` — xem data-model
+  Mục 5.3, dòng đua cuối cùng.
+
+**Test:** `hrmTaxPolicy` · `hrmIncomeCategory` · `hrmOtherIncomeTax` (thuần) · `hrmTaxSheetRows`
+(thuần, kiểm bất biến từng dòng) · `hrmTaxSheetLock` (DB giả lập: thứ tự kiểm lỗi, khóa ghi trước dòng,
+bị chặn thì không ghi gì). Chưa có ca HTTP.
+
 ---
 
 ## 2. Frontend (`hdđt_maxv`)

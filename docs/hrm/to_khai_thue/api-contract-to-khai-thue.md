@@ -347,11 +347,14 @@ interface BangTinhThueTongHopDto {
   };
   kpi: { tongNguoiLaoDong: number; tongThuNhapChiuThue: number;
          tongGiamTruGiaCanh: number; tongThueTncn: number };
-  danhSach: DongBangTinhThueDto[];        // 25 trường, khớp data-model Mục 3.4
+  danhSach: DongBangTinhThueDto[];        // 25 trường (gồm id + thu_nhap_khau_tru_rieng), khớp data-model Mục 3.4
 }
 ```
 
-`DongBangTinhThueDto` = đúng các cột của `hrm_tax_calculation_lines` (bỏ `id`/`periodId`/`recipientKey`/`taxPolicyId`/`engineVersion`/`lockedAt`), giữ **nguyên tên Vietnamese-snake** khớp `types/toKhaiThue.ts:77-104`.
+`DongBangTinhThueDto` = đúng các cột của `hrm_tax_calculation_lines` (bỏ `periodId`/`taxPolicyId`/`engineVersion`/`lockedByUserId`/`lockedAt`/`createdAt`), giữ **nguyên tên Vietnamese-snake** khớp `types/toKhaiThue.ts:77-104`.
+
+- **`id` = `recipientKey`** (không phải uuid của dòng snapshot — uuid đó đổi mỗi lần chốt lại): ổn định cả khi tháng chuyển Nháp sang Đã chốt, nên giao diện giữ được dòng đang chọn. `[làm rõ 2026-09-15]`
+- **`thu_nhap_khau_tru_rieng`** `[MỚI 2026-09-15 — quyết định tách 2 phần]`: phần thu nhập đã khấu trừ riêng, nằm trong `thu_nhap_ngoai` nhưng không vào nền lũy tiến. `types/toKhaiThue.ts` phía giao diện **chưa có** trường này.
 
 **Hai nguồn dữ liệu, một hình dạng phản hồi:**
 
@@ -388,12 +391,13 @@ interface BangTinhThueTongHopDto {
 
 ### 4.3. `POST /to-khai-thue/tax-calculation/unlock` — Mở lại (FR-tkt-012)
 
-**Body** `{ periodId: string, lyDo: string }` (`lyDo` ≥ 20 ký tự — cùng chuẩn `reopen` kỳ lương, `payrollPeriods.service.ts:207`) · **Quyền `assertAdminOrOwner`**.
+**Body** `{ periodId: string, lyDo: string }` (`lyDo` ≥ 20 ký tự — cùng chuẩn `reopen` kỳ lương, `payrollPeriods.service.ts:207`; thiếu hoặc ngắn hơn ⇒ **400 `E-tkt-011`** — mã gần nghĩa nhất trong 21 mã, backend chọn 2026-09-15, chờ Architect xác nhận) · **Quyền `assertAdminOrOwner`**.
 
 ```
-1. chưa có khóa TAX_SHEET                            -> 400 E-tkt-018
-2. quý chứa tháng có tờ khai trang_thai != READY_TO_EXPORT
+1. chưa có khóa TAX_SHEET                            -> 409 E-tkt-018   (status theo Mục 7; "400" cũ ở dòng này là lỗi chép)
+2. quý chứa tháng có tờ khai đã xuất (EXPORTED | SUBMITTED)
                                                      -> 403 E-tkt-009  (AC-tkt-021)
+   (tới bước 6 di trú trạng thái: giá trị nháp cũ `chot` tính như đã xuất, `nhap` như chưa xuất)
 3. [TRANSACTION] delete khóa TAX_SHEET; deleteMany dòng bảng tính thuế của kỳ;
      NẾU quý chứa tháng đó đang READY_TO_EXPORT -> xóa luôn dòng hrm_to_khai_tncn05
      (BR-tkt-013 sửa 2026-09-14 — tránh dữ liệu treo sai trạng thái, xem GAP-QA-tkt-06)

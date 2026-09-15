@@ -2050,7 +2050,16 @@ model TaxCalculationLine {
 
   // ── Thu nhập ──
   thu_nhap_luong     Decimal @default(0) @db.Decimal(18, 2)
+  /// Thu nhập ngoài lương CHỊU THUẾ của người đó trong tháng = phần cộng lũy tiến (`Σ taxableAmount`:
+  /// nhóm TAXABLE_FULL + phần vượt trần EXEMPT_CAPPED) + `thu_nhap_khau_tru_rieng` bên dưới.
   thu_nhap_ngoai     Decimal @default(0) @db.Decimal(18, 2)
+  /// Phần của `thu_nhap_ngoai` đã KHẤU TRỪ RIÊNG tại nguồn (nhóm WITHHOLDING_FLAT, `Σ grossAmount`).
+  /// Vẫn là thu nhập chịu thuế (có trong `thu_nhap_chiu_thue`, lên tờ khai ở ct22/ct23) nhưng KHÔNG
+  /// cộng vào nền tính lũy tiến — thuế của nó đã nằm ở `thue_toan_phan`. Thiếu cột này thì dòng vãng
+  /// lai hiện thực nhận âm và tờ khai quý mất thu nhập khấu trừ tại nguồn; cộng lẫn vào nền lũy tiến
+  /// thì đánh thuế hai lần. Chủ dự án chốt phương án "tách 2 phần" ngày 2026-09-15.
+  /// Bất biến: thu_nhap_tinh_thue == max(0, thu_nhap_chiu_thue − thu_nhap_khau_tru_rieng − tong_giam_tru).
+  thu_nhap_khau_tru_rieng Decimal @default(0) @db.Decimal(18, 2)
   tong_thu_nhap      Decimal @default(0) @db.Decimal(18, 2)
   thu_nhap_mien_thue Decimal @default(0) @db.Decimal(18, 2)
   thu_nhap_chiu_thue Decimal @default(0) @db.Decimal(18, 2)

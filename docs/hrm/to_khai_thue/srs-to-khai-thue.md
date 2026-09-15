@@ -128,7 +128,8 @@ Tab `to-khai-quyet-toan` (quyết toán năm, mẫu 05/QTT-TNCN) · Tab `doi-soa
 | `cu_tru` | Tính lúc đọc | Cờ cá nhân cư trú |
 | `so_nguoi_phu_thuoc` | Tính lúc đọc | Số người phụ thuộc hợp lệ trong tháng, tra `hrm_nguoi_phu_thuoc` theo kỳ đăng ký — chỉ áp dụng khi `loai_lao_dong = HOP_DONG_3_THANG_TRO_LEN` |
 | `thu_nhap_luong` | Tính từ `payrollCalculation`/`hrm_payroll_sheet_lines` | Thu nhập chịu thuế từ bảng lương chính trong tháng |
-| `thu_nhap_ngoai` | Tính từ `hrm_other_income_records` nhóm `TAXABLE_FULL` (+ phần vượt trần của `EXEMPT_CAPPED`) | Tổng thu nhập ngoài lương phải cộng lũy tiến trong tháng |
+| `thu_nhap_ngoai` | Tính từ `hrm_other_income_records`: nhóm `TAXABLE_FULL` + phần vượt trần của `EXEMPT_CAPPED` + **toàn bộ khoản `WITHHOLDING_FLAT` theo số gross** `[SỬA 2026-09-15]` | Tổng thu nhập ngoài lương chịu thuế trong tháng — gồm cả khoản đã khấu trừ riêng, để tờ khai quý báo đủ thu nhập ở chỉ tiêu [22]/[23] |
+| `thu_nhap_khau_tru_rieng` `[MỚI 2026-09-15]` | = Σ gross các khoản `WITHHOLDING_FLAT` của người đó trong tháng | Phần của `thu_nhap_ngoai` đã khấu trừ riêng theo tỷ lệ cố định — **không** cộng vào nền lũy tiến (BR-tkt-001) |
 | `tong_thu_nhap` | = `thu_nhap_luong` + `thu_nhap_ngoai` | |
 | `thu_nhap_mien_thue` | Tính | Tổng phần miễn thuế đã loại trừ khỏi lương chính (OT vượt chuẩn BR-dltl-025, phụ cấp vượt trần miễn theo cấu hình) |
 | `thu_nhap_chiu_thue` | = `tong_thu_nhap` − `thu_nhap_mien_thue` | |
@@ -136,10 +137,10 @@ Tab `to-khai-quyet-toan` (quyết toán năm, mẫu 05/QTT-TNCN) · Tab `doi-soa
 | `giam_tru_phu_thuoc` | = `so_nguoi_phu_thuoc` × `GeneralSetting.dependentDeduction` hiệu lực tại kỳ | nt |
 | `giam_tru_bao_hiem` | BH bắt buộc NLĐ đóng + BH hưu trí tự nguyện (tối đa 3.000.000đ/tháng, BR-tkt-010) + từ thiện/nhân đạo/khuyến học hợp lệ trong năm | nt |
 | `tong_giam_tru` | = 3 dòng trên cộng lại | Chỉ khác 0 khi `phuong_phap_tinh = LUY_TIEN` |
-| `thu_nhap_tinh_thue` | = max(0, `thu_nhap_chiu_thue` − `tong_giam_tru`) | Chỉ áp cho nhánh lũy tiến |
+| `thu_nhap_tinh_thue` | = max(0, `thu_nhap_chiu_thue` − `thu_nhap_khau_tru_rieng` − `tong_giam_tru`) `[SỬA 2026-09-15]` | Chỉ áp cho nhánh lũy tiến |
 | `phuong_phap_tinh` | Tính | `LUY_TIEN` / `KHAU_TRU_10` / `KHAU_TRU_20` (ngoài phạm vi) / `CAM_KET_08` / `DUOI_NGUONG` |
 | `thue_luy_tien` | = biểu BR-hrm-081 áp cho `thu_nhap_tinh_thue` | 0 nếu phương pháp khác |
-| `thue_toan_phan` | = Σ `taxWithheld` của mọi khoản khấu trừ cố định trong tháng của người đó (từ `hrm_other_income_records` nhóm `WITHHOLDING_FLAT` + từ chính lương nếu `loai_lao_dong = THOI_VU_THU_VIEC` theo BR-dltl-026) | 0 nếu phương pháp lũy tiến |
+| `thue_toan_phan` | = Σ `taxWithheld` của mọi khoản khấu trừ cố định trong tháng của người đó (từ `hrm_other_income_records` nhóm `WITHHOLDING_FLAT` + từ chính lương nếu `loai_lao_dong = THOI_VU_THU_VIEC` theo BR-dltl-026) | Nhánh lũy tiến: chỉ còn thuế đã khấu trừ riêng của khoản `WITHHOLDING_FLAT` (0 nếu người đó không có khoản nào) `[SỬA 2026-09-15]` |
 | `tong_thue_tncn` | = `thue_luy_tien` + `thue_toan_phan` | |
 | `thuc_nhan` | = `tong_thu_nhap` − `tong_thue_tncn` − BH bắt buộc (đã trừ trong lương) | |
 | `status` | Kế thừa khóa của kỳ tháng (BR-tkt-013) | `DRAFT` / `LOCKED` |
@@ -220,6 +221,9 @@ Nếu categoryGroup = WITHHOLDING_FLAT:
       grossAmount = round(soTienChiTra / (1 − rate/100))
       taxWithheld = grossAmount − soTienChiTra
       netAmount   = soTienChiTra
+  # [SỬA 2026-09-15 — tách 2 phần] grossAmount của MỌI khoản nhóm này (kể cả Cam kết 08, dưới ngưỡng)
+  # CỘNG vào thu_nhap_ngoai VÀ thu_nhap_khau_tru_rieng của Bảng tính thuế tháng: có mặt ở chỉ tiêu
+  # thu nhập của tờ khai quý, nhưng KHÔNG vào nền lũy tiến (thu_nhap_tinh_thue trừ lại phần này)
 ```
 
 **BR-tkt-008** — Khấu trừ riêng 10% (nhóm `WITHHOLDING_FLAT`): áp dụng khi chi trả **≥5.000.000đ/lần** (tăng từ 2tr, NĐ 253/2026/NĐ-CP Điều 50 khoản 2, hiệu lực 01/07/2026). Dưới 5.000.000đ/lần: không khấu trừ, trừ khi cá nhân yêu cầu khấu trừ (`forceWithholding`, kế toán bật tay), hoặc cá nhân có Cam kết 08/CK-TNCN (chỉ 1 nguồn thu nhập, có MST, ước tính cả năm sau giảm trừ chưa đến mức nộp thuế) → tạm không khấu trừ. Cam kết 08 chỉ hợp lệ khi **đồng thời** đủ 3 điều kiện: danh mục thuộc nhóm `WITHHOLDING_FLAT`, cá nhân cư trú (`isResident=true`), và có mã số thuế — thiếu bất kỳ điều kiện nào đều trả **E-tkt-006** (mở rộng ngữ nghĩa, không chỉ riêng ca thiếu MST).
@@ -232,7 +236,7 @@ Nếu categoryGroup = WITHHOLDING_FLAT:
 
 **Xác nhận BA Final Sign-off 2026-09-14**: hợp đồng **khoán** (`loai_hd = khoan`) đi đúng nhánh `HOP_DONG_3_THANG_TRO_LEN`/`LUY_TIEN` như định nghĩa trên (không thuộc {thu_viec, thoi_vu}) — quyết định này đóng luôn `EC-dltl-07` của `srs-du-lieu-tinh-luong.md` với cùng kết luận. `EC-dltl-06` (hợp đồng `xac_dinh` <3 tháng) là câu hỏi KHÁC, vẫn treo, không bị ảnh hưởng.
 
-**BR-tkt-012** — Công thức tổng Bảng tính thuế tháng (áp dụng nhánh `LUY_TIEN`): Thuế TNCN phải nộp = (Tổng thu nhập chịu thuế trong kỳ − BH bắt buộc − Giảm trừ gia cảnh − Giảm trừ khác) × biểu lũy tiến `BR-hrm-081` (5 bậc: 10tr–5%, 30tr–10%, 60tr–20%, 100tr–30%, bậc mở–35%; giảm trừ gia cảnh 15.500.000đ bản thân + 6.200.000đ/người phụ thuộc theo `BR-hrm-080`…`084`).
+**BR-tkt-012** — Công thức tổng Bảng tính thuế tháng (áp dụng nhánh `LUY_TIEN`): Thuế TNCN phải nộp = (Tổng thu nhập chịu thuế trong kỳ − Thu nhập đã khấu trừ riêng `[SỬA 2026-09-15]` − BH bắt buộc − Giảm trừ gia cảnh − Giảm trừ khác) × biểu lũy tiến `BR-hrm-081` (5 bậc: 10tr–5%, 30tr–10%, 60tr–20%, 100tr–30%, bậc mở–35%; giảm trừ gia cảnh 15.500.000đ bản thân + 6.200.000đ/người phụ thuộc theo `BR-hrm-080`…`084`).
 
 **BR-tkt-013** — Vòng đời chốt/mở lại Bảng tính thuế tháng: hệ thống tự tính (trạng thái Nháp) khi có đủ dữ liệu lương + thu nhập ngoài lương của tháng; kế toán xác nhận Chốt số liệu (Nháp → Đã chốt) — không còn sửa thu nhập ngoài lương của tháng đó; Mở lại (Đã chốt → Nháp) chỉ được phép khi kỳ khai quý chứa tháng đó CHƯA "Đã xuất tờ khai". **`[SỬA 2026-09-14 — giải quyết mâu thuẫn BR-tkt-013/BR-tkt-014 do QA phát hiện]`** Nếu quý chứa tháng đó đang ở trạng thái "Sẵn sàng xuất" (chưa xuất) tại thời điểm Mở lại, hệ thống PHẢI xóa luôn bản ghi Tờ khai quý đó trong cùng giao dịch, để tự động quay về "Chưa sẵn sàng" thay vì để lại dữ liệu treo sai trạng thái. **Đề xuất kỹ thuật (không bắt buộc):** tái sử dụng cơ chế "Chốt số bảng kê" hiện có (`hrm_payroll_module_locks`, enum `PayrollModuleCode`) đã dùng cho 8 phân hệ nhập liệu khác của cùng kỳ lương, thêm 1 giá trị enum mới, thay vì tạo bảng khóa riêng.
 
