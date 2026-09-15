@@ -28,7 +28,6 @@ function dong(g: Partial<DongThueQuy> = {}): DongThueQuy {
     thu_nhap_luong: 0,
     thu_nhap_ngoai: 0,
     thu_nhap_khau_tru_rieng: 0,
-    tong_thu_nhap: 0,
     thu_nhap_mien_thue: 0,
     thu_nhap_chiu_thue: 0,
     giam_tru_ban_than: 0,
@@ -40,6 +39,8 @@ function dong(g: Partial<DongThueQuy> = {}): DongThueQuy {
     thue_toan_phan: 0,
     tong_thue_tncn: 0,
     ...g,
+    // Dữ liệu thật luôn có tổng thu nhập ≥ thu nhập chịu thuế — không nêu thì lấy bằng TNCT.
+    tong_thu_nhap: g.tong_thu_nhap ?? g.thu_nhap_chiu_thue ?? 0,
   };
 }
 
@@ -102,6 +103,26 @@ test('Mục 8: đếm NGƯỜI một lần qua 3 tháng, cộng dồn tiền; [2
   assert.equal(ct.ct25, 0);
   assert.equal(ct.ct32, 0, 'chủ dự án chốt 2026-09-15: [32] không tự tính');
   assert.deepEqual(kiemTraCanDoi(ct), [], 'số máy tự tính luôn cân đối');
+});
+
+test('ISSUE-tkt-002: [16]/[17] chỉ đếm người ĐƯỢC TRẢ thu nhập trong quý', () => {
+  const ct = tinhChiTieuMay([
+    ...QUY_III,
+    // Hợp đồng từ quý sau: vẫn có dòng 0 đồng cả 3 tháng trên Bảng tính thuế tháng.
+    ...[7, 8, 9].map((thang) =>
+      dong({ thang, recipientKey: 'NV0009', ma_nv: 'NV0009' }),
+    ),
+    // Vào làm tháng 9: tháng 7 là dòng 0 đồng, tháng 9 có lương dưới mức chịu thuế.
+    dong({ thang: 7, recipientKey: 'NV0010', ma_nv: 'NV0010' }),
+    dong({
+      thang: 9,
+      recipientKey: 'NV0010',
+      ma_nv: 'NV0010',
+      tong_thu_nhap: 8_000_000,
+    }),
+  ]);
+  assert.equal(ct.ct16, 4, '3 người của QUY_III + NV0010; NV0009 không được trả đồng nào');
+  assert.equal(ct.ct17, 2, 'NV0001 + NV0010');
 });
 
 test('Cư trú phải đúng ở MỌI tháng có mặt — lệch một tháng là xếp không cư trú', () => {

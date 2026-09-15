@@ -2,7 +2,7 @@
 type: test-cases
 feature: hrm-to-khai-thue
 status: draft
-updated: 2026-09-14
+updated: 2026-09-15
 author: tester-qa
 links:
   - docs/hrm/to_khai_thue/srs-to-khai-thue.md
@@ -12,6 +12,7 @@ links:
 # HR — TEST CASES: Thu nhập ngoài lương, Bảng tính thuế & Tờ khai thuế TNCN (`to_khai_thue`)
 
 > **Giai đoạn**: Phase A — thiết kế, CHƯA CHẠY. Cột "Kết quả mong đợi" viết theo SRS; **Actual Result / Status để TRỐNG có chủ đích**, điền ở Phase B. Không ca nào ở đây được đánh PASS.
+> **Phase B (2026-09-15)**: đã chạy tự động qua API thật (`be_maxv/src/__tests__/hrm/hrmToKhaiThueApi.test.ts`). Kết quả từng ca ở `test-report-to-khai-thue.md`, lỗi ở `issues-and-bugs-to-khai-thue.md`. Đường dẫn/trường trong các bảng dưới vẫn là bản suy đoán lúc thiết kế — bản chạy dùng đường và trường của `api-contract-to-khai-thue.md` (TC-tkt-124); chỗ hợp đồng chốt khác bộ ca được liệt kê ở báo cáo Mục 5.
 > **Quy ước áp dụng cho mọi ca** (suy đoán từ `docs/hrm/qa/test-matrix.md` Mục 2 lúc thiết kế — nay đã có `api-contract-to-khai-thue.md` chính thức, xem cảnh báo cập nhật ở `test-matrix-to-khai-thue.md` Mục 9 điểm 6, cần rà lại path trước khi chạy Phase B):
 > - Base path `/api/v1/hrm/to-khai-thue/...` (suy đoán); xác thực cookie access httpOnly.
 > - Thành công: `POST`→**201**, `GET/PUT/PATCH/DELETE`→**200**; vỏ `{ "success": true, "data": … }`.
@@ -263,8 +264,8 @@ links:
 
 | ID | Gap | Kịch bản | Ghi chú giả định | Ưu tiên |
 |---|---|---|---|:--:|
-| TC-tkt-117 | GAP-QA-tkt-03 | Tạo danh mục `WITHHOLDING_FLAT` với `withholdingRate=100` | *(giả định)* Nên bị chặn ngay lúc TẠO DANH MỤC (400) — phòng ngừa từ gốc, tốt hơn để lỗi xảy ra lúc tính bản ghi (xem TC-tkt-047) | P0 |
-| TC-tkt-118 | GAP-QA-tkt-03 | Tạo danh mục `WITHHOLDING_FLAT` với `withholdingRate=0` | *(giả định)* 0% về bản chất là "không khấu trừ gì" — có thể HỢP LỆ (tương đương EXEMPT nhưng khai báo qua nhóm khác) hoặc bị chặn vì vô nghĩa; test PHƠI BÀY hành vi thật, không khẳng định trước | P2 |
+| TC-tkt-117 | GAP-QA-tkt-03 | Tạo danh mục `WITHHOLDING_FLAT` với `withholdingRate=100` | ~~*(giả định)* Nên bị chặn ngay lúc TẠO DANH MỤC (400)~~ `[SỬA Phase B 2026-09-15]` **201** — `api-contract-to-khai-thue.md` Mục 2.3 chỉ từ chối tỷ lệ ngoài `0..100`. Rủi ro chia cho 0 chặn ở bước tính khoản: trả NET với tỷ lệ 100% → 400 `E-tkt-004` (TC-tkt-047, BUG-tkt-002) | P0 |
+| TC-tkt-118 | GAP-QA-tkt-03 | Tạo danh mục `WITHHOLDING_FLAT` với `withholdingRate=0` | `[SỬA Phase B 2026-09-15]` **201** — nằm trong khoảng `0..100` của hợp đồng Mục 2.3 | P2 |
 | TC-tkt-119 | GAP-QA-tkt-03 | Tạo danh mục `withholdingRate=-5` (âm) | *(giả định)* 400 — số âm chắc chắn vô nghĩa nghiệp vụ dù SRS không nêu tường minh | P1 |
 | TC-tkt-120 | GAP-QA-tkt-06 — ĐÃ CHỐT | Tham chiếu TC-tkt-072/073 (Nhóm 6) — quét lại ở đây để đảm bảo Phase B không bỏ sót | Đã có quyết định chính thức (xóa row khi mở lại), không còn giả định | P0 |
 | TC-tkt-121 | GAP-QA-tkt-01 — VẪN TREO | Tham chiếu TC-tkt-044/045 (Nhóm 4) | Gap 🔴 DUY NHẤT còn lại chưa có quyết định BA/Architect | P0 |

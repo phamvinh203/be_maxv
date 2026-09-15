@@ -794,7 +794,8 @@ gọi thêm service có sẵn thay vì `db.<model>.create()` trực tiếp cho c
 | File Excel | `helpers/hrm/xlsxDonGian.ts::taoXlsx` trên `helpers/zip.ts::taoZip` | Không thêm thư viện — giữ mốc 0 lỗ hổng `npm audit` |
 | Nối route (23 endpoint) | `routes/hrm/to_khai_thue/toKhaiThue.route.ts`, đăng ký trong `routes/hrm/hrm.route.ts` | Xác thực + guard module `hrm` kế thừa hook của `hrm.route.ts`; quyền 2 mức ở đầu controller |
 | Danh sách chính sách thuế | `GET /to-khai-thue/tax-policies` → `taxPolicy.controller.ts` → `taxPolicy.service.ts::getTaxPolicies` | `dangApDung` = mốc mới nhất đã tới theo ngày Việt Nam |
-| Đếm người phụ thuộc trong kỳ | `helpers/hrm/nguoiPhuThuocTrongKy.ts::demNguoiPhuThuocTrongKy` | Engine lương CHƯA dùng — BUG-dltl-005 |
+| Kiểm đầu vào khoản ngoài lương | `otherIncomeRecord.service.ts::tinhSnapshot` | Dùng chung cho tính thử / thêm / sửa: danh mục ACTIVE → nhóm ↔ đối tượng (021) → nhân viên có thật, chưa xóa mềm (016) → Cam kết 08 (006) → chặn không cư trú (004). Luật mới thêm vào ĐÂY, không vào từng endpoint. `ma_nv` in hoa ở validator như mọi màn hồ sơ nhân sự |
+| Đếm người phụ thuộc trong kỳ | `helpers/hrm/nguoiPhuThuocTrongKy.ts::demNguoiPhuThuocTrongKy` | Dùng chung cho Bảng tính thuế tháng VÀ engine lương `payrollCalculation.service.ts` (ISSUE-tkt-001, 2026-09-15) — hai nơi đếm khác nhau là hai số thuế cho cùng người |
 | Lỗi nghiệp vụ | `ToKhaiThueError('E-tkt-xxx')`, kiểm đầu vào qua `toKhaiThueValidate.ts::kiemTraTkt` | Status gắn cứng theo mã ở `constants/hrm/to_khai_thue/toKhaiThueErrors.ts` |
 
 **TUYỆT ĐỐI:**

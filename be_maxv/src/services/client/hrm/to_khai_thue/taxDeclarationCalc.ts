@@ -77,6 +77,7 @@ function tinhLaiTongHop(ct: ChiTieuTncn05): ChiTieuTncn05 {
 interface NguoiTrongQuy {
   cuTru: boolean;
   coHdld3Thang: boolean;
+  tongThuNhap: number;
   tnct: number;
   thue: number;
 }
@@ -91,12 +92,14 @@ export function tinhChiTieuMay(dong: DongThueQuy[]): ChiTieuTncn05 {
       // Cư trú phải đúng ở MỌI tháng có mặt — cùng luật "mọi khoản đều cư trú" của dòng tháng.
       n.cuTru = n.cuTru && d.cu_tru;
       n.coHdld3Thang = n.coHdld3Thang || coHdld;
+      n.tongThuNhap += d.tong_thu_nhap;
       n.tnct += d.thu_nhap_chiu_thue;
       n.thue += d.tong_thue_tncn;
     } else {
       theoNguoi.set(d.recipientKey, {
         cuTru: d.cu_tru,
         coHdld3Thang: coHdld,
+        tongThuNhap: d.tong_thu_nhap,
         tnct: d.thu_nhap_chiu_thue,
         thue: d.tong_thue_tncn,
       });
@@ -109,10 +112,14 @@ export function tinhChiTieuMay(dong: DongThueQuy[]): ChiTieuTncn05 {
     dk: (n: NguoiTrongQuy) => boolean,
     lay: (n: NguoiTrongQuy) => number,
   ) => ds.filter(dk).reduce((s, n) => s + lay(n), 0);
+  // [16]/[17] đếm người ĐƯỢC TRẢ thu nhập trong quý: nhân viên chưa phát sinh đồng nào (vd hợp đồng từ
+  // quý sau) vẫn có dòng 0 đồng trên Bảng tính thuế tháng nhưng không phải lao động của kỳ khai
+  // (ISSUE-tkt-002, chủ dự án chốt 2026-09-15). Chỉ tiêu tiền không cần lọc — người đó chỉ cộng thêm 0.
+  const duocTra = (n: NguoiTrongQuy) => n.tongThuNhap > 0;
 
   const ct = ctRong();
-  ct.ct16 = ds.length;
-  ct.ct17 = dem((n) => n.cuTru && n.coHdld3Thang);
+  ct.ct16 = dem(duocTra);
+  ct.ct17 = dem((n) => duocTra(n) && n.cuTru && n.coHdld3Thang);
   ct.ct19 = dem((n) => n.cuTru && n.thue > 0);
   ct.ct20 = dem((n) => !n.cuTru && n.thue > 0);
   ct.ct22 = cong(

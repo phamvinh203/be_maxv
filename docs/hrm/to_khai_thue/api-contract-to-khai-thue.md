@@ -312,7 +312,10 @@ interface CreateOtherIncomeBody {
 | 2 | Thiếu `fullName` / `paymentDate` / `otherIncomeCategoryId`; `amount ≤ 0`; `paymentDate` ngoài tháng của kỳ | **400 `E-tkt-004`** (AC-tkt-006) |
 | 3 | Danh mục không tồn tại hoặc `INACTIVE` | **400 `E-tkt-003`** |
 | 4 | Nhóm ≠ `WITHHOLDING_FLAT` mà `ma_nv` null | **400 `E-tkt-021`** (BR-tkt-009 · AC-tkt-015 — mã do BA duyệt bổ sung 2026-09-14) |
+| 4b | `ma_nv` khác null mà không có nhân viên, hoặc nhân viên đã xóa mềm. `ma_nv` được in hoa trước khi kiểm (như mọi màn hồ sơ nhân sự); chuỗi rỗng coi là vãng lai | **404 `E-tkt-016`** `[BỔ SUNG 2026-09-15 — BUG-tkt-001, chờ Architect xác nhận mã]` |
 | 5 | `hasCommitment08 = true` mà thiếu `taxCode` / `isResident = false` / nhóm ≠ `WITHHOLDING_FLAT` | **400 `E-tkt-006`** (AC-tkt-014 — ngữ nghĩa mở rộng, BA duyệt 2026-09-14) |
+| 5b | `isResident = false` — cá nhân không cư trú (khấu trừ 20%) ngoài phạm vi đợt này, SRS Mục 2.2 | **400 `E-tkt-004`** `[BỔ SUNG 2026-09-15 — BUG-tkt-003, chủ dự án chọn chặn tới khi làm nhánh 20%]` |
+| 5c | Khoản thuộc diện khấu trừ, trả `NET` mà tỷ lệ khấu trừ của danh mục = 100% (khấu trừ hết nên không quy đổi được về số trước thuế; trả `GROSS` vẫn nhận) | **400 `E-tkt-004`** `[BỔ SUNG 2026-09-15 — BUG-tkt-002, chờ Architect xác nhận mã]` |
 | 6 | Vi phạm unique `hrm_oir_chong_trung` (`P2002`) | **409 `E-tkt-005`** (AC-tkt-007) |
 
 **201** `{ success: true, data: OtherIncomeRecordDto }`.
@@ -584,7 +587,7 @@ interface TaxPolicyDto {
 | `E-tkt-001` | 400 | Trùng `code` hoặc `lower(name)` danh mục | 3, 4 | BR-tkt-003 · AC-tkt-004 |
 | `E-tkt-002` | 400 | Xóa danh mục đang có bản ghi sử dụng | 5 | BR-tkt-004 · AC-tkt-005 |
 | `E-tkt-003` | 400 | Thiếu/thừa tham số ngưỡng-tỷ lệ theo nhóm; danh mục `INACTIVE` | 3, 4, 9, 10 | BR-tkt-003 · AC-tkt-001 |
-| `E-tkt-004` | 400 | Thiếu họ tên / ngày chi trả / danh mục; `amount ≤ 0`; ngày ngoài tháng của kỳ | 8, 9, 10 | BR-tkt-005 · AC-tkt-006 |
+| `E-tkt-004` | 400 | Thiếu họ tên / ngày chi trả / danh mục; `amount ≤ 0`; ngày ngoài tháng của kỳ · `[BỔ SUNG 2026-09-15]` cá nhân không cư trú; trả NET với tỷ lệ khấu trừ 100% (Mục 3.4 dòng 5b, 5c) | 8, 9, 10 | BR-tkt-005 · AC-tkt-006 |
 | `E-tkt-005` | 409 | Trùng bản ghi (kỳ + người + loại + ngày + số tiền) | 9 | BR-tkt-006 · AC-tkt-007 |
 | `E-tkt-006` | 400 | Cam kết 08 không hợp lệ (thiếu MST / không cư trú / danh mục sai nhóm) | 9, 10 | BR-tkt-008 · AC-tkt-014 |
 | `E-tkt-007` | 403 | Thêm/sửa/xóa bản ghi khi tháng đã chốt | 9, 10, 11 | BR-tkt-013 · AC-tkt-019 |
@@ -596,7 +599,7 @@ interface TaxPolicyDto {
 | `E-tkt-013` | 400 | Đánh dấu đã nộp khi chưa ở trạng thái Đã xuất | 21 | BR-tkt-015 · AC-tkt-028 |
 | `E-tkt-014` | 403 | Không đủ quyền (quyền lương hoặc ADMIN/OWNER) | mọi | A-tkt-08 |
 | `E-tkt-015` | 500 | Không tìm thấy chính sách thuế hiệu lực cho kỳ | 12, 13 | Đã duyệt vào SRS 2026-09-14 |
-| `E-tkt-016` | 404 | Không tìm thấy bản ghi/danh mục theo `id` | 2, 4, 5, 7, 10, 11 | Đã duyệt vào SRS 2026-09-14 |
+| `E-tkt-016` | 404 | Không tìm thấy bản ghi/danh mục theo `id` · `[BỔ SUNG 2026-09-15]` mã nhân viên không có hoặc đã xóa mềm khi tính thử/thêm/sửa khoản ngoài lương (Mục 3.4 dòng 4b) | 2, 4, 5, 7, 8, 9, 10, 11 | Đã duyệt vào SRS 2026-09-14 |
 | `E-tkt-017` | 400 | `periodId` không tồn tại trong tenant | 6, 12, 13, 14 | Đã duyệt vào SRS 2026-09-14 |
 | `E-tkt-018` | 409 | Chốt tháng đã chốt / mở tháng chưa chốt | 13, 14 | Đã duyệt vào SRS 2026-09-14 |
 | `E-tkt-019` | 403 | Sửa/xóa ghi đè khi tờ khai đã xuất | 17, 18 | Đã duyệt vào SRS 2026-09-14 (EC-tkt-03) |

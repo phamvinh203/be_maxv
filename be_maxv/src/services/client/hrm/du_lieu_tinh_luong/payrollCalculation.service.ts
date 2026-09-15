@@ -8,6 +8,7 @@ import {
   getPayrollPeriodStatusOrThrow,
   kyLuongConMo,
 } from '../../../../helpers/hrm/payrollPeriodLockGuard';
+import { demNguoiPhuThuocTrongKy } from '../../../../helpers/hrm/nguoiPhuThuocTrongKy';
 import { groupByMaNv } from '../../../../utils/du_lieu_tinh_luong/payrollAggregation.util';
 // RVW-025 (review-findings.md 2026-09-10) — `id = SINGLETON_ID` là bản ghi duy nhất của Cấu hình
 // mặc định trong toàn hệ thống (`generalSettings.service.ts`); dùng lại đúng khóa đó thay vì
@@ -590,7 +591,9 @@ export async function calculatePayrollPreview(
     const companyUnionExpense = Math.round(insuranceSalaryBase * unionFeeCompanyRate);
 
     // ── [8] RẼ NHÁNH THUẾ (BR-dltl-026, ADR-010 QĐ-3) ──
-    const dependentCount = emp.nguoi_phu_thuoc.length;
+    // Chỉ người phụ thuộc có kỳ đăng ký phủ tháng đang tính — chung hàm với Bảng tính thuế tháng; đếm
+    // khác nhau là hai màn ra hai số thuế cho cùng người cùng tháng (ISSUE-tkt-001, A-tkt-05).
+    const dependentCount = demNguoiPhuThuocTrongKy(emp.nguoi_phu_thuoc, period.year, period.month);
     const totalDeductions = personalDeduction + dependentCount * dependentDeduction + employeeInsuranceDeduction;
     const isWithholdingGroup = laHopDongKhauTruTaiNguon(activeContract?.loai_hd);
 

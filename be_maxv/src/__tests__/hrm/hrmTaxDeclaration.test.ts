@@ -68,6 +68,8 @@ function dongThang(periodId: string) {
     ...Object.fromEntries(
       COT_TIEN_BANG_THUE.map((c) => [c, new Prisma.Decimal(0)]),
     ),
+    // Dữ liệu thật luôn có tổng thu nhập ≥ thu nhập chịu thuế; [16] chỉ đếm người được trả thu nhập.
+    tong_thu_nhap: new Prisma.Decimal(20_000_000),
     thu_nhap_chiu_thue: new Prisma.Decimal(20_000_000),
     tong_thue_tncn: new Prisma.Decimal(475_000),
   };

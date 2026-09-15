@@ -219,6 +219,22 @@ async function tinhSnapshot(
     throw new ToKhaiThueError('E-tkt-021');
   }
 
+  // Nhân viên phải có thật và chưa xóa mềm — cùng luật `assertNhanVienTonTai` của hồ sơ hợp đồng.
+  // Thiếu bước này thì mã sai đi thẳng xuống lệnh ghi, vỡ khóa ngoại thành 409 "đang được sử dụng"
+  // không mã lỗi, còn tính thử thì ra số cho một người không tồn tại (BUG-tkt-001).
+  if (
+    maNv !== null &&
+    !(await db.hrm_nhan_vien.findFirst({
+      where: { ma_nv: maNv, da_xoa: false },
+      select: { ma_nv: true },
+    }))
+  ) {
+    throw new ToKhaiThueError(
+      'E-tkt-016',
+      `Không tìm thấy nhân viên mã "${maNv}".`,
+    );
+  }
+
   // BR-tkt-008 / AC-tkt-014: Cam kết 08 cần ĐỒNG THỜI 3 điều kiện.
   const hasCk08 = input.hasCommitment08 === true;
   if (
@@ -228,6 +244,16 @@ async function tinhSnapshot(
       !input.taxCode?.trim())
   ) {
     throw new ToKhaiThueError('E-tkt-006');
+  }
+
+  // SRS Mục 2.2: cá nhân không cư trú (khấu trừ 20%) ngoài phạm vi đợt này. Chặn thay vì để engine gắn
+  // nhãn 20% mà tính theo tỷ lệ danh mục rồi đưa số sai lên tờ khai — chủ dự án chọn chặn 2026-09-15
+  // (BUG-tkt-003). Đặt SAU Cam kết 08 để ca "Cam kết 08 + không cư trú" vẫn ra đúng E-tkt-006.
+  if (input.isResident === false) {
+    throw new ToKhaiThueError(
+      'E-tkt-004',
+      'Chưa hỗ trợ khoản chi trả cho cá nhân không cư trú (khấu trừ 20%) trong đợt này — chỉ ghi được cá nhân cư trú.',
+    );
   }
 
   const paymentDate = new Date(`${input.paymentDate}T00:00:00.000Z`);

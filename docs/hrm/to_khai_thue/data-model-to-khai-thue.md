@@ -709,8 +709,8 @@ giam_tru_bao_hiem  = employeeInsuranceDeduction + min(BH hưu trí tự nguyện
 
 | CT | Tên | Kiểu | Công thức tự tính | Gốc? |
 |:---:|---|:---:|---|:---:|
-| **16** | Tổng số lao động | Int | `COUNT(DISTINCT recipientKey)` | ✅ |
-| **17** | Cá nhân cư trú có HĐLĐ ≥3 tháng | Int | đếm người có `cu_tru` ∧ từng có `loai_lao_dong = HOP_DONG_3_THANG_TRO_LEN` | ✅ |
+| **16** | Tổng số lao động | Int | `COUNT(DISTINCT recipientKey)` của người có `Σ tong_thu_nhap > 0` trong quý. `[SỬA 2026-09-15 — ISSUE-tkt-002]` Nhân viên không được trả đồng nào cả quý (vd hợp đồng từ quý sau) vẫn có dòng 0 đồng trên Bảng tính thuế tháng nhưng KHÔNG đếm — chủ dự án chốt | ✅ |
+| **17** | Cá nhân cư trú có HĐLĐ ≥3 tháng | Int | đếm người có `Σ tong_thu_nhap > 0` ∧ `cu_tru` ∧ từng có `loai_lao_dong = HOP_DONG_3_THANG_TRO_LEN` `[SỬA 2026-09-15 — ISSUE-tkt-002]` | ✅ |
 | **18** | Tổng cá nhân đã khấu trừ thuế | Int | `= ct19 + ct20` | ❌ |
 | **19** | — cá nhân cư trú | Int | đếm người `cu_tru` ∧ `Σ tong_thue_tncn > 0` | ✅ |
 | **20** | — cá nhân không cư trú | Int | đếm người `!cu_tru` ∧ `Σ tong_thue_tncn > 0` | ✅ |

@@ -100,7 +100,7 @@ Tab `to-khai-quyet-toan` (quyết toán năm, mẫu 05/QTT-TNCN) · Tab `doi-soa
 | `taxCode` | T | String | — | Mã số thuế cá nhân — **bắt buộc khi** `hasCommitment08 = true` (E-tkt-006) |
 | `idCardNumber` | T | String ≤20 | — | Số CCCD/hộ chiếu |
 | `address` / `phone` / `email` | T | String | — | Thông tin liên hệ (chỉ thật sự cần với vãng lai; nội bộ đồng bộ từ hồ sơ nhân viên) |
-| `isResident` | **B** | Boolean | `true` | Cá nhân cư trú tại Việt Nam — quyết định thuế suất khấu trừ riêng khi nhóm `WITHHOLDING_FLAT` (nhánh không cư trú 20% nằm ngoài phạm vi đợt này, xem Mục 2.2) |
+| `isResident` | **B** | Boolean | `true` | Cá nhân cư trú tại Việt Nam — quyết định thuế suất khấu trừ riêng khi nhóm `WITHHOLDING_FLAT` (nhánh không cư trú 20% nằm ngoài phạm vi đợt này, xem Mục 2.2). `[SỬA 2026-09-15 — BUG-tkt-003]` Đợt này chỉ nhận `true`: gửi `false` bị từ chối 400 `E-tkt-004` cho tới khi làm nhánh 20% — chủ dự án chọn chặn thay vì để số thuế sai lên tờ khai |
 | `paymentDate` | **B** | Date | — | Ngày chi trả thực tế; phải nằm trong tháng của `payrollPeriodId` |
 | `paymentType` | **B** | Enum `GROSS` / `NET` | `GROSS` | Số tiền nhập là trước hay sau thuế — quyết định công thức quy đổi (BR-tkt-007) |
 | `grossAmount` | Hệ thống (tính) | Decimal(15,2) | — | Số tiền trước thuế |

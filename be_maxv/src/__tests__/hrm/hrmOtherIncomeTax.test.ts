@@ -184,6 +184,30 @@ test('WITHHOLDING_FLAT trả theo NET: quy ngược ra GROSS (thuế suất cố
   assert.equal(kq.netAmount, 9_000_000);
 });
 
+test('BUG-tkt-002: tỷ lệ 100% trả theo NET bị CHẶN E-tkt-004 — không ra số vô hạn', () => {
+  assert.throws(
+    () =>
+      tinhThueThuNhapNgoaiLuong(
+        dm({ withholdingRate: 100 }),
+        dv({ amount: 5_000_000, paymentType: 'NET' }),
+      ),
+    (err: unknown) => {
+      assert.ok(err instanceof ToKhaiThueError);
+      assert.equal(err.code, 'E-tkt-004');
+      assert.match(err.message, /GROSS/);
+      return true;
+    },
+  );
+
+  // Hợp đồng Mục 2.3 nhận tỷ lệ 0..100: cùng tỷ lệ đó trả theo GROSS vẫn tính được.
+  const gross = tinhThueThuNhapNgoaiLuong(
+    dm({ withholdingRate: 100 }),
+    dv({ amount: 5_000_000 }),
+  );
+  assert.equal(gross.taxDeducted, 5_000_000);
+  assert.equal(gross.netAmount, 0);
+});
+
 test('Cá nhân không cư trú -> FLAT_20 (khai báo, ngoài phạm vi đợt này)', () => {
   const kq = tinhThueThuNhapNgoaiLuong(dm(), dv({ isResident: false }));
   assert.equal(kq.taxDeductionType, 'FLAT_20');

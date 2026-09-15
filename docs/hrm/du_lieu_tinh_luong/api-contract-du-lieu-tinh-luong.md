@@ -717,7 +717,7 @@ Mọi endpoint trên: **200 OK** `{ success:true, data:{ …PayrollPeriod } }` �
 | `ho_ten` | `fullName` | |
 | `ten_pb` · `ten_cv` (ghép cột "Bộ phận/Chức vụ") | `departmentName` · `positionName` | FE tự ghép `" / "` |
 | `loai_hd` · `kieu_luong` | `contractType` · `salaryType` | có thể `null` |
-| `so_npt` | `dependentCount` | |
+| `so_npt` | `dependentCount` | Chỉ người phụ thuộc có kỳ đăng ký phủ tháng của kỳ lương `[SỬA 2026-09-15 — ISSUE-tkt-001]` — trước đó đếm mọi người phụ thuộc, lệch với Bảng tính thuế tháng |
 | **`luong`** | **`baseSalaryMonthly`** | = hợp đồng + phụ cấp cố định (quyết định nghiệp vụ 1) |
 | `ngay_cong` · `ngay_cong_chuan` | `actualWorkDays` · `standardWorkDays` | |
 | **`gio_tang_ca`** | **`otRawHours`** ⭐ | **KHÔNG** dùng `otConvertedHours` — sai số giờ hiển thị |

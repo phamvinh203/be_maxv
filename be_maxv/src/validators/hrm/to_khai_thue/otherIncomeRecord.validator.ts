@@ -16,7 +16,13 @@ const ngay = z
   .regex(/^\d{4}-\d{2}-\d{2}$/, 'Ngày phải theo dạng YYYY-MM-DD');
 
 const nguoiNhan = {
-  ma_nv: z.string().trim().max(24).nullish(),
+  // In hoa như mọi validator `du_lieu_ca_nhan` — mã nhân viên luôn được lưu in hoa. Rỗng = vãng lai.
+  ma_nv: z
+    .string()
+    .trim()
+    .max(24)
+    .nullish()
+    .transform((v) => (v ? v.toUpperCase() : null)),
   fullName: z.string().trim().min(1).max(254),
   taxCode: z.string().trim().max(20).nullish(),
   idCardNumber: z.string().trim().max(20).nullish(),
@@ -63,7 +69,12 @@ export const otherIncomeIdParamsSchema = z.object({
 
 export const listOtherIncomeQuerySchema = z.object({
   periodId: z.string().min(1).max(64),
-  maNv: z.string().trim().max(24).optional(),
+  maNv: z
+    .string()
+    .trim()
+    .max(24)
+    .transform((s) => s.toUpperCase())
+    .optional(),
   taxDeductionType: z
     .enum([
       'PROGRESSIVE',

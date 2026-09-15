@@ -641,4 +641,25 @@
 - Lưu ý: giao diện nháp `hdđt_maxv` vẫn gọi các route đã bỏ (frontend đang tạm ngừng). Chưa có ca HTTP chạy trên DB thật — việc của tester-qa Phase B.
 - Liên kết: api-contract Mục 0.1, 0.6, 1, 6.1, 9 · A-tkt-08 · E-tkt-014 · L-25 · doi-soat Mục 10.
 - Kiểm chứng: `tsc --noEmit` exit 0 · `eslint src --quiet` exit 0 · `npm test` 1016 ca, 1012 pass (tăng 5), 4 đỏ = đúng 2 ca có sẵn TC-hrm-301/316 + 2 nhóm cha.
+- Commit: `11e2ab1`
+
+## [2026-09-15 13:51] backend-engineer — fix BUG-tkt-001 · BUG-tkt-002 · BUG-tkt-003 · ISSUE-tkt-001 · ISSUE-tkt-002 (sau QA Phase B)
+
+- Nhiệm vụ: sửa 3 lỗi và 2 vấn đề mà QA Phase B lượt 1 tìm ra (`to_khai_thue/issues-and-bugs-to-khai-thue.md`), theo 3 quyết định chủ dự án ngày 2026-09-15: chặn cá nhân không cư trú tới khi làm nhánh 20% · chỉ tiêu [16]/[17] không đếm người không được trả đồng nào trong quý · sửa luôn engine lương đếm người phụ thuộc theo kỳ đăng ký.
+- Đã sửa (`be_maxv/src/`):
+  - `services/client/hrm/to_khai_thue/otherIncomeRecord.service.ts`:233 — BUG-tkt-001: kiểm nhân viên có thật, chưa xóa mềm ngay trong `tinhSnapshot` (dùng chung tính thử / thêm / sửa) ⇒ 404 `E-tkt-016`. Trước đó mã sai đi thẳng xuống lệnh ghi, vỡ khóa ngoại thành 409 không mã lỗi.
+  - `validators/hrm/to_khai_thue/otherIncomeRecord.validator.ts`:25, :76 — BUG-tkt-001: in hoa `ma_nv` (chuỗi rỗng = vãng lai) và bộ lọc `maNv`, như mọi validator hồ sơ nhân sự.
+  - `services/client/hrm/to_khai_thue/otherIncomeTax.ts`:187 — BUG-tkt-002: nhánh NET với tỷ lệ khấu trừ ≥ 100% ⇒ 400 `E-tkt-004` thay vì chia cho 0 ra ∞ rồi 500. GROSS với tỷ lệ 100% vẫn tính (hợp đồng Mục 2.3 nhận `0..100`).
+  - `services/client/hrm/to_khai_thue/otherIncomeRecord.service.ts`:252 — BUG-tkt-003: `isResident = false` ⇒ 400 `E-tkt-004`; đặt sau kiểm Cam kết 08 để ca "Cam kết 08 + không cư trú" vẫn ra `E-tkt-006`.
+  - `services/client/hrm/du_lieu_tinh_luong/payrollCalculation.service.ts`:11, :596 — ISSUE-tkt-001: `dependentCount` dùng `demNguoiPhuThuocTrongKy` theo năm/tháng của kỳ lương, cùng hàm với Bảng tính thuế tháng.
+  - `services/client/hrm/to_khai_thue/taxDeclarationCalc.ts`:118, :121 — ISSUE-tkt-002: [16]/[17] chỉ đếm người có tổng thu nhập cả quý > 0.
+  - Test: `__tests__/hrm/hrmOtherIncomeTax.test.ts`:187 (+1 ca) · `hrmPayrollCalculation.test.ts`:977 (+1 ca) · `hrmTaxDeclarationCalc.test.ts`:108 (+1 ca), :43 (dữ liệu mẫu) · `hrmTaxDeclaration.test.ts`:72 (dữ liệu mẫu: thu nhập chịu thuế > 0 mà tổng thu nhập = 0 là không thể có) · `hrmToKhaiThueApi.test.ts`:577, :595, :1039, :1050, :1063, :1242, :1415, :1471 (kỳ vọng theo hợp đồng / quyết định — lý do từng ca ở `to_khai_thue/test-report-to-khai-thue.md` Mục 3.4).
+- Tài liệu: api-contract-to-khai-thue Mục 3.4 (dòng 4b, 5b, 5c) + Mục 7 (`E-tkt-004`, `E-tkt-016`) · srs-to-khai-thue bảng trường `isResident` · data-model-to-khai-thue Mục 8 ([16], [17]) · api-contract-du-lieu-tinh-luong Mục 8.1.1 (`dependentCount`) · test-cases TC-117/118 · dev-notes 1.12 (+1 dòng kiểm đầu vào, sửa dòng đếm người phụ thuộc) · issues-and-bugs (FIXED kèm bằng chứng) · test-report (lượt 2) · CONTEXT_SUMMARY.
+- Điểm đáng ghi:
+  1. Mọi luật đầu vào của khoản ngoài lương nằm trong `tinhSnapshot` — thêm luật mới vào đó, không vá riêng từng endpoint.
+  2. Không siết validator tỷ lệ khấu trừ: hợp đồng đã cho `0..100`; chỉ chặn đúng phép tính không xác định.
+  3. Đổi cách đếm người phụ thuộc ở engine lương: kỳ còn mở và lần khóa sổ sau có thể ra thuế khác trước với nhân viên có người phụ thuộc chưa tới kỳ hoặc đã hết kỳ đăng ký; kỳ đã khóa đọc snapshot nên không đổi.
+  4. ISSUE-tkt-004 của QA lượt 1 kết luận sai (HRM có quy ước in hoa `ma_nv`); mã "BUG-dltl-005" ở các ghi chú cũ trùng mã lỗi lịch công chuẩn nên việc này mang mã ISSUE-tkt-001.
+- Liên kết: BUG-tkt-001/002/003 · ISSUE-tkt-001/002/004 · TC-tkt-015, 021, 033, 047, 050, 077, 096, 117, 118 · KR-tkt-08, 11 · E-tkt-004, 006, 016 · A-tkt-05 · api-contract Mục 2.3, 3.4, 7.
+- Kiểm chứng: 3 unit test mới chạy ĐỎ trước khi sửa (`Missing expected exception` · `5 !== 4` · `3 !== 1`) rồi xanh · `tsc --noEmit` exit 0 · `eslint --quiet` trên 10 file đã sửa exit 0 · Phase B lượt 2 `hrmToKhaiThueApi.test.ts` 144 test, 131 pass, 0 đỏ, 13 bỏ qua (133 ca lá: 120 đạt) · `npm test` 1163 ca, 1146 pass, 4 đỏ = đúng 2 ca có sẵn TC-hrm-301/316 + 2 nhóm cha.
 - Commit: chưa commit

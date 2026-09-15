@@ -182,7 +182,14 @@ export function tinhThueThuNhapNgoaiLuong(
       }
 
       // NET: quy ngược ra GROSS. Ở nhóm này quy đổi được vì thuế suất CỐ ĐỊNH, không phụ thuộc
-      // tổng thu nhập tháng như nhánh lũy tiến.
+      // tổng thu nhập tháng như nhánh lũy tiến — trừ tỷ lệ từ 100%: khấu trừ hết thì thực nhận luôn
+      // bằng 0, không số trước thuế nào ứng với số thực nhận dương (chia cho 0 ⇒ ∞ ⇒ 500, BUG-tkt-002).
+      if (tyLe >= 100) {
+        throw new ToKhaiThueError(
+          'E-tkt-004',
+          `Loại thu nhập này khấu trừ ${tyLe}% nên người nhận không thực nhận đồng nào — không quy đổi được từ số thực nhận (NET). Hãy nhập số trước thuế (GROSS) hoặc sửa tỷ lệ khấu trừ của loại thu nhập.`,
+        );
+      }
       const gross = Math.round(soTien / (1 - tyLe / 100));
       return {
         taxTreatmentGroup: dm.taxTreatmentGroup,

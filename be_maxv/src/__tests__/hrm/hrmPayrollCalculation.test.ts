@@ -973,3 +973,42 @@ test('RVW-025: generalSetting.findUnique(id=SINGLETON_ID) được dùng thay fi
   await calculatePayrollPreview(db, PERIOD.id, PERIOD);
   assert.deepEqual(capturedWhere, { id: 'DEFAULT' });
 });
+
+test('ISSUE-tkt-001: người phụ thuộc chỉ giảm trừ trong kỳ đăng ký — đếm chung hàm với Bảng tính thuế tháng', async () => {
+  const npt = (tu: [number, number], den: [number, number] | null = null) => ({
+    dk_tu_thang: tu[0],
+    dk_tu_nam: tu[1],
+    dk_den_thang: den?.[0] ?? null,
+    dk_den_nam: den?.[1] ?? null,
+  });
+  const row = await calcNV0001({
+    employees: [
+      makeEmployee({
+        hop_dong: [
+          {
+            id: 'hd-1',
+            ma_nv: 'NV0001',
+            so_hd: 'HD01',
+            loai_hd: 'xac_dinh',
+            kieu_luong: 'gross',
+            luong_chinh: new Prisma.Decimal(40_000_000),
+            luong_bhxh: new Prisma.Decimal(40_000_000),
+            ngay_bat_dau: new Date('2026-01-01'),
+            ngay_ket_thuc: null,
+            trich_bhxh: true,
+            tinh_tncn: true,
+          },
+        ],
+        nguoi_phu_thuoc: [
+          npt([1, 2026]), // hiệu lực trong kỳ 9/2026
+          npt([10, 2026]), // đăng ký từ tháng sau
+          npt([1, 2025], [6, 2026]), // đã hết kỳ đăng ký
+        ],
+      }),
+    ],
+  });
+  assert.equal(row.dependentCount, 1);
+  // 40tr − (15,5tr bản thân + 6,2tr × 1 người phụ thuộc + 4,2tr BH 10,5%) = 14,1tr
+  assert.equal(row.taxableIncome, 14_100_000);
+  assert.equal(row.personalIncomeTax, 910_000);
+});
