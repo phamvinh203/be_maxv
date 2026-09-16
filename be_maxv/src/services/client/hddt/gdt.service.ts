@@ -116,6 +116,9 @@ export async function login(body: LoginRequest) {
     );
   } catch (err) {
     clearCookies(body.key);
+    // Cổng thuế chặn ở lớp chống bot -> KHÔNG phải người dùng gõ sai gì cả. Phải chặn TRƯỚC nhánh
+    // "auth" bên dưới, vì ca này cũng là 403 nên sẽ bị gộp nhầm thành "sai tài khoản/mật khẩu/captcha".
+    if (isBotGuardBlocked(err)) throw new Error(GDT_BOT_GUARD_MESSAGE);
     // GDT thường trả 200 kèm `message` khi sai thông tin (xử lý ở nhánh !result.token bên dưới),
     // nhưng đôi lúc trả thẳng HTTP lỗi (400/401/403…) — `gdtFetch` ném `GdtHttpError` với message kỹ
     // thuật thô ("GDT API Error: 401 Unauthorized ..."), có thể vẫn kèm chi tiết gốc của GDT trong
@@ -2005,8 +2008,14 @@ export async function fetchAndSaveInvoicesInRange(
   } catch (err) {
     partial = true;
     // Token hết hạn -> caller phải DỪNG, không chạy tiếp pha chi tiết (cùng token sẽ lỗi y hệt).
+    // Bị chặn chống bot cũng phải dừng (request nào cũng bị chặn), nhưng câu báo phải nói đúng lý do:
+    // để nguyên `err.message` thì FE hiện chuỗi kỹ thuật "GDT API Error: 403 Forbidden {...}".
     authExpired = classifyGdtError(err) === "auth";
-    message = err instanceof Error ? err.message : "Lỗi khi gọi GDT.";
+    message = isBotGuardBlocked(err)
+      ? GDT_BOT_GUARD_MESSAGE
+      : err instanceof Error
+        ? err.message
+        : "Lỗi khi gọi GDT.";
     // [DEBUG-CAPNHAT] Điểm dừng + loại lỗi (auth = token GDT hết hạn, transient = GDT chặn/quá tải).
     console.error(
       `[DEBUG-CAPNHAT] ${elapsed()} !!! DỪNG GIỮA CHỪNG ${direction} sau ${rowsSeen} dòng — ` +
@@ -2687,6 +2696,28 @@ function noDiacritics(s: string): string {
 export function isMissingOriginalFile(err: unknown): boolean {
   const signature = noDiacritics(describeErrorChain(err));
   return signature.includes("khong ton tai") && signature.includes("ho so goc");
+}
+
+/** Câu hiện cho người dùng khi cổng thuế chặn ở lớp chống bot — xem `isBotGuardBlocked`. */
+export const GDT_BOT_GUARD_MESSAGE =
+  "Cổng thuế đã chặn yêu cầu (báo phát hiện hành vi không hợp lệ). Đăng nhập lại không giải quyết " +
+  "được — vui lòng báo kỹ thuật kiểm tra cách gọi sang cổng thuế.";
+
+/**
+ * Cổng thuế chặn ở lớp CHỐNG BOT, không phải chê tài khoản/token: `403` kèm body
+ * `{"status":403,"message":"Hệ thống phát hiện hành vi không hợp lệ. Yêu cầu đã bị chặn."}`.
+ *
+ * Phải tách khỏi 403 "token hết hạn" vì hai ca dùng chung status mà cách chữa ngược nhau: ca này
+ * đăng nhập lại KHÔNG cứu được (request nào cũng bị chặn từ trước khi tới ứng dụng), mà phải sửa
+ * header gửi đi. Trước khi tách, `login()` hiện ra câu "sai tài khoản, mật khẩu hoặc mã captcha" —
+ * đúng cái làm mất cả buổi ngày 16/09/2026 để lần ra.
+ *
+ * `gdtSend` đã gắn `request-id` cho mọi call nên bình thường không ai gặp nữa; hàm này là lưới an
+ * toàn cho lần cổng thuế siết tiếp (bắt buộc thêm header khác) — lúc đó log và câu báo lỗi nói
+ * thẳng ra là bị chặn, thay vì đổ oan cho mật khẩu người dùng.
+ */
+export function isBotGuardBlocked(err: unknown): boolean {
+  return noDiacritics(describeErrorChain(err)).includes("hanh vi khong hop le");
 }
 
 export function classifyGdtError(err: unknown): "auth" | "transient" | "permanent" {

@@ -1,3 +1,5 @@
+import { randomUUID } from "crypto";
+
 const GDT_BASE_URL = "https://hoadondientu.gdt.gov.vn/api";
 
 /** Timeout mặc định mỗi request GDT — 1 socket treo không được chặn vô hạn cả hàng đợi pacer. */
@@ -90,6 +92,9 @@ export function describeErrorChain(err: unknown): string {
  */
 const DEBUG_GDT = process.env.DEBUG_GDT === "1";
 
+/** Số ký tự đầu của body lỗi được đưa vào log — đủ để đọc `message` của GDT, không xả cả trang HTML. */
+const ERROR_BODY_LOG_CHARS = 300;
+
 /** Phiên bỏ dở (lấy captcha nhưng không login) tự hết hạn sau ngần này. */
 const COOKIE_TTL_MS = 5 * 60 * 1000;
 
@@ -163,6 +168,20 @@ async function gdtSend(
 
   const headers: Record<string, string> = {
     Accept: accept,
+    // BẮT BUỘC — thiếu header này là bị chặn, không phải chuyện "cho giống trình duyệt".
+    //
+    // Đo 16/09/2026 (bisect từng header trên MST giả): mọi endpoint `/api/*` TRỪ `/captcha` mà thiếu
+    // `request-id` đều bị lớp chống bot của cổng thuế trả `403` + body
+    // `{"status":403,"message":"Hệ thống phát hiện hành vi không hợp lệ. Yêu cầu đã bị chặn."}`,
+    // trong ~60-100ms (chặn trước khi tới ứng dụng). Có `request-id` thì request đi tới ứng dụng
+    // thật (trả 401 "Mã captcha không đúng" / "token sai" như bình thường).
+    //
+    // Các header trình duyệt khác KHÔNG liên quan: đã thử riêng `user-agent`, `origin`+`referer`,
+    // `end-point`, `action` — vẫn bị chặn y hệt; còn một mình `request-id` (không cookie, không UA)
+    // thì qua. Cổng thuế hiện chỉ kiểm tra CÓ MẶT, không soi giá trị (chuỗi `abc` hay một giá trị
+    // lặp lại đều qua) — vẫn sinh UUID mới mỗi call cho giống cổng thật, để lần họ siết format thì
+    // không phải sửa lại, và để lần vết 1 call trong log hai bên.
+    "request-id": randomUUID(),
     ...((init?.headers as Record<string, string>) ?? {}),
   };
 
@@ -204,19 +223,8 @@ async function gdtSend(
   }
 
   const elapsed = Date.now() - startedAt;
-  if (!response.ok) {
-    // Lỗi do GDT trả về: luôn log, số lượng ít và đây là bằng chứng "không phải BE/proxy mình lỗi".
-    console.warn(
-      `[DEBUG-GDT] ${shortPath} -> ${response.status} ${response.statusText} (${elapsed}ms) ` +
-        `<- LỖI NÀY DO GDT TRẢ VỀ, không phải BE/proxy của mình`,
-    );
-  } else if (DEBUG_GDT) {
-    // Call THÀNH CÔNG chỉ log khi bật cờ: lượt 60k hóa đơn sinh 60k dòng, mà `console.log` trên
-    // Windows ghi ĐỒNG BỘ (chặn event loop từng lần). Tiến độ từng trang đã có [DEBUG-CAPNHAT]/
-    // [DEBUG-SYNC] ở tầng service; dòng này chỉ cần khi soi từng call một.
-    console.log(`[DEBUG-GDT] ${shortPath} -> ${response.status} (${elapsed}ms)`);
-  }
 
+  // Thu Set-Cookie trước: chỉ đọc header nên chạy được cho cả nhánh lỗi lẫn nhánh thành công.
   if (captureCookies && cookieKey) {
     const setCookie =
       (response.headers as Headers & { getSetCookie?: () => string[] })
@@ -226,7 +234,25 @@ async function gdtSend(
 
   if (!response.ok) {
     const detail = await response.text().catch(() => "");
+    // Lỗi do GDT trả về: luôn log, số lượng ít và đây là bằng chứng "không phải BE/proxy mình lỗi".
+    //
+    // In kèm ĐẦU BODY: hai loại 403 rất khác nhau dùng chung status — "token hết hạn" (đăng nhập
+    // lại là xong) và "chống bot chặn" (đăng nhập lại vô ích, phải sửa header). Trước đây log chỉ
+    // có status nên không phân biệt được, và sự cố 16/09/2026 mất cả buổi mới lần ra vì phía trên
+    // hiện lên câu "sai tài khoản/mật khẩu/captcha" — người dùng đi kiểm tra nhầm chỗ.
+    console.warn(
+      `[DEBUG-GDT] ${shortPath} -> ${response.status} ${response.statusText} (${elapsed}ms) ` +
+        `<- LỖI NÀY DO GDT TRẢ VỀ, không phải BE/proxy của mình` +
+        (detail ? ` | body: ${detail.slice(0, ERROR_BODY_LOG_CHARS)}` : ""),
+    );
     throw new GdtHttpError(response.status, response.statusText, detail, elapsed);
+  }
+
+  if (DEBUG_GDT) {
+    // Call THÀNH CÔNG chỉ log khi bật cờ: lượt 60k hóa đơn sinh 60k dòng, mà `console.log` trên
+    // Windows ghi ĐỒNG BỘ (chặn event loop từng lần). Tiến độ từng trang đã có [DEBUG-CAPNHAT]/
+    // [DEBUG-SYNC] ở tầng service; dòng này chỉ cần khi soi từng call một.
+    console.log(`[DEBUG-GDT] ${shortPath} -> ${response.status} (${elapsed}ms)`);
   }
 
   return { response, shortPath, startedAt };
@@ -237,6 +263,23 @@ export async function gdtFetch<T>(
   init?: GdtFetchInit
 ): Promise<T> {
   const { response, shortPath, startedAt } = await gdtSend(path, init, "application/json");
+
+  // Tường lửa của cổng thuế trả TRANG CHẶN HTML kèm HTTP **200** (quan sát 16/09/2026: "This page
+  // can't be displayed... incident ID"). Không chặn ở đây thì `response.json()` ném
+  // `SyntaxError: Unexpected token '<'` — nhánh dưới đọc thành "đứt socket giữa chừng" và cả tầng
+  // trên retry vô ích vì tưởng lỗi tạm thời. Bắt bằng content-type để hiện đúng nguyên nhân.
+  const contentType = response.headers.get("content-type") ?? "";
+  if (!contentType.includes("json")) {
+    const body = await response.text().catch(() => "");
+    console.error(
+      `[DEBUG-GDT] ${shortPath} -> ${response.status} nhưng BODY KHÔNG PHẢI JSON ` +
+        `(content-type="${contentType}"): ${body.slice(0, ERROR_BODY_LOG_CHARS)}`,
+    );
+    throw new Error(
+      `Cổng thuế trả về nội dung không phải JSON (content-type="${contentType}") — ` +
+        "thường là trang chặn của tường lửa, request chưa tới được ứng dụng.",
+    );
+  }
 
   try {
     return (await response.json()) as T;
