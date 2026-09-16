@@ -42,8 +42,11 @@ export const api = {
       method: "PATCH",
       body: body !== undefined ? JSON.stringify(body) : undefined,
     }),
-  del: <T>(url: string): Promise<T> =>
-    apiFetchData<T>(url, { method: "DELETE" }),
+  del: <T>(url: string, body?: unknown): Promise<T> =>
+    apiFetchData<T>(url, {
+      method: "DELETE",
+      body: body !== undefined ? JSON.stringify(body) : undefined,
+    }),
 };
 
 /** Alias `getErrorMessage` — giữ tên gọi quen thuộc từ code port fe_maxv. */

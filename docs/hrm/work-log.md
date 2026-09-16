@@ -749,3 +749,84 @@
 - Liên kết: RVW-729 · RVW-730 · RVW-731 · RVW-733 · RVW-737 · ADR-013 mục 4 · KR-tkt-21.
 - Kiểm chứng: `tsc --noEmit` exit 0 · `eslint src` 0 lỗi · `npm test` 1194 test, 1177 đạt, 4 lỗi = đúng 4 lỗi cũ (TC-hrm-301/316 và 2 nhóm cha), 13 bỏ qua. Ba lần kiểm chứng bằng cách phá tạm mã rồi khôi phục: gỡ `FOR SHARE` khỏi `khoaThangTrongQuy` thì ca RVW-731a đỏ · đổi `tx.otherIncomeRecord.create` thành `db....` thì ca RVW-733 đỏ · đổi tên trường `grossIncome` thì tsc đỏ TS2339 (RVW-730).
 - Commit: chưa commit
+
+## [2026-09-16 10:52] frontend-engineer — to_khai_thue: viết lại giao diện theo hợp đồng 23 endpoint
+- Nhiệm vụ: chủ dự án kích hoạt lại frontend-engineer cho cụm `to_khai_thue`; chốt 2 hướng: màn Thu nhập ngoài lương nhập TỪNG khoản theo chứng từ (máy chủ đã bỏ đường áp hàng loạt), và làm luôn màn Danh mục loại thu nhập.
+- Đã sửa (`hdđt_maxv/src/`):
+  - `features/hrm/types/toKhaiThue.ts` — viết lại toàn bộ DTO theo hợp đồng (thêm `thu_nhap_khau_tru_rieng`, `ctGocSuaDuoc`, `cacThang`, `thongTinNguoiNopThue`, 4 trạng thái tờ khai; bỏ `incomeType`, bỏ `grossAmount`/`netAmount` khỏi payload tạo).
+  - `features/hrm/api/to_khai_thue/toKhaiThueApi.ts` — 23 hàm bám đúng hợp đồng; dùng `apiFetchData`/`apiFetch`/`apiFetchBlob` thay lớp tương thích axios (204 và file nhị phân).
+  - `features/hrm/api/to_khai_thue/toKhaiThueQueries.ts` — hook mới; ghi khoản làm mới cả 3 nhóm khóa (khoản, bảng thuế, tờ khai) vì chúng phụ thuộc nhau.
+  - `features/hrm/api/hrmKeys.ts`:211 — 5 nhóm khóa mới, tham số lọc nằm trong khóa.
+  - `components/to_khai_thue/nhan.ts` (mới) — nhãn tiếng Việt dùng chung cho 4 màn.
+  - `components/to_khai_thue/thu_nhap_ngoai_luong/` — Panel viết lại theo từng chứng từ (lọc/phân trang máy chủ), Dialog gọi `preview` thay vì tự tính thuế, thêm `thuNhapNgoaiLuongExcel.ts`.
+  - `components/to_khai_thue/danh_muc_thu_nhap/` (mới) — Panel + Dialog cho 5 endpoint danh mục.
+  - `components/to_khai_thue/bang_tinh_thue/` — Panel viết lại (KPI, biểu thuế từ máy chủ, chốt/mở lại tháng), thêm `MoLaiBangTinhThueDialog.tsx` (lý do ≥ 20 ký tự) và `bangTinhThueExcel.ts`.
+  - `components/to_khai_thue/to_khai_tncn/` — Panel viết lại theo kỳ QUÝ (xuất Excel/PDF, tải lại file, đánh dấu đã nộp, lịch sử kỳ, bảng chi tiết); `ToKhaiTncn05Editor.tsx` (trước đây mồ côi) nay là phần render chỉ tiêu chính, đọc `ctGocSuaDuoc`; `ToKhaiOverrideDialog.tsx` bỏ `alert`/`window.confirm`, ép lý do ≥ 10 ký tự; `tncn05Layout.ts` bỏ hằng `O_SUA_DUOC_TNCN05`.
+  - `components/to_khai_thue/tabs.ts` + `routes/AppRouter.tsx` — thêm tab và route `danh-muc-thu-nhap`, sửa mô tả tab tờ khai (bỏ nhắc XML).
+- Điểm đáng ghi:
+  1. Bỏ hẳn nghiệp vụ "áp hàng loạt" của bản nháp: máy chủ không còn `batch-apply`, và lặp lệnh ghi ở trình duyệt thì hỏng giữa chừng là ghi được một nửa.
+  2. Không màn nào tự tính thuế nữa — số của máy chủ là số duy nhất.
+  3. Chưa kiểm trên trình duyệt đã đăng nhập (cần người dùng đăng nhập thật); mới dừng ở typecheck, lint và build.
+- Liên kết: api-contract-to-khai-thue (23 endpoint) · srs-to-khai-thue · dev-notes Mục 2.17.
+- Kiểm chứng: `tsc -b --noEmit` 0 lỗi · `eslint .` toàn ứng dụng 0 lỗi 0 cảnh báo · `npm run build` thành công.
+- Commit: chưa commit
+
+## [2026-09-16 11:18] frontend-engineer — fix BUG-fe-tkt-001, 002, 003, 005, 006 (QA giao diện)
+- Nhiệm vụ: sửa lỗi QA Phase B của phần giao diện `to_khai_thue`.
+- Đã sửa (`hdđt_maxv/src/`):
+  - `features/hrm/components/XacNhanXoaDialog.tsx` — BUG-fe-tkt-001: thêm prop `dangXuLy` khóa cả hai nút khi đang gửi; `to_khai_tncn/ToKhaiTncn05Panel.tsx` (Xuất tờ khai) và `bang_tinh_thue/BangTinhThuePanel.tsx` (Chốt tháng) truyền cờ `isPending`.
+  - `bang_tinh_thue/BangTinhThuePanel.tsx` + `to_khai_tncn/ToKhaiTncn05Panel.tsx` — BUG-fe-tkt-002: dùng lại `chot_ky_luong/useLaChuTaiKhoan.ts` khóa 4 thao tác chỉ dành ADMIN/OWNER kèm tooltip.
+  - `thu_nhap_ngoai_luong/ThuNhapNgoaiLuongPanel.tsx` — BUG-fe-tkt-003: xuất Excel tải lần lượt từng trang 500 dòng cho tới khi đủ `summary.totalRecords`, không còn chỉ xuất trang đang xem.
+  - `thu_nhap_ngoai_luong/ThuNhapNgoaiLuongDialog.tsx` — BUG-fe-tkt-005: khóa ô "Cam kết 08" và "Yêu cầu khấu trừ" khi danh mục không thuộc nhóm khấu trừ tại nguồn, thêm câu chặn ở `soatForm()` (BR-tkt-008).
+  - `to_khai_tncn/tncn05Layout.ts` — BUG-fe-tkt-006: xóa trường chết `laChiTieuGoc`; đổi import kiểu về `types/toKhaiThue` cho đồng bộ.
+  - `to_khai_tncn/ToKhaiTncn05Editor.tsx` — khóa danh sách cảnh báo theo nội dung thay vì chỉ số mảng.
+  - `api/to_khai_thue/{toKhaiThueApi,toKhaiThueQueries}.ts`, `api/hrmKeys.ts`, `types/toKhaiThue.ts` — bỏ 4 hook, 4 hàm API, 4 khóa truy vấn và 2 kiểu dữ liệu chưa màn nào dùng; ghi rõ tầng API nối 19/23 endpoint.
+  - `pages/hrm/to_khai_thue/ToKhaiThueChuaDungPage.tsx` — sửa chú thích lỗi thời.
+- Điểm đáng ghi:
+  1. BUG-fe-tkt-004 (hai route `bang-tinh-thue-hdld`/`hddv` không có lối vào, không có trong đặc tả) giữ OPEN — chờ chủ dự án nói có định tách bảng theo loại hợp đồng không.
+  2. Máy chủ vẫn là bên chặn thật cho cả quyền lẫn bấm hai lần; phần khóa nút chỉ để báo sớm.
+- Liên kết: BUG-fe-tkt-001, 002, 003, 005, 006 · test-report Mục 9 · dev-notes Mục 2.17.
+- Kiểm chứng: `npx tsc -b --noEmit` 0 lỗi · `npx eslint .` 0 lỗi 0 cảnh báo · `npm run build` thành công.
+- Commit: chưa commit
+
+## [2026-09-16] frontend-engineer — fix BUG-fe-tkt-004 (bổ sung cho phiên trên)
+- Nhiệm vụ: chủ dự án chốt xóa hai route không có lối vào.
+- Đã sửa: `hdđt_maxv/src/routes/AppRouter.tsx` — gỡ `<Route path="bang-tinh-thue-hdld">` và `<Route path="bang-tinh-thue-hddv">` cùng hai path trong danh sách loại trừ của nhánh sinh route "đang phát triển".
+- Điểm đáng ghi: không tách bảng tính thuế theo loại hợp đồng; nếu sau này cần thì thêm vào `tabs.ts` và đặc tả trước rồi mới thêm route.
+- Liên kết: BUG-fe-tkt-004 · SRS Mục 0 (cụm gồm 3 màn nghiệp vụ).
+- Kiểm chứng: `npx tsc -b --noEmit` 0 lỗi · `npx eslint .` 0 lỗi · `npm run build` thành công · grep không còn nơi nào nhắc hai path.
+- Commit: chưa commit
+
+## [2026-09-16 13:26] frontend-engineer — fix RVW-740…750 (review giao diện)
+- Nhiệm vụ: sửa 2 lỗi chặn và 9 lỗi không chặn của lượt review giao diện; chủ dự án chọn phạm vi 🔴 + 🟡, để lại 5 gợi ý 🟢.
+- Đã sửa (`hdđt_maxv/src/`):
+  - `api/to_khai_thue/toKhaiThueQueries.ts` — RVW-740: `useXuatToKhai` và `useDanhDauDaNop` làm mới ở `onSettled` thay vì `onSuccess`.
+  - `components/to_khai_thue/danh_muc_thu_nhap/DanhMucThuNhapDialog.tsx` — RVW-741: tách "để trống" khỏi "gõ số 0" cho tỷ lệ và ngưỡng khấu trừ.
+  - `thu_nhap_ngoai_luong/ThuNhapNgoaiLuongPanel.tsx` + `danh_muc_thu_nhap/DanhMucThuNhapPanel.tsx` — RVW-742: truyền `dangXuLy` cho hộp xác nhận xóa.
+  - `thu_nhap_ngoai_luong/ThuNhapNgoaiLuongDialog.tsx` — RVW-743 (dọn cờ cam kết 08 khi đổi danh mục), RVW-744 (ghép danh mục đã ngừng dùng của bản ghi vào ô chọn), RVW-749 (đánh số lượt tính thử, bỏ phản hồi cũ).
+  - `thu_nhap_ngoai_luong/ThuNhapNgoaiLuongPanel.tsx` — RVW-745: dải thông báo khóa nói theo hệ quả và chỉ cả hai lối mở.
+  - `bang_tinh_thue/bangTinhThueExcel.ts` + `BangTinhThuePanel.tsx` — RVW-746: file Excel ghi bộ lọc đang áp, nhãn nút đổi theo.
+  - `to_khai_tncn/XuatToKhaiDialog.tsx` (mới) + `ToKhaiTncn05Panel.tsx` — RVW-747: hộp xuất riêng có ô Người ký và Ngày ký; hộp "đã nộp" dùng state riêng, dọn khi đóng.
+  - `bang_tinh_thue/BangTinhThuePanel.tsx` — RVW-748: chỉ mount hộp mở lại khi mở.
+  - `to_khai_tncn/ToKhaiTncn05Editor.tsx` — RVW-750: `ct` rỗng thì cảnh báo, không vẽ tờ khai toàn số 0.
+- Điểm đáng ghi:
+  1. RVW-743 giữ lại nhánh soát ở `soatForm()` dù đã dọn cờ khi đổi danh mục — vẫn cần cho đường MỞ SỬA khoản cũ có cờ bật mà danh mục sau đó bị đổi nhóm.
+  2. RVW-742 còn 12 nơi khác trong khu HRM dùng `XacNhanXoaDialog` chưa truyền cờ — việc riêng ngoài cụm này.
+  3. Năm gợi ý 🟢 (RVW-751…755) giữ OPEN theo quyết định của chủ dự án.
+- Liên kết: RVW-740…750 · review-findings mục "Review 2026-09-16 — Giao diện".
+- Kiểm chứng: `npx tsc -b --noEmit` 0 lỗi · `npx eslint .` 0 lỗi 0 cảnh báo · `npm run build` thành công.
+- Commit: chưa commit
+
+## [2026-09-16 13:45] frontend-engineer — fix RVW-747 (phần còn hở) · RVW-756…760
+- Nhiệm vụ: đóng nốt các điểm của lượt review lại phần sửa giao diện.
+- Đã sửa (`hdđt_maxv/src/`):
+  - `components/to_khai_thue/to_khai_tncn/ToKhaiTncn05Panel.tsx` — RVW-747: gom `dongHoiNop()` dọn cả `hoiNop`, `nopNguoiKy`, `nopNgayKy`; dùng cho `onClose`, nút Hủy và nhánh nộp thành công.
+  - `thu_nhap_ngoai_luong/ThuNhapNgoaiLuongDialog.tsx` — RVW-756 (chỉ dọn cờ cam kết 08 khi nhóm MỚI không phải khấu trừ tại nguồn), RVW-757 (chỉ dán nhãn "đã ngừng dùng" khi đã tải xong danh mục), RVW-760 (kết quả tính thử gắn với chính bộ tham số đã gửi, thay bộ đếm lượt của RVW-749).
+  - `danh_muc_thu_nhap/DanhMucThuNhapDialog.tsx` — RVW-758: soát ô ngưỡng như ô tỷ lệ.
+  - `api/to_khai_thue/toKhaiThueQueries.ts` — RVW-759: `useXoaDanhMuc` và `useXoaKhoan` làm mới ở `onSettled`.
+- Điểm đáng ghi:
+  1. RVW-756 là lỗi do chính bản vá RVW-743 gây ra — dọn cờ vô điều kiện. Nay chỉ dọn khi đổi sang nhóm khác.
+  2. RVW-760 thay cơ chế của RVW-749 bằng cách so danh tính bộ tham số: mạnh hơn vì vừa bỏ phản hồi cũ vừa xóa số cũ ngay khi người dùng gõ tiếp.
+- Liên kết: RVW-747, 756, 757, 758, 759, 760 · review-findings mục "Review lại 2026-09-16 — phần sửa RVW-740…750".
+- Kiểm chứng: `npx tsc -b --noEmit` 0 lỗi · `npx eslint .` 0 lỗi 0 cảnh báo · `npm run build` thành công.
+- Commit: chưa commit
