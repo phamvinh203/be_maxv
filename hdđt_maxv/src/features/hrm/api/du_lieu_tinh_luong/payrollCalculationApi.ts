@@ -69,7 +69,7 @@ export interface PayrollCalculationLineApi {
   employeeUnionFee: number;
   companyUnionExpense: number;
 
-  /** `true` = khấu trừ 10% tại nguồn (HĐ thử việc/thời vụ); `false` = lũy tiến 7 bậc. */
+  /** `true` = khấu trừ 10% tại nguồn (HĐ thử việc/thời vụ); `false` = lũy tiến theo biểu cấu hình. */
   withholdingTaxApplied: boolean;
   /**
    * ⚠️ Ý NGHĨA PHỤ THUỘC `withholdingTaxApplied` (api-contract 8.1.2) — TUYỆT ĐỐI KHÔNG dùng

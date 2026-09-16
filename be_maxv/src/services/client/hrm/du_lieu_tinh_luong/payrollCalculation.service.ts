@@ -8,34 +8,54 @@ import {
   getPayrollPeriodStatusOrThrow,
   kyLuongConMo,
 } from '../../../../helpers/hrm/payrollPeriodLockGuard';
+import { demNguoiPhuThuocTrongKy } from '../../../../helpers/hrm/nguoiPhuThuocTrongKy';
 import { groupByMaNv } from '../../../../utils/du_lieu_tinh_luong/payrollAggregation.util';
 // RVW-025 (review-findings.md 2026-09-10) — `id = SINGLETON_ID` là bản ghi duy nhất của Cấu hình
 // mặc định trong toàn hệ thống (`generalSettings.service.ts`); dùng lại đúng khóa đó thay vì
 // `findFirst()` không mệnh đề `where`/`orderBy` (không tất định nếu có bản ghi thứ hai lọt vào).
-import { SINGLETON_ID } from '../cau_hinh_mac_dinh/generalSettings.service';
+import {
+  BIEU_THUE_CHUAN_5_BAC,
+  SINGLETON_ID,
+} from '../cau_hinh_mac_dinh/generalSettings.service';
+import type { TaxBracketItem } from '../../../../validators/hrm/cau_hinh_mac_dinh/generalSettings.validator';
 
 /** Phiên bản pipeline đang chạy — snapshot cũ (trước ADR-010) mang "v1", snapshot mới mang "v2". */
 const ENGINE_VERSION = 'v2';
 
-/** Biểu thuế TNCN 7 bậc lũy tiến từng phần theo Luật Thuế TNCN hiện hành */
-export function tinhThueLuyTien(thuNhapTinhThue: number): number {
+/**
+ * Thuế TNCN lũy tiến từng phần, tính theo ĐÚNG biểu thuế của công ty (`GeneralSetting.taxBrackets`).
+ *
+ * BUG-dltl-003 — trước đây hàm này hardcode biểu 7 bậc và KHÔNG đọc cấu hình: công ty sửa biểu
+ * thuế trên màn Thiết lập chung thì bảng lương vẫn tính theo bộ số trong mã. Nay biểu là THAM SỐ.
+ *
+ * `khoang` là **ngưỡng trên lũy kế** (BR-hrm-080), `null` là bậc mở. Dữ liệu tenant cũ còn ghi mốc
+ * `999999999999` ở bậc cuối vẫn chạy đúng — nó lớn hơn mọi thu nhập thật nên hành xử y như bậc mở.
+ * Biểu méo mó (cột `Json` bị sửa tay, thiếu trường) thì lùi về biểu chuẩn thay vì tính ra số rác.
+ */
+export function tinhThueLuyTien(thuNhapTinhThue: number, bieuThue?: unknown): number {
   if (thuNhapTinhThue <= 0) return 0;
 
+  const bac = (
+    Array.isArray(bieuThue) &&
+    bieuThue.length >= 2 &&
+    bieuThue.every(
+      (b) =>
+        b &&
+        typeof b.thueSuat === 'number' &&
+        (b.khoang === null || typeof b.khoang === 'number'),
+    )
+      ? bieuThue
+      : BIEU_THUE_CHUAN_5_BAC
+  ) as TaxBracketItem[];
+
   let thue = 0;
-  if (thuNhapTinhThue <= 5_000_000) {
-    thue = thuNhapTinhThue * 0.05;
-  } else if (thuNhapTinhThue <= 10_000_000) {
-    thue = 5_000_000 * 0.05 + (thuNhapTinhThue - 5_000_000) * 0.1;
-  } else if (thuNhapTinhThue <= 18_000_000) {
-    thue = 5_000_000 * 0.05 + 5_000_000 * 0.1 + (thuNhapTinhThue - 10_000_000) * 0.15;
-  } else if (thuNhapTinhThue <= 32_000_000) {
-    thue = 5_000_000 * 0.05 + 5_000_000 * 0.1 + 8_000_000 * 0.15 + (thuNhapTinhThue - 18_000_000) * 0.2;
-  } else if (thuNhapTinhThue <= 52_000_000) {
-    thue = 5_000_000 * 0.05 + 5_000_000 * 0.1 + 8_000_000 * 0.15 + 14_000_000 * 0.2 + (thuNhapTinhThue - 32_000_000) * 0.25;
-  } else if (thuNhapTinhThue <= 80_000_000) {
-    thue = 5_000_000 * 0.05 + 5_000_000 * 0.1 + 8_000_000 * 0.15 + 14_000_000 * 0.2 + 20_000_000 * 0.25 + (thuNhapTinhThue - 52_000_000) * 0.3;
-  } else {
-    thue = 5_000_000 * 0.05 + 5_000_000 * 0.1 + 8_000_000 * 0.15 + 14_000_000 * 0.2 + 20_000_000 * 0.25 + 28_000_000 * 0.3 + (thuNhapTinhThue - 80_000_000) * 0.35;
+  let nguongDuoi = 0;
+  for (const b of bac) {
+    const nguongTren = b.khoang === null ? Infinity : b.khoang;
+    const phanTrongBac = Math.min(thuNhapTinhThue, nguongTren) - nguongDuoi;
+    if (phanTrongBac <= 0) break;
+    thue += phanTrongBac * (b.thueSuat / 100);
+    nguongDuoi = nguongTren;
   }
 
   return Math.round(thue);
@@ -354,12 +374,13 @@ export async function calculatePayrollPreview(
   // BUG-dltl-002 (Cấu hình hardcode, review-findings.md 2026-09-09): trước đây engine chỉ đọc
   // đúng personalDeduction/dependentDeduction từ GeneralSetting, mọi tham số khác hardcode —
   // sửa cấu hình mặc định không làm đổi một đồng nào trong bảng lương. Đọc thêm ngày công
-  // chuẩn, giờ chuẩn/ngày, tỷ lệ BHXH/BHYT/BHTN, đoàn phí. Biểu thuế TNCN 7 bậc GIỮ NGUYÊN
-  // `tinhThueLuyTien()` (đã đúng luật, không đụng — ngoài phạm vi đợt sửa này).
+  // chuẩn, giờ chuẩn/ngày, tỷ lệ BHXH/BHYT/BHTN, đoàn phí. BUG-dltl-003 (2026-09-14) đóng nốt lỗ
+  // cuối cùng: biểu thuế TNCN cũng đọc từ cấu hình thay vì hardcode trong `tinhThueLuyTien()`.
   const standardWorkDays = resolveStandardWorkDays(period, generalSetting, holidays);
   const standardHoursPerDay = generalSetting ? Number(generalSetting.standardHoursPerDay) : 8.0;
-  const personalDeduction = generalSetting ? Number(generalSetting.personalDeduction) : 11_000_000;
-  const dependentDeduction = generalSetting ? Number(generalSetting.dependentDeduction) : 4_400_000;
+  const personalDeduction = generalSetting ? Number(generalSetting.personalDeduction) : 15_500_000;
+  const dependentDeduction = generalSetting ? Number(generalSetting.dependentDeduction) : 6_200_000;
+  const taxBrackets = generalSetting?.taxBrackets;
   const employeeInsuranceSocialHealthRate = generalSetting
     ? (Number(generalSetting.insuranceEmployeeSocial) + Number(generalSetting.insuranceEmployeeHealth)) / 100
     : 0.095; // 8% BHXH + 1.5% BHYT
@@ -384,9 +405,9 @@ export async function calculatePayrollPreview(
   const capBhtnTran = regionMinSalary * SO_LAN_LUONG_TOI_THIEU_VUNG_TRAN_BHTN;
 
   // ADR-010 QĐ-2 — 3 tham số mới (BR-dltl-026/027), cột `GeneralSetting`.
-  const lunchAllowanceTaxFreeCap = generalSetting ? Number(generalSetting.lunchAllowanceTaxFreeCap) : 730_000;
+  const lunchAllowanceTaxFreeCap = generalSetting ? Number(generalSetting.lunchAllowanceTaxFreeCap) : 1_200_000;
   const withholdingTaxRate = generalSetting ? Number(generalSetting.withholdingTaxRate) : 10.0;
-  const withholdingTaxThreshold = generalSetting ? Number(generalSetting.withholdingTaxThreshold) : 2_000_000;
+  const withholdingTaxThreshold = generalSetting ? Number(generalSetting.withholdingTaxThreshold) : 5_000_000;
 
   // 3. Tính toán cho từng nhân sự
   const results = employees.map((emp) => {
@@ -438,13 +459,15 @@ export async function calculatePayrollPreview(
     let otTaxExemptAmount = 0;
     let otConvertedHours = 0;
     let otRawHours = 0;
+    // BUG-dltl-004 (2026-09-14): luật cũ (Điều 3 TT 111/2013) chỉ miễn PHẦN CHÊNH LỆCH do hệ số
+    // OT (`tienOt − tienCongGiờBinhThuong`); từ kỳ tính thuế 2026 (NĐ 253/2026/NĐ-CP) tiền làm
+    // thêm giờ/ca đêm được miễn TOÀN BỘ. Vì vậy phần miễn thuế nay bằng đúng tiền OT đã trả.
     for (const r of empOt) {
       const convertedHours = Number(r.convertedHours);
       const hours = Number(r.hours);
       const tienOtR = Math.round(otHourlyRate * convertedHours);
-      const tienChuanR = Math.round(otHourlyRate * hours);
       otAmount += tienOtR;
-      otTaxExemptAmount += Math.max(0, tienOtR - tienChuanR);
+      otTaxExemptAmount += tienOtR;
       otConvertedHours += convertedHours;
       otRawHours += hours;
     }
@@ -568,7 +591,9 @@ export async function calculatePayrollPreview(
     const companyUnionExpense = Math.round(insuranceSalaryBase * unionFeeCompanyRate);
 
     // ── [8] RẼ NHÁNH THUẾ (BR-dltl-026, ADR-010 QĐ-3) ──
-    const dependentCount = emp.nguoi_phu_thuoc.length;
+    // Chỉ người phụ thuộc có kỳ đăng ký phủ tháng đang tính — chung hàm với Bảng tính thuế tháng; đếm
+    // khác nhau là hai màn ra hai số thuế cho cùng người cùng tháng (ISSUE-tkt-001, A-tkt-05).
+    const dependentCount = demNguoiPhuThuocTrongKy(emp.nguoi_phu_thuoc, period.year, period.month);
     const totalDeductions = personalDeduction + dependentCount * dependentDeduction + employeeInsuranceDeduction;
     const isWithholdingGroup = laHopDongKhauTruTaiNguon(activeContract?.loai_hd);
 
@@ -588,7 +613,7 @@ export async function calculatePayrollPreview(
           withholdingTaxApplied = true;
         } // ngược lại: thuế 0, withholdingTaxApplied=false (AC-dltl-19)
       } else {
-        personalIncomeTax = tinhThueLuyTien(taxableIncome);
+        personalIncomeTax = tinhThueLuyTien(taxableIncome, taxBrackets);
       }
     }
 

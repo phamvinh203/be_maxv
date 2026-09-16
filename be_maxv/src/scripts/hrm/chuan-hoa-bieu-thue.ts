@@ -4,13 +4,21 @@ import { writeLog } from '../../services/shared/syslog.service';
 import type { PrismaClient, Prisma } from '../../generated/tenant';
 import {
   BIEU_THUE_5_BAC_CU,
-  BIEU_THUE_CHUAN_7_BAC,
+  BIEU_THUE_7_BAC_CU,
+  BIEU_THUE_CHUAN_5_BAC,
   SINGLETON_ID,
+  khoiTaoCauHinhMacDinh,
   laBieuThueTrungKhop,
 } from '../../services/client/hrm/cau_hinh_mac_dinh/generalSettings.service';
 
 /**
- * RÀ SOÁT VÀ CHUẨN HÓA BIỂU THUẾ TNCN TRÊN MỌI TENANT — `FR-hrm-055` (BA chốt QĐ #22 điểm 3).
+ * RÀ SOÁT VÀ CHUẨN HÓA THAM SỐ THUẾ TNCN TRÊN MỌI TENANT — `FR-hrm-055` (BA chốt QĐ #22 điểm 3).
+ *
+ * Đợt 2026-09-14 mở rộng phạm vi theo Luật Thuế TNCN số 109/2025/QH15 + Nghị quyết
+ * 110/2025/UBTVQH15 + Nghị định 253/2026/NĐ-CP: ngoài biểu thuế, script rà thêm **bốn tham số
+ * số học** (2 mức giảm trừ gia cảnh, trần miễn thuế ăn ca, ngưỡng khấu trừ 10%), và nhận diện
+ * thêm **biểu 7 bậc cũ** (Điều 22 Luật 04/2007/QH12) là biểu lỗi thời cần chuẩn hóa — trước đợt
+ * này chính nó mới là biểu chuẩn.
  *
  *   npm run hrm:chuan-hoa-thue -- --thu   # CHẾ ĐỘ RÀ SOÁT: chỉ đọc và in, KHÔNG ghi dòng nào
  *   npm run hrm:chuan-hoa-thue            # CHẾ ĐỘ CHUẨN HÓA: có ghi (xem giới hạn ghi bên dưới)
@@ -23,23 +31,27 @@ import {
  *
  * ===== RANH GIỚI GHI — ĐIỀU QUAN TRỌNG NHẤT CỦA SCRIPT NÀY =====
  *
- * Script CHỈ ghi đè khi biểu thuế đang lưu **trùng khớp nguyên văn** biểu 5 bậc cắt cụt cũ
- * (`BIEU_THUE_5_BAC_CU`: đủ 5 bậc, đúng từng cặp ngưỡng–thuế suất, bậc cuối là mốc số
- * `999999999999` đúng như bản cũ đã ghi xuống). Trùng khớp nguyên văn nghĩa là công ty **chưa hề
- * chỉnh tay** — giá trị đó do hệ thống tự nạp sai, nên sửa lại là sửa lỗi của mình.
+ * Script CHỈ ghi đè từng tham số khi giá trị đang lưu **trùng khớp nguyên văn** một bộ số cũ mà
+ * hệ thống từng tự nạp — biểu `BIEU_THUE_5_BAC_CU` (cắt cụt ở 25%, bậc cuối là mốc
+ * `999999999999`), biểu `BIEU_THUE_7_BAC_CU` (Điều 22 Luật cũ), hai mức giảm trừ
+ * 11.000.000/4.400.000 theo NQ 954/2020, trần ăn ca 730.000 (TT 26/2016) hoặc ngưỡng khấu trừ
+ * 10% mức 2.000.000 (Điều 25 TT 111/2013). Trùng khớp nguyên văn nghĩa là công ty **chưa hề chỉnh
+ * tay** — giá trị đó do hệ thống tự nạp, nên thay bằng bộ số đúng luật là sửa lỗi của mình.
  *
- * Mọi biểu khác — kể cả biểu 5 bậc mà bậc cuối đã là `null`, kể cả biểu lệch chuẩn — đều **GIỮ
- * NGUYÊN** và chỉ được liệt kê ra. Ghi đè cấu hình người dùng đã cố ý đặt là phá dữ liệu, kể cả
- * khi ta cho rằng họ đặt sai (`BR-hrm-083`). Ranh giới "trùng khớp nguyên văn" là ranh giới DUY
- * NHẤT phân biệt được *lỗi của hệ thống* với *lựa chọn của người dùng*.
+ * Mọi giá trị khác đều **GIỮ NGUYÊN** và chỉ được liệt kê ra. Ghi đè cấu hình người dùng đã cố ý
+ * đặt là phá dữ liệu, kể cả khi ta cho rằng họ đặt sai (`BR-hrm-083`). Ranh giới "trùng khớp
+ * nguyên văn" là ranh giới DUY NHẤT phân biệt được *lỗi của hệ thống* với *lựa chọn của người
+ * dùng*. Từng tham số xét độc lập: công ty tự sửa mức giảm trừ nhưng vẫn giữ nguyên biểu cũ thì
+ * biểu vẫn được chuẩn hóa, còn mức giảm trừ giữ nguyên và được liệt kê.
  *
  * ===== BỐN KẾT LUẬN CHO MỖI CÔNG TY =====
  *
- *   • `dung-chuan`     — đã là biểu 7 bậc chuẩn. Không đụng.
- *   • `bieu-5-bac-cu`  — đang giữ nguyên văn biểu 5 bậc cắt cụt ⇒ ĐƯỢC ghi đè.
- *   • `can-xem-lai`    — công ty đã tự đặt biểu khác. Giữ nguyên, liệt kê để chủ tài khoản quyết.
+ *   • `dung-chuan`     — mọi tham số đã đúng luật hiện hành. Không đụng.
+ *   • `se-chuan-hoa`   — có tham số đang giữ nguyên văn bộ số cũ ⇒ ĐƯỢC ghi đè.
+ *   • `can-xem-lai`    — công ty đã tự đặt giá trị riêng. Giữ nguyên, liệt kê để chủ tài khoản
+ *                        quyết (vẫn chuẩn hóa những tham số khác còn nguyên văn bộ số cũ).
  *   • `chua-co-ban-ghi`— chưa từng mở màn Cấu hình. Không cần làm gì: lần `GET` đầu tiên sẽ tự
- *                        nạp biểu chuẩn 7 bậc (self-healing, `BR-hrm-070`).
+ *                        nạp bộ chuẩn hiện hành (self-healing, `BR-hrm-070`).
  *
  * CHẠY LẠI ĐƯỢC NHIỀU LẦN CHO CÙNG KẾT QUẢ: sau lượt ghi, công ty vừa chuẩn hóa chuyển sang
  * `dung-chuan` nên lượt hai không ghi thêm gì và cho cùng bảng đối soát (`AC-hrm-71`).
@@ -60,7 +72,14 @@ import {
  */
 
 /** Kết luận cho một công ty. */
-type KetLuan = 'dung-chuan' | 'bieu-5-bac-cu' | 'can-xem-lai' | 'chua-co-ban-ghi';
+type KetLuan = 'dung-chuan' | 'se-chuan-hoa' | 'can-xem-lai' | 'chua-co-ban-ghi';
+
+/** Giảm trừ gia cảnh theo NQ 954/2020/UBTVQH14 — chỉ dùng để NHẬN DIỆN dữ liệu cũ, không nạp lại. */
+const GIAM_TRU_BAN_THAN_CU = 11_000_000;
+const GIAM_TRU_PHU_THUOC_CU = 4_400_000;
+/** Trần ăn ca TT 26/2016/TT-BLĐTBXH và ngưỡng khấu trừ 10% Điều 25 TT 111/2013 — cũng chỉ để nhận diện. */
+const TRAN_AN_CA_CU = 730_000;
+const NGUONG_KHAU_TRU_CU = 2_000_000;
 
 interface DongBaoCao {
   maSoThue: string;
@@ -69,6 +88,10 @@ interface DongBaoCao {
   ketLuan?: KetLuan;
   /** Số bậc của biểu đang lưu — để người đọc biết công ty `can-xem-lai` đang giữ biểu thế nào. */
   soBac?: number;
+  /** Tham số còn nguyên văn bộ số cũ ⇒ được/đã ghi đè trong lượt này. */
+  canGhi?: string[];
+  /** Tham số công ty đã tự đặt ⇒ giữ nguyên, chờ chủ tài khoản quyết. */
+  xemLai?: string[];
   /** Đã thực sự ghi đè trong lượt này (chế độ rà soát luôn là `false`). */
   daGhi: boolean;
   loi?: string;
@@ -86,7 +109,13 @@ async function coBangCauHinh(db: PrismaClient): Promise<boolean> {
 async function xuLyMotTenant(
   dbName: string,
   chayThu: boolean,
-): Promise<{ ketLuan: KetLuan; soBac?: number; daGhi: boolean }> {
+): Promise<{
+  ketLuan: KetLuan;
+  soBac?: number;
+  canGhi: string[];
+  xemLai: string[];
+  daGhi: boolean;
+}> {
   const db = getTenantDb(dbName);
 
   if (!(await coBangCauHinh(db))) {
@@ -97,44 +126,103 @@ async function xuLyMotTenant(
 
   const banGhi = await db.generalSetting.findUnique({
     where: { id: SINGLETON_ID },
-    select: { taxBrackets: true },
-  });
-
-  if (!banGhi) {
-    return { ketLuan: 'chua-co-ban-ghi', daGhi: false };
-  }
-
-  const bieu = banGhi.taxBrackets;
-  const soBac = Array.isArray(bieu) ? bieu.length : undefined;
-
-  if (laBieuThueTrungKhop(bieu, BIEU_THUE_CHUAN_7_BAC)) {
-    return { ketLuan: 'dung-chuan', soBac, daGhi: false };
-  }
-
-  if (!laBieuThueTrungKhop(bieu, BIEU_THUE_5_BAC_CU)) {
-    // Công ty đã tự đặt biểu — giữ nguyên, chỉ liệt kê.
-    return { ketLuan: 'can-xem-lai', soBac, daGhi: false };
-  }
-
-  if (chayThu) {
-    return { ketLuan: 'bieu-5-bac-cu', soBac, daGhi: false };
-  }
-
-  await db.generalSetting.update({
-    where: { id: SINGLETON_ID },
-    data: {
-      taxBrackets: BIEU_THUE_CHUAN_7_BAC as unknown as Prisma.InputJsonValue,
+    select: {
+      taxBrackets: true,
+      personalDeduction: true,
+      dependentDeduction: true,
+      lunchAllowanceTaxFreeCap: true,
+      withholdingTaxThreshold: true,
     },
   });
 
-  return { ketLuan: 'bieu-5-bac-cu', soBac, daGhi: true };
+  if (!banGhi) {
+    return { ketLuan: 'chua-co-ban-ghi', canGhi: [], xemLai: [], daGhi: false };
+  }
+
+  // Bộ số đúng luật lấy thẳng từ nguồn self-healing — script không giữ bản sao riêng để khỏi lệch.
+  const macDinh = khoiTaoCauHinhMacDinh();
+  const bieu = banGhi.taxBrackets;
+  const soBac = Array.isArray(bieu) ? bieu.length : undefined;
+  const canGhi: string[] = [];
+  const xemLai: string[] = [];
+  const data: Prisma.GeneralSettingUpdateInput = {};
+
+  if (!laBieuThueTrungKhop(bieu, BIEU_THUE_CHUAN_5_BAC)) {
+    const heThongTuNap =
+      laBieuThueTrungKhop(bieu, BIEU_THUE_5_BAC_CU) ||
+      laBieuThueTrungKhop(bieu, BIEU_THUE_7_BAC_CU);
+    if (heThongTuNap) {
+      canGhi.push('biểu thuế');
+      data.taxBrackets = macDinh.taxBrackets as unknown as Prisma.InputJsonValue;
+    } else {
+      xemLai.push('biểu thuế');
+    }
+  }
+
+  const thamSoSo = [
+    {
+      ten: 'giảm trừ bản thân',
+      dangLuu: Number(banGhi.personalDeduction),
+      cu: GIAM_TRU_BAN_THAN_CU,
+      moi: macDinh.personalDeduction,
+      dat: () => (data.personalDeduction = macDinh.personalDeduction),
+    },
+    {
+      ten: 'giảm trừ người phụ thuộc',
+      dangLuu: Number(banGhi.dependentDeduction),
+      cu: GIAM_TRU_PHU_THUOC_CU,
+      moi: macDinh.dependentDeduction,
+      dat: () => (data.dependentDeduction = macDinh.dependentDeduction),
+    },
+    {
+      ten: 'trần miễn thuế ăn ca',
+      dangLuu: Number(banGhi.lunchAllowanceTaxFreeCap),
+      cu: TRAN_AN_CA_CU,
+      moi: macDinh.lunchAllowanceTaxFreeCap,
+      dat: () =>
+        (data.lunchAllowanceTaxFreeCap = macDinh.lunchAllowanceTaxFreeCap),
+    },
+    {
+      ten: 'ngưỡng khấu trừ 10%',
+      dangLuu: Number(banGhi.withholdingTaxThreshold),
+      cu: NGUONG_KHAU_TRU_CU,
+      moi: macDinh.withholdingTaxThreshold,
+      dat: () =>
+        (data.withholdingTaxThreshold = macDinh.withholdingTaxThreshold),
+    },
+  ];
+
+  for (const g of thamSoSo) {
+    if (g.dangLuu === g.moi) continue;
+    if (g.dangLuu === g.cu) {
+      canGhi.push(g.ten);
+      g.dat();
+    } else {
+      xemLai.push(g.ten);
+    }
+  }
+
+  const ketLuan: KetLuan =
+    xemLai.length > 0
+      ? 'can-xem-lai'
+      : canGhi.length > 0
+        ? 'se-chuan-hoa'
+        : 'dung-chuan';
+
+  if (chayThu || canGhi.length === 0) {
+    return { ketLuan, soBac, canGhi, xemLai, daGhi: false };
+  }
+
+  await db.generalSetting.update({ where: { id: SINGLETON_ID }, data });
+
+  return { ketLuan, soBac, canGhi, xemLai, daGhi: true };
 }
 
 const NHAN: Record<KetLuan, string> = {
-  'dung-chuan': 'đúng biểu chuẩn 7 bậc',
-  'bieu-5-bac-cu': 'đang giữ nguyên biểu 5 bậc cắt cụt',
-  'can-xem-lai': 'đã tự đặt biểu khác — CẦN NGƯỜI XEM LẠI',
-  'chua-co-ban-ghi': 'chưa có bản ghi cấu hình (sẽ tự nạp biểu chuẩn khi mở lần đầu)',
+  'dung-chuan': 'đúng bộ chuẩn hiện hành (biểu 5 bậc, giảm trừ 15.5tr/6.2tr)',
+  'se-chuan-hoa': 'đang giữ nguyên bộ số cũ',
+  'can-xem-lai': 'đã tự đặt giá trị riêng — CẦN NGƯỜI XEM LẠI',
+  'chua-co-ban-ghi': 'chưa có bản ghi cấu hình (sẽ tự nạp bộ chuẩn khi mở lần đầu)',
 };
 
 async function main(): Promise<void> {
@@ -193,11 +281,13 @@ async function main(): Promise<void> {
       continue;
     }
     const dauHieu = dong.ketLuan === 'can-xem-lai' ? '!' : '✓';
+    const coGhi = (dong.canGhi ?? []).length > 0;
     console.log(
       `  ${dauHieu} ${dbName} (MST ${c.maSoThue}, ${c.status}): ${NHAN[dong.ketLuan as KetLuan]}` +
         `${dong.soBac !== undefined ? ` — ${dong.soBac} bậc` : ''}` +
-        `${dong.daGhi ? ' ⇒ ĐÃ GHI biểu 7 bậc chuẩn' : ''}` +
-        `${!dong.daGhi && chayThu && dong.ketLuan === 'bieu-5-bac-cu' ? ' ⇒ SẼ ghi khi chạy thật' : ''}`,
+        `${(dong.xemLai ?? []).length > 0 ? ` — giữ nguyên: ${dong.xemLai?.join(', ')}` : ''}` +
+        `${dong.daGhi ? ` ⇒ ĐÃ GHI: ${dong.canGhi?.join(', ')}` : ''}` +
+        `${!dong.daGhi && chayThu && coGhi ? ` ⇒ SẼ ghi: ${dong.canGhi?.join(', ')}` : ''}`,
     );
   }
 
@@ -209,13 +299,15 @@ async function main(): Promise<void> {
   // ĐỐI SOÁT CUỐI — bắt buộc theo FR-hrm-055 điểm 4.
   const dem = (k: KetLuan) => baoCao.filter((d) => !d.loi && d.ketLuan === k).length;
   const daChuanHoa = baoCao.filter((d) => d.daGhi).length;
-  const seChuanHoa = dem('bieu-5-bac-cu');
+  // Công ty `can-xem-lai` vẫn có thể có tham số khác được chuẩn hóa — đếm theo việc có gì để ghi,
+  // không đếm theo kết luận, nếu không con số "sẽ chuẩn hóa" sẽ nói dối.
+  const seChuanHoa = baoCao.filter((d) => !d.loi && (d.canGhi ?? []).length > 0).length;
   const canXemLai = dem('can-xem-lai');
   const soLoi = baoCao.filter((d) => d.loi).length;
 
   console.log(
     `\n===== ĐỐI SOÁT =====\n` +
-      `  Đúng biểu chuẩn 7 bậc            : ${dem('dung-chuan')}\n` +
+      `  Đúng bộ chuẩn hiện hành          : ${dem('dung-chuan')}\n` +
       `  Chưa có bản ghi cấu hình         : ${dem('chua-co-ban-ghi')}\n` +
       `  ${chayThu ? 'Sẽ được chuẩn hóa                ' : 'Đã chuẩn hóa trong lượt này      '}: ` +
       `${chayThu ? seChuanHoa : daChuanHoa}\n` +
@@ -226,7 +318,7 @@ async function main(): Promise<void> {
 
   if (canXemLai > 0) {
     console.log(
-      `\n${canXemLai} công ty đã tự đặt biểu thuế riêng — script KHÔNG đụng tới, đúng BR-hrm-083.\n` +
+      `\n${canXemLai} công ty đã tự đặt giá trị riêng — script KHÔNG đụng tới, đúng BR-hrm-083.\n` +
         'Gửi danh sách trên cho chủ tài khoản từng công ty tự quyết có đổi về biểu chuẩn hay không.',
     );
   }

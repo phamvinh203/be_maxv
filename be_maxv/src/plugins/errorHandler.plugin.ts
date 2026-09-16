@@ -10,6 +10,7 @@ import {
   DriveApiError,
 } from '../helpers/errors';
 import { PayrollError } from '../helpers/hrm/payrollErrors';
+import { ToKhaiThueError } from '../helpers/hrm/toKhaiThueErrors';
 import { HttpStatus } from '../constants/httpStatus';
 import { MESSAGES } from '../constants/messages';
 // Hai client sinh ra (sys + tenant) dùng CHUNG một lớp lỗi runtime (đã kiểm chứng bằng
@@ -23,7 +24,9 @@ import { Prisma } from '../generated/tenant';
 export default fp(
   async (app) => {
     app.setErrorHandler((err, req, reply) => {
-      if (err instanceof PayrollError) {
+      // Hai lớp lỗi HRM cùng hình dạng (mã nghiệp vụ + status) nên đi chung một nhánh:
+      // `PayrollError` mang `E-dltl-xxx`, `ToKhaiThueError` mang `E-tkt-xxx`.
+      if (err instanceof PayrollError || err instanceof ToKhaiThueError) {
         return reply.status(err.statusCode).send({
           success: false,
           code: err.code,

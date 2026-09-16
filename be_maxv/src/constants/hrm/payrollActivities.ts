@@ -13,6 +13,10 @@ export const HANH_DONG_KY_LUONG = {
   MODULE_UNLOCKED: 'HRM_PAYROLL_MODULE_UNLOCKED',
   MODULES_LOCKED_ALL: 'HRM_PAYROLL_MODULES_LOCKED_ALL',
   CALCULATED: 'HRM_PAYROLL_CALCULATED',
+  // Bảng tính thuế tháng (to_khai_thue, BR-tkt-013) — ghi vào CÙNG nhật ký kỳ lương vì chốt/mở
+  // là thao tác trên chính kỳ đó; "Lịch sử hoạt động" của kỳ hiện luôn hai dòng này.
+  TAX_SHEET_LOCKED: 'HRM_TAX_SHEET_LOCKED',
+  TAX_SHEET_UNLOCKED: 'HRM_TAX_SHEET_UNLOCKED',
 } as const;
 
 export type HanhDongKyLuong = (typeof HANH_DONG_KY_LUONG)[keyof typeof HANH_DONG_KY_LUONG];

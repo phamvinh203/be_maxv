@@ -38,7 +38,7 @@ Tài liệu được xây dựng trên cơ sở phân tích giao diện Mock t�
 2. **Thuế Thu nhập Cá nhân (TNCN)** *(Thông tư 111/2013/TT-BTC, Thông tư 25/2018/TT-BTC)*:
    - **Khoản chịu thuế**: Toàn bộ tiền lương, tiền công và các khoản phụ cấp/trợ cấp (trừ các khoản được miễn theo luật).
    - **Khoản phụ cấp/trợ cấp được MIỄN thuế TNCN trong định mức**:
-     - Tiền ăn giữa ca: Tối đa **730.000 VNĐ/tháng** (nếu chi bằng tiền mặt; nếu tổ chức bữa ăn thì miễn toàn bộ).
+     - Tiền ăn giữa ca: Tối đa **1.200.000 VNĐ/tháng** `[SỬA 2026-09-14 — NĐ 253/2026/NĐ-CP, trước là 730.000]` (nếu chi bằng tiền mặt; nếu tổ chức bữa ăn thì miễn toàn bộ).
      - Tiền trang phục: Tối đa 5.000.000 VNĐ/năm nếu chi bằng tiền mặt.
      - Tiền điện thoại, công tác phí, xăng xe: Theo quy chế tài chính nội bộ phục vụ công việc.
 3. **Tiền lương làm thêm giờ (Tăng ca - Overtime)** *(Điều 98 Bộ luật Lao động 2019)*:

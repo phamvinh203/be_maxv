@@ -541,11 +541,12 @@ GET /payroll/calculate?periodId=..
 
 1. **Hai trần bảo hiểm ĐỘC LẬP** — BHXH+BHYT trần `baseSalary×20` (46,8tr), BHTN trần
    `regionMinSalary×20` (99,2tr). Tính RIÊNG rồi cộng, KHÔNG kẹp 1 trần chung.
-2. **Miễn thuế OT vượt chuẩn** — chỉ phần OT trả CAO HƠN đơn giá giờ thường mới miễn, tính TỪNG
-   dòng `OvertimeRecord`, không cộng gộp rồi mới trừ.
-3. **Khấu trừ 10% cho HĐ `thu_viec`/`thoi_vu`** khi thu nhập ≥ ngưỡng — KHÔNG giảm trừ gia cảnh.
-4. **Trần miễn thuế ăn ca 730k/tháng** (quy đổi theo công) — nhận diện bằng cờ
-   `SalaryItem.isMealAllowance`, KHÔNG dò tên khoản.
+2. **Miễn thuế tiền OT** `[SỬA 2026-09-14]` — từ kỳ tính thuế 2026 miễn TOÀN BỘ tiền làm thêm giờ
+   (`otTaxExemptAmount = otAmount`). Bản cũ chỉ miễn phần trả cao hơn đơn giá giờ thường.
+3. **Khấu trừ 10% cho HĐ `thu_viec`/`thoi_vu`** khi thu nhập ≥ ngưỡng (mặc định 5.000.000đ/lần
+   trả từ 2026-09-14, trước là 2.000.000đ) — KHÔNG giảm trừ gia cảnh.
+4. **Trần miễn thuế ăn ca 1,2tr/tháng** `[SỬA 2026-09-14, trước là 730k]` (quy đổi theo công) —
+   nhận diện bằng cờ `SalaryItem.isMealAllowance`, KHÔNG dò tên khoản.
 5. **QĐ-9 (chủ dự án chốt `Q-1` 2026-09-10):** ô tick "chịu thuế TNCN" (`SalaryItem.isTaxable`) và
    "Phân loại" (`SalaryStructureItem.taxTreatment`) ở màn Cấu trúc lương **có hiệu lực thật** —
    khoản phụ cấp cố định khai miễn thuế bị trừ khỏi thu nhập tính thuế. Phép hợp nhất là **OR**:
@@ -757,6 +758,83 @@ gọi thêm service có sẵn thay vì `db.<model>.create()` trực tiếp cho c
 - Test: `__tests__/hrm/hrmPayrollClosing.test.ts` mock `config/db.sys` (không chạm control plane
   thật) và mock `calculatePayrollPreview`/`ghiDeBangLuong`; mock DB của `hrmPayrollInputData.test.ts`
   phải có `payrollModuleLock.findUnique` (guard tra ở mọi đường ghi).
+
+### 1.12. Tờ khai thuế TNCN (`to_khai_thue`) — bước 1…7 (2026-09-14 → 09-15, backend-engineer)
+
+**Mô hình trước khi đọc code** (chi tiết ở `docs/hrm/to_khai_thue/data-model-to-khai-thue.md`):
+- **Chính sách thuế theo mốc hiệu lực** (`hrm_tax_policies`, ADR-012): biểu thuế + giảm trừ của một
+  kỳ tra theo `period.startDate`, không theo ngày chi trả — cả tháng dùng đúng một biểu.
+- **Hai tầng snapshot bất biến** (ADR-013): (1) bản ghi thu nhập ngoài lương chụp nhóm xử lý thuế +
+  phần miễn/chịu thuế lúc lưu — sửa danh mục sau không đổi ngược số cũ; (2) `hrm_tax_calculation_lines`
+  CHỈ có dòng khi tháng đã chốt — chưa chốt thì tính trực tiếp mỗi lần đọc.
+- **Dòng bảng tính thuế là theo NGƯỜI**: `recipientKey` = `ma_nv`, hoặc với cá nhân vãng lai `'VL:'` + CCCD →
+  MST → họ tên (lấy cái có trước, chữ thường, bỏ khoảng trắng) — không theo bản ghi. Hai bản của cùng một luật
+  phải khớp nhau: `otherIncomeRecord.service.ts::khoaNguoiNhan` (gộp dòng, trần miễn thuế) và index
+  `hrm_oir_chong_trung_v2` trong `hrmTenantConstraints.ts` (chống trùng) — RVW-727.
+- **Thu nhập ngoài lương tách 2 phần** (chủ dự án chốt 2026-09-15): phần cộng lũy tiến
+  (`taxableAmount`) và phần khấu trừ riêng (gross khoản `WITHHOLDING_FLAT`). Cả hai nằm trong
+  `thu_nhap_ngoai`; chỉ phần đầu vào nền lũy tiến.
+- Khóa tháng dùng `hrm_payroll_module_locks` mã `TAX_SHEET`, cố ý KHÔNG nằm trong 12 bảng kê của màn
+  Chốt kỳ lương — "Chốt toàn kỳ" không được chốt luôn bảng thuế.
+
+| Thao tác | Route → hàm | Ghi chú |
+|---|---|---|
+| Tra chính sách thuế của kỳ | `taxPolicy.service.ts::resolveTaxPolicy(db, period.startDate)` | Bảng RỖNG (công ty cấp mới) ⇒ tự nạp `CHINH_SACH_THUE_SEED` rồi tra lại (RVW-725; `skipDuplicates` cho hai lượt nạp cùng lúc). Đã có dòng mà không mốc nào tới đầu kỳ ⇒ 500 `E-tkt-015` kèm lệnh `npm run hrm:seed-thue` |
+| Danh mục loại thu nhập (5 endpoint) | `/to-khai-thue/income-categories` → `incomeCategory.service.ts` | Mã `TNxx` tự sinh: quét lỗ hổng + thử lại khi trùng |
+| Tính thuế 1 bản ghi | `otherIncomeTax.ts::tinhThueThuNhapNgoaiLuong` | Hàm thuần — nơi DUY NHẤT có công thức 4 nhóm |
+| Bản ghi thu nhập ngoài lương (6 endpoint) | `/to-khai-thue/other-income` → `otherIncomeRecord.service.ts` | Không có đường ghi/xóa hàng loạt — xóa loạt chứng từ thuế không FR nào phủ |
+| Tính dòng Bảng tính thuế | `taxSheetRows.ts::tinhBangTinhThueThang` | Hàm thuần, dùng chung cho xem Nháp VÀ lúc chốt ⇒ số thấy = số đóng băng |
+| Xem Bảng tính thuế tháng | `GET /to-khai-thue/tax-calculation` → `taxSheet.service.ts::getTaxSheet` | Có khóa ⇒ đọc snapshot; không ⇒ `getPayrollSheetLines` + bản ghi ngoài lương + hồ sơ NV |
+| Chốt tháng | `POST .../tax-calculation/lock` → `lockTaxSheet` | Kỳ lương phải `LOCKED`+. MỘT giao dịch: `FOR UPDATE` dòng kỳ lương → kiểm trạng thái + khóa → tính dòng → ghi khóa TRƯỚC dòng (RVW-721/722) |
+| Mở lại tháng | `POST .../tax-calculation/unlock` → `unlockTaxSheet` | `assertQuanTriToKhaiThue` + lý do ≥ 20 ký tự; xóa snapshot + tờ khai chưa xuất của quý |
+| Xem tờ khai quý | `GET /to-khai-thue/05-kk-tncn` → `taxDeclaration.service.ts::getToKhai` | Chưa đủ 3 tháng chốt ⇒ không có dòng; đủ ⇒ tự tạo `READY_TO_EXPORT`, tính lại mỗi lần đọc; đã xuất ⇒ đọc nguyên |
+| Tính 17 chỉ tiêu | `taxDeclarationCalc.ts::tinhChiTieuMay` · `hopNhatGhiDe` · `kiemTraCanDoi` | Hàm thuần; gộp theo NGƯỜI; ô tổng hợp luôn suy lại; [24] [25] [32] = 0 |
+| Ghi đè / xóa ghi đè | `PUT`/`DELETE .../05-kk-tncn/overrides` → `putGhiDe` · `deleteGhiDe` | Kiểm 011/012 bằng `chuanHoaGhiDe` TRƯỚC mọi truy vấn; đã xuất ⇒ 019 |
+| Xuất · tải lại file | `POST .../export` → `xuatToKhai` rồi `taxDeclarationFile.ts::dungFileToKhai` · `GET .../file` → `layToKhaiDaXuat` | Đổi trạng thái trong giao dịch; dựng file SAU commit — hỏng thì 500 nhưng KHÔNG lùi trạng thái |
+| Bảng chi tiết · đánh dấu đã nộp · lịch sử kỳ | `detail-sheet` → `getBangChiTiet` · `mark-submitted` → `danhDauDaNop` · `periods` → `listKyToKhai` | Đánh dấu nộp là `updateMany` có điều kiện `trang_thai = EXPORTED` |
+| Quyền (mọi controller sub-cụm) | `helpers/hrm/toKhaiThueAccess.ts` — `dbToKhaiThue` · `assertQuanTriToKhaiThue` | Lỗi mang `E-tkt-014` |
+| File Excel | `helpers/hrm/xlsxDonGian.ts::taoXlsx` trên `helpers/zip.ts::taoZip` | Không thêm thư viện — giữ mốc 0 lỗ hổng `npm audit` |
+| Nối route (23 endpoint) | `routes/hrm/to_khai_thue/toKhaiThue.route.ts`, đăng ký trong `routes/hrm/hrm.route.ts` | Xác thực + guard module `hrm` kế thừa hook của `hrm.route.ts`; quyền 2 mức ở đầu controller |
+| Danh sách chính sách thuế | `GET /to-khai-thue/tax-policies` → `taxPolicy.controller.ts` → `taxPolicy.service.ts::getTaxPolicies` | `dangApDung` = mốc mới nhất đã tới theo ngày Việt Nam |
+| Kiểm đầu vào khoản ngoài lương | `otherIncomeRecord.service.ts::tinhSnapshot` | Dùng chung cho tính thử / thêm / sửa: danh mục ACTIVE → nhóm ↔ đối tượng (021) → nhân viên có thật, chưa xóa mềm (016) → Cam kết 08 (006) → chặn không cư trú (004). Luật mới thêm vào ĐÂY, không vào từng endpoint. `ma_nv` in hoa ở validator như mọi màn hồ sơ nhân sự |
+| Ghi khoản ngoài lương (thêm / sửa / xóa) | `otherIncomeRecord.service.ts::moKyDeGhi` | Mở đầu MỌI giao dịch ghi: `FOR SHARE` dòng kỳ lương rồi mới kiểm khóa tháng (E-tkt-007). Kiểm ngoài giao dịch là để lọt khoản vào tháng vừa chốt (RVW-722) |
+| Mở lại / xóa kỳ lương khi tháng đã chốt thuế | `helpers/hrm/payrollPeriodLockGuard.ts::khoaKyDeMoLaiHoacXoa` | Gọi ở đầu giao dịch `reopenPayrollPeriod` / `deletePayrollPeriod`: `FOR UPDATE` dòng kỳ, còn khóa `TAX_SHEET` ⇒ 409 `E-dltl-029` (RVW-721) — kỳ lương là nguồn của số thuế đã chốt. Xóa kỳ còn đếm khoản thu nhập ngoài lương dưới cùng khóa ⇒ 409 `E-dltl-030` (RVW-735) |
+| Thứ tự dòng Bảng tính thuế | `taxSheetRows.ts::soSanhDongBangThue` | Loại lao động → họ tên (`localeCompare` tiếng Việt) → khóa. `getTaxSheet` sắp CẢ hai nhánh Nháp / Đã chốt bằng hàm này (RVW-736) — đừng sắp riêng từng nhánh |
+| Rà soát trước khi áp ràng buộc | `services/shared/hrmTenantConstraints.ts::MUC_RA_SOAT` (`npm run hrm:ra-soat`) | Mục `khoan-ngoai-trung-v2` (khoản sẽ vướng index chống trùng v2) và `bang-thue-khoa-vang-lai-cu` (tháng đã chốt còn khóa vãng lai kiểu `v1`). Biểu thức khóa vãng lai chỉ ở `sqlKhoaVangLai` (RVW-732); mục khóa cũ chỉ soi dòng có CCCD hoặc MST (RVW-738) |
+| Dữ liệu ghi chính sách thuế từ seed | `constants/hrm/to_khai_thue/taxSeedData.ts::veDuLieuChinhSach` | Một phép ánh xạ cho script M-2, nạp lười và bộ kiểm thử (RVW-734) |
+| Giới hạn số theo kiểu cột | `constants/hrm/to_khai_thue/gioiHanSo.ts` | Dùng ở validator (`amount`, trần/ngưỡng danh mục), `chuanHoaGhiDe` và chốt chặn cuối của `tinhThueThuNhapNgoaiLuong` (RVW-723). Thêm cột tiền mới thì lấy trần ở đây, đừng rải số |
+| Đếm người phụ thuộc trong kỳ | `helpers/hrm/nguoiPhuThuocTrongKy.ts::demNguoiPhuThuocTrongKy` | Dùng chung cho Bảng tính thuế tháng VÀ engine lương `payrollCalculation.service.ts` (ISSUE-tkt-001, 2026-09-15) — hai nơi đếm khác nhau là hai số thuế cho cùng người |
+| Lỗi nghiệp vụ | `ToKhaiThueError('E-tkt-xxx')`, kiểm đầu vào qua `toKhaiThueValidate.ts::kiemTraTkt` | Status gắn cứng theo mã ở `constants/hrm/to_khai_thue/toKhaiThueErrors.ts` |
+
+**TUYỆT ĐỐI:**
+- Không tính lại thuế 10% của người thời vụ/thử việc trong Bảng tính thuế — lấy thẳng
+  `personalIncomeTax` của engine lương (NFR-tkt-005).
+- Không viết công thức thuế bản ghi ở chỗ thứ hai, kể cả FE — dùng `POST /other-income/preview`.
+- Không cộng khoản `WITHHOLDING_FLAT` vào nền lũy tiến; không để `thue_toan_phan = 0` cho người lũy
+  tiến có khoản khấu trừ riêng (tờ khai quý sẽ mất số thuế).
+- Thêm cột vào `hrm_tax_calculation_lines` phải thêm đủ 3 chỗ: `DongBangTinhThueTinh` (bộ tính),
+  `veDongTuSnapshot` (nhánh đọc snapshot), bất biến trong `hrmTaxSheetRows.test.ts` — thiếu một chỗ là
+  hai nhánh Nháp/Đã chốt lệch hình dạng.
+- Ném lỗi bằng `ToKhaiThueError(code)`, không truyền status tay.
+- Mọi đường GHI của tờ khai quý đi qua `moQuyDeGhi`: khóa đọc 3 khóa tháng (`FOR SHARE`) rồi khóa ghi
+  dòng tờ khai (`FOR UPDATE`) trong cùng giao dịch. Đường ghi mới bỏ bước này là mở lại được một tháng
+  đúng lúc tờ khai đang được xuất (data-model Mục 5.3, dòng đua cuối cùng).
+- Tờ khai `EXPORTED`/`SUBMITTED` là bất biến: không tính lại, không ghi đè, không lùi trạng thái — kể
+  cả khi dựng file lỗi sau commit (người dùng tải lại bằng `GET .../05-kk-tncn/file`).
+- Không gọi thẳng `dbCoQuyenLuongPayroll` / `assertAdminOrOwner` trong sub-cụm này — lỗi mất mã `E-tkt-014`.
+- Thêm endpoint mới phải thêm cả dòng vào bảng `ENDPOINT` của `hrmToKhaiThueRoutes.test.ts` (kèm mức quyền) —
+  thiếu dòng là ma trận quyền không còn phủ endpoint đó.
+- Mã nháp cũ (`toKhaiThue.controller.ts`, `toKhaiThue.validator.ts`, `otherIncome.service.ts`,
+  `taxCalculation.service.ts`, `toKhaiTncn05.service.ts`, `types.ts`, `xuatXmlTncn05.ts`) đã cất vào git
+  stash ở bước 7. KHÔNG phục hồi vào `src/`: viết cho mô hình nghiệp vụ cũ, có lỗ hổng quyền ở handler xuất
+  XML (xem `docs/hrm/to_khai_thue/doi-soat-ma-nhap-to-khai-thue.md`).
+
+**Test:** `hrmTaxPolicy` · `hrmIncomeCategory` · `hrmOtherIncomeTax` (thuần) · `hrmTaxSheetRows`
+(thuần, kiểm bất biến từng dòng) · `hrmTaxSheetLock` (DB giả lập: thứ tự kiểm lỗi, khóa ghi trước dòng,
+bị chặn thì không ghi gì) · `hrmTaxDeclarationCalc` (thuần: 17 chỉ tiêu, ghi đè, cân đối) ·
+`hrmTaxDeclaration` (DB giả lập: vòng đời 4 trạng thái, khóa đọc trước khi ghi) · `hrmXlsxDonGian`
+(đọc lại zip/xlsx bằng bộ đọc ZIP của dự án) · `hrmToKhaiThueRoutes` (HTTP qua `app.inject`: đủ 23 route, 8 route
+nháp đã bỏ, ma trận quyền 2 mức, DB giả nổ nếu bị đụng trước khi qua quyền). Chưa có ca HTTP chạy trên DB thật.
 
 ---
 

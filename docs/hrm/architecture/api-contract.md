@@ -1263,9 +1263,9 @@ Nằm trong cùng payload `GET /settings/general`, `PUT /settings/general`,
 
 | Trường | Kiểu response | Kiểu request (PUT) | Mặc định | Ràng buộc | Dùng ở |
 |:---|:---|:---|:---|:---|:---|
-| `lunchAllowanceTaxFreeCap` | Chuỗi Decimal (đúng quy ước Mục 1.5) | Số JSON | `730000` | `>= 0` | Trần miễn thuế phụ cấp ăn ca/ăn trưa, quy đổi theo công (`BR-dltl-027`) |
+| `lunchAllowanceTaxFreeCap` | Chuỗi Decimal (đúng quy ước Mục 1.5) | Số JSON | `1200000` `[SỬA 2026-09-14]` | `>= 0` | Trần miễn thuế phụ cấp ăn ca/ăn trưa, quy đổi theo công (`BR-dltl-027`) |
 | `withholdingTaxRate` | Chuỗi Decimal | Số JSON | `10.0` | `0 <= x <= 100` | Tỷ lệ khấu trừ 10% tại nguồn cho hợp đồng thử việc/thời vụ (`BR-dltl-026`) |
-| `withholdingTaxThreshold` | Chuỗi Decimal | Số JSON | `2000000` | `>= 0` | Ngưỡng thu nhập tối thiểu để áp khấu trừ tại nguồn (`BR-dltl-026`) |
+| `withholdingTaxThreshold` | Chuỗi Decimal | Số JSON | `5000000` `[SỬA 2026-09-14]` | `>= 0` | Ngưỡng thu nhập tối thiểu để áp khấu trừ tại nguồn (`BR-dltl-026`) |
 
 Cả ba trường đều `optional` ở `PUT` (giữ nguyên giá trị cũ nếu không gửi) — cùng hành vi partial
 update đã có cho các trường `GeneralSetting` khác. Nguồn: `generalSettings.validator.ts:157-161`,

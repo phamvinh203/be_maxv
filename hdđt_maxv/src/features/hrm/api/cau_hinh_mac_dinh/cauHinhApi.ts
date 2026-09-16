@@ -79,7 +79,7 @@ export interface GeneralSettingApiData {
 
   /**
    * Cảnh báo cấp gốc của `data`, **chỉ có ở phản hồi `PUT`** và chỉ khi biểu thuế vừa lưu
-   * khác biểu chuẩn 7 bậc: `"CANH_BAO_BIEU_THUE_LECH_CHUAN"` (BR-hrm-083). Không đổi mã HTTP,
+   * khác biểu chuẩn 5 bậc: `"CANH_BAO_BIEU_THUE_LECH_CHUAN"` (BR-hrm-083). Không đổi mã HTTP,
    * không chặn lưu. Trùng khớp biểu chuẩn hoặc không gửi `taxBrackets` thì **vắng mặt hẳn**.
    */
   warning?: string;

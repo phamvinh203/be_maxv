@@ -179,7 +179,7 @@ Phần này mô tả các câu chuyện người dùng chuẩn hóa (User Storie
   - *Truy vết*: FR-hrm-045, FR-hrm-046; BR-hrm-070, BR-hrm-072; UC-hrm-18; E-hrm-068, E-hrm-077.
 
 - **US-hrm-11: Cấu hình Giảm trừ gia cảnh và Biểu thuế TNCN lũy tiến từng phần**
-  - *User Story*: Là **Chủ doanh nghiệp (OWNER) / Quản trị viên (ADMIN)**, tôi muốn thiết lập mức giảm trừ gia cảnh cho bản thân (11.000.000đ), người phụ thuộc (4.400.000đ) theo NQ 954/2020 và biểu thuế TNCN lũy tiến từng phần chuẩn 7 bậc theo Điều 22 Luật Thuế TNCN (hỗ trợ lưu động JSONB), để hệ thống tự động tính số thuế TNCN khấu trừ hàng tháng một cách minh bạch, chính xác.
+  - *User Story*: Là **Chủ doanh nghiệp (OWNER) / Quản trị viên (ADMIN)**, tôi muốn thiết lập mức giảm trừ gia cảnh cho bản thân (15.500.000đ), người phụ thuộc (6.200.000đ) theo NQ 110/2025/UBTVQH15 và biểu thuế TNCN lũy tiến từng phần chuẩn 5 bậc theo Luật Thuế TNCN số 109/2025/QH15 (hỗ trợ lưu động JSONB), để hệ thống tự động tính số thuế TNCN khấu trừ hàng tháng một cách minh bạch, chính xác.
   - *Acceptance Criteria*: AC-hrm-57, AC-hrm-62, AC-hrm-67, AC-hrm-68, AC-hrm-69, AC-hrm-70, AC-hrm-72.
   - *Truy vết*: FR-hrm-045, FR-hrm-046; BR-hrm-070, BR-hrm-073, BR-hrm-080…083; UC-hrm-18; E-hrm-069, E-hrm-077, E-hrm-080…082.
 
@@ -405,25 +405,25 @@ Bảng lưu trữ cấu hình tham số nền tảng dùng chung toàn công ty 
 #### 5. Thuế Thu nhập cá nhân (TNCN)
 | Trường | B/T | Kiểu | Mặc định | Ý nghĩa nghiệp vụ & Ràng buộc |
 |---|---|---|---|---|
-| `personalDeduction` | **B** | Số tiền (VND) | `11.000.000` | Mức giảm trừ gia cảnh cho bản thân người nộp thuế/tháng (NQ 954/2020/UBTVQH14). |
-| `dependentDeduction` | **B** | Số tiền (VND) | `4.400.000` | Mức giảm trừ cho mỗi người phụ thuộc hợp lệ/tháng (NQ 954/2020/UBTVQH14). |
-| `taxBrackets` | **B** | Json (`@db.JsonB`) | Biểu chuẩn 7 bậc (bảng ngay dưới) | Biểu thuế TNCN lũy tiến từng phần, lưu dạng mảng đối tượng `{"khoang": <ngưỡng trên lũy kế>, "thueSuat": <%>}` xếp theo bậc tăng dần. **`khoang` là ngưỡng trên lũy kế của thu nhập tính thuế/tháng, KHÔNG phải độ rộng bậc** (BR-hrm-080). Giá trị khởi tạo tự động và giá trị của thao tác Khôi phục mặc định bắt buộc là **biểu 7 bậc theo Điều 22 Luật Thuế thu nhập cá nhân** (BR-hrm-081). Ràng buộc toàn vẹn khi lưu: tối thiểu 2 bậc (E-hrm-081), ngưỡng lũy kế tăng nghiêm ngặt (BR-hrm-082, E-hrm-080), thuế suất tăng nghiêm ngặt (BR-hrm-073, E-hrm-069), bậc cuối là bậc mở (E-hrm-082). Cấu trúc JSONB cho phép đổi số bậc khi pháp luật thay đổi mà không đổi lược đồ; biểu khác biểu chuẩn vẫn lưu được nhưng bắt buộc kèm cảnh báo (BR-hrm-083). |
+| `personalDeduction` | **B** | Số tiền (VND) | `15.500.000` | Mức giảm trừ gia cảnh cho bản thân người nộp thuế/tháng (NQ 110/2025/UBTVQH15, hiệu lực từ kỳ tính thuế 2026 — thay NQ 954/2020/UBTVQH14). |
+| `dependentDeduction` | **B** | Số tiền (VND) | `6.200.000` | Mức giảm trừ cho mỗi người phụ thuộc hợp lệ/tháng (NQ 110/2025/UBTVQH15, hiệu lực từ kỳ tính thuế 2026 — thay NQ 954/2020/UBTVQH14). |
+| `taxBrackets` | **B** | Json (`@db.JsonB`) | Biểu chuẩn 5 bậc (bảng ngay dưới) | Biểu thuế TNCN lũy tiến từng phần, lưu dạng mảng đối tượng `{"khoang": <ngưỡng trên lũy kế>, "thueSuat": <%>}` xếp theo bậc tăng dần. **`khoang` là ngưỡng trên lũy kế của thu nhập tính thuế/tháng, KHÔNG phải độ rộng bậc** (BR-hrm-080). Giá trị khởi tạo tự động và giá trị của thao tác Khôi phục mặc định bắt buộc là **biểu 5 bậc theo Luật Thuế thu nhập cá nhân số 109/2025/QH15 và Nghị định 253/2026/NĐ-CP** (BR-hrm-081). Ràng buộc toàn vẹn khi lưu: tối thiểu 2 bậc (E-hrm-081), ngưỡng lũy kế tăng nghiêm ngặt (BR-hrm-082, E-hrm-080), thuế suất tăng nghiêm ngặt (BR-hrm-073, E-hrm-069), bậc cuối là bậc mở (E-hrm-082). Cấu trúc JSONB cho phép đổi số bậc khi pháp luật thay đổi mà không đổi lược đồ; biểu khác biểu chuẩn vẫn lưu được nhưng bắt buộc kèm cảnh báo (BR-hrm-083). |
 
 **Biểu thuế TNCN lũy tiến từng phần — biểu chuẩn hiện hành** (BR-hrm-081)
 
-Căn cứ: Điều 22 Luật Thuế thu nhập cá nhân số 04/2007/QH12, sửa đổi bổ sung bởi Luật số 26/2012/QH13. Biểu áp cho **thu nhập tính thuế** (thu nhập chịu thuế sau khi trừ giảm trừ gia cảnh và các khoản được trừ) theo tháng.
+Căn cứ: Luật Thuế thu nhập cá nhân số 109/2025/QH15 ngày 10/12/2025 (sửa đổi, bổ sung bởi Luật số 09/2026/QH16) và Nghị định 253/2026/NĐ-CP, hiệu lực áp dụng cho kỳ tính thuế 2026 trở đi — **thay thế biểu 7 bậc theo Điều 22 Luật Thuế TNCN số 04/2007/QH12** đã dùng trước đây (xem lịch sử thay đổi ở A-hrm-12). Biểu áp cho **thu nhập tính thuế** (thu nhập chịu thuế sau khi trừ giảm trừ gia cảnh và các khoản được trừ) theo tháng.
 
 | Bậc | Thu nhập tính thuế/tháng | `khoang` — ngưỡng trên lũy kế (VNĐ) | `thueSuat` (%) | Đối chiếu theo năm |
 |:--:|:---|---:|:--:|:---|
-| 1 | Đến 5 triệu | 5.000.000 | 5 | Đến 60 triệu |
-| 2 | Trên 5 đến 10 triệu | 10.000.000 | 10 | Trên 60 đến 120 triệu |
-| 3 | Trên 10 đến 18 triệu | 18.000.000 | 15 | Trên 120 đến 216 triệu |
-| 4 | Trên 18 đến 32 triệu | 32.000.000 | 20 | Trên 216 đến 384 triệu |
-| 5 | Trên 32 đến 52 triệu | 52.000.000 | 25 | Trên 384 đến 624 triệu |
-| 6 | Trên 52 đến 80 triệu | 80.000.000 | 30 | Trên 624 đến 960 triệu |
-| 7 | Trên 80 triệu | *bậc mở — không có ngưỡng trên* | 35 | Trên 960 triệu |
+| 1 | Đến 10 triệu | 10.000.000 | 5 | Đến 120 triệu |
+| 2 | Trên 10 đến 30 triệu | 30.000.000 | 10 | Trên 120 đến 360 triệu |
+| 3 | Trên 30 đến 60 triệu | 60.000.000 | 20 | Trên 360 đến 720 triệu |
+| 4 | Trên 60 đến 100 triệu | 100.000.000 | 30 | Trên 720 đến 1.200 triệu |
+| 5 | Trên 100 triệu | *bậc mở — không có ngưỡng trên* | 35 | Trên 1.200 triệu |
 
 Cột đối chiếu theo năm bằng đúng 12 lần ngưỡng tháng, chỉ dùng để kiểm tra chéo lúc quyết toán năm; hệ thống **chỉ lưu ngưỡng tháng**.
+
+> **OQ pháp lý chưa xác nhận 100%** (xem `docs/hrm/to_khai_thue/brainstorms/2026-09-14-to-khai-thue-tncn-brainstorm.md` Mục 6): nửa đầu 2026 (T1–T6) khấu trừ hàng tháng có tạm áp biểu 7 bậc cũ trước khi chuyển sang biểu 5 bậc này hay không — cần xác nhận với kế toán trưởng hoặc đọc thẳng Điều 29 Luật 109/2025/QH15 trước khi tính lại dữ liệu lịch sử của các kỳ đó.
 
 **Bậc mở (bậc cuối):** không có ngưỡng trên, áp cho toàn bộ phần thu nhập vượt ngưỡng của bậc liền trước. Cách mã hóa kỹ thuật của "không có ngưỡng trên" (một giá trị mốc rất lớn, `null`, hay một cờ riêng) là **quyết định của Architect**, phải ghi rõ đúng một lần trong `architecture/api-contract.md`; đặc tả nghiệp vụ chỉ yêu cầu ngữ nghĩa này thống nhất trên toàn tuyến lưu trữ — API — giao diện.
 
@@ -793,10 +793,10 @@ Nhật ký là **ghi kèm, không chặn**: ghi nhật ký hỏng thì thao tác
 - **Được phép hiển thị độ rộng bậc như một cột phái sinh chỉ-đọc** (hiệu hai ngưỡng liền kề) để người dùng dễ đọc. Cột phái sinh này **không được là ô nhập liệu** và **không được xuất hiện trong nội dung gửi lên máy chủ**.
 - Giá trị `0` **không** mang nghĩa "bậc cuối" hay "vô hạn" ở bất kỳ đâu. Bậc cuối được diễn đạt bằng khái niệm **bậc mở** của BR-hrm-082.
 
-**BR-hrm-081** `[MỚI — đợt thẩm định lại 2026-09-08]` — **Biểu thuế TNCN chuẩn là biểu 7 bậc**: Giá trị khởi tạo tự động cho công ty mới (Self-healing, BR-hrm-070) và giá trị của thao tác "Khôi phục mặc định" (FR-hrm-047) **bắt buộc** là biểu 7 bậc theo Điều 22 Luật Thuế thu nhập cá nhân số 04/2007/QH12 (sửa đổi bổ sung bởi Luật số 26/2012/QH13), đúng như bảng ở Mục 4.8: `5tr–5%` · `10tr–10%` · `18tr–15%` · `32tr–20%` · `52tr–25%` · `80tr–30%` · `bậc mở–35%`.
-- **Cấm dùng biểu rút gọn dừng ở 25% làm mặc định.** Biểu 5 bậc `5tr–5% · 10tr–10% · 18tr–15% · 32tr–20% · bậc mở–25%` từng được nạp làm mặc định **không tương ứng với bất kỳ biểu thuế nào của pháp luật Việt Nam** — nó là biểu chuẩn bị cắt cụt ba bậc trên. Hệ quả nghiệp vụ: người lao động có thu nhập tính thuế **trên 52.000.000đ/tháng** bị khấu trừ thiếu thuế; doanh nghiệp chi trả là bên chịu truy thu và tiền chậm nộp.
-- **Ngưỡng phân kỳ đo được**: hai biểu cho kết quả **giống hệt nhau** với thu nhập tính thuế từ 52.000.000đ/tháng trở xuống; chênh lệch chỉ phát sinh từ trên mốc đó. Ví dụ thu nhập tính thuế 100.000.000đ/tháng: đúng luật 25.150.000đ, biểu cắt cụt 21.750.000đ — **thiếu 3.400.000đ mỗi tháng cho một người** (13,5%). Ví dụ 60.000.000đ/tháng: đúng luật 12.150.000đ, biểu cắt cụt 11.750.000đ — thiếu 400.000đ.
-- **Công ty đã lỡ lưu biểu cũ**: xử lý theo FR-hrm-055, không tự ghi đè cấu hình người dùng đã sửa tay.
+**BR-hrm-081** `[SỬA 2026-09-14 — cập nhật theo Luật Thuế TNCN 2025]` — **Biểu thuế TNCN chuẩn là biểu 5 bậc theo Luật 109/2025/QH15**: Giá trị khởi tạo tự động cho công ty mới (Self-healing, BR-hrm-070) và giá trị của thao tác "Khôi phục mặc định" (FR-hrm-047) **bắt buộc** là biểu 5 bậc theo Luật Thuế thu nhập cá nhân số 109/2025/QH15 và Nghị định 253/2026/NĐ-CP, hiệu lực từ kỳ tính thuế 2026, đúng như bảng ở Mục 4.8: `10tr–5%` · `30tr–10%` · `60tr–20%` · `100tr–30%` · `bậc mở–35%`.
+- **Lịch sử — KHÔNG nhầm với biểu rút gọn sai luật đã sửa ngày 2026-09-08.** Trước bản sửa này, BR-hrm-081 quy định biểu chuẩn là **biểu 7 bậc** theo Điều 22 Luật Thuế TNCN số 04/2007/QH12 (sửa đổi bởi Luật 26/2012/QH13) — khi đó là đúng luật hiện hành. Luật 109/2025/QH15 (ban hành 10/12/2025, hiệu lực kỳ tính thuế 2026) sau đó thay thế toàn bộ khung pháp lý cũ, đổi từ 7 bậc sang 5 bậc **với ngưỡng và trần thuế suất khác hẳn** biểu rút gọn sai từng bị phát hiện ngày 2026-09-08 (biểu đó dừng ở 25%, không tương ứng bất kỳ quy định nào; biểu 5 bậc mới của luật 2025 có trần 35% và ngưỡng các bậc hoàn toàn khác — xem bảng Mục 4.8). Hai biểu "5 bậc" này **không liên quan nhau**, trùng số bậc là ngẫu nhiên.
+- **Công ty đang giữ biểu 7 bậc (đã remediate đúng theo bản BR-hrm-081 cũ ngày 2026-09-08)**: nay lại là biểu LỖI THỜI theo luật mới, cần một đợt chuẩn hóa tiếp theo — xem ghi chú cập nhật ở cuối FR-hrm-055.
+- **Công ty đã lỡ giữ biểu rút gọn sai 25% (chưa từng remediate)**: vẫn xử lý theo FR-hrm-055, không tự ghi đè cấu hình người dùng đã tự sửa tay.
 
 **BR-hrm-082** `[MỚI — đợt thẩm định lại 2026-09-08]` — **Toàn vẹn cấu trúc biểu thuế TNCN**: mọi biểu thuế được lưu — biểu chuẩn hay biểu công ty tự đặt — phải đồng thời thỏa **bốn** điều kiện, kiểm ngay tại thời điểm lưu:
 
@@ -933,11 +933,11 @@ Bốn điều kiện là **ràng buộc cứng** và áp cả khi cập nhật m
 
 ### Cấu hình mặc định
 
-**FR-hrm-045** `[MỚI, cập nhật 2026-09-08 — đợt thẩm định lại]` — Hệ thống cho phép người dùng có quyền truy cập phân hệ HRM (`ADMIN`, `OWNER`, `OWNER_EMPLOYEE`) xem toàn bộ thông tin Cấu hình mặc định hiện tại của công ty (`GET /settings/general`) gồm 5 nhóm tham số: ngày công/giờ công (hỗ trợ `FIXED_26`, `FIXED_24`, `ACTUAL_MONTH`), nghỉ phép năm, hệ số OT, lương cơ sở/vùng, tỷ lệ bảo hiểm/công đoàn và biểu thuế TNCN lũy tiến. Biểu thuế trả về theo ngữ nghĩa **ngưỡng trên lũy kế** (BR-hrm-080) và mặc định là **biểu 7 bậc chuẩn Điều 22 Luật Thuế TNCN** (BR-hrm-081, bảng đầy đủ ở Mục 4.8). Trường hợp công ty chưa có bản ghi cấu hình, hệ thống tự khởi tạo bộ giá trị chuẩn theo quy định pháp luật (Self-healing pattern).
+**FR-hrm-045** `[MỚI, cập nhật 2026-09-08 — đợt thẩm định lại]` — Hệ thống cho phép người dùng có quyền truy cập phân hệ HRM (`ADMIN`, `OWNER`, `OWNER_EMPLOYEE`) xem toàn bộ thông tin Cấu hình mặc định hiện tại của công ty (`GET /settings/general`) gồm 5 nhóm tham số: ngày công/giờ công (hỗ trợ `FIXED_26`, `FIXED_24`, `ACTUAL_MONTH`), nghỉ phép năm, hệ số OT, lương cơ sở/vùng, tỷ lệ bảo hiểm/công đoàn và biểu thuế TNCN lũy tiến. Biểu thuế trả về theo ngữ nghĩa **ngưỡng trên lũy kế** (BR-hrm-080) và mặc định là **biểu 5 bậc chuẩn Luật Thuế TNCN số 109/2025/QH15** (BR-hrm-081, bảng đầy đủ ở Mục 4.8). Trường hợp công ty chưa có bản ghi cấu hình, hệ thống tự khởi tạo bộ giá trị chuẩn theo quy định pháp luật (Self-healing pattern).
 
 **FR-hrm-046** `[MỚI, cập nhật 2026-09-08 BUG-HRM-44 và đợt thẩm định lại]` — Hệ thống cho phép `ADMIN` hoặc `OWNER` cập nhật Cấu hình mặc định (`PUT /settings/general`); cho phép cập nhật nhiều tham số cùng một lần lưu (batch update). Trước khi lưu, hệ thống thẩm định: giờ công chuẩn 1.0–24.0h (BR-hrm-071, E-hrm-067); lương cơ sở và lương tối thiểu vùng > 0 (BR-hrm-072, E-hrm-068); và — khi nội dung gửi lên có chứa biểu thuế TNCN — **toàn vẹn cấu trúc biểu thuế theo BR-hrm-082**: tối thiểu 2 bậc (E-hrm-081), ngưỡng lũy kế tăng nghiêm ngặt (E-hrm-080), thuế suất tăng nghiêm ngặt (BR-hrm-073, E-hrm-069), bậc cuối là bậc mở (E-hrm-082). Biểu hợp lệ về cấu trúc nhưng **khác biểu chuẩn** vẫn được lưu, kèm cảnh báo `CANH_BAO_BIEU_THUE_LECH_CHUAN` (BR-hrm-083). Yêu cầu từ vai trò không có thẩm quyền bị từ chối với lỗi 403 E-hrm-077. Thao tác cập nhật thành công bắt buộc ghi nhật ký kiểm toán người thao tác (BR-hrm-066 nhóm 6).
 
-**FR-hrm-047** `[MỚI, cập nhật 2026-09-08 BUG-HRM-44 và đợt thẩm định lại]` — Hệ thống cho phép `ADMIN` hoặc `OWNER` thực hiện chức năng "Khôi phục mặc định" (`POST /settings/general/restore-default`), đưa toàn bộ tham số cấu hình về bộ giá trị chuẩn theo pháp luật Việt Nam (BLLĐ 2019, NĐ 73/2024/NĐ-CP, NĐ 74/2024/NĐ-CP, NQ 954/2020/UBTVQH14) — trong đó biểu thuế TNCN **bắt buộc là biểu 7 bậc** của BR-hrm-081, không phải biểu rút gọn nào khác. Thao tác này ghi đè cả biểu thuế công ty đã tự đặt, nên giao diện phải hỏi xác nhận nêu rõ điều đó trước khi gọi. Thao tác khôi phục thành công bắt buộc ghi nhật ký kiểm toán người thao tác (BR-hrm-066 nhóm 6).
+**FR-hrm-047** `[MỚI, cập nhật 2026-09-08 BUG-HRM-44 và đợt thẩm định lại]` — Hệ thống cho phép `ADMIN` hoặc `OWNER` thực hiện chức năng "Khôi phục mặc định" (`POST /settings/general/restore-default`), đưa toàn bộ tham số cấu hình về bộ giá trị chuẩn theo pháp luật Việt Nam (BLLĐ 2019, NĐ 73/2024/NĐ-CP, NĐ 74/2024/NĐ-CP, Luật Thuế TNCN 109/2025/QH15, NQ 110/2025/UBTVQH15) — trong đó biểu thuế TNCN **bắt buộc là biểu 5 bậc** của BR-hrm-081, không phải biểu rút gọn nào khác. Thao tác này ghi đè cả biểu thuế công ty đã tự đặt, nên giao diện phải hỏi xác nhận nêu rõ điều đó trước khi gọi. Thao tác khôi phục thành công bắt buộc ghi nhật ký kiểm toán người thao tác (BR-hrm-066 nhóm 6).
 
 ### Ca làm việc
 
@@ -966,6 +966,8 @@ Bốn điều kiện là **ràng buộc cứng** và áp cả khi cập nhật m
 4. Kết thúc phải in **đối soát**: số công ty đã chuẩn hóa, số giữ nguyên, số cần người xem lại; và mỗi lần ghi đều ghi nhật ký kiểm toán theo BR-hrm-066 nhóm 6.
 
 Hình thức kỹ thuật của thao tác này (kịch bản vận hành, endpoint quản trị hay bước trong quy trình nâng cấp) do Architect quyết định; đặc tả chỉ ràng buộc hành vi nghiệp vụ ở bốn điểm trên.
+
+> **Cập nhật 2026-09-14**: Luật Thuế TNCN 109/2025/QH15 đổi BR-hrm-081 sang biểu 5 bậc mới (khác biểu rút gọn sai từng nói ở trên — xem ghi chú phân biệt ở BR-hrm-081). Công ty đã remediate xong theo bản FR-hrm-055 này (đang ở biểu 7 bậc) nay lại cần một đợt chuẩn hóa tiếp theo sang biểu 5 bậc mới — Architect/Backend cần thiết kế đợt remediate thứ hai khi triển khai `to_khai_thue/bang-tinh-thue`, tái dùng cùng nguyên tắc bảo vệ ở điểm 3 (không ghi đè biểu công ty đã tự chỉnh). Xem `docs/hrm/to_khai_thue/brainstorms/2026-09-14-to-khai-thue-tncn-brainstorm.md` Mục 6.
 
 
 ---
@@ -1175,7 +1177,7 @@ Ba nhánh này do bộ xử lý lỗi chung trả cho **mọi** endpoint HRM, kh
 | UC-hrm-16 | Chủ tài khoản hoặc HR | Khai bộ giấy tờ bắt buộc của công ty | Mở danh mục giấy tờ bắt buộc, chọn loại hợp đồng và thêm các loại giấy tờ cần có, đánh dấu bắt buộc hay chỉ nhắc | FR-hrm-038, BR-hrm-063, E-hrm-061 |
 | UC-hrm-17 | HR | Rà hồ sơ thiếu và giấy tờ sắp hết hạn | Xem cột chỉ báo đủ/thiếu trên danh sách nhân viên để biết ai còn thiếu giấy tờ gì; mở danh sách cảnh báo hạn để biết giấy tờ nào đã hết hạn hoặc sắp hết hạn | FR-hrm-039, FR-hrm-040, FR-hrm-041, BR-hrm-062, BR-hrm-064, BR-hrm-065, E-hrm-060 |
 | UC-hrm-18 | ADMIN / OWNER | Xem và cập nhật Cấu hình mặc định | Mở tab Thiết lập chung → xem/sửa các tham số ngày công, bảo hiểm, công đoàn, biểu thuế TNCN (ngưỡng lũy kế) → hệ thống thẩm định (giờ công 1.0-24.0h, lương > 0, toàn vẹn biểu thuế: ≥ 2 bậc, ngưỡng tăng, thuế suất tăng, bậc cuối mở) → lưu batch update thành công, kèm cảnh báo nếu biểu lệch chuẩn | FR-hrm-045, FR-hrm-046, BR-hrm-070…073, BR-hrm-080…083, E-hrm-067…069, E-hrm-077, E-hrm-080…082 |
-| UC-hrm-19 | ADMIN / OWNER | Khôi phục cấu hình mặc định gốc | Bấm nút "Khôi phục mặc định" → hệ thống nạp lại bộ tham số chuẩn ban đầu theo quy định pháp luật Việt Nam (BLLĐ 2019, NĐ 73/2024, NĐ 74/2024, NQ 954/2020) → áp dụng thành công | FR-hrm-047, BR-hrm-070, E-hrm-077 |
+| UC-hrm-19 | ADMIN / OWNER | Khôi phục cấu hình mặc định gốc | Bấm nút "Khôi phục mặc định" → hệ thống nạp lại bộ tham số chuẩn ban đầu theo quy định pháp luật Việt Nam (BLLĐ 2019, NĐ 73/2024, NĐ 74/2024, Luật 109/2025/QH15, NQ 110/2025) → áp dụng thành công | FR-hrm-047, BR-hrm-070, E-hrm-077 |
 | UC-hrm-20 | ADMIN / OWNER / HR | Quản lý Ca làm việc (Thêm / Sửa / Xóa / Danh sách) | Mở danh mục Ca làm việc → bấm Thêm ca (để trống mã để tự sinh CA01..CA99 hoặc tự nhập) → nhập Tên, Giờ vào, Giờ ra, Nghỉ giữa ca → hệ thống tự nhận diện ca qua đêm và tính giờ công thực tế ròng → lưu thành công; sửa/xóa/đổi trạng thái ca | FR-hrm-048…050, BR-hrm-074…076, E-hrm-070…073 |
 | UC-hrm-21 | ADMIN / OWNER / HR | Quản lý Lịch ngày lễ (Thêm / Sửa / Xóa / Lọc) | Mở tab Lịch ngày lễ → lọc theo Năm nay/Hàng năm/Tất cả → thêm ngày lễ mới (chọn Loại lễ, Ngày, cờ lặp, cờ có lương) → hệ thống validate không trùng ngày+tên và chặn cờ lặp đối với lễ âm lịch → lưu thành công | FR-hrm-051…053, BR-hrm-077, BR-hrm-078, E-hrm-074…076 |
 | UC-hrm-22 | ADMIN / OWNER / HR | Tạo nhanh lịch nghỉ lễ chuẩn Việt Nam | Bấm nút "Tạo nhanh" → chọn Năm cần tạo trong dải cố định **2024–2030** → hệ thống tính 11 ngày nghỉ lễ chuẩn theo Điều 112 BLLĐ 2019 bằng thuật toán âm lịch quy chiếu UTC+7 → xem trước danh sách → tự động thêm các ngày còn thiếu, bỏ qua ngày đã có (idempotent) | FR-hrm-054, BR-hrm-079 |
@@ -1520,10 +1522,10 @@ Chỉ liệt kê các quy tắc có rẽ nhánh nghiệp vụ đáng chú ý. C�
 - **And** không có dòng ngày lễ nào được tạo trong cả hai trường hợp
 - **Ghi chú cho người viết ca kiểm thử:** hệ thống từ chối `year = 2031` là do **quy tắc nghiệp vụ**, **không** phải do bộ tính không tính được năm đó — chạy thật ngày 2026-09-08 cho thấy 2031 vẫn ra đủ 11 ngày lễ. Ca kiểm thử **không được** ghi lý do là "thuật toán không hỗ trợ năm ngoài 2024–2030".
 
-**AC-hrm-67** (FR-hrm-045, FR-hrm-047, BR-hrm-081 — Biểu thuế mặc định là biểu 7 bậc chuẩn) `[MỚI — đợt thẩm định lại 2026-09-08]`
+**AC-hrm-67** (FR-hrm-045, FR-hrm-047, BR-hrm-081 — Biểu thuế mặc định là biểu 5 bậc chuẩn theo Luật 109/2025/QH15) `[SỬA 2026-09-14 — cập nhật theo Luật Thuế TNCN 2025, xem BR-hrm-081]`
 - **Given** một công ty vừa được tạo, chưa từng có bản ghi Cấu hình mặc định
 - **When** người dùng mở màn hình Thiết lập chung lần đầu (`GET /settings/general`), hoặc `ADMIN`/`OWNER` bấm "Khôi phục mặc định" (`POST /settings/general/restore-default`)
-- **Then** biểu thuế TNCN trả về có **đúng 7 bậc**, theo thứ tự các cặp (ngưỡng trên lũy kế — thuế suất): (5.000.000 — 5%), (10.000.000 — 10%), (18.000.000 — 15%), (32.000.000 — 20%), (52.000.000 — 25%), (80.000.000 — 30%), (bậc mở — 35%). Biểu có thuế suất cao nhất là 25% hoặc chỉ có 5 bậc là **trượt**
+- **Then** biểu thuế TNCN trả về có **đúng 5 bậc**, theo thứ tự các cặp (ngưỡng trên lũy kế — thuế suất): (10.000.000 — 5%), (30.000.000 — 10%), (60.000.000 — 20%), (100.000.000 — 30%), (bậc mở — 35%). Biểu có thuế suất cao nhất là 25%, hoặc là biểu 7 bậc cũ theo Điều 22 Luật 2007/2012, đều là **trượt** — cả hai đều không còn đúng luật hiện hành
 
 **AC-hrm-68** (FR-hrm-046, BR-hrm-082 điều kiện 2, E-hrm-080 — Ngưỡng lũy kế phải tăng nghiêm ngặt) `[MỚI — đợt thẩm định lại 2026-09-08]`
 - **Given** `ADMIN` hoặc `OWNER` đang cập nhật Cấu hình mặc định
@@ -1848,9 +1850,12 @@ Kèm theo giả định này là hai khoảng trống **đã biết và cố ý 
 
 **A-hrm-11** `[MỚI]` — Cấu hình mặc định áp dụng phạm vi toàn doanh nghiệp (Singleton per tenant). Khi một tham số cấu hình thay đổi (ví dụ: lương cơ sở, tỷ lệ bảo hiểm, giờ công chuẩn), các kỳ tính công/lương trong tương lai sẽ áp dụng giá trị mới, không tự động hồi tố sửa đổi các bảng lương của kỳ đã chốt trong quá khứ.
 
-**A-hrm-12** `[SỬA THEO đợt thẩm định lại 2026-09-08]` — Biểu thuế TNCN trên cấu hình mặc định lưu dạng JSONB (`taxBrackets`) và **luôn khởi tạo bằng biểu 7 bậc chuẩn Điều 22 Luật Thuế TNCN** (BR-hrm-081). Cấu trúc động chỉ phục vụ một mục đích: đổi được **số bậc** khi pháp luật thay đổi mà không phải đổi lược đồ cơ sở dữ liệu — **không** phải để nạp mặc định một biểu rút gọn.
+**A-hrm-12** `[SỬA 2026-09-14 — cập nhật theo Luật Thuế TNCN 2025]` — Biểu thuế TNCN trên cấu hình mặc định lưu dạng JSONB (`taxBrackets`) và **luôn khởi tạo bằng biểu 5 bậc chuẩn theo Luật Thuế TNCN số 109/2025/QH15** (BR-hrm-081). Cấu trúc động chỉ phục vụ một mục đích: đổi được **số bậc** khi pháp luật thay đổi mà không phải đổi lược đồ cơ sở dữ liệu — **không** phải để nạp mặc định một biểu rút gọn. Đây là ví dụ thực tế thứ hai của đúng mục đích đó: pháp luật đổi biểu thuế 2 lần chỉ trong 2026, và JSONB đã đủ linh hoạt để chuyển đổi mà không cần đổi lược đồ.
 
-> **Bản trước của giả định này ghi "ban đầu nạp biểu 5 bậc rút gọn theo dữ liệu mẫu" — SAI và đã bị bãi bỏ.** Biểu 5 bậc từng được nạp (dừng ở thuế suất 25%) không tương ứng với bất kỳ biểu thuế nào của pháp luật Việt Nam. Chi tiết ở `docs/hrm/agents-business-analyst/ba-reconciliation-report-2026-09-08.md`.
+> **Lịch sử thay đổi của giả định này** (mới nhất trước, gộp cả hai đợt sửa — KHÔNG nhầm lẫn):
+> - 2026-09-14: đổi từ "biểu 7 bậc chuẩn Điều 22 Luật Thuế TNCN 2007/2012" sang "biểu 5 bậc chuẩn Luật 109/2025/QH15" — luật cũ bị thay thế hoàn toàn, không phải sửa lỗi. Xem `docs/hrm/to_khai_thue/brainstorms/2026-09-14-to-khai-thue-tncn-brainstorm.md` Mục 7.
+> - 2026-09-08: sửa từ "biểu 5 bậc rút gọn theo dữ liệu mẫu" (SAI — dừng ở thuế suất 25%, không tương ứng bất kỳ biểu thuế nào của pháp luật Việt Nam, là lỗi code) sang "biểu 7 bậc chuẩn Điều 22". Chi tiết ở `docs/hrm/agents-business-analyst/ba-reconciliation-report-2026-09-08.md`.
+> - **Lưu ý phân biệt**: biểu "5 bậc" của 2026-09-14 (luật thật, trần 35%) và biểu "5 bậc" bị sửa ngày 2026-09-08 (lỗi code, trần 25%) là **hai biểu hoàn toàn khác nhau, trùng số bậc là ngẫu nhiên** — xem BR-hrm-081.
 
 **A-hrm-13** `[MỚI]` — Mã ca làm việc tự sinh theo dãy `CA01`–`CA99` (tối đa 99 ca), đảm bảo đủ đáp ứng quy mô hoạt động ca kíp của doanh nghiệp vừa và nhỏ; thuật toán quét tìm khoảng trống nhỏ nhất chưa dùng (gap finding).
 
@@ -1902,12 +1907,11 @@ Kèm theo giả định này là hai khoảng trống **đã biết và cố ý 
 
 ### 15.1c Phát sinh từ đợt thẩm định lại 2026-09-08
 
-> Hai câu dưới đây nảy ra khi chốt lại biểu thuế TNCN. Cả hai **không chặn** cụm Cấu hình mặc định / Ca làm việc / Lịch ngày lễ — chúng thuộc phần Lương sẽ làm sau. Ghi ra đây để khi dựng phân hệ Lương không phải phát hiện lại từ đầu.
+> Câu dưới đây nảy ra khi chốt lại biểu thuế TNCN. Không chặn cụm Cấu hình mặc định / Ca làm việc / Lịch ngày lễ — thuộc phần Lương sẽ làm sau. Ghi ra đây để khi dựng phân hệ Lương không phải phát hiện lại từ đầu. (`OQ-hrm-35` cùng đợt phát sinh — đã đóng 2026-09-14, xem Mục 15.2b.)
 
 | ID | Câu hỏi | Ai trả lời | Chặn việc gì |
 |---|---|---|---|
 | OQ-hrm-34 | Khi quyết toán thuế TNCN **theo năm**, hệ thống suy ngưỡng năm bằng cách nhân 12 lần ngưỡng tháng, hay công ty phải khai riêng một biểu năm? | Kế toán trưởng | Cách phân hệ Lương tính số thuế cả năm và số quyết toán thừa/thiếu. Đợt này cấu hình **chỉ lưu ngưỡng tháng**, bảng đối chiếu theo năm ở Mục 4.8 là thông tin tham khảo chứ không phải dữ liệu lưu |
-| OQ-hrm-35 | Biểu thuế có cần trường "áp dụng từ ngày" để **chạy lại** một kỳ lương đã chốt bằng đúng biểu của kỳ đó không? | Kế toán trưởng | Hiện BR-hrm-070 chỉ chụp tham số vào kỳ lương tại thời điểm chốt, và kỳ đã chốt không có đường chạy lại. Nếu sau này cần mở kỳ để tính lại (thanh tra thuế, sửa sai), phải quyết định lấy biểu ở đâu |
 
 ### 15.2 Đã đóng ngày 2026-09-07
 
@@ -1917,6 +1921,12 @@ Kèm theo giả định này là hai khoảng trống **đã biết và cố ý 
 | OQ-hrm-18 | "Khác loại" theo nhãn gốc hay theo nhóm nghiệp vụ | QĐ #18 | **Theo nhóm nghiệp vụ, ba nhóm**: hợp đồng lao động / khoán-dịch vụ / thử việc. Kèm bắt buộc chuẩn hóa `loai_hd` về chữ thường (BR-hrm-022) |
 | OQ-hrm-27 | Người phụ thuộc chuyển giữa hai nhân viên giữa năm | QĐ #19 | **Duy nhất có xét kỳ giảm trừ** — hai dòng cùng mã số thuế hợp lệ nếu kỳ không giao nhau; giữ được lịch sử kê khai (BR-hrm-030) |
 | OQ-hrm-33 | Có làm đợt đổi tên đường dẫn API sang tiếng Anh không | QĐ #20 | **Hoãn** — contract đưa về đường tiếng Việt cho khớp mã nguồn và giao diện; ghi vào việc làm sau |
+
+### 15.2b Đã đóng ngày 2026-09-14
+
+| ID | Câu hỏi | Đóng bằng | Kết quả chốt |
+|---|---|---|---|
+| OQ-hrm-35 | Biểu thuế có cần trường "áp dụng từ ngày" để chạy lại một kỳ lương đã chốt bằng đúng biểu của kỳ đó không? | Brainstorm `to_khai_thue` 2026-09-14 (BR-07) | **Có** — biểu thuế/giảm trừ gia cảnh phải lưu kèm mốc hiệu lực (nhiều phiên bản theo ngày, không còn singleton), engine chọn đúng phiên bản theo kỳ tính thuế của từng bản ghi. Cho phép "chạy lại" một kỳ đã chốt bằng đúng biểu của kỳ đó (thanh tra thuế, sửa sai) — đúng nhu cầu phát sinh khi Luật 109/2025/QH15 đổi biểu thuế giữa năm 2026. Thiết kế kỹ thuật cụ thể do Architect quyết khi triển khai `to_khai_thue/bang-tinh-thue`. |
 | OQ-hrm-01 | Có tồn tại thật trường hợp một nhân viên có đồng thời hai hợp đồng còn hiệu lực không? | QĐ #1 | **Có** — cho phép; chỉ chặn chồng lấn giữa hai hợp đồng **cùng loại** (BR-hrm-022) |
 | OQ-hrm-02 | Chuyển phòng ban sang Ngừng hoạt động khi còn nhân viên có được không? Phòng ban ngừng hoạt động còn hiện trong ô chọn không? | QĐ #11 | **Được, có cảnh báo**; ô chọn **ẩn** phòng ngừng hoạt động, trừ phòng đang gán của chính nhân viên đang sửa (BR-hrm-060, BR-hrm-061) |
 | OQ-hrm-03 | Xóa một dòng giấy tờ đang có file scan thì mong muốn điều gì? | QĐ #12 | **Xóa luôn file trên Drive** theo kiểu cố hết sức; hộp xác nhận phải nêu tên file (BR-hrm-039) |

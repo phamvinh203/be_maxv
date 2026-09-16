@@ -923,6 +923,8 @@ model hrm_nhan_vien {
   diligenceRecords  DiligenceRecord[]
   adjustmentRecords SalaryAdjustmentRecord[]
   payrollSheetLines PayrollSheetLine[]
+  otherIncomeRecords OtherIncomeRecord[]
+  taxCalculationLines TaxCalculationLine[]
 
   @@index([ma_pb])
   @@index([so_cccd])
@@ -1129,21 +1131,24 @@ model GeneralSetting {
   unionFeeEmployeeRate          Decimal       @default(1.0) @db.Decimal(5, 2)
   unionFeeMaxAmount             Decimal       @default(234000) @db.Decimal(15, 2)
   unionFeeCompanyRate           Decimal       @default(2.0) @db.Decimal(5, 2)
-  personalDeduction             Decimal       @default(11000000) @db.Decimal(15, 2)
-  dependentDeduction            Decimal       @default(4400000) @db.Decimal(15, 2)
+  /// Giảm trừ gia cảnh theo NQ 110/2025/UBTVQH15, hiệu lực từ kỳ tính thuế 2026 (trước là
+  /// 11.000.000/4.400.000 theo NQ 954/2020/UBTVQH14).
+  personalDeduction             Decimal       @default(15500000) @db.Decimal(15, 2)
+  dependentDeduction            Decimal       @default(6200000) @db.Decimal(15, 2)
   taxBrackets                   Json          @db.JsonB
 
-  /// BR-dltl-027 — Trần miễn thuế TNCN của phụ cấp ăn ca/ăn trưa mỗi tháng (TT 26/2016:
-  /// 730.000đ). Phần vượt trần tính vào thu nhập chịu thuế. Trần này được QUY ĐỔI THEO CÔNG
-  /// khi tính (AC-dltl-23) — cột lưu mức tháng đầy đủ. ADR-010 QĐ-2.
-  lunchAllowanceTaxFreeCap       Decimal      @default(730000)  @db.Decimal(15, 2)
+  /// BR-dltl-027 — Trần miễn thuế TNCN của phụ cấp ăn ca/ăn trưa mỗi tháng (NĐ 253/2026/NĐ-CP:
+  /// 1.200.000đ, trước là 730.000đ theo TT 26/2016). Phần vượt trần tính vào thu nhập chịu thuế.
+  /// Trần này được QUY ĐỔI THEO CÔNG khi tính (AC-dltl-23) — cột lưu mức tháng đầy đủ. ADR-010 QĐ-2.
+  lunchAllowanceTaxFreeCap       Decimal      @default(1200000) @db.Decimal(15, 2)
 
-  /// BR-dltl-026 — Thuế suất khấu trừ tại nguồn cho HĐ thử việc/thời vụ (Điều 25 TT 111/2013:
-  /// 10%). Đơn vị PHẦN TRĂM (10.00 = 10%) — cùng quy ước với các cột insurance.. / unionFee..
+  /// BR-dltl-026 — Thuế suất khấu trừ tại nguồn cho HĐ thử việc/thời vụ (NĐ 253/2026/NĐ-CP
+  /// Điều 50: 10%). Đơn vị PHẦN TRĂM (10.00 = 10%) — cùng quy ước với các cột insurance../unionFee..
   withholdingTaxRate             Decimal      @default(10.0)    @db.Decimal(5, 2)
 
-  /// BR-dltl-026 — Ngưỡng thu nhập mỗi lần trả bắt đầu phải khấu trừ 10% (2.000.000đ).
-  withholdingTaxThreshold        Decimal      @default(2000000) @db.Decimal(15, 2)
+  /// BR-dltl-026 — Ngưỡng thu nhập mỗi lần trả bắt đầu phải khấu trừ 10% (NĐ 253/2026/NĐ-CP
+  /// Điều 50 khoản 2: 5.000.000đ, hiệu lực 01/07/2026 — trước là 2.000.000đ).
+  withholdingTaxThreshold        Decimal      @default(5000000) @db.Decimal(15, 2)
 
   createdAt                     DateTime      @default(now())
   updatedAt                     DateTime      @default(now()) @updatedAt
@@ -1402,6 +1407,15 @@ enum PayrollModuleCode {
   TAX_DEDUCTION
   SALARY_PROFILE
   SUPPORT_ALLOWANCE
+
+  /// MỚI (ADR-013) — khóa "Bảng tính thuế tháng đã chốt" (BR-tkt-013).
+  /// KHÔNG phải bảng kê thứ 13 của màn "Chốt kỳ lương": giá trị này CỐ Ý nằm NGOÀI
+  /// `PAYROLL_MODULE_CODES` (`constants/hrm/payrollModules.ts`). Hai hàng rào phụ thuộc điều đó:
+  /// `lockAllPayrollModules` chỉ lặp danh sách kia (nút "Chốt toàn kỳ" không chốt chui Bảng tính
+  /// thuế mà bỏ qua bước ghi snapshot), và `payrollModuleParamsSchema` dùng `z.enum` của danh
+  /// sách kia (chặn 400 đường khóa thủ công). THÊM `TAX_SHEET` vào `PAYROLL_MODULES` là phá cả
+  /// hai cùng lúc, tạo ra trạng thái "đã khóa nhưng không có số liệu chốt" — typecheck không bắt được.
+  TAX_SHEET
 }
 
 // ============================================================
@@ -1436,6 +1450,8 @@ model PayrollPeriod {
   diligenceRecords  DiligenceRecord[]
   adjustmentRecords SalaryAdjustmentRecord[]
   payrollSheetLines PayrollSheetLine[]
+  otherIncomeRecords OtherIncomeRecord[]
+  taxCalculationLines TaxCalculationLine[]
   moduleLocks       PayrollModuleLock[]
 
   @@index([status])
@@ -1804,3 +1820,327 @@ model PayrollSheetLine {
   @@index([ma_nv])
   @@map("hrm_payroll_sheet_lines")
 }
+
+// ============================================================
+//  HRM › THU NHẬP NGOÀI LƯƠNG, BẢNG TÍNH THUẾ & TỜ KHAI TNCN
+//  Luật Thuế TNCN 109/2025/QH15 · NĐ 253/2026/NĐ-CP · TT 89/2026/TT-BTC
+// ============================================================
+
+/// Phương thức tính/khấu trừ thuế TNCN cho thu nhập ngoài lương & thù lao
+enum TaxDeductionType {
+  PROGRESSIVE    // Lũy tiến từng phần (NV có HĐLĐ >= 3 tháng - gộp vào bảng lương)
+  FLAT_10        // Khấu trừ 10% tại nguồn — ngưỡng tra từ danh mục, KHÔNG hằng số (BR-tkt-008)
+  FLAT_20        // Khấu trừ 20% tại nguồn (cá nhân không cư trú) — khai báo nhưng NGOÀI phạm vi đợt này
+  EXEMPT_COMMIT  // Tạm miễn khấu trừ do có Cam kết 08/CK-TNCN (có MST, cư trú)
+  NO_DEDUCTION   // Dưới ngưỡng khấu trừ của danh mục (cá nhân cư trú, không khấu trừ)
+}
+
+/// BR-tkt-001 — 4 nhóm xử lý thuế của danh mục thu nhập ngoài lương.
+/// Dùng ở CẢ HAI chỗ: cột trên danh mục, và cột **snapshot** trên bản ghi (ADR-013).
+enum OtherIncomeTaxGroup {
+  EXEMPT_FULL      // Miễn thuế toàn bộ
+  EXEMPT_CAPPED    // Miễn tới một trần, phần vượt chịu thuế
+  TAXABLE_FULL     // Chịu thuế toàn bộ, cộng lũy tiến vào bảng tính thuế tháng
+  WITHHOLDING_FLAT // Khấu trừ riêng theo tỷ lệ cố định tại nguồn
+}
+
+/// BR-tkt-002 — chu kỳ của trần miễn thuế (ăn ca 1,2tr/THÁNG · trang phục 5tr/NĂM).
+enum ExemptCapPeriod {
+  MONTHLY
+  YEARLY
+}
+
+/// BR-tkt-011 — phân loại lao động trên Bảng tính thuế tháng.
+/// Trùng ĐÚNG TỪNG KÝ TỰ với `DongBangTinhThueDto.loai_lao_dong` ở frontend — không có lớp ánh xạ.
+enum TaxLaborType {
+  HOP_DONG_3_THANG_TRO_LEN
+  THOI_VU_THU_VIEC
+  VANG_LAI
+}
+
+/// Phương pháp tính thuế của từng dòng. Trùng đúng `DongBangTinhThueDto.phuong_phap_tinh` ở frontend.
+/// `KHAU_TRU_20` khai báo nhưng NGOÀI phạm vi đợt này — service không bao giờ sinh giá trị này.
+enum TaxMethod {
+  LUY_TIEN
+  KHAU_TRU_10
+  KHAU_TRU_20
+  CAM_KET_08
+  DUOI_NGUONG
+}
+
+/// Chính sách thuế TNCN có hiệu lực theo mốc thời gian (ADR-012, BR-tkt-017, OQ-hrm-35).
+///
+/// NGUỒN SỰ THẬT DUY NHẤT cho mọi con số do PHÁP LUẬT quy định trong tính thuế TNCN. Engine sẽ
+/// thôi đọc `hrm_general_settings` cho các số này (lộ trình di trú M-1…M-4, data-model Mục 6).
+///
+/// Không có `effectiveTo`: dòng có `effectiveFrom` lớn hơn kế tiếp tự động thay thế dòng trước.
+/// Mô hình này KHÔNG thể sinh khoảng trống hay chồng lấn — hai lỗi mà cặp from/to luôn phải kiểm tay.
+/// Tra cứu qua `resolveTaxPolicy()` DUY NHẤT, mốc so sánh là `period.startDate` (KHÔNG phải
+/// `paymentDate` từng bản ghi): cả kỳ tháng phải dùng đúng một biểu, nếu không thì hai bản ghi
+/// cùng tháng tính theo hai biểu khác nhau và thu nhập tính thuế lũy tiến mất ý nghĩa.
+model TaxPolicy {
+  id String @id @default(uuid()) @db.VarChar(64)
+
+  /// Ngày bắt đầu hiệu lực. UNIQUE: một ngày chỉ có đúng một chính sách.
+  effectiveFrom DateTime @unique @db.Date
+
+  personalDeduction  Decimal @db.Decimal(15, 2)
+  dependentDeduction Decimal @db.Decimal(15, 2)
+
+  /// Cùng cấu trúc và cùng NGỮ NGHĨA `khoang` = ngưỡng trên lũy kế (BR-hrm-080).
+  /// Ràng buộc toàn vẹn BR-hrm-082 áp NGUYÊN VẸN khi ghi vào đây.
+  taxBrackets Json @db.JsonB
+
+  /// BR-dltl-026 — khấu trừ tại nguồn trên CHÍNH LƯƠNG của HĐ thử việc/thời vụ.
+  /// KHÁC `OtherIncomeCategory.withholdingThreshold` (BR-tkt-008) — hai cơ chế độc lập, cùng
+  /// mức 5.000.000 từ NĐ 253/2026 nhưng KHÔNG được tự đồng bộ hai số này.
+  withholdingTaxRate      Decimal @default(10.0)    @db.Decimal(5, 2)
+  withholdingTaxThreshold Decimal @default(5000000) @db.Decimal(15, 2)
+
+  /// BR-tkt-010 — trần giảm trừ bảo hiểm hưu trí tự nguyện mỗi tháng.
+  voluntaryPensionMonthlyCap Decimal @default(3000000) @db.Decimal(15, 2)
+
+  /// BR-dltl-027 — trần miễn thuế phụ cấp ăn ca ĐỊNH KỲ trong bảng lương.
+  /// KHÁC trần ăn ca tiền mặt chi ngoài lương (danh mục `EXEMPT_CAPPED`, BR-tkt-002).
+  lunchAllowanceTaxFreeCap Decimal @default(1200000) @db.Decimal(15, 2)
+
+  legalBasisNote String? @db.VarChar(500)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @default(now()) @updatedAt
+
+  taxCalculationLines TaxCalculationLine[]
+
+  @@map("hrm_tax_policies")
+}
+
+/// Danh mục loại thu nhập ngoài lương (BR-tkt-001…004). Cấu hình được để luật đổi không cần deploy.
+model OtherIncomeCategory {
+  id String @id @default(uuid()) @db.VarChar(64)
+
+  /// TN01..TN99 — tự sinh quét khe trống, cùng khuôn `KL01`/`CA01`/`KPI01` (ADR-001).
+  code String @unique @db.VarChar(20)
+
+  /// BR-tkt-003: duy nhất KHÔNG phân biệt hoa/thường. Ràng buộc thật là UNIQUE INDEX trên
+  /// `lower(btrim(name))` — Prisma DSL không diễn tả được, nằm ở `hrmTenantConstraints.ts`.
+  /// KHÔNG khai `@unique` ở đây.
+  name String @db.VarChar(200)
+
+  taxTreatmentGroup OtherIncomeTaxGroup
+
+  /// Bắt buộc khi nhóm = EXEMPT_CAPPED (E-tkt-003). NULL với 3 nhóm còn lại.
+  exemptCapAmount Decimal?         @db.Decimal(15, 2)
+  exemptCapPeriod ExemptCapPeriod?
+
+  /// Bắt buộc khi nhóm = WITHHOLDING_FLAT. Mặc định nghiệp vụ 10.0 / 5.000.000 do SERVICE điền
+  /// khi client bỏ trống (AC-tkt-002) — CỐ Ý không dùng `@default` của Prisma, vì `@default` sẽ
+  /// điền cả cho 3 nhóm không dùng tới và làm mất ngữ nghĩa "NULL = không áp dụng".
+  withholdingRate      Decimal? @db.Decimal(5, 2)
+  withholdingThreshold Decimal? @db.Decimal(15, 2)
+
+  legalBasisNote String?       @db.VarChar(500)
+  status         CatalogStatus @default(ACTIVE)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @default(now()) @updatedAt
+
+  records OtherIncomeRecord[]
+
+  @@index([taxTreatmentGroup])
+  @@index([status])
+  @@map("hrm_other_income_categories")
+}
+
+/// Bảng Thu nhập ngoài lương & thù lao vãng lai theo kỳ
+model OtherIncomeRecord {
+  id                   String            @id @default(uuid()) @db.VarChar(64)
+  periodId             String            @db.VarChar(64)
+  ma_nv                String?           @db.VarChar(24) // Nullable nếu là cá nhân vãng lai ngoài công ty
+
+  // Snapshot thông tin người nhận (tránh mất/lệch khi sửa danh mục NV)
+  fullName             String            @db.VarChar(254)
+  taxCode              String?           @db.VarChar(20)
+  idCardNumber         String?           @db.VarChar(20)
+  address              String?           @db.VarChar(500)
+  phone                String?           @db.VarChar(20)
+  email                String?           @db.VarChar(100)
+  isResident           Boolean           @default(true)
+
+  /// LỖI THỜI — bỏ ở bước M-4 sau khi đã chuyển hết sang `otherIncomeCategoryId` (L-1).
+  /// Giữ lại trong M-1/M-2 để script di trú còn nguồn đối chiếu tên. Mã mới KHÔNG được đọc cột này.
+  incomeType           String            @db.VarChar(50)
+
+  /// MỚI (M-1) — danh mục thay cho chuỗi tự do. NULLABLE trong M-1/M-2, siết NOT NULL ở M-3
+  /// sau khi script đã gán hết dòng cũ (điều kiện qua bước: đếm NULL = 0 trên mọi tenant).
+  otherIncomeCategoryId String?          @db.VarChar(64)
+
+  /// MỚI (M-1, ADR-013 tầng bản ghi) — snapshot KẾT QUẢ xử lý thuế, KHÔNG snapshot tham số.
+  /// Nhóm xử lý thuế của danh mục TẠI THỜI ĐIỂM tạo/sửa bản ghi: sửa danh mục về sau KHÔNG đổi
+  /// ngược số của bản ghi cũ (cùng luật với `PieceworkRecord.unitPrice` — BR-dltl-014).
+  /// NULLABLE trong M-1/M-2 vì dòng cũ chưa có; siết NOT NULL ở M-3.
+  taxTreatmentGroup    OtherIncomeTaxGroup?
+
+  /// Phần MIỄN thuế của khoản này (EXEMPT_FULL: bằng grossAmount · EXEMPT_CAPPED: phần trong
+  /// trần · hai nhóm còn lại: 0). KHÔNG cộng vào `thu_nhap_ngoai` của Bảng tính thuế.
+  exemptAmount         Decimal           @default(0) @db.Decimal(18, 2)
+
+  /// Phần PHẢI CỘNG LŨY TIẾN vào `thu_nhap_ngoai` của Bảng tính thuế tháng (TAXABLE_FULL: toàn
+  /// bộ · EXEMPT_CAPPED: phần vượt trần · hai nhóm còn lại: 0).
+  /// Bất biến: exemptAmount + taxableAmount == grossAmount khi nhóm != WITHHOLDING_FLAT.
+  taxableAmount        Decimal           @default(0) @db.Decimal(18, 2)
+
+  /// BR-tkt-008 nhánh "dưới ngưỡng nhưng cá nhân YÊU CẦU khấu trừ" — kế toán bật tay.
+  forceWithholding     Boolean           @default(false)
+
+  paymentDate          DateTime          @db.Date        // Date để chống lệch múi giờ
+  paymentType          String            @default("GROSS") @db.VarChar(10) // GROSS | NET
+
+  grossAmount          Decimal           @default(0) @db.Decimal(18, 2)
+  taxDeductionType     TaxDeductionType  @default(FLAT_10)
+  taxRate              Decimal           @default(0) @db.Decimal(5, 2)  // 10.00, 20.00, 0.00
+  taxDeducted          Decimal           @default(0) @db.Decimal(18, 2)
+  netAmount            Decimal           @default(0) @db.Decimal(18, 2)
+
+  hasCommitment08      Boolean           @default(false)
+  eWithholdingCertNo   String?           @db.VarChar(50) // Số chứng từ khấu trừ thuế điện tử
+  eWithholdingCertDate DateTime?         @db.Date
+  note                 String?           @db.VarChar(500)
+
+  createdAt            DateTime          @default(now())
+  updatedAt            DateTime          @default(now()) @updatedAt
+  createdByUserId      String?           @db.VarChar(64)
+
+  period               PayrollPeriod        @relation(fields: [periodId], references: [id], onDelete: Cascade)
+  nhan_vien            hrm_nhan_vien?       @relation(fields: [ma_nv], references: [ma_nv], onDelete: SetNull, onUpdate: Cascade)
+  category             OtherIncomeCategory? @relation(fields: [otherIncomeCategoryId], references: [id], onDelete: Restrict)
+
+  @@index([periodId])
+  @@index([periodId, ma_nv])
+  @@index([otherIncomeCategoryId])
+  @@index([taxCode])
+  @@index([idCardNumber])
+  @@index([paymentDate])
+  @@map("hrm_other_income_records")
+}
+
+/// Bảng tính thuế TNCN tháng theo từng NGƯỜI — SNAPSHOT BẤT BIẾN, chỉ sinh khi kế toán CHỐT
+/// (BR-tkt-013). Đúng khuôn `PayrollSheetLine`:
+///   - Tháng chưa chốt -> KHÔNG có dòng nào ở đây, số liệu tính TRỰC TIẾP mỗi lần đọc.
+///   - Tháng đã chốt   -> đọc thẳng bảng này, KHÔNG tính lại (số thuế là số pháp lý đã chốt).
+/// Mở lại tháng = xóa dòng khóa `TAX_SHEET` + xóa sạch dòng của kỳ trong CÙNG một transaction.
+///
+/// KHÔNG có cột `status`: bảng chỉ có dòng khi đã chốt nên `status` sẽ luôn là hằng số.
+model TaxCalculationLine {
+  id       String  @id @default(uuid()) @db.VarChar(64)
+  periodId String  @db.VarChar(64)
+  ma_nv    String? @db.VarChar(24)
+
+  /// Khóa định danh NGƯỜI trong kỳ: `ma_nv` với nhân viên nội bộ; cá nhân vãng lai là `'VL:'` + CCCD, không có
+  /// thì MST, không có nữa mới dùng họ tên — chữ thường, bỏ khoảng trắng đầu cuối (ADR-013 sửa đổi 2026-09-15). Một vãng lai có NHIỀU khoản chi trả trong tháng nhưng chỉ được đếm MỘT
+  /// lần ở chỉ tiêu [16] của tờ khai — nên dòng bảng tính thuế là THEO NGƯỜI, không theo bản ghi.
+  recipientKey String @db.VarChar(300)
+
+  // ── Định danh snapshot ──
+  ho_ten             String  @db.VarChar(254)
+  mst_ca_nhan        String? @db.VarChar(20)
+  so_cccd            String? @db.VarChar(20)
+  loai_lao_dong      TaxLaborType
+  cu_tru             Boolean @default(true)
+  so_nguoi_phu_thuoc Int     @default(0)
+
+  // ── Thu nhập ──
+  thu_nhap_luong     Decimal @default(0) @db.Decimal(18, 2)
+  /// Thu nhập ngoài lương CHỊU THUẾ của người đó trong tháng = phần cộng lũy tiến (`Σ taxableAmount`:
+  /// nhóm TAXABLE_FULL + phần vượt trần EXEMPT_CAPPED) + `thu_nhap_khau_tru_rieng` bên dưới.
+  thu_nhap_ngoai     Decimal @default(0) @db.Decimal(18, 2)
+  /// Phần của `thu_nhap_ngoai` đã KHẤU TRỪ RIÊNG tại nguồn (nhóm WITHHOLDING_FLAT, `Σ grossAmount`).
+  /// Vẫn là thu nhập chịu thuế (có trong `thu_nhap_chiu_thue`, lên tờ khai ở ct22/ct23) nhưng KHÔNG
+  /// cộng vào nền tính lũy tiến — thuế của nó đã nằm ở `thue_toan_phan`. Thiếu cột này thì dòng vãng
+  /// lai hiện thực nhận âm và tờ khai quý mất thu nhập khấu trừ tại nguồn; cộng lẫn vào nền lũy tiến
+  /// thì đánh thuế hai lần. Chủ dự án chốt phương án "tách 2 phần" ngày 2026-09-15.
+  /// Bất biến: thu_nhap_tinh_thue == max(0, thu_nhap_chiu_thue − thu_nhap_khau_tru_rieng − tong_giam_tru).
+  thu_nhap_khau_tru_rieng Decimal @default(0) @db.Decimal(18, 2)
+  tong_thu_nhap      Decimal @default(0) @db.Decimal(18, 2)
+  thu_nhap_mien_thue Decimal @default(0) @db.Decimal(18, 2)
+  thu_nhap_chiu_thue Decimal @default(0) @db.Decimal(18, 2)
+
+  // ── Giảm trừ (chỉ khác 0 ở nhánh LUY_TIEN) ──
+  giam_tru_ban_than  Decimal @default(0) @db.Decimal(18, 2)
+  giam_tru_phu_thuoc Decimal @default(0) @db.Decimal(18, 2)
+  giam_tru_bao_hiem  Decimal @default(0) @db.Decimal(18, 2)
+  tong_giam_tru      Decimal @default(0) @db.Decimal(18, 2)
+
+  // ── Thuế ──
+  thu_nhap_tinh_thue Decimal   @default(0) @db.Decimal(18, 2)
+  phuong_phap_tinh   TaxMethod
+  thue_luy_tien      Decimal   @default(0) @db.Decimal(18, 2)
+  thue_toan_phan     Decimal   @default(0) @db.Decimal(18, 2)
+  tong_thue_tncn     Decimal   @default(0) @db.Decimal(18, 2)
+  thuc_nhan          Decimal   @default(0) @db.Decimal(18, 2)
+
+  // ── Truy vết (NFR-tkt-003) ──
+  /// Biểu thuế/giảm trừ ĐÃ DÙNG để ra con số trên. Thiếu cột này thì một năm sau không ai giải
+  /// trình được vì sao thanh tra tính ra số khác (ADR-012).
+  taxPolicyId    String   @db.VarChar(64)
+  engineVersion  String   @default("v1") @db.VarChar(16)
+  lockedByUserId String   @db.VarChar(64)
+  lockedAt       DateTime @default(now())
+  createdAt      DateTime @default(now())
+
+  period    PayrollPeriod  @relation(fields: [periodId], references: [id], onDelete: Cascade)
+  nhan_vien hrm_nhan_vien? @relation(fields: [ma_nv], references: [ma_nv], onDelete: SetNull, onUpdate: Cascade)
+  taxPolicy TaxPolicy      @relation(fields: [taxPolicyId], references: [id], onDelete: Restrict)
+
+  @@unique([periodId, recipientKey])
+  @@index([periodId])
+  @@index([ma_nv])
+  @@map("hrm_tax_calculation_lines")
+}
+
+/// Tờ khai thuế TNCN Mẫu 05/KK-TNCN (TT 80/2021/TT-BTC)
+model hrm_to_khai_tncn05 {
+  nam         Int
+  /// BR-tkt-016 — CHỈ 'quy'. Giữ cột vì là một phần KHÓA CHÍNH; validator từ chối mọi giá trị khác.
+  ky_loai     String    @db.VarChar(8)
+  ky_so       Int                       // 1..4
+  /// 0 = tờ khai chính thức; >0 dành cho khai bổ sung — NGOÀI PHẠM VI đợt này (EC-tkt-03).
+  so_lan      Int       @default(0)
+
+  /// READY_TO_EXPORT | EXPORTED | SUBMITTED (BR-tkt-014/015). Dòng chỉ TỒN TẠI khi đủ 3 tháng trong
+  /// quý đã chốt Bảng tính thuế; đã EXPORTED thì không bao giờ lùi (khóa vĩnh viễn 3 tháng).
+  trang_thai  String    @default("READY_TO_EXPORT") @db.VarChar(16)
+
+  /// Bộ chỉ tiêu CUỐI đem nộp: { ct16, ct17, ..., ct32 }
+  ct          Json      @db.JsonB
+  /// Số máy tự động tổng hợp từ Bảng tính thuế
+  ct_may      Json      @db.JsonB
+  /// Ô kế toán cố tình sửa tay + lý do: { ct21: { gia: 150000000, lyDo: "..." } }
+  ghi_de      Json      @db.JsonB
+
+  // Các cột bóc tách để SELECT danh sách siêu nhanh (không scan JSONB)
+  ct16        Int       @default(0)     // Tổng số lao động
+  ct21        Decimal   @default(0) @db.Decimal(18, 2) // Tổng TNCT trả cho cá nhân
+  ct29        Decimal   @default(0) @db.Decimal(18, 2) // Tổng thuế TNCN đã khấu trừ
+
+  canh_bao    Json?     @db.JsonB       // Mảng cảnh báo nghiệp vụ string[]
+  nguoi_ky    String?   @db.VarChar(100)
+  ngay_ky     DateTime? @db.Date
+  tinh_luc    DateTime?
+
+  /// "Đã xuất tờ khai" (BR-tkt-015) — người/lúc xuất, cũng là mốc khóa vĩnh viễn 3 tháng trong quý.
+  khoa_so_boi String?   @db.VarChar(64)
+  khoa_so_luc DateTime?
+
+  /// "Đã nộp" (FR-tkt-017) — kế toán đánh dấu tay, KHÔNG xác thực với cơ quan thuế.
+  nop_boi     String?   @db.VarChar(64)
+  nop_luc     DateTime?
+
+  datetime0   DateTime  @default(now())
+  datetime2   DateTime  @updatedAt
+
+  @@id([nam, ky_loai, ky_so, so_lan])
+  @@index([nam, ky_loai])
+  @@index([trang_thai])
+  @@map("hrm_to_khai_tncn05")
+}
+

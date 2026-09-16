@@ -32,6 +32,8 @@ export const PAYROLL_ERROR_CODES = {
   E_DLTL_026: 'E-dltl-026',
   E_DLTL_027: 'E-dltl-027',
   E_DLTL_028: 'E-dltl-028',
+  E_DLTL_029: 'E-dltl-029',
+  E_DLTL_030: 'E-dltl-030',
 } as const;
 
 export type PayrollErrorCode = typeof PAYROLL_ERROR_CODES[keyof typeof PAYROLL_ERROR_CODES];
@@ -65,4 +67,6 @@ export const PAYROLL_ERROR_MESSAGES: Record<PayrollErrorCode, string> = {
   [PAYROLL_ERROR_CODES.E_DLTL_026]: 'Đang có thao tác khóa sổ kỳ lương đồng thời, vui lòng thử lại.',
   [PAYROLL_ERROR_CODES.E_DLTL_027]: 'Bảng kê này đã được chốt số cho kỳ lương, không thể thay đổi dữ liệu. Mở chốt bảng kê trước khi sửa.',
   [PAYROLL_ERROR_CODES.E_DLTL_028]: 'Trạng thái chốt của bảng kê vừa thay đổi, vui lòng tải lại để xem trạng thái mới nhất.',
+  [PAYROLL_ERROR_CODES.E_DLTL_029]: 'Bảng tính thuế TNCN của tháng này đã chốt nên không mở lại hay xóa được kỳ lương. Hãy mở lại Bảng tính thuế tháng trước — tờ khai quý đã xuất thì kỳ lương không mở lại được nữa.',
+  [PAYROLL_ERROR_CODES.E_DLTL_030]: 'Kỳ lương còn khoản thu nhập ngoài lương nên không xóa được. Xóa từng khoản ở màn Thu nhập ngoài lương trước.',
 };

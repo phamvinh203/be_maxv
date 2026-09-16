@@ -194,8 +194,10 @@ sửa 2026-09-09.
 
 - `:9` → ctrl `:41-45` → svc `:111-125` · Chỉ khi `DRAFT`
 - **200 OK**: `{ success:true, data:{ …bản ghi vừa xóa } }`
-- **403**: `{ code:"E-dltl-001", message:"Chỉ có thể xóa kỳ lương ở trạng thái Nháp (DRAFT)." }` (`:115-119`) · **404**: `E-dltl-025`
-- **Cascade**: xóa kéo theo cả 8 bảng biến động + `PayrollSheetLine` (`schema.prisma:1392-1400`, `onDelete: Cascade`). **Không có xác nhận 2 bước** — client phải tự hỏi lại người dùng.
+- **403**: `{ code:"E-dltl-001", message:"Chỉ có thể xóa kỳ lương ở trạng thái Nháp (DRAFT)." }` (`:115-119`) · **404**: `E-dltl-025` · **409** `E-dltl-029` — tháng còn khóa `TAX_SHEET` (Bảng tính thuế đã chốt; chỉ gặp ở dữ liệu cũ, vì kỳ đã chốt thuế không còn mở về `DRAFT` được) `[BỔ SUNG 2026-09-15 — RVW-721]`
+- Trạng thái kỳ được kiểm LẠI trong giao dịch, dưới khóa dòng kỳ (`FOR UPDATE`): khóa sổ chen giữa thì không xóa.
+- **409** `E-dltl-030` — kỳ còn khoản thu nhập ngoài lương (chứng từ thuế, có thể đã phát hành chứng từ khấu trừ cho cá nhân): xóa từng khoản ở màn Thu nhập ngoài lương trước. Thông báo nêu số khoản; đếm dưới cùng khóa dòng kỳ `[BỔ SUNG 2026-09-15 — RVW-735, chủ dự án chốt]`
+- **Cascade**: kỳ có 12 bảng con `onDelete: Cascade` — 8 bảng biến động, `PayrollSheetLine`, khóa bảng kê `PayrollModuleLock`, dòng Bảng tính thuế `TaxCalculationLine` và khoản `OtherIncomeRecord`. Hai bảng cuối không bao giờ còn dòng lúc xóa được (E-dltl-029, E-dltl-030) `[sửa 2026-09-15 — RVW-735: bản cũ chỉ ghi 8 bảng + PayrollSheetLine]`. **Không có xác nhận 2 bước** — client phải tự hỏi lại người dùng.
 
 ### 1.6. Chuyển trạng thái — 7 endpoint
 
@@ -204,7 +206,7 @@ sửa 2026-09-09.
 | a | `POST /payroll-periods/:id/submit` | `:12` | `:127-138` | `DRAFT` → `PENDING_REVIEW` | — | 400 `{message:"Chỉ có thể gửi đối soát kỳ lương từ trạng thái DRAFT."}` (không `code`) |
 | b | `POST /payroll-periods/:id/reject` | `:13` | `:140-151` | `PENDING_REVIEW` → `DRAFT` | — | 400 (không `code`) |
 | c | `POST /payroll-periods/:id/lock` | `:14` | `:156-176` | `DRAFT` **hoặc** `PENDING_REVIEW` → `LOCKED` | — | 400 (không `code`) |
-| d | `POST /payroll-periods/:id/reopen` | `:15` | `:181-201` | `LOCKED` → `DRAFT` | `{ reason: string ≥20 }` | 400 (không `code`); Zod nếu `reason` < 20 |
+| d | `POST /payroll-periods/:id/reopen` | `:15` | `:181-201` | `LOCKED` → `DRAFT` | `{ reason: string ≥20 }` | 400 (không `code`); Zod nếu `reason` < 20 · **409** `E-dltl-029` nếu tháng đã chốt Bảng tính thuế — mở lại Bảng tính thuế trước; tờ khai quý đã xuất thì kỳ không mở lại được nữa `[BỔ SUNG 2026-09-15 — RVW-721]` |
 | e | `POST /payroll-periods/:id/approve` | `:16` | `:203-218` | `LOCKED` → `APPROVED` | — | 400 (không `code`) |
 | f | `POST /payroll-periods/:id/mark-paid` | `:17` | `:220-231` | `APPROVED` → `PAID` | — | 400 (không `code`); **403** nếu không phải ADMIN/OWNER (từ 2026-09-11) |
 | g | `POST /payroll-periods/:id/archive` | `:18` | `:233-244` | `PAID` → `ARCHIVED` | — | 400 (không `code`); **403** nếu không phải ADMIN/OWNER (từ 2026-09-11) |
@@ -717,7 +719,7 @@ Mọi endpoint trên: **200 OK** `{ success:true, data:{ …PayrollPeriod } }` �
 | `ho_ten` | `fullName` | |
 | `ten_pb` · `ten_cv` (ghép cột "Bộ phận/Chức vụ") | `departmentName` · `positionName` | FE tự ghép `" / "` |
 | `loai_hd` · `kieu_luong` | `contractType` · `salaryType` | có thể `null` |
-| `so_npt` | `dependentCount` | |
+| `so_npt` | `dependentCount` | Chỉ người phụ thuộc có kỳ đăng ký phủ tháng của kỳ lương `[SỬA 2026-09-15 — ISSUE-tkt-001]` — trước đó đếm mọi người phụ thuộc, lệch với Bảng tính thuế tháng |
 | **`luong`** | **`baseSalaryMonthly`** | = hợp đồng + phụ cấp cố định (quyết định nghiệp vụ 1) |
 | `ngay_cong` · `ngay_cong_chuan` | `actualWorkDays` · `standardWorkDays` | |
 | **`gio_tang_ca`** | **`otRawHours`** ⭐ | **KHÔNG** dùng `otConvertedHours` — sai số giờ hiển thị |
@@ -742,16 +744,16 @@ Mọi endpoint trên: **200 OK** `{ success:true, data:{ …PayrollPeriod } }` �
 
 ```
 tongMienThue = otTaxExemptAmount + lunchAllowanceExemptAmount + otherAllowanceTaxExemptAmount
-                (OT vượt chuẩn)     (ăn ca trong trần)          (phụ cấp khai miễn thuế)
+              (toàn bộ tiền OT)     (ăn ca trong trần)          (phụ cấp khai miễn thuế)
 ```
 
 Ba cấu phần **không giao nhau**: một khoản phụ cấp chỉ vào đúng một trong hai giỏ cuối, ưu tiên ăn ca (ADR-010 QĐ-9.3). Frontend muốn hiện chi tiết "vì sao miễn bằng này" thì liệt kê đủ ba dòng, **không** tự cộng lại từ dữ liệu Cài đặt lương.
 
 | `withholdingTaxApplied` | `taxableIncome` nghĩa là | Công thức thuế |
 |:--:|---|---|
-| `false` (lũy tiến) | Thu nhập **tính thuế** = `grossIncome − tongMienThue − (giảm trừ bản thân + NPT + bảo hiểm bắt buộc)`, kẹp sàn 0 | `tinhThueLuyTien()` — biểu 7 bậc |
+| `false` (lũy tiến) | Thu nhập **tính thuế** = `grossIncome − tongMienThue − (giảm trừ bản thân + NPT + bảo hiểm bắt buộc)`, kẹp sàn 0 | `tinhThueLuyTien()` — biểu 5 bậc Luật 109/2025/QH15, đọc từ `GeneralSetting.taxBrackets` |
 | `true` (khấu trừ 10%) | **Thu nhập khấu trừ** = `grossIncome − tongMienThue` — luật **không cho** trừ giảm trừ gia cảnh ở nhánh này (`AC-dltl-18`) | `round(taxableIncome × withholdingTaxRate%)` |
-| HĐ thử việc/thời vụ **dưới ngưỡng** 2.000.000 ⇒ `withholdingTaxApplied = false` (theo `AC-dltl-19`) | Vẫn ghi thu nhập khấu trừ, để giải trình vì sao thuế bằng 0 | `0` |
+| HĐ thử việc/thời vụ **dưới ngưỡng** `withholdingTaxThreshold` (mặc định 5.000.000 từ 2026-09-14) ⇒ `withholdingTaxApplied = false` (theo `AC-dltl-19`) | Vẫn ghi thu nhập khấu trừ, để giải trình vì sao thuế bằng 0 | `0` |
 
 > ⚠️ Hệ quả của `AC-dltl-19`: `withholdingTaxApplied = false` gộp chung **hai** tình huống khác hẳn nhau — "HĐ chính thức, tính lũy tiến" và "HĐ thử việc nhưng dưới ngưỡng". Giao diện muốn hiển thị phương pháp tính phải xét thêm `contractType`. Không đổi giá trị cờ (đã có AC và bộ ca kiểm của QA bám vào).
 
@@ -853,7 +855,7 @@ Không làm phần này thì 6 cột mới ở DB **không ai đặt được gi
 |---|---|---|
 | `GET /settings/general` | Trả thêm **3** trường: `lunchAllowanceTaxFreeCap`, `withholdingTaxRate`, `withholdingTaxThreshold` (đọc về là **chuỗi** — Decimal, đúng quy ước 20 cột Decimal hiện có) | `docs/hrm/architecture/api-contract.md` Mục 7D.0 |
 | `PUT /settings/general` | Nhận thêm 3 trường (optional, gửi lên là **số**). Thẩm định: `>= 0`, riêng `withholdingTaxRate` `0…100` ⇒ `E-hrm-083` (mới). Quyền: **`OWNER` duy nhất** (ADR-009) | như trên |
-| `POST /settings/general/restore-default` | Đặt lại đủ 3 trường về `730000 / 10.00 / 2000000` | như trên |
+| `POST /settings/general/restore-default` | Đặt lại đủ 3 trường về `1200000 / 10.00 / 5000000` `[SỬA 2026-09-14]` | như trên |
 | `GET /salary-items` · `POST` · `PATCH` | Thêm `isMealAllowance: boolean` (mặc định `false`) | `docs/hrm/cai_dat_luong/api-contract-cai-dat-luong.md` |
 | Màn "Cài đặt lương › Khoản lương" (`hdđt_maxv`) | Thêm ô chọn "Khoản ăn ca (miễn thuế tới trần)" cho khoản `BENEFIT_ALLOWANCE`/`FIXED_ALLOWANCE` | — |
 

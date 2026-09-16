@@ -1,4 +1,5 @@
 import { Client } from 'pg';
+import { TO_KHAI_DA_XUAT } from '../../constants/hrm/to_khai_thue/chiTieuTncn05';
 import { assertTenDbTenant, tenantUrl } from '../../utils/dbName';
 
 /**
@@ -102,6 +103,15 @@ export function sqlKhoangHopDong(tienTo: string): string {
   return `daterange(${tienTo}ngay_bat_dau, COALESCE(${tienTo}ngay_ket_thuc, 'infinity'::date), '[]')`;
 }
 
+/**
+ * Khóa người nhận VÃNG LAI (RVW-727) — phải KHỚP `khoaNguoiNhan()` (`otherIncomeRecord.service.ts`): CCCD, không có
+ * thì MST, không có nữa mới họ tên; chữ thường, bỏ khoảng trắng. MỘT biểu thức cho index chống trùng và hai câu quét
+ * (khoản trùng, dòng Bảng tính thuế còn khóa kiểu cũ) — không chép lần hai.
+ */
+export function sqlKhoaVangLai(cccd: string, mst: string, hoTen: string): string {
+  return `'VL:' || lower(COALESCE(NULLIF(btrim(${cccd}), ''), NULLIF(btrim(${mst}), ''), btrim(${hoTen})))`;
+}
+
 /** Câu lệnh chạy được nhiều lần mà không đổi kết quả. */
 const CAU_IDEMPOTENT: { ten: string; sql: string }[] = [
   {
@@ -180,6 +190,54 @@ const CAU_IDEMPOTENT: { ten: string; sql: string }[] = [
     ten: 'unique m81(ma_dvcs, so_ct)',
     sql: `CREATE UNIQUE INDEX IF NOT EXISTS "m81_ma_dvcs_so_ct_key"
           ON "m81" (COALESCE("ma_dvcs", ''), "so_ct")`,
+  },
+  {
+    // BR-tkt-003 (di trú M-1): tên danh mục thu nhập ngoài lương duy nhất, KHÔNG phân biệt
+    // hoa/thường và bỏ khoảng trắng đầu cuối. Dùng unique index BIỂU THỨC thay vì thêm cột
+    // `nameNormalized`: cột phái sinh là nguồn sự thật thứ hai — quên cập nhật một nhánh ghi là
+    // ràng buộc vô hiệu trong im lặng. Prisma DSL không diễn tả được `lower(btrim(...))`.
+    ten: 'unique BR-tkt-003 hrm_other_income_categories(lower(btrim(name)))',
+    sql: `CREATE UNIQUE INDEX IF NOT EXISTS "hrm_oic_ten_khong_trung"
+          ON "hrm_other_income_categories" (lower(btrim("name")))`,
+  },
+  {
+    // BR-tkt-006 / E-tkt-005 (di trú M-1): chống trùng bản ghi thu nhập ngoài lương.
+    //   - KHÔNG dùng `@@unique` của Prisma: `ma_nv` nullable ⇒ Postgres coi mọi NULL là KHÁC
+    //     nhau ⇒ cá nhân vãng lai không bị chặn trùng. Đó đúng là ca EC-tkt-07 (double-click)
+    //     mà quy tắc này sinh ra để chặn — nên phải `COALESCE` sang khóa vãng lai.
+    //   - KHÔNG kiểm bằng `findFirst` trước `create`: hai request song song cùng vượt qua bước
+    //     kiểm rồi cùng ghi. Kiểm ở tầng ứng dụng không chặn được đua.
+    //   - Service bắt `P2002` rồi ánh xạ sang 409 `E-tkt-005`.
+    // Giới hạn đã biết: cùng số tiền nhưng `paymentType` khác nhau cho ra `grossAmount` khác
+    // nhau ⇒ không bị coi là trùng. Đúng chữ BR-tkt-006 ("trùng HOÀN TOÀN").
+    // Lưu ý giai đoạn M-1/M-2: `otherIncomeCategoryId` còn nullable nên dòng cũ chưa gán danh
+    // mục vẫn lọt (NULL khác NULL). Hết M-2 mọi dòng đều có danh mục nên ràng buộc đủ hiệu lực.
+    // v2 (RVW-727, chủ dự án chốt 2026-09-15): khóa vãng lai ưu tiên CCCD, rồi MST, cuối cùng mới họ tên —
+    // hai CTV trùng tên khác CCCD là hai người, không còn bị chặn nhầm. Biểu thức nằm ở `sqlKhoaVangLai` (khớp
+    // `khoaNguoiNhan`). Đặt tên mới vì `IF NOT EXISTS` không thay được biểu thức của index cũ. Tenant đang chạy:
+    // rà mục `khoan-ngoai-trung-v2` TRƯỚC khi áp (`npm run hrm:ra-soat`).
+    ten: 'unique BR-tkt-006 hrm_other_income_records (chong trung v2: CCCD > MST > ho ten)',
+    sql: `CREATE UNIQUE INDEX IF NOT EXISTS "hrm_oir_chong_trung_v2"
+          ON "hrm_other_income_records" (
+            "periodId",
+            COALESCE("ma_nv", ${sqlKhoaVangLai('"idCardNumber"', '"taxCode"', '"fullName"')}),
+            "otherIncomeCategoryId",
+            "paymentDate",
+            "grossAmount"
+          )`,
+  },
+  {
+    // Gỡ index v1 (khóa chỉ theo họ tên) CHỈ khi v2 đã có: v2 vướng dữ liệu (báo ở `vuongDuLieu`) thì tenant
+    // vẫn giữ v1, không có lúc nào mất hẳn lớp chống trùng.
+    ten: 'drop unique cu hrm_oir_chong_trung (v1 theo ho ten)',
+    sql: `DO $do$ BEGIN
+            IF EXISTS (
+              SELECT 1 FROM pg_indexes
+               WHERE schemaname = current_schema() AND indexname = 'hrm_oir_chong_trung_v2'
+            ) THEN
+              DROP INDEX IF EXISTS "hrm_oir_chong_trung";
+            END IF;
+          END $do$`,
   },
 ];
 
@@ -436,13 +494,52 @@ GROUP BY COALESCE(ma_dvcs, ''), so_ct
 HAVING count(*) > 1
 ORDER BY 1, 2`;
 
+/**
+ * BR-tkt-006 / RVW-727 — khoản thu nhập ngoài lương trùng theo khóa chống trùng v2 (cùng kỳ, cùng người theo
+ * CCCD → MST → họ tên, cùng loại, ngày và số tiền trước thuế); chặn `hrm_oir_chong_trung_v2`. Bỏ dòng chưa gán danh
+ * mục vì index coi NULL là khác nhau.
+ */
+export const SQL_QUET_KHOAN_NGOAI_TRUNG = `
+SELECT "periodId",
+       COALESCE(ma_nv, ${sqlKhoaVangLai('"idCardNumber"', '"taxCode"', '"fullName"')}) AS khoa_nguoi_nhan,
+       "otherIncomeCategoryId", "paymentDate", "grossAmount",
+       count(*) AS so_dong, array_agg(id ORDER BY "createdAt") AS id
+FROM hrm_other_income_records
+WHERE "otherIncomeCategoryId" IS NOT NULL
+GROUP BY 1, 2, 3, 4, 5
+HAVING count(*) > 1
+ORDER BY 1, 2`;
+
+/**
+ * RVW-732 — tháng ĐÃ CHỐT Bảng tính thuế còn dòng vãng lai mang khóa khác công thức hiện hành (chốt ở `engineVersion`
+ * v1, gộp theo họ tên). Quý chưa xuất thì mở lại rồi chốt lại tháng đó, nếu không tờ khai quý đếm trùng người ở
+ * [16]/[19]; quý đã xuất đã đóng băng bộ số nên chỉ để biết.
+ */
+export const SQL_QUET_BANG_THUE_KHOA_VANG_LAI_CU = `
+SELECT p.year AS nam, p.month AS thang, count(*) AS so_dong,
+       EXISTS (
+         SELECT 1 FROM hrm_to_khai_tncn05 t
+          WHERE t.nam = p.year AND t.ky_loai = 'quy' AND t.ky_so = (p.month + 2) / 3
+            AND t.trang_thai IN (${TO_KHAI_DA_XUAT.map((s) => `'${s}'`).join(', ')})
+       ) AS quy_da_xuat
+FROM hrm_tax_calculation_lines l
+JOIN hrm_payroll_periods p ON p.id = l."periodId"
+WHERE l.loai_lao_dong = 'VANG_LAI'
+  -- Chỉ so dòng CÓ giấy tờ (RVW-738). Khóa đã lưu do JS hạ chữ, vế phải do lower() của CSDL hạ: với dòng chỉ có
+  -- họ tên, cluster locale C chỉ hạ được chữ ASCII nên hai bên lệch nhau ở Đ/Â/chữ hoa có dấu, mục này báo mãi
+  -- không hết. Bỏ chúng cũng không sót: nhóm không có giấy tờ thì khóa v1 và v2 dựng ra giống hệt nhau.
+  AND (NULLIF(btrim(l.so_cccd), '') IS NOT NULL OR NULLIF(btrim(l.mst_ca_nhan), '') IS NOT NULL)
+  AND l."recipientKey" <> ${sqlKhoaVangLai('l.so_cccd', 'l.mst_ca_nhan', 'l.ho_ten')}
+GROUP BY p.year, p.month
+ORDER BY p.year, p.month`;
+
 export interface MucRaSoat {
   ma: string;
   ten: string;
   sql: string;
 }
 
-/** Bốn mục rà soát của đợt P0 (HRM) + số chứng từ bán hàng trùng, theo đúng thứ tự cần dọn. */
+/** Mục rà soát, theo đúng thứ tự cần dọn: bốn mục đợt P0 (HRM), số chứng từ bán hàng trùng, rồi hai mục thuế TNCN. */
 export const MUC_RA_SOAT: MucRaSoat[] = [
   {
     ma: 'luong-0',
@@ -468,6 +565,16 @@ export const MUC_RA_SOAT: MucRaSoat[] = [
     ma: 'so-ct-trung',
     ten: 'Hoa don ban hang trung (don vi co so, so chung tu)',
     sql: SQL_QUET_SO_CT_TRUNG,
+  },
+  {
+    ma: 'khoan-ngoai-trung-v2',
+    ten: 'Khoan thu nhap ngoai luong trung theo khoa chong trung v2 (BR-tkt-006, RVW-727)',
+    sql: SQL_QUET_KHOAN_NGOAI_TRUNG,
+  },
+  {
+    ma: 'bang-thue-khoa-vang-lai-cu',
+    ten: 'Thang da chot Bang tinh thue con khoa vang lai kieu cu - quy chua xuat thi mo lai va chot lai (RVW-732)',
+    sql: SQL_QUET_BANG_THUE_KHOA_VANG_LAI_CU,
   },
 ];
 

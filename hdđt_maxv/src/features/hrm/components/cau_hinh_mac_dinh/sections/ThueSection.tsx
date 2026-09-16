@@ -143,8 +143,8 @@ export default function ThueSection({ values, onChange }: Props) {
         </Stack>
         <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
           Mỗi ô là <strong>ngưỡng thu nhập tính thuế lũy kế</strong> mà bậc đó áp đến — đúng cách
-          Điều 22 Luật Thuế TNCN diễn đạt, không phải độ rộng của bậc. Bậc cuối là bậc mở, ôm hết
-          phần vượt ngưỡng bậc liền trước. Biểu chuẩn hiện hành có 7 bậc, trần 35%.
+          Luật Thuế TNCN diễn đạt, không phải độ rộng của bậc. Bậc cuối là bậc mở, ôm hết phần
+          vượt ngưỡng bậc liền trước. Biểu chuẩn hiện hành có 5 bậc, trần 35%.
         </Typography>
 
         <Stack spacing={2}>

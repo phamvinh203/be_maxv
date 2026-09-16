@@ -511,17 +511,18 @@ model PayrollPeriod {
 model GeneralSetting {
   // … 29 cột hiện có, KHÔNG đổi …
 
-  /// BR-dltl-027 — Trần miễn thuế TNCN của phụ cấp ăn ca/ăn trưa mỗi tháng (TT 26/2016:
-  /// 730.000đ). Phần vượt trần tính vào thu nhập chịu thuế. Trần này được QUY ĐỔI THEO CÔNG
-  /// khi tính (AC-dltl-23) — cột lưu mức tháng đầy đủ.
-  lunchAllowanceTaxFreeCap Decimal @default(730000)  @db.Decimal(15, 2)
+  /// BR-dltl-027 — Trần miễn thuế TNCN của phụ cấp ăn ca/ăn trưa mỗi tháng (NĐ 253/2026/NĐ-CP:
+  /// 1.200.000đ, trước là 730.000đ theo TT 26/2016). Phần vượt trần tính vào thu nhập chịu thuế.
+  /// Trần này được QUY ĐỔI THEO CÔNG khi tính (AC-dltl-23) — cột lưu mức tháng đầy đủ.
+  lunchAllowanceTaxFreeCap Decimal @default(1200000) @db.Decimal(15, 2)
 
-  /// BR-dltl-026 — Thuế suất khấu trừ tại nguồn cho HĐ thử việc/thời vụ (Điều 25 TT 111/2013:
-  /// 10%). Đơn vị PHẦN TRĂM (10.00 = 10%) — cùng quy ước với insurance*/unionFee*.
+  /// BR-dltl-026 — Thuế suất khấu trừ tại nguồn cho HĐ thử việc/thời vụ (NĐ 253/2026/NĐ-CP
+  /// Điều 50: 10%). Đơn vị PHẦN TRĂM (10.00 = 10%) — cùng quy ước với insurance*/unionFee*.
   withholdingTaxRate       Decimal @default(10.0)    @db.Decimal(5, 2)
 
-  /// BR-dltl-026 — Ngưỡng thu nhập mỗi lần trả bắt đầu phải khấu trừ 10% (2.000.000đ).
-  withholdingTaxThreshold  Decimal @default(2000000) @db.Decimal(15, 2)
+  /// BR-dltl-026 — Ngưỡng thu nhập mỗi lần trả bắt đầu phải khấu trừ 10% (NĐ 253/2026/NĐ-CP
+  /// Điều 50 khoản 2: 5.000.000đ, hiệu lực 01/07/2026 — trước là 2.000.000đ).
+  withholdingTaxThreshold  Decimal @default(5000000) @db.Decimal(15, 2)
 }
 ```
 
@@ -554,7 +555,7 @@ export const SO_LAN_LUONG_TOI_THIEU_VUNG_TRAN_BHTN = 20;
 | `withholdingTaxRate` | `0 … 100` | `E-hrm-083` (mới) |
 | `withholdingTaxThreshold` | `>= 0` | `E-hrm-083` (mới) |
 
-`POST /settings/general/restore-default` **phải đặt lại đủ 3 cột này** về mặc định pháp luật VN (730.000 / 10.00 / 2.000.000). Bỏ sót là khôi phục nửa vời — đúng bẫy đã gặp ở đợt biểu thuế 7 bậc.
+`POST /settings/general/restore-default` **phải đặt lại đủ 3 cột này** về mặc định pháp luật VN (**1.200.000 / 10.00 / 5.000.000** `[SỬA 2026-09-14 theo NĐ 253/2026/NĐ-CP]`). Bỏ sót là khôi phục nửa vời — đúng bẫy đã gặp ở đợt biểu thuế.
 
 ### 11.3. M-02 — nhận diện phụ cấp ăn ca **bằng dữ liệu**, không dò tên tiếng Việt
 
@@ -567,7 +568,7 @@ model SalaryItem {
   // … 11 cột hiện có, KHÔNG đổi …
 
   /// BR-dltl-027 — Khoản này là phụ cấp ăn ca/ăn trưa: miễn thuế TNCN tới
-  /// GeneralSetting.lunchAllowanceTaxFreeCap (730.000đ/tháng, quy đổi theo công), phần vượt
+  /// GeneralSetting.lunchAllowanceTaxFreeCap (1.200.000đ/tháng, quy đổi theo công), phần vượt
   /// tính vào thu nhập chịu thuế. Kế toán tự đánh dấu — hệ thống KHÔNG đoán theo tên khoản.
   isMealAllowance Boolean @default(false)
 }
