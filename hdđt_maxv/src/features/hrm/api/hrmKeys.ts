@@ -1,3 +1,9 @@
+import type {
+  IncomeCategoryListParams,
+  OtherIncomeListParams,
+  TaxCalculationParams,
+} from "../types/toKhaiThue";
+
 import type { EmployeeSalaryListParams } from "./cai_dat_luong/employeeSalariesApi";
 
 /**
@@ -200,4 +206,35 @@ export const hrmPayrollCalculationKeys = {
   supportAllowances: (companyId: string | null, periodId: string) =>
     ["hrm-payroll-calculation", companyId, "support-allowances", periodId] as const,
 };
+
+/** Danh mục loại thu nhập ngoài lương (dùng chung cho mọi kỳ) */
+export const hrmIncomeCategoryKeys = {
+  all: ["hrm-income-category"] as const,
+  list: (companyId: string | null, params?: IncomeCategoryListParams) =>
+    ["hrm-income-category", companyId, "list", params ?? {}] as const,
+};
+
+/** Thu nhập ngoài lương theo kỳ — lọc và phân trang Ở MÁY CHỦ nên tham số nằm trong khóa */
+export const hrmOtherIncomeKeys = {
+  all: ["hrm-other-income"] as const,
+  list: (companyId: string | null, params: OtherIncomeListParams) =>
+    ["hrm-other-income", companyId, "list", params] as const,
+};
+
+/** Bảng tính thuế TNCN tháng */
+export const hrmTaxCalculationKeys = {
+  all: ["hrm-tax-calculation"] as const,
+  sheet: (companyId: string | null, params: TaxCalculationParams) =>
+    ["hrm-tax-calculation", companyId, "sheet", params] as const,
+};
+
+/** Tờ khai thuế TNCN quý 05/KK-TNCN — kỳ khai LUÔN là quý (BR-tkt-016) */
+export const hrmToKhaiTncnKeys = {
+  all: ["hrm-to-khai-tncn"] as const,
+  detail: (companyId: string | null, nam: number, quy: number) =>
+    ["hrm-to-khai-tncn", companyId, "detail", nam, quy] as const,
+  periods: (companyId: string | null, nam?: number) =>
+    ["hrm-to-khai-tncn", companyId, "periods", nam ?? "tat-ca"] as const,
+};
+
 

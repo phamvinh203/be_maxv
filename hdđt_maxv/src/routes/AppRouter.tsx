@@ -65,6 +65,18 @@ const LuongHoTroPage = lazy(() => import("../pages/hrm/bang_luong/LuongHoTroPage
 const ChotKyLuongPage = lazy(() => import("../pages/hrm/chot_ky_luong/ChotKyLuongPage"));
 const ToKhaiThuePage = lazy(() => import("../pages/hrm/to_khai_thue/ToKhaiThuePage"));
 const ToKhaiThueChuaDungPage = lazy(() => import("../pages/hrm/to_khai_thue/ToKhaiThueChuaDungPage"));
+const DanhMucThuNhapPanel = lazy(
+  () => import("../features/hrm/components/to_khai_thue/danh_muc_thu_nhap/DanhMucThuNhapPanel")
+);
+const ThuNhapNgoaiLuongPanel = lazy(
+  () => import("../features/hrm/components/to_khai_thue/thu_nhap_ngoai_luong/ThuNhapNgoaiLuongPanel")
+);
+const BangTinhThuePanel = lazy(
+  () => import("../features/hrm/components/to_khai_thue/bang_tinh_thue/BangTinhThuePanel")
+);
+const ToKhaiTncn05Panel = lazy(
+  () => import("../features/hrm/components/to_khai_thue/to_khai_tncn/ToKhaiTncn05Panel")
+);
 const HoSoLuongPage = lazy(() => import("../pages/hrm/ho_so_luong/HoSoLuongPage"));
 const HoSoLuongChuaDungPage = lazy(() => import("../pages/hrm/ho_so_luong/HoSoLuongChuaDungPage"));
 
@@ -291,7 +303,21 @@ export default function AppRouter() {
                   <Navigate to={MAN_HINH_TO_KHAI_THUE[0]!.path} replace />
                 }
               />
-              {MAN_HINH_TO_KHAI_THUE.map((mh) => (
+              <Route path="thu-nhap-ngoai-luong" element={<ThuNhapNgoaiLuongPanel />} />
+              <Route path="danh-muc-thu-nhap" element={<DanhMucThuNhapPanel />} />
+              <Route path="bang-tinh-thue" element={<BangTinhThuePanel />} />
+              <Route path="to-khai-tncn" element={<ToKhaiTncn05Panel />} />
+              {MAN_HINH_TO_KHAI_THUE.filter(
+                (mh) =>
+                  ![
+                    "thu-nhap-ngoai-luong",
+                    "danh-muc-thu-nhap",
+                    "bang-tinh-thue",
+                    "to-khai-tncn",
+                  ].includes(
+                    mh.path,
+                  ),
+              ).map((mh) => (
                 <Route
                   key={mh.path}
                   path={mh.path}

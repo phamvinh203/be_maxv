@@ -264,3 +264,61 @@ Hợp đồng là nguồn thẩm quyền cao hơn bộ ca (bộ ca viết trư�
 | TC-124 | Việc làm đầu Phase B | Đã làm trong file test |
 | TC-125, 126 | Việc tài liệu Phase A đã xong | — |
 | Nhánh `format=pdf` của TC-078 | Puppeteer giữ tiến trình test sống | Script dựng PDF đạt ở mức hàm; **chưa kiểm qua endpoint** |
+
+---
+
+## 9. Phase B giao diện — `hdđt_maxv` (2026-09-16)
+
+**Phạm vi:** 4 màn của khu Tờ khai thuế sau đợt viết lại theo hợp đồng 23 endpoint. Kiểm THEO MÃ NGUỒN (đối chiếu hợp đồng, SRS, bộ ca Phase A) cộng ba lệnh kiểm tự động; CHƯA kiểm trên trình duyệt đã đăng nhập.
+
+**Cách chạy:** hai lượt rà độc lập — một lượt đối chiếu từng endpoint với hợp đồng, một lượt rà hồi quy và quy ước khu HRM.
+
+### 9.1 Kết quả tổng
+
+| Hạng mục | Kết quả |
+|---|---|
+| `npx tsc -b --noEmit` | 0 lỗi |
+| `npx eslint .` (toàn ứng dụng) | 0 lỗi, 0 cảnh báo |
+| `npm run build` | thành công, 4 chunk màn sinh đủ |
+| 50 ca kiểm tĩnh `TC-fe-tkt-001…050` | 44 đạt · 6 lỗi (1 🔴, 3 🟡, 2 🟢) |
+| Đối chiếu 23 endpoint (đường dẫn, tham số, thân yêu cầu, kiểu phản hồi) | Khớp 100%, không chỗ nào gửi thừa tham số ngoài nhóm |
+
+### 9.2 Điểm đã kiểm và đạt
+
+- Ba endpoint trả file nhị phân đi qua `apiFetchBlob`, hai endpoint trả 204 đi qua `apiFetch` — không vướng bước bóc `data`.
+- Ràng buộc nhập liệu khớp máy chủ: lý do mở lại ≥ 20 ký tự, lý do ghi đè ≥ 10 ký tự, ngày chi trả trong tháng của kỳ, `ma_nv` bắt buộc với nhóm khác `WITHHOLDING_FLAT`, mã số thuế bắt buộc khi có cam kết 08, số tiền luôn nguyên không âm.
+- Bốn trạng thái tờ khai mở đúng bộ nút; cờ `periodLocked`, `coTheChot`, `coTheMoLai` dùng đúng.
+- Mọi nhánh lỗi dùng `getErrorMessage`, không nuốt mã `E-tkt-*`; nhánh 500-sau-khi-đã-xuất hướng người dùng sang nút tải lại file.
+- Làm mới cache đủ ba nhóm khóa sau mỗi lệnh ghi; xuất tờ khai làm mới thêm nhóm bảng tính thuế vì `coTheMoLai` đổi.
+- Ba cảnh báo của SRS Mục 14 đã hết: không còn ngưỡng 2.000.000 và biểu 7 bậc chép cứng, danh mục lấy từ API, chỉ tiêu sửa được lấy từ `ctGocSuaDuoc`, kỳ khai chỉ còn theo quý.
+- Hồi quy: không còn nơi nào gọi khóa truy vấn theo chữ ký cũ; 6/6 tab đều có route; hai thay đổi ở file dùng chung (`apiClient.ts`, `types/index.ts`) là thêm mới, 17 lời gọi `api.del()` cũ không ảnh hưởng. Không màn HRM nào khác bị tác động.
+
+### 9.3 Lỗi phát hiện
+
+Chi tiết từng lỗi ở `issues-and-bugs-to-khai-thue.md` mục "Phase B giao diện": `BUG-fe-tkt-001` (🔴 bấm hai lần nút Xuất tờ khai) · `BUG-fe-tkt-002` (🟡 thiếu khóa nút theo quyền ADMIN/OWNER) · `BUG-fe-tkt-003` (🟡 xuất Excel chỉ ra trang đang xem) · `BUG-fe-tkt-004` (🟡 hai route thừa `bang-tinh-thue-hdld`/`hddv`) · `BUG-fe-tkt-005` (🟢 cam kết 08 không phụ thuộc nhóm danh mục) · `BUG-fe-tkt-006` (🟢 trường chết `laChiTieuGoc`).
+
+### 9.4 Ca KHÔNG kiểm được bằng đọc mã
+
+| Việc | Cần gì |
+|---|---|
+| Bấm hai lần thật trên nút Xuất tờ khai và Chốt tháng | Trình duyệt đã đăng nhập, xem tab Network |
+| Tên file tải về so với `Content-Disposition` thật | Chạy thật với máy chủ |
+| Nhánh `TAXABLE_FULL` trả NET (`GAP-QA-tkt-01` còn treo) | Máy chủ thật, xem `preview` trả gì |
+| Phân quyền thật theo từng vai | Tài khoản cho từng vai |
+| Độ trễ render PDF qua Puppeteer | Chạy thật |
+
+### 9.5 Kết luận
+
+Chưa chuyển code-reviewer khi `BUG-fe-tkt-001` còn mở — đó là hành động không lùi được. Ba lỗi 🟡 nên sửa cùng đợt. Các mục 🟢 có thể gộp chung hoặc để lại thành việc riêng.
+
+### 9.6 Sửa lỗi và chạy lại (cùng ngày)
+
+Đã sửa 5/6 lỗi ngay trong đợt: BUG-fe-tkt-001 (🔴), 002 và 003 (🟡), 005 và 006 (🟢). Còn
+BUG-fe-tkt-004 (hai route thừa) giữ OPEN, chờ chủ dự án xác nhận có định tách bảng theo loại hợp đồng.
+
+Dọn thêm cùng lượt: bỏ 4 hook, 4 hàm API, 4 khóa truy vấn và 2 kiểu dữ liệu chưa màn nào dùng; sửa
+chú thích lỗi thời ở màn "đang phát triển"; khóa danh sách cảnh báo theo nội dung thay vì chỉ số mảng.
+
+Chạy lại sau khi sửa: `npx tsc -b --noEmit` 0 lỗi · `npx eslint .` 0 lỗi 0 cảnh báo · `npm run build`
+thành công. Các lỗi 🔴 và 🟡 của mục 9.3 đã đóng; phần giao diện sẵn sàng cho code-reviewer, trừ điểm
+còn chờ quyết ở BUG-fe-tkt-004.

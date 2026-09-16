@@ -14,6 +14,9 @@ interface Props {
   onXacNhan: () => void;
   /** Chữ trên nút xác nhận. Mặc định "Xóa" — đổi khi việc không phải là xóa bản ghi. */
   nhanXacNhan?: string;
+  /** Đang gửi lệnh: khóa cả hai nút. Bắt buộc dùng với việc KHÔNG lùi lại được, nếu không người
+   * dùng bấm hai lần trước khi dialog kịp đóng là gửi hai lệnh (BUG-fe-tkt-001). */
+  dangXuLy?: boolean;
 }
 
 /** Hỏi lại trước khi làm việc không lùi lại được — dùng chung cho khu HRM. */
@@ -24,6 +27,7 @@ export default function XacNhanXoaDialog({
   onClose,
   onXacNhan,
   nhanXacNhan = "Xóa",
+  dangXuLy = false,
 }: Props) {
   return (
     <Dialog open={open} onClose={onClose} maxWidth="xs" fullWidth>
@@ -32,13 +36,14 @@ export default function XacNhanXoaDialog({
         <DialogContentText component="div">{noiDung}</DialogContentText>
       </DialogContent>
       <DialogActions>
-        <Button onClick={onClose} sx={{ textTransform: "none" }}>
+        <Button onClick={onClose} disabled={dangXuLy} sx={{ textTransform: "none" }}>
           Hủy
         </Button>
         <Button
           color="error"
           variant="contained"
           onClick={onXacNhan}
+          disabled={dangXuLy}
           sx={{ textTransform: "none" }}
         >
           {nhanXacNhan}

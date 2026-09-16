@@ -1980,3 +1980,159 @@ Thứ tự này khớp data-model Mục 5.3 (029 trước 030) và hợp đồng
 - RVW-739 là tùy chọn. RVW-733 vẫn để sau theo quyết định.
 - Chờ Architect xác nhận `E-dltl-029`, `E-dltl-030` và các mã dòng 4b/5c còn treo.
 - Có thể commit phần sửa hiện tại.
+
+---
+
+## Review 2026-09-16 — Giao diện `to_khai_thue` (`hdđt_maxv`) — Verdict: ❌ Request changes
+
+Phạm vi: 4 màn mới, tầng API/hook/kiểu dữ liệu mới, 6 file sửa. Đã đối chiếu hợp đồng 23 endpoint, SRS, dev-notes Mục 2.17 và 6 lỗi QA đã đóng ở `to_khai_thue/issues-and-bugs-to-khai-thue.md`. Hai lỗi chặn đều nằm ở ĐƯỜNG THẤT BẠI của thao tác ghi — chỗ bộ ca kiểm tĩnh không phủ tới.
+
+### RVW-740 🔴 BLOCKING — Xuất tờ khai hỏng giữa chừng: màn vẫn báo "Sẵn sàng xuất" và giấu mất nút cứu
+- Vị trí: `hdđt_maxv/src/features/hrm/api/to_khai_thue/toKhaiThueQueries.ts`:245-255 · `components/to_khai_thue/to_khai_tncn/ToKhaiTncn05Panel.tsx`:118-139
+- Vấn đề: `useXuatToKhai` chỉ làm mới ở `onSuccess`. Hợp đồng Mục 5.5 nêu đúng ca hay gặp: giao dịch đã commit (`EXPORTED`, ba tháng khóa vĩnh viễn) rồi mới hỏng ở bước dựng file, máy chủ trả 500; mất mạng giữa chừng cũng vậy. Khi đó không lệnh làm mới nào chạy, màn giữ nguyên `READY_TO_EXPORT`: toast khuyên dùng nút "Tải lại file" nhưng nút đó chỉ hiện khi `daXuat` — lời khuyên trỏ tới nút không có trên màn; hai nút Xuất vẫn mời bấm (409 `E-tkt-020`); bảng chỉ tiêu vẫn mời sửa ghi đè (403 `E-tkt-019`); sang màn Bảng tính thuế bấm Mở lại thì 403 `E-tkt-009` không rõ vì sao.
+- Đề xuất fix: làm mới ở `onSettled` thay vì `onSuccess` cho `useXuatToKhai` (và `useDanhDauDaNop` cùng bản chất) — thao tác đổi trạng thái máy chủ cả khi báo lỗi.
+- Trạng thái: OPEN
+  → FIXED [2026-09-16] — `toKhaiThueQueries.ts`: `useXuatToKhai` và `useDanhDauDaNop` chuyển từ `onSuccess` sang `onSettled`, kèm chú thích vì sao (trạng thái máy chủ đổi cả khi lệnh báo lỗi). Xuất hỏng giữa chừng thì màn đọc lại trạng thái thật, nút "Tải lại file" hiện ra đúng lúc lời khuyên trong toast nhắc tới.
+
+### RVW-741 🔴 BLOCKING — Xóa trống ô "Tỷ lệ khấu trừ" là tạo ra loại thu nhập khấu trừ 0%
+- Vị trí: `hdđt_maxv/src/features/hrm/components/to_khai_thue/danh_muc_thu_nhap/DanhMucThuNhapDialog.tsx`:98, 109, 124
+- Vấn đề: `Number("")` trả 0 và bộ soát cho 0 đi qua. Kế toán xóa trắng ô (định để máy chủ điền mặc định 10%) sẽ lưu được danh mục `WITHHOLDING_FLAT` tỷ lệ 0%: mọi khoản ghi theo loại đó khấu trừ 0đ, không cảnh báo — sai số trên chứng từ khấu trừ đã phát cho cá nhân và sai chỉ tiêu [29] của tờ khai quý. `withholdingThreshold` cùng bệnh: để trống thành 0 nên khấu trừ từ đồng đầu tiên thay vì từ 5.000.000đ.
+- Đề xuất fix: phân biệt "để trống" (không gửi, để máy chủ điền mặc định) với "gõ số 0" (ý định thật); nếu nghiệp vụ cho phép 0% thì bắt gõ tường minh.
+- Trạng thái: OPEN
+  → FIXED [2026-09-16] — `DanhMucThuNhapDialog.tsx`: tách "để trống" khỏi "gõ số 0" — ô trống thì KHÔNG gửi trường để máy chủ điền mặc định, tỷ lệ nhập tay phải lớn hơn 0 và không quá 100; `helperText` của cả hai ô nói rõ mặc định 10% / 5.000.000đ khi bỏ trống.
+
+### RVW-742 🟡 NON-BLOCKING — Bản sửa BUG-fe-tkt-001 còn hở ở hai hộp xác nhận XÓA
+- Vị trí: `components/to_khai_thue/thu_nhap_ngoai_luong/ThuNhapNgoaiLuongPanel.tsx`:385-395 · `danh_muc_thu_nhap/DanhMucThuNhapPanel.tsx`:264-274
+- Vấn đề: prop `dangXuLy` đã thêm và truyền ở chốt tháng, xuất tờ khai, nhưng hai chỗ XÓA bỏ trống. Bấm nhanh hai lần vẫn gửi hai `DELETE`, lần hai trả 404 `E-tkt-016` ⇒ kế toán nhận cùng lúc toast xanh "Đã xóa" và toast đỏ "Chưa xóa được", không biết bản ghi còn hay mất.
+- Đề xuất fix: `dangXuLy={xoaMut.isPending}` cho cả hai. Ghi chú: 12 nơi khác trong khu HRM cũng dùng `XacNhanXoaDialog` chưa truyền prop mới — việc riêng, ngoài đợt này.
+- Trạng thái: OPEN
+  → FIXED [2026-09-16] — truyền `dangXuLy={xoaMut.isPending}` cho `XacNhanXoaDialog` ở `ThuNhapNgoaiLuongPanel.tsx` và `DanhMucThuNhapPanel.tsx`. Ghi chú: 12 nơi khác trong khu HRM cũng dùng hộp này chưa truyền cờ — để thành việc riêng, ngoài cụm `to_khai_thue`.
+
+### RVW-743 🟡 NON-BLOCKING — Bản sửa BUG-fe-tkt-005 còn hở: tích cam kết 08 rồi đổi loại thu nhập là kẹt form
+- Vị trí: `thu_nhap_ngoai_luong/ThuNhapNgoaiLuongDialog.tsx`:233-238, :296, :435-459
+- Vấn đề: hai ô tích khóa theo nhóm nhưng giá trị trong form không dọn khi đổi danh mục. Tích cam kết 08 ở nhóm khấu trừ rồi đổi sang nhóm chịu thuế toàn bộ: cờ vẫn `true`, ô tích hiện trống và bị khóa, bấm Lưu thì bị chặn "Cam kết 08 chỉ dùng cho loại khấu trừ tại nguồn" mà không có cách nào bỏ tích — chỉ còn đường đóng dialog, mất hết dữ liệu đã nhập.
+- Đề xuất fix: dọn `hasCommitment08` và `forceWithholding` ngay tại chỗ đổi danh mục.
+- Trạng thái: OPEN
+  → FIXED [2026-09-16] — đổi danh mục thì dọn luôn `hasCommitment08` và `forceWithholding` ngay tại `onChange`. Giữ nguyên nhánh soát ở `soatForm()` vì vẫn cần cho đường MỞ SỬA: khoản cũ có cờ bật mà danh mục sau đó bị đổi nhóm.
+
+### RVW-744 🟡 NON-BLOCKING — Không sửa được khoản thuộc loại thu nhập đã chuyển "Ngừng dùng"
+- Vị trí: `thu_nhap_ngoai_luong/ThuNhapNgoaiLuongDialog.tsx`:114-116, 122, 313-317
+- Vấn đề: dropdown chỉ nạp danh mục `ACTIVE`, trong khi màn Loại thu nhập lại khuyên "chuyển sang Ngừng dùng thay vì xóa" khi còn khoản dùng. Mở sửa khoản cũ thuộc danh mục vừa ngừng: ô Loại thu nhập trắng trơn, `batBuocNoiBo`/`laKhauTruTaiNguon` tụt về `false` nên hai ô tích khóa nhầm; bấm Lưu thì 400 `E-tkt-003`. Khoản đã ghi không sửa được nữa, kể cả những trường chẳng liên quan tới danh mục.
+- Đề xuất fix: khi đang sửa thì ghép thêm danh mục của chính bản ghi vào danh sách chọn, kèm chú thích "Loại này đã ngừng dùng".
+- Trạng thái: OPEN
+  → FIXED [2026-09-16] — `ThuNhapNgoaiLuongDialog.tsx`: thêm danh sách `luaChon` ghép danh mục của chính bản ghi đang sửa vào ô chọn khi danh mục đó đã ngừng dùng, đánh dấu "(đã ngừng dùng)" và nói rõ ở `helperText`; `batBuocNoiBo` suy từ nhóm khi mục ghép thiếu cờ.
+
+### RVW-745 🟡 NON-BLOCKING — Thông báo "đã chốt" chỉ sai đường khi khóa đến từ bảng kê Thu nhập ngoài lương
+- Vị trí: `thu_nhap_ngoai_luong/ThuNhapNgoaiLuongPanel.tsx`:113, 207-212
+- Vấn đề: hợp đồng Mục 3.1 đặt `periodLocked = true` khi kỳ có khóa `TAX_SHEET` HOẶC `OTHER_INCOME`. Khi khóa đến từ bảng kê `OTHER_INCOME` (chốt ở màn Chốt kỳ lương), dải thông báo vẫn bảo "mở lại Bảng tính thuế tháng" — sang đó thấy trạng thái Nháp, không có nút mở lại, kế toán mắc kẹt không rõ ai đang khóa.
+- Đề xuất fix: nói theo hệ quả và chỉ cả hai lối (bảng kê ở màn Chốt kỳ lương, hoặc Bảng tính thuế tháng). Muốn chính xác tuyệt đối thì máy chủ trả thêm `lockedModule` — phải sửa hợp đồng, báo Architect trước.
+- Trạng thái: OPEN
+  → FIXED [2026-09-16] — dải thông báo đổi sang nói theo hệ quả và chỉ cả hai lối mở khóa (bảng kê "Thu nhập ngoài lương" ở màn Chốt kỳ lương, hoặc Bảng tính thuế tháng), không còn khẳng định nhầm nguyên nhân. Việc để máy chủ trả thêm `lockedModule` cần sửa hợp đồng nên chưa làm.
+
+### RVW-746 🟡 NON-BLOCKING — File Excel Bảng tính thuế là bản ĐANG LỌC nhưng không có dấu hiệu nào nói vậy
+- Vị trí: `bang_tinh_thue/BangTinhThuePanel.tsx`:139-149, 194-200 · `bang_tinh_thue/bangTinhThueExcel.ts`:36-42
+- Vấn đề: file ghi `bang.danhSach` — danh sách đã lọc ở máy chủ. Nút lại nằm cạnh khối bốn chỉ số chú thích "tính trên TOÀN KỲ", tiêu đề file không nhắc bộ lọc, dòng TỔNG CỘNG cũng cộng theo bộ lọc. Lọc "Vãng lai" để soi, quên gỡ, xuất file rồi dùng chính file đó đối chiếu tờ khai quý là thiếu người mà không có cảnh báo — đúng loại lỗi `BUG-fe-tkt-003` đã bắt ở màn bên cạnh.
+- Đề xuất fix: ghi bộ lọc vào dòng phụ đề của file và đổi nhãn nút thành "Xuất Excel (theo bộ lọc)" khi đang có bộ lọc.
+- Trạng thái: OPEN
+  → FIXED [2026-09-16] — `xuatExcelBangTinhThue` nhận thêm `moTaLoc` và ghi vào dòng phụ đề của file ("toàn kỳ, không lọc" hoặc liệt kê bộ lọc đang áp); nhãn nút đổi thành "Xuất Excel (theo bộ lọc)" khi có bộ lọc.
+
+### RVW-747 🟡 NON-BLOCKING — "Người ký / Ngày ký" dùng chung giữa hai thao tác, luồng Xuất không có ô để nhập
+- Vị trí: `to_khai_tncn/ToKhaiTncn05Panel.tsx`:82-83, 120-126, 458-470
+- Vấn đề: hai state chỉ có ô nhập trong hộp "Đánh dấu đã nộp" nhưng lại gửi kèm cả lệnh xuất (hợp đồng Mục 5.5 ghi thẳng vào dòng tờ khai). Hệ quả ngược nhau: luồng thường thì không có cách nào khai người ký TRƯỚC lúc xuất, mà xuất là việc không lùi được; luồng éo le thì tên gõ dở trong hộp "Đã nộp" rồi bấm Hủy vẫn lẳng lặng đi vào tờ khai chính thức của quý khác.
+- Đề xuất fix: dialog riêng cho lệnh xuất, có ô Người ký và Ngày ký (mặc định lấy `thongTinNguoiNopThue.nguoiKy` và hôm nay); tách state của hai hộp, dọn khi đóng.
+- Trạng thái: OPEN
+  → FIXED [2026-09-16] — thêm `to_khai_tncn/XuatToKhaiDialog.tsx` có ô Người ký và Ngày ký (gợi ý sẵn người ký của hồ sơ và ngày hôm nay), thay `XacNhanXoaDialog` cho lệnh xuất; hộp "Đánh dấu đã nộp" dùng state riêng `nopNguoiKy`/`nopNgayKy` và dọn khi đóng.
+
+### RVW-748 🟡 NON-BLOCKING — Hộp "Mở lại tháng" giữ nguyên lý do của lần trước
+- Vị trí: `bang_tinh_thue/MoLaiBangTinhThueDialog.tsx`:31 · `BangTinhThuePanel.tsx`:433-440
+- Vấn đề: dialog luôn được render, `lyDo` không bao giờ dọn. Mở lại tháng 7 với lý do của tháng 7, sang tháng 8 bấm mở lại thì ô đã điền sẵn câu cũ, đủ 20 ký tự nên nút đang bật — bấm là ghi một lý do SAI vào nhật ký của thao tác xóa vĩnh viễn số đã chốt. Nhật ký mở lại là thứ để đối chiếu về sau, lý do sai còn tệ hơn lý do trống.
+- Đề xuất fix: bọc điều kiện mount như dialog anh em (`{hoiMoLai && <MoLaiBangTinhThueDialog … />}`).
+- Trạng thái: OPEN
+  → FIXED [2026-09-16] — `BangTinhThuePanel.tsx` chỉ mount `MoLaiBangTinhThueDialog` khi mở, nên lý do của lần mở lại trước không còn nằm sẵn trong ô.
+
+### RVW-749 🟡 NON-BLOCKING — Khối "Máy chủ tính thử" có thể hiện kết quả của lần gõ trước
+- Vị trí: `thu_nhap_ngoai_luong/ThuNhapNgoaiLuongDialog.tsx`:193-220
+- Vấn đề: trễ 400 ms chặn được đa số lượt thừa, nhưng mạng chậm hoặc đổi loại thu nhập ngay sau khi gõ số tiền thì hai lời gọi chồng nhau, lời gọi CŨ về sau ghi đè kết quả. Bản ghi vẫn đúng vì máy chủ tính lúc ghi, nhưng màn hình nói một đằng và danh sách hiện một nẻo.
+- Đề xuất fix: đánh số lượt gọi bằng `useRef` và bỏ qua phản hồi cũ.
+- Trạng thái: OPEN
+  → FIXED [2026-09-16] — `ThuNhapNgoaiLuongDialog.tsx` đánh số lượt gọi bằng `useRef` và bỏ qua phản hồi của lượt cũ, cả nhánh thành công lẫn nhánh lỗi.
+
+### RVW-750 🟡 NON-BLOCKING — `ct` rỗng được vẽ thành một tờ khai toàn số 0
+- Vị trí: `to_khai_tncn/ToKhaiTncn05Editor.tsx`:139 · `ToKhaiTncn05Panel.tsx`:364-386
+- Vấn đề: `ct?.[tag] ?? 0` biến "chưa có số" thành "số bằng không". Hiện panel chỉ dựng Editor khi khác `CHUA_SAN_SANG` nên hai điều kiện trùng nhau, nhưng đó là hai nguồn sự thật ở hai file. Chỉ cần máy chủ có một tổ hợp lệch là kế toán thấy một tờ khai đầy đủ với mọi chỉ tiêu bằng 0, không phân biệt được với quý thật sự không phát sinh.
+- Đề xuất fix: chặn ngay đầu Editor — `ct` rỗng thì hiện cảnh báo "chưa có bộ chỉ tiêu", không vẽ bảng.
+- Trạng thái: OPEN
+  → FIXED [2026-09-16] — `ToKhaiTncn05Editor.tsx` chặn ngay đầu: `ct` rỗng thì hiện cảnh báo "chưa có bộ chỉ tiêu", không vẽ bảng toàn số 0 nữa.
+
+### RVW-751 🟢 SUGGESTION — Ô "Giá trị điều chỉnh mới": con trỏ nhảy về cuối, lỗi lưu thành unhandled rejection
+- Vị trí: `to_khai_tncn/ToKhaiOverrideDialog.tsx`:122-133, 66-86
+- Vấn đề: (a) `value={tienVn(chiSo(giaStr))}` định dạng lại sau mỗi phím nên con trỏ luôn bị đẩy về cuối — không sửa được một chữ số ở giữa số chín chữ số. (b) `handleSave`/`handleReset` chỉ có `try/finally`, panel đã `toast.error` rồi `throw` nên lời hứa bị từ chối thoát ra `onClick`, gây unhandled rejection làm nhiễu nhật ký.
+- Đề xuất fix: giữ chuỗi thô trong ô và chỉ hiện bản định dạng ở `helperText` (cùng cách hai form kia đang làm); thêm `catch` rỗng có chú thích trước `finally`.
+- Trạng thái: OPEN
+
+### RVW-752 🟢 SUGGESTION — `AppRouter` lặp danh sách đường dẫn ở hai chỗ
+- Vị trí: `hdđt_maxv/src/routes/AppRouter.tsx`:306-321
+- Vấn đề: bốn chuỗi path viết một lần để khai `<Route>`, một lần nữa trong mảng loại trừ. Dựng thêm màn thứ năm mà quên sửa mảng dưới là route trùng và màn mới bị "đang phát triển" che mất, không lỗi biên dịch nào bắt được.
+- Đề xuất fix: một bảng tra `path -> panel` rồi lặp theo `MAN_HINH_TO_KHAI_THUE`.
+- Trạng thái: OPEN
+
+### RVW-753 🟢 SUGGESTION — Mẫu tờ khai trên màn luôn ghi ngày hôm nay, bỏ qua `toKhai.ngayKy`
+- Vị trí: `to_khai_tncn/ToKhaiTncn05Editor.tsx`:239
+- Vấn đề: khối chữ ký lấy tên người ký từ `toKhai.nguoiKy` nhưng dòng ngày lại là `new Date()`. Mở tờ khai quý đã nộp từ tháng trước vẫn thấy ngày hôm nay bên cạnh tên người đã ký — mâu thuẫn ngay trong cùng một khối, ai chụp màn hình gửi đi là gửi nhầm ngày.
+- Đề xuất fix: dùng `toKhai.ngayKy` khi có, chỉ lấy hôm nay khi chưa ký.
+- Trạng thái: OPEN
+
+### RVW-754 🟢 SUGGESTION — Ba chỗ nói sai về chính mình sau đợt sửa
+- Vị trí: `thu_nhap_ngoai_luong/thuNhapNgoaiLuongExcel.ts`:5 · `ThuNhapNgoaiLuongPanel.tsx`:130 · `to_khai_tncn/ToKhaiOverrideDialog.tsx`:116-120
+- Vấn đề: (a) chú thích "đúng những dòng đang xem" là mô tả hành vi TRƯỚC khi sửa `BUG-fe-tkt-003`. (b) `xuatExcel()` chặn bằng số dòng trang đang xem, nên đứng ở trang cuối vừa xóa hết dòng sẽ báo "Chưa có khoản nào để xuất" trong khi bộ lọc còn hàng trăm dòng — nên xét `summary.totalRecords`. (c) nhánh `isLocked` của `ToKhaiOverrideDialog` là mã chết và dùng chữ "Đã chốt" — từ của Bảng tính thuế tháng, còn tờ khai thì trạng thái là "Đã xuất".
+- Trạng thái: OPEN
+
+### RVW-755 🟢 SUGGESTION — Màn Loại thu nhập không có dấu hiệu nào khi đang tải lại theo bộ lọc
+- Vị trí: `danh_muc_thu_nhap/DanhMucThuNhapPanel.tsx`:79-83
+- Vấn đề: chỉ dùng `isLoading`. Đổi bộ lọc hoặc gõ tìm kiếm thì bảng giữ nguyên kết quả cũ trong lúc chờ, người dùng tưởng bộ lọc không ăn và bấm lại. Ba màn còn lại đều đã hiện `isFetching`.
+- Đề xuất fix: lấy thêm `isFetching`, đặt một vòng quay cạnh hàng bộ lọc như `ThuNhapNgoaiLuongPanel`.
+- Trạng thái: OPEN
+
+**Security findings:** không có lỗ hổng. Không nơi nào render nội dung không kiểm soát (không `dangerouslySetInnerHTML`/`eval`); khóa nút theo vai chỉ để báo sớm và ghi rõ máy chủ mới là bên chặn; không tính lại thuế ở trình duyệt; không `console.*`, không đụng `localStorage`, không gọi bên thứ ba. Rủi ro còn lại (lỗi 500 chưa bọc của máy chủ có thể lọt chi tiết ra toast) nằm ở phía máy chủ.
+
+**Performance findings:** số lượt gọi API hợp lý (tìm kiếm trễ 300 ms, tính thử trễ 400 ms); vòng lặp xuất Excel có hai điều kiện dừng độc lập nên không vô hạn; `invalidateQueries` theo tiền tố rộng nhưng chỉ gọi lại truy vấn đang hoạt động, mỗi lúc chỉ một màn mounted. Hai điểm 🟢 để dành: bảng thuế 18 cột không ảo hóa (chỉ cân nhắc khi có phản ánh giật), và `congCot` quét lại mảng 15 lượt mỗi lần render — bọc `useMemo` là xong.
+
+**Tóm tắt:** 🔴 2 (RVW-740, 741) · 🟡 9 (RVW-742…750) · 🟢 5 (RVW-751…755). **Cập nhật 2026-09-16:** chủ dự án chọn sửa 🔴 và 🟡 — đã FIXED cả 11 mục, 5 gợi ý 🟢 giữ OPEN. Hai lỗi chặn đều sửa nhỏ. Trong nhóm 🟡 nên ưu tiên RVW-742 và RVW-743 vì là chỗ hở của chính bản vá QA vừa làm.
+
+---
+
+## Review lại 2026-09-16 — phần sửa RVW-740…750 (giao diện) — Verdict: ⚠️ Approve with comments
+
+Đọc mã nguồn thật, không tin dòng "→ FIXED"; đối chiếu thêm `incomeCategory.service.ts`, `taxDeclaration.service.ts` và hợp đồng Mục 5.5/5.7 để xác minh hệ quả phía máy chủ. Ba lệnh kiểm đều pass.
+
+**Đối soát:** RVW-740, 741, 742, 743, 744, 745, 746, 748, 749, 750 — **ĐÓNG**, có bằng chứng `file:dòng`. Xác minh đáng ghi: react-query await `onSettled` trước khi `mutateAsync` reject, nên lúc nhánh `catch` chạy thì trạng thái tờ khai đã là số thật và nút "Tải lại file" đã có trên màn (RVW-740); cách suy `appliesToInternalOnly` từ nhóm ở mục ghép khớp đúng công thức máy chủ đang dùng (RVW-744); đường thêm mới không lọt mục ghép.
+
+**RVW-747 — mới đóng NỬA đường:** hộp xuất đã có ô Người ký/Ngày ký và mount có điều kiện, nhưng hộp "Đánh dấu đã nộp" chỉ dọn state ở đường bấm ra ngoài, còn nút Hủy và đường nộp thành công thì không. Tái hiện: nộp quý 1 → chọn quý 2 → mở hộp nộp thì tên và ngày của quý 1 đã điền sẵn; máy chủ ghi thẳng `nguoi_ky`/`ngay_ky` nên tờ khai chính thức mang người ký sai.
+  → FIXED [2026-09-16] — gom về một hàm `dongHoiNop()` dọn cả ba state, dùng cho `onClose`, nút Hủy và nhánh nộp thành công (`ToKhaiTncn05Panel.tsx`).
+
+### RVW-756 🟡 NON-BLOCKING — Đổi sang một loại khấu trừ KHÁC cũng xóa mất cờ "Cam kết 08" đã tick
+- Vị trí: `hdđt_maxv/src/features/hrm/components/to_khai_thue/thu_nhap_ngoai_luong/ThuNhapNgoaiLuongDialog.tsx`:320-330
+- Vấn đề: bản vá RVW-743 dọn hai cờ vô điều kiện ở mọi lần đổi danh mục, trong khi chúng hợp lệ với TOÀN BỘ nhóm khấu trừ tại nguồn (BR-tkt-008). Mở sửa khoản thù lao có cam kết 08 rồi đổi từ "Thù lao CTV" sang "Hoa hồng đại lý" (cùng nhóm) là cờ bị gỡ âm thầm, máy chủ khấu trừ 10% cho người đáng lẽ được miễn ⇒ sai chứng từ khấu trừ đã phát và sai chỉ tiêu [29] của quý.
+  → FIXED [2026-09-16] — tra nhóm của danh mục MỚI ngay trong `onChange`, chỉ dọn khi nhóm mới không phải `WITHHOLDING_FLAT`. Vẫn đóng đúng RVW-743 mà không xóa ý định hợp lệ.
+
+### RVW-757 🟢 SUGGESTION — Mục ghép bị dán nhãn "(đã ngừng dùng)" trong lúc danh mục còn đang tải
+- Vị trí: cùng file, :133-136, :333, :352
+- Vấn đề: lúc mới mount thì `danhMucs` rỗng nên mọi khoản mở sửa đều rơi vào nhánh ghép và bị dán nhãn ngừng dùng cho một danh mục hoàn toàn bình thường.
+  → FIXED [2026-09-16] — `ngungDung: !dangTaiDanhMuc`: vẫn ghép để ô không trắng, nhưng chỉ dán nhãn khi đã biết chắc.
+
+### RVW-758 🟢 SUGGESTION — Ô "Ngưỡng bắt đầu khấu trừ" không có soát, chuỗi rác thành ngưỡng 0đ
+- Vị trí: `danh_muc_thu_nhap/DanhMucThuNhapDialog.tsx`:131
+- Vấn đề: `chiSo` bỏ mọi ký tự không phải chữ số nên "abc" ra 0 và được gửi đi — danh mục khấu trừ từ đồng đầu tiên thay vì từ 5.000.000đ. Bất đối xứng với ô tỷ lệ vừa được bọc kỹ ở RVW-741.
+  → FIXED [2026-09-16] — chặn khi ô có ký tự mà quy ra 0, kèm câu nhắc "bỏ trống thì máy chủ điền 5.000.000đ".
+
+### RVW-759 🟢 SUGGESTION — Hai lệnh XÓA chưa theo quyết định của RVW-740
+- Vị trí: `api/to_khai_thue/toKhaiThueQueries.ts`:99-107, :159-166
+- Vấn đề: `DELETE` trả 404 nghĩa là bản ghi đã không còn, nhưng chỉ làm mới ở `onSuccess` nên bảng giữ nguyên dòng đó, kế toán bấm xóa lại rồi lại nhận 404.
+  → FIXED [2026-09-16] — `useXoaDanhMuc` và `useXoaKhoan` chuyển sang `onSettled`.
+
+### RVW-760 🟢 SUGGESTION — Khối "Máy chủ tính thử" giữ số của lần gõ trước suốt cửa sổ chờ
+- Vị trí: `thu_nhap_ngoai_luong/ThuNhapNgoaiLuongDialog.tsx`:217-244
+- Vấn đề: đánh số lượt chỉ chặn phản hồi cũ ghi đè, còn kết quả cũ vẫn hiển thị suốt 400 ms chờ cộng thời gian mạng — vẫn là "màn hình nói một đằng", chỉ khác nguyên nhân.
+  → FIXED [2026-09-16] — gắn kết quả với CHÍNH bộ tham số đã gửi (`{ thamSo, kq, loi }`), đổi số tiền hay loại thu nhập là kết quả cũ tự hết hiệu lực nên khối rơi về "Đang tính…". Cách này thay luôn bộ đếm lượt của RVW-749: phản hồi về muộn mang tham số cũ thì không khớp, tự bị bỏ qua.
+
+**Tóm tắt lượt này:** 10/11 mục đóng ngay; RVW-747 đóng nốt phần còn hở; 5 finding mới (1 🟡 + 4 🟢) đều đã sửa trong cùng ngày. Không còn 🔴. Năm gợi ý RVW-751…755 của lượt trước vẫn giữ OPEN theo quyết định của chủ dự án. Kiểm chứng sau khi sửa: `tsc -b` 0 lỗi · `eslint .` 0 lỗi 0 cảnh báo · `npm run build` thành công.

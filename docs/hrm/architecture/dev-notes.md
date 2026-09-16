@@ -1451,3 +1451,41 @@ Dashboard — cùng cổng quyền lương, cùng khóa cache). Helper tháng/k�
   cơ chế "kỳ đang chờ" trong provider.
 - Nút Mở chốt / Khóa sổ / Mở lại / Duyệt khóa sẵn khi `user.role` không phải OWNER/ADMIN — chỉ để
   báo sớm; máy chủ (`assertAdminOrOwner`) mới là hàng rào thật.
+
+### 2.17. Khu Tờ khai thuế TNCN — viết lại theo hợp đồng 23 endpoint (2026-09-16, frontend-engineer)
+
+Bản nháp cũ của khu này viết theo API nháp đã bị gỡ (`other-income/batch-apply`, `delete-all`,
+`delete-employee`, `05-kk-tncn/ghi-de`, `/chot`, `/mo-khoa`, `/export-xml`). Toàn bộ tầng gọi API và
+kiểu dữ liệu đã viết lại theo `docs/hrm/to_khai_thue/api-contract-to-khai-thue.md`; phần trình bày
+(bảng chỉ tiêu, mẫu tờ khai giấy, dialog ghi đè) giữ lại.
+
+**Bốn màn và nơi đặt mã:**
+
+| Màn | File | Việc chính |
+|---|---|---|
+| Thu nhập ngoài lương | `components/to_khai_thue/thu_nhap_ngoai_luong/ThuNhapNgoaiLuongPanel.tsx` + `ThuNhapNgoaiLuongDialog.tsx` | Danh sách khoản theo kỳ, thêm/sửa/xóa TỪNG khoản; form gọi `POST /other-income/preview` để hiện gross/net/thuế |
+| Loại thu nhập | `components/to_khai_thue/danh_muc_thu_nhap/DanhMucThuNhapPanel.tsx` + `DanhMucThuNhapDialog.tsx` | 5 endpoint danh mục; tham số nhập theo nhóm xử lý thuế đang chọn |
+| Bảng tính thuế | `components/to_khai_thue/bang_tinh_thue/BangTinhThuePanel.tsx` + `MoLaiBangTinhThueDialog.tsx` | Xem bảng tháng, Chốt tháng, Mở lại tháng (lý do ≥ 20 ký tự) |
+| Tờ khai quý | `components/to_khai_thue/to_khai_tncn/ToKhaiTncn05Panel.tsx` + `ToKhaiTncn05Editor.tsx` + `ToKhaiOverrideDialog.tsx` | Chỉ tiêu quý, ghi đè kèm lý do, xuất Excel/PDF, tải lại file, đánh dấu đã nộp, lịch sử kỳ |
+
+Tầng chung: `api/to_khai_thue/toKhaiThueApi.ts` (19/23 endpoint — 4 endpoint chưa màn nào dùng thì chưa viết hàm) · `toKhaiThueQueries.ts` (hook) ·
+`types/toKhaiThue.ts` (DTO) · `components/to_khai_thue/nhan.ts` (nhãn tiếng Việt của mọi enum).
+
+**Năm điều dễ làm sai ở khu này:**
+
+1. **Không tự tính thuế ở trình duyệt.** Mọi con số gross/net/miễn/chịu thuế/khấu trừ đều của máy
+   chủ: form khoản gọi `preview`, bảng tháng đọc `GET /tax-calculation`, biểu thuế lấy từ
+   `bieuThueApDung` trong chính phản hồi đó. Bản nháp cũ chép ngưỡng 2.000.000 và biểu 7 bậc vào
+   JSX — hết hiệu lực từ 2026 mà không ai biết.
+2. **Danh sách chỉ tiêu sửa được lấy từ `ctGocSuaDuoc`**, không chép ở `tncn05Layout.ts` nữa.
+3. **Xuất tờ khai là việc KHÔNG LÙI ĐƯỢC** — sau khi xuất, ba tháng của quý khóa vĩnh viễn. Nút
+   luôn đi kèm hộp xác nhận; muốn lấy lại file thì dùng `GET /05-kk-tncn/file`, KHÔNG gọi xuất lần
+   hai (409 `E-tkt-020`).
+4. **Ba endpoint trả FILE nhị phân** (xuất, tải lại, bảng chi tiết Excel) đi qua `apiFetchBlob`, còn
+   hai endpoint trả 204 (xóa danh mục, xóa khoản) đi qua `apiFetch` — lớp tương thích kiểu axios ở
+   `lib/apiClient.ts` bóc `data` nên không dùng được cho hai loại này.
+5. **Lọc và phân trang ở MÁY CHỦ.** Tham số nằm trong khóa truy vấn (`hrmKeys.ts`); đừng quay lại
+   kiểu tải hết rồi `.filter()` như bản nháp.
+
+Lỗi hiển thị dùng `getErrorMessage(err, "…")` của `lib/errors` — client là fetch nên `err.response`
+luôn rỗng, bản nháp cũ đọc `err?.response?.data?.message` và nuốt mất câu tiếng Việt của máy chủ.

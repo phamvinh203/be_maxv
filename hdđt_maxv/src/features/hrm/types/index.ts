@@ -894,3 +894,6 @@ export interface SetLuongFilters {
   /** `true` = đã set lương, `false` = chưa set. */
   daSet: boolean;
 }
+
+export * from './toKhaiThue';
+

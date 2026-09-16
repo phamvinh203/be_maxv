@@ -135,3 +135,68 @@ Kết quả chạy lại sau khi sửa: `test-report-to-khai-thue.md` Mục 3 (1
 - Hai lỗ hổng đặc tả từ bước 5: người thời vụ/thử việc có khoản chịu thuế toàn phần, và người không có hợp đồng hiệu lực nhận thưởng — cả hai chưa phát sinh thuế trên khoản đó.
 - Giao diện nháp `hdđt_maxv` còn gọi route cũ đã bỏ — sửa khi bật lại frontend.
 - TC-tkt-107 chưa chạy (cần bản sao DB có dữ liệu quý I/II kiểu cũ) · nhánh xuất PDF chưa kiểm qua endpoint.
+
+---
+
+## Phase B giao diện (`hdđt_maxv`, 2026-09-16)
+
+| Mã | Mức | Tiêu đề | Phụ trách | Trạng thái |
+|---|---|---|---|---|
+| BUG-fe-tkt-001 | 🔴 High | Bấm hai lần nút "Xuất tờ khai" (và "Chốt tháng") vẫn gửi được hai lệnh | frontend-engineer | FIXED 2026-09-16 |
+| BUG-fe-tkt-002 | 🟡 Medium | Bốn thao tác chỉ dành ADMIN/OWNER không khóa nút theo vai | frontend-engineer | FIXED 2026-09-16 |
+| BUG-fe-tkt-003 | 🟡 Medium | Xuất Excel thu nhập ngoài lương chỉ ra trang đang xem, trong khi dòng tổng nói "toàn bộ bộ lọc" | frontend-engineer | FIXED 2026-09-16 |
+| BUG-fe-tkt-004 | 🟡 Medium | Hai route `bang-tinh-thue-hdld` / `bang-tinh-thue-hddv` không có lối vào, không có trong đặc tả | frontend-engineer | FIXED 2026-09-16 |
+| BUG-fe-tkt-005 | 🟢 Low | Ô "Cam kết 08" và "Yêu cầu khấu trừ" bật được cả khi danh mục không thuộc nhóm khấu trừ tại nguồn | frontend-engineer | FIXED 2026-09-16 |
+| BUG-fe-tkt-006 | 🟢 Low | Trường chết `laChiTieuGoc` còn trong `tncn05Layout.ts`, lại thiếu `ct16` | frontend-engineer | FIXED 2026-09-16 |
+
+### BUG-fe-tkt-001 🔴 High — Bấm hai lần nút "Xuất tờ khai" vẫn gửi được hai lệnh
+
+- **Vị trí:** `hdđt_maxv/src/features/hrm/components/XacNhanXoaDialog.tsx` (nút xác nhận không nhận `disabled`); nơi dùng: `to_khai_tncn/ToKhaiTncn05Panel.tsx` (Xuất tờ khai) và `bang_tinh_thue/BangTinhThuePanel.tsx` (Chốt tháng).
+- **Hiện tượng:** hai nơi này chỉ đổi NHÃN nút thành "Đang xuất…" / "Đang chốt…", còn nút vẫn bấm được cho tới khi dialog đóng ở nhánh `finally`. Bấm nhanh hai lần là gửi hai lệnh.
+- **Vì sao nghiêm trọng:** xuất tờ khai là việc KHÔNG lùi lại được (khóa vĩnh viễn ba tháng của quý). Máy chủ có chặn lần hai (409 `E-tkt-020` cho xuất, 409 `E-tkt-018` cho chốt) nên dữ liệu không hỏng, nhưng người dùng nhận một toast thành công lẫn một toast lỗi cùng lúc, và với PDF thì chạy Puppeteer hai lượt vô ích, có thể chạm hàng đợi (429).
+- **Đối chiếu:** hai nút cùng loại đã làm đúng — "Mở lại tháng" (`MoLaiBangTinhThueDialog.tsx`) và "Đánh dấu đã nộp" (`ToKhaiTncn05Panel.tsx`) đều khóa nút khi đang chạy.
+- **Đề xuất fix:** thêm prop `dangXuLy` (hoặc `disabled`) cho `XacNhanXoaDialog`, truyền `xuatMut.isPending` và `chotMut.isPending` ở hai nơi gọi.
+- **Trạng thái:** ~~OPEN~~ FIXED [2026-09-16] — `XacNhanXoaDialog.tsx` nhận thêm prop `dangXuLy`, khóa cả nút Hủy lẫn nút xác nhận khi đang gửi; `ToKhaiTncn05Panel.tsx` truyền `xuatMut.isPending`, `BangTinhThuePanel.tsx` truyền `chotMut.isPending`.
+
+### BUG-fe-tkt-002 🟡 Medium — Bốn thao tác chỉ dành ADMIN/OWNER không khóa nút theo vai
+
+- **Vị trí:** `bang_tinh_thue/BangTinhThuePanel.tsx` (Mở lại tháng); `to_khai_tncn/ToKhaiTncn05Panel.tsx` (Xuất tờ khai, Tải lại file, Đánh dấu đã nộp).
+- **Hiện tượng:** người có quyền xem lương nhưng không phải ADMIN/OWNER vẫn thấy đủ nút, bấm được, với "Mở lại" còn phải gõ đủ 20 ký tự lý do rồi mới nhận 403 `E-tkt-014`.
+- **Đối chiếu:** cùng khu HRM đã có `chot_ky_luong/useLaChuTaiKhoan.ts` dùng cho các nút vòng đời kỳ lương, kèm ghi chú "khóa nút chỉ để báo sớm, máy chủ mới là hàng rào thật".
+- **Đề xuất fix:** dùng lại `useLaChuTaiKhoan()` để khóa bốn nút trên kèm tooltip giải thích.
+- **Trạng thái:** ~~OPEN~~ FIXED [2026-09-16] — dùng lại `chot_ky_luong/useLaChuTaiKhoan.ts`: bốn thao tác (mở lại tháng, xuất tờ khai, tải lại file, đánh dấu đã nộp) khóa nút kèm tooltip giải thích. Máy chủ vẫn là bên chặn thật.
+
+### BUG-fe-tkt-003 🟡 Medium — Xuất Excel chỉ ra trang đang xem
+
+- **Vị trí:** `thu_nhap_ngoai_luong/ThuNhapNgoaiLuongPanel.tsx` — `xuatExcel()` ghi đúng `data.records`, tức là trang hiện tại (25/50/100 dòng).
+- **Hiện tượng:** ngay phía trên bảng có dòng "Tổng tính trên toàn bộ bộ lọc, không riêng trang đang xem", nên kế toán tin file đã đủ. Kỳ nào có nhiều hơn một trang là file thiếu dòng mà không có cảnh báo nào.
+- **Đề xuất fix:** trước khi xuất thì gọi lại danh sách với `limit` đủ lớn theo `summary.totalRecords`, hoặc đổi nhãn nút thành "Xuất Excel (trang đang xem)".
+- **Trạng thái:** ~~OPEN~~ FIXED [2026-09-16] — `xuatExcel()` tải lần lượt từng trang 500 dòng (trần `limit` của hợp đồng) cho tới khi đủ `summary.totalRecords` rồi mới dựng file, nên file khớp đúng dòng tổng trên màn.
+
+### BUG-fe-tkt-004 🟡 Medium — Hai route không có lối vào, không có trong đặc tả
+
+- **Vị trí:** `hdđt_maxv/src/routes/AppRouter.tsx` — `bang-tinh-thue-hdld` và `bang-tinh-thue-hddv`, cả hai render đúng `BangTinhThuePanel`.
+- **Hiện tượng:** `MAN_HINH_TO_KHAI_THUE` không có hai path này nên thanh tab không bao giờ dẫn tới; panel cũng không đọc đường dẫn để phân biệt, nên ba route hiện y hệt nhau. SRS Mục 0 chỉ có ba màn.
+- **Quyết định của chủ dự án [2026-09-16]:** xóa, không tách bảng theo loại hợp đồng.
+- **Trạng thái:** ~~OPEN~~ FIXED [2026-09-16] — gỡ hai `<Route>` và hai path tương ứng trong danh sách loại trừ ở `routes/AppRouter.tsx`; grep xác nhận không còn nơi nào nhắc tới. Ba lệnh kiểm chạy lại đều sạch.
+
+### BUG-fe-tkt-005 🟢 Low — Cam kết 08 không phụ thuộc nhóm danh mục
+
+- **Vị trí:** `thu_nhap_ngoai_luong/ThuNhapNgoaiLuongDialog.tsx` — hai ô tích luôn bật được, `soatForm()` chỉ kiểm thiếu mã số thuế.
+- **Hiện tượng:** BR-tkt-008 đòi cam kết 08 chỉ hợp lệ khi nhóm là khấu trừ tại nguồn, cá nhân cư trú và có mã số thuế. Chọn danh mục nhóm khác rồi tích cam kết 08 vẫn gửi được, máy chủ mới chặn bằng 400 `E-tkt-006`.
+- **Đề xuất fix:** khóa hai ô tích khi nhóm của danh mục đang chọn không phải `WITHHOLDING_FLAT`.
+- **Trạng thái:** ~~OPEN~~ FIXED [2026-09-16] — hai ô tích khóa khi danh mục đang chọn không thuộc nhóm khấu trừ tại nguồn, và `soatForm()` chặn thêm trường hợp tích cam kết 08 ở nhóm khác (BR-tkt-008).
+
+### BUG-fe-tkt-006 🟢 Low — Trường chết `laChiTieuGoc`
+
+- **Vị trí:** `to_khai_tncn/tncn05Layout.ts` — trường gán cho 12 chỉ tiêu (thiếu `ct16`) nhưng không nơi nào đọc.
+- **Hiện tượng:** vừa thừa vừa sai. Ai đó "tối ưu" chuyển sang dùng trường này thay cho `ctGocSuaDuoc` là tái tạo đúng lỗi bản sao thứ hai mà SRS đã cảnh báo, kèm mất khả năng sửa `ct16`.
+- **Đề xuất fix:** xóa trường khỏi interface và dữ liệu.
+- **Trạng thái:** ~~OPEN~~ FIXED [2026-09-16] — xóa trường `laChiTieuGoc` khỏi `HangChiTieuTncn05` và toàn bộ dữ liệu; chỉ tiêu sửa được chỉ còn một nguồn là `ctGocSuaDuoc` của máy chủ.
+
+### Ghi nhận không lập lỗi riêng
+
+- ~~Bốn hook đã export nhưng chưa màn nào dùng~~ — [2026-09-16] đã xóa cả 4 hook, 4 hàm API, 4 khóa truy vấn và 2 kiểu dữ liệu tương ứng; tầng API nay nối 19/23 endpoint, phần còn lại viết khi dựng màn cần tới.
+- `lib/apiClient.ts` thêm tham số `body` cho `api.del` nhưng không nơi nào truyền — di sản của hướng đi đã bỏ.
+- Ba file vượt 430 dòng, lớn hơn mức quen thuộc của khu HRM (đỉnh cũ 358 dòng) — nên tách bớt khi có dịp.
+- Số trường của `DongBangTinhThueDto`: hợp đồng Mục 4.1 ghi 25, đếm trong mã được 24 — cần đối chiếu `data-model-to-khai-thue.md` Mục 3.4 để biết bên nào đếm nhầm.
