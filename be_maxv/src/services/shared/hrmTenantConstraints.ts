@@ -497,18 +497,29 @@ ORDER BY 1, 2`;
 /**
  * BR-tkt-006 / RVW-727 — khoản thu nhập ngoài lương trùng theo khóa chống trùng v2 (cùng kỳ, cùng người theo
  * CCCD → MST → họ tên, cùng loại, ngày và số tiền trước thuế); chặn `hrm_oir_chong_trung_v2`. Bỏ dòng chưa gán danh
- * mục vì index coi NULL là khác nhau.
+ * mục vì index coi NULL là khác nhau. Trả kèm năm, tháng, cờ tháng đã chốt Bảng tính thuế và cờ quý đã xuất tờ
+ * khai (RVW-737): người vận hành cần biết ngay nhóm trùng này còn sửa được hay đã đóng băng theo số đã nộp.
  */
 export const SQL_QUET_KHOAN_NGOAI_TRUNG = `
-SELECT "periodId",
-       COALESCE(ma_nv, ${sqlKhoaVangLai('"idCardNumber"', '"taxCode"', '"fullName"')}) AS khoa_nguoi_nhan,
-       "otherIncomeCategoryId", "paymentDate", "grossAmount",
-       count(*) AS so_dong, array_agg(id ORDER BY "createdAt") AS id
-FROM hrm_other_income_records
-WHERE "otherIncomeCategoryId" IS NOT NULL
-GROUP BY 1, 2, 3, 4, 5
+SELECT p.year AS nam, p.month AS thang, r."periodId",
+       COALESCE(r.ma_nv, ${sqlKhoaVangLai('r."idCardNumber"', 'r."taxCode"', 'r."fullName"')}) AS khoa_nguoi_nhan,
+       r."otherIncomeCategoryId", r."paymentDate", r."grossAmount",
+       count(*) AS so_dong, array_agg(r.id ORDER BY r."createdAt") AS id,
+       EXISTS (
+         SELECT 1 FROM hrm_payroll_module_locks k
+          WHERE k."periodId" = p.id AND k.module = 'TAX_SHEET'
+       ) AS thang_da_chot,
+       EXISTS (
+         SELECT 1 FROM hrm_to_khai_tncn05 t
+          WHERE t.nam = p.year AND t.ky_loai = 'quy' AND t.ky_so = (p.month + 2) / 3
+            AND t.trang_thai IN (${TO_KHAI_DA_XUAT.map((s) => `'${s}'`).join(', ')})
+       ) AS quy_da_xuat
+FROM hrm_other_income_records r
+JOIN hrm_payroll_periods p ON p.id = r."periodId"
+WHERE r."otherIncomeCategoryId" IS NOT NULL
+GROUP BY p.id, p.year, p.month, r."periodId", 4, r."otherIncomeCategoryId", r."paymentDate", r."grossAmount"
 HAVING count(*) > 1
-ORDER BY 1, 2`;
+ORDER BY p.year, p.month`;
 
 /**
  * RVW-732 — tháng ĐÃ CHỐT Bảng tính thuế còn dòng vãng lai mang khóa khác công thức hiện hành (chốt ở `engineVersion`

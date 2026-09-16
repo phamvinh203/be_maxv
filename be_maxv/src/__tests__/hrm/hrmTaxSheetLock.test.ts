@@ -6,6 +6,7 @@ import {
   unlockTaxSheet,
 } from '../../services/client/hrm/to_khai_thue/taxSheet.service';
 import { ToKhaiThueError } from '../../helpers/hrm/toKhaiThueErrors';
+import { bocNgoaiGiaoDich, soatNgoaiGiaoDich } from '../_hoTro/giaoDichGia';
 import type { ToKhaiThueErrorCode } from '../../constants/hrm/to_khai_thue/toKhaiThueErrors';
 
 /**
@@ -39,6 +40,7 @@ function giaLapDb(tc: TuyChon = {}) {
   const doiSo: Record<string, unknown> = {};
   // Thứ tự mở giao dịch / khóa dòng kỳ / đọc kỳ — RVW-721/722.
   const nhatKy: string[] = [];
+  let dangGiaoDich = false;
   const ghi =
     (ten: string, ketQua?: unknown) =>
     async (arg?: unknown): Promise<unknown> => {
@@ -127,10 +129,26 @@ function giaLapDb(tc: TuyChon = {}) {
       fn: (tx: unknown) => Promise<unknown>,
     ): Promise<unknown> => {
       nhatKy.push('BEGIN');
-      return fn(db);
+      dangGiaoDich = true;
+      try {
+        return await fn(db);
+      } finally {
+        dangGiaoDich = false;
+        soatNgoaiGiaoDich(nhatKy);
+      }
     },
   };
-  return { db: db as unknown as PrismaClient, daGhi, doiSo, nhatKy };
+  // Service nhận bản BỌC, còn `tx` là `db` gốc (RVW-733).
+  return {
+    db: bocNgoaiGiaoDich(
+      db,
+      nhatKy,
+      () => dangGiaoDich,
+    ) as unknown as PrismaClient,
+    daGhi,
+    doiSo,
+    nhatKy,
+  };
 }
 
 const loiMa = (ma: ToKhaiThueErrorCode) => (e: unknown) =>

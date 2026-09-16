@@ -94,12 +94,12 @@ async function main(): Promise<void> {
 
     console.log(`! ${dbName} (MST ${c.maSoThue})`);
     for (const m of viPham) {
-      console.log(`    - ${m.ma}: ${m.soDong} dòng — ${m.ten}`);
+      console.log(`    - ${m.ma}: ${m.soDong} dòng kết quả — ${m.ten}`);
       for (const dongMau of m.mau) {
         console.log(`        ${JSON.stringify(dongMau)}`);
       }
       if (m.soDong > m.mau.length) {
-        console.log(`        … còn ${m.soDong - m.mau.length} dòng nữa (dùng --json để xem đủ)`);
+        console.log(`        … còn ${m.soDong - m.mau.length} dòng kết quả nữa (dùng --json để xem đủ)`);
       }
     }
   }
@@ -116,7 +116,7 @@ async function main(): Promise<void> {
 
   console.log(
     `\nXong: ${soTenantBan}/${companies.length} tenant có dữ liệu cần dọn ` +
-      `(${tongViPham} dòng), ${soTenantLoi} tenant không rà được.`,
+      `(${tongViPham} dòng kết quả), ${soTenantLoi} tenant không rà được.`,
   );
   if (soTenantBan > 0) {
     console.log(

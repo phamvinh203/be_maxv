@@ -156,6 +156,17 @@ test('WITHHOLDING_FLAT: ĐÚNG ngưỡng 5.000.000 là đã phải khấu trừ 
   assert.equal(kq.netAmount, 4_500_000);
 });
 
+test('RVW-729: danh mục khấu trừ thiếu tỷ lệ hoặc ngưỡng -> ném lỗi, KHÔNG âm thầm tự điền 10% / 5.000.000', () => {
+  assert.throws(
+    () => tinhThueThuNhapNgoaiLuong(dm({ withholdingRate: null }), dv()),
+    /thiếu tỷ lệ hoặc ngưỡng/,
+  );
+  assert.throws(
+    () => tinhThueThuNhapNgoaiLuong(dm({ withholdingThreshold: null }), dv()),
+    /thiếu tỷ lệ hoặc ngưỡng/,
+  );
+});
+
 test('BR-tkt-008: dưới ngưỡng nhưng cá nhân YÊU CẦU khấu trừ -> vẫn khấu trừ', () => {
   const kq = tinhThueThuNhapNgoaiLuong(
     dm(),

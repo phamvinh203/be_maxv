@@ -15,6 +15,7 @@ import {
   deletePayrollPeriod,
   reopenPayrollPeriod,
 } from '../../services/client/hrm/du_lieu_tinh_luong/payrollPeriods.service';
+import { bocNgoaiGiaoDich, soatNgoaiGiaoDich } from '../_hoTro/giaoDichGia';
 
 /**
  * vbsec 2026-09-10 (LOW, payrollInputs.service.ts:256): guard khóa kỳ (`assertPayrollModuleWritable`) chạy
@@ -39,6 +40,7 @@ function taoDb(
   const daGhi: string[] = [];
   const sql: string[] = [];
   const nhatKy: string[] = [];
+  let dangGiaoDich = false;
   let daKiemTruoc = false;
 
   const db: any = {
@@ -49,10 +51,13 @@ function taoDb(
     nhatKy,
     $transaction: async (fn: (tx: unknown) => unknown) => {
       nhatKy.push('BEGIN');
+      dangGiaoDich = true;
       try {
         return await fn(db);
       } finally {
+        dangGiaoDich = false;
         nhatKy.push('COMMIT');
+        soatNgoaiGiaoDich(nhatKy);
       }
     },
     $queryRaw: async (strings: TemplateStringsArray, ...values: unknown[]) => {
@@ -137,7 +142,8 @@ function taoDb(
       },
     },
   };
-  return db;
+  // Service nhận bản BỌC, còn `tx` là `db` gốc (RVW-733).
+  return bocNgoaiGiaoDich(db, nhatKy, () => dangGiaoDich);
 }
 
 const khoaSoChenGiua = {

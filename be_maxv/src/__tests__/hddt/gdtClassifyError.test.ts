@@ -4,6 +4,7 @@ import { GdtHttpError } from "../../config/gdt-client";
 import {
   classifyGdtError,
   isBodyTerminated,
+  isBotGuardBlocked,
   isMissingOriginalFile,
 } from "../../services/client/hddt/gdt.service";
 
@@ -190,6 +191,29 @@ test("500 'không có hồ sơ gốc' CHẬM: classify nhầm 'transient' -> ph�
     assert.equal(classifyGdtError(missingFileErr(elapsedMs)), "transient");
     assert.equal(isMissingOriginalFile(missingFileErr(elapsedMs)), true);
   }
+});
+
+/**
+ * 403 CHỐNG BOT (16/09/2026) khác hẳn 403 "token hết hạn" dù cùng status: đăng nhập lại không cứu
+ * được, phải sửa header gửi đi. Nhận nhầm thì `login()` hiện "sai tài khoản/mật khẩu/captcha" và
+ * người dùng đi đổi mật khẩu một cách vô ích.
+ */
+test("isBotGuardBlocked: nhận ra 403 chống bot của cổng thuế", () => {
+  const botErr = new GdtHttpError(
+    403,
+    "Forbidden",
+    '{"status":403,"message":"Hệ thống phát hiện hành vi không hợp lệ. Yêu cầu đã bị chặn."}',
+    66,
+  );
+  assert.equal(isBotGuardBlocked(botErr), true);
+  // Vẫn phải dừng lượt như auth — chỉ câu báo lỗi là khác.
+  assert.equal(classifyGdtError(botErr), "auth");
+});
+
+test("isBotGuardBlocked: 403 token hết hạn + lỗi khác -> false", () => {
+  assert.equal(isBotGuardBlocked(httpErr(403, 50)), false);
+  assert.equal(isBotGuardBlocked(httpErr(401, 50)), false);
+  assert.equal(isBotGuardBlocked(new Error("fetch failed")), false);
 });
 
 test("lỗi lạ hoàn toàn -> permanent (đừng retry thứ không hiểu)", () => {

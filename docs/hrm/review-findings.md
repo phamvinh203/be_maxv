@@ -1470,6 +1470,7 @@ Lưu ý nhỏ, không thành finding: `GET /05-kk-tncn` ở quý `READY_TO_EXPOR
   - Lúc xuất, chụp `ten`, `diaChi`, `maSoThue` vào dòng tờ khai (một cột JSON hoặc 3 cột) và dựng file từ bản chụp đó.
   - `mark-submitted` chỉ ghi `nguoi_ky`/`ngay_ky` khi dòng chưa có, hoặc tách thành trường "người nộp" riêng. Cần BA xác nhận ngữ nghĩa.
 - Trạng thái: OPEN
+  → CHỜ QUYẾT ĐỊNH [2026-09-16] — không sửa trong đợt này vì cả hai vế đều cần quyết định chứ không phải lỗi mã: (a) chụp `ten`/`diaChi`/`maSoThue` vào dòng tờ khai cần THÊM CỘT ở `hrm_to_khai_tncn05` (Architect duyệt, rồi `sync:tenants` + `hrm:constraints`); (b) `mark-submitted` có được ghi đè `nguoi_ky`/`ngay_ky` hay không là ngữ nghĩa nghiệp vụ (BA). Giữ OPEN. *(backend-engineer)*
 
 ### RVW-729 🟢 SUGGESTION — Mặc định khấu trừ 10% / 5.000.000 nằm ở hai nơi; nhánh dự phòng trong engine là mã chết
 - Vị trí:
@@ -1478,12 +1479,14 @@ Lưu ý nhỏ, không thành finding: `GET /05-kk-tncn` ở quý `READY_TO_EXPOR
 - Vấn đề: service luôn điền tỷ lệ và ngưỡng cho nhóm `WITHHOLDING_FLAT`, nên nhánh `dm.withholdingRate ?? MAC_DINH_TY_LE` trong engine không bao giờ chạy. Dù vậy nó vẫn là bản sao thứ hai của một tham số thuế, trái NFR-tkt-004: khi luật đổi ngưỡng mà chỉ sửa một chỗ thì không test nào đỏ.
 - Đề xuất fix: engine ném lỗi lập trình khi danh mục khấu trừ thiếu tỷ lệ hoặc ngưỡng, thay vì tự điền. Chỉ giữ một hằng mặc định ở `incomeCategory.service.ts`, hoặc chuyển vào `taxSeedData.ts` cạnh TN12.
 - Trạng thái: OPEN
+  → FIXED [2026-09-16] — `be_maxv/src/services/client/hrm/to_khai_thue/otherIncomeTax.ts`:51 xóa `MAC_DINH_TY_LE`/`MAC_DINH_NGUONG`; nhánh `WITHHOLDING_FLAT` lấy thẳng `dm.withholdingRate`/`dm.withholdingThreshold` và ném lỗi lập trình khi thiếu, nên hằng mặc định 10% / 5.000.000 chỉ còn MỘT bản ở `incomeCategory.service.ts`:14 (AC-tkt-002). Ca kiểm mới `hrmOtherIncomeTax.test.ts`:159, 16/16 đạt. Commit: chưa commit *(backend-engineer)*
 
 ### RVW-730 🟢 SUGGESTION — Dòng bảng lương bị ép kiểu `as unknown as Record<string, unknown>`: đổi tên cột bên `du_lieu_tinh_luong` sẽ âm thầm thành 0 trên bảng thuế
 - Vị trí: `be_maxv/src/services/client/hrm/to_khai_thue/taxSheet.service.ts`:118-130.
 - Vấn đề: đây là ranh giới dữ liệu duy nhất giữa hai sub-cụm. Ép kiểu tắt hết kiểm tra của tsc, còn `soTien(undefined)` trả 0. Nếu đổi tên `grossIncome`, `employeeInsuranceDeduction` hay `contractType` ở `PayrollSheetLine` hoặc `calculatePayrollPreview`, typecheck không vỡ; thay vào đó thu nhập và bảo hiểm về 0, người thời vụ bị đưa nhầm sang nhánh lũy tiến.
 - Đề xuất fix: bỏ ép kiểu, khai kiểu phần tử là `Awaited<ReturnType<typeof getPayrollSheetLines>>[number]` — hợp của kết quả engine và `PayrollSheetLine`, cả hai đều có đủ 9 trường cần dùng. Khi đó tsc bắt được mọi lần đổi tên; `Number(...)` vẫn chạy cho cả `number` lẫn `Decimal`.
 - Trạng thái: OPEN
+  → FIXED [2026-09-16] — `be_maxv/src/services/client/hrm/to_khai_thue/taxSheet.service.ts`:112 bỏ `as unknown as Array<Record<string, unknown>>`, giữ nguyên kiểu của `getPayrollSheetLines`. Kiểm chứng: đổi tạm `d.grossIncome` thành tên khác thì tsc đỏ TS2339 ngay, khôi phục thì exit 0. Commit: chưa commit *(backend-engineer)*
 
 ### RVW-731 🟢 SUGGESTION — Ca đua KR-tkt-21 không chứng minh được phần `FOR SHARE` mà nó tuyên bố bảo vệ
 - Vị trí: `be_maxv/src/__tests__/hrm/hrmToKhaiThueApi.test.ts`:1742-1768. Mã được bảo vệ: `be_maxv/src/services/client/hrm/to_khai_thue/taxDeclaration.service.ts`:132-146 và `be_maxv/src/services/client/hrm/to_khai_thue/taxSheet.service.ts`:409-432.
@@ -1492,6 +1495,7 @@ Lưu ý nhỏ, không thành finding: `GET /05-kk-tncn` ở quý `READY_TO_EXPOR
   - (a) Mở giao dịch, `DELETE` dòng khóa `TAX_SHEET` của T5, KHÔNG commit. Gọi `export`, khẳng định sau khoảng 300 ms request vẫn đang treo. Commit → `export` phải trả 400 `E-tkt-010`.
   - (b) Chiều ngược lại: mở giao dịch giữ `SELECT … FOR SHARE` trên 3 dòng khóa. Gọi `unlock` → treo. Trong giao dịch đó giả lập xuất (update `EXPORTED`) rồi commit → `unlock` phải trả 403 `E-tkt-009`.
 - Trạng thái: OPEN
+  → FIXED [2026-09-16] — thêm 2 ca THỨ TỰ TẤT ĐỊNH ở `be_maxv/src/__tests__/hrm/hrmToKhaiThueApi.test.ts`:1893, giữ khóa hàng bằng một giao dịch Prisma đang mở thay cho hai kết nối `pg` rời (tương đương về ngữ nghĩa khóa, không thêm phụ thuộc): `RVW-731a` xóa dòng khóa T5 chưa commit ⇒ lệnh xuất phải TREO (khẳng định sau 300 ms vẫn chưa xong), commit xong trả 400 `E-tkt-010`, không để lại dòng tờ khai; `RVW-731b` giữ `FOR SHARE` trên dòng khóa T5 rồi giả lập xuất trong cùng giao dịch ⇒ lệnh mở lại TREO, commit xong trả 403 `E-tkt-009` và dòng khóa còn nguyên (giao dịch lùi trọn). Kiểm chứng ca có ghim thật: gỡ `FOR SHARE` khỏi `khoaThangTrongQuy` thì 731a đỏ, trả lại thì 158 ca của file đạt 145, 0 đỏ. Commit: chưa commit *(backend-engineer)*
 
 ## Review lại 2026-09-15 — phần sửa RVW-721…727 — Verdict: ⚠️ Approve with comments
 
@@ -1639,6 +1643,7 @@ Còn lại: bước chuyển tiếp cho dữ liệu đã có (RVW-732) và thứ
   - Model gọi thẳng trên `db` trong lúc giao dịch đang mở thì ghi `NGOÀI GIAO DỊCH` vào nhật ký; ca kiểm khẳng định không có mục này.
   - Với ngữ nghĩa khóa thật (hai kết nối `pg`), nên mở rộng đề xuất của RVW-731 sang hai cặp "chốt tháng ↔ ghi khoản ngoài lương" và "mở lại kỳ lương ↔ chốt tháng".
 - Trạng thái: OPEN
+  → FIXED [2026-09-16] — helper mới `be_maxv/src/__tests__/_hoTro/giaoDichGia.ts`: service nhận bản BỌC của DB giả, còn `$transaction` vẫn truyền đối tượng gốc làm `tx`, nên lệnh nào gọi trên `db` trong lúc giao dịch mở đều bị đánh dấu `NGOÀI GIAO DỊCH` và `soatNgoaiGiaoDich()` ở `finally` ném lỗi ngay. Đã nối vào cả 3 DB giả (`hrmOtherIncomeGiaoDich.test.ts`, `hrmTaxSheetLock.test.ts`, `kyLuongGhiTrongGiaoDich.test.ts`), 21/21 ca đạt. Kiểm chứng: đổi tạm `tx.otherIncomeRecord.create` thành `db.otherIncomeRecord.create` thì ca đỏ đúng thông điệp RVW-733, trả lại thì xanh. Phần "hai kết nối thật" của đề xuất làm ở RVW-731. Commit: chưa commit *(backend-engineer)*
 
 ### RVW-734 🟢 SUGGESTION — Ánh xạ `CHINH_SACH_THUE_SEED` sang dòng `TaxPolicy` bị chép ở 3 nơi; nhánh nạp lười của `GET /tax-policies` chưa có ca kiểm
 - **Vị trí:**
@@ -1904,6 +1909,7 @@ Thứ tự này khớp data-model Mục 5.3 (029 trước 030) và hợp đồng
      - `quy_da_xuat`, dùng cùng biểu thức với câu quét khóa cũ.
   4. (Tùy chọn) Làm đề xuất 3 của RVW-732 — `canh_bao` khi 3 tháng trong quý khác `engineVersion` — để tháng bị sót vẫn có tín hiệu lúc xuất.
 - Trạng thái: OPEN
+  → FIXED [2026-09-16] — (1) ADR-013 mục 4 viết lại thành trình tự THEO TỪNG THÁNG 6 bước (ghi lại `ghi_de` + KPI, mở lại, dọn khoản trùng, chốt lại, so số, nhập lại ghi đè), nêu thẳng 2 tác dụng phụ (mất ghi đè chỉ tiêu; nhân viên nội bộ bị tính lại theo hồ sơ hiện hành) và đảo bước dọn khoản trùng lên TRƯỚC bước chốt lại. (2) Thêm nhánh "khoản trùng nằm trong quý đã xuất": giữ index v1, `vuongDuLieu` mỗi lượt chạy là kết quả đúng, cấm sửa SQL tay — kèm hệ quả phải chấp nhận. (3) `be_maxv/src/services/shared/hrmTenantConstraints.ts`:502 `SQL_QUET_KHOAN_NGOAI_TRUNG` nay `JOIN hrm_payroll_periods` và trả thêm `nam`, `thang`, `thang_da_chot`, `quy_da_xuat`; ca `hrmToKhaiThueApi.test.ts`:2059 khẳng định 3 cột này khớp DB. (4) `scripts/hrm/ra-soat-hrm.ts`:97 đổi nhãn "dòng" thành "dòng kết quả". CHƯA làm đề xuất 4 (tùy chọn — cờ cảnh báo khi 3 tháng trong quý khác `engineVersion`). Commit: chưa commit *(backend-engineer)*
 
 ### RVW-738 🟢 SUGGESTION — Câu quét `bang-thue-khoa-vang-lai-cu` so khóa hạ chữ bằng JS với `lower()` của CSDL cả ở dòng chỉ có họ tên: trên CSDL có `LC_CTYPE` không hiểu Unicode, mục này báo mãi, chốt lại cũng không hết
 - **Vị trí:**

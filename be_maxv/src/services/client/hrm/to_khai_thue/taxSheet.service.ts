@@ -109,9 +109,9 @@ async function tinhDongTrucTiep(
     }),
   ]);
 
-  const dongLuong = (
-    dongLuongTho as unknown as Array<Record<string, unknown>>
-  ).map((d) => ({
+  // KHÔNG ép kiểu ở ranh giới hai sub-cụm (RVW-730): giữ nguyên kiểu của `getPayrollSheetLines` để tsc bắt
+  // được mọi lần đổi tên cột bên `du_lieu_tinh_luong`; ép kiểu thì cột đổi tên sẽ âm thầm thành 0.
+  const dongLuong = dongLuongTho.map((d) => ({
     ma_nv: String(d.ma_nv),
     fullName: String(d.fullName),
     grossIncome: soTien(d.grossIncome),
