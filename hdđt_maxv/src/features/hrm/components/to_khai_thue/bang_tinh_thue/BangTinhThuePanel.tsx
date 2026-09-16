@@ -18,6 +18,7 @@ import TableRow from "@mui/material/TableRow";
 import TextField from "@mui/material/TextField";
 import Tooltip from "@mui/material/Tooltip";
 import Typography from "@mui/material/Typography";
+import type { Theme } from "@mui/material/styles";
 import FileDownloadRounded from "@mui/icons-material/FileDownloadRounded";
 import LockOpenRounded from "@mui/icons-material/LockOpenRounded";
 import LockRounded from "@mui/icons-material/LockRounded";
@@ -33,9 +34,10 @@ import { tienVn } from "../../../_shared/format";
 import XacNhanXoaDialog from "../../XacNhanXoaDialog";
 import { useCurrentPayrollPeriod } from "../../du_lieu_tinh_luong/useCurrentPayrollPeriod";
 import { useLaChuTaiKhoan } from "../../chot_ky_luong/useLaChuTaiKhoan";
-import { NHAN_LOAI_LAO_DONG, NHAN_PHUONG_PHAP_TINH } from "../nhan";
+import { NHAN_LOAI_LAO_DONG } from "../nhan";
 import MoLaiBangTinhThueDialog from "./MoLaiBangTinhThueDialog";
 import { xuatExcelBangTinhThue } from "./bangTinhThueExcel";
+import { COT, COT_CON, CUOI_NHOM, HEADER_TREN, type CotBang } from "./cotBangTinhThue";
 
 /**
  * Màn Bảng tính thuế TNCN tháng — gộp lương và thu nhập ngoài lương của từng người rồi tính thuế.
@@ -54,26 +56,118 @@ const LOAI_LOC: Array<{ ma: LoaiLaoDongThue | ""; nhan: string }> = [
   { ma: "VANG_LAI", nhan: NHAN_LOAI_LAO_DONG.VANG_LAI },
 ];
 
-const COT_TIEN: Array<{ nhan: string; lay: (d: DongBangTinhThueDto) => number }> = [
-  { nhan: "Thu nhập lương", lay: (d) => d.thu_nhap_luong },
-  { nhan: "Thu nhập ngoài", lay: (d) => d.thu_nhap_ngoai },
-  { nhan: "Khấu trừ riêng", lay: (d) => d.thu_nhap_khau_tru_rieng },
-  { nhan: "Tổng thu nhập", lay: (d) => d.tong_thu_nhap },
-  { nhan: "Miễn thuế", lay: (d) => d.thu_nhap_mien_thue },
-  { nhan: "Chịu thuế", lay: (d) => d.thu_nhap_chiu_thue },
-  { nhan: "Giảm trừ bản thân", lay: (d) => d.giam_tru_ban_than },
-  { nhan: "Giảm trừ NPT", lay: (d) => d.giam_tru_phu_thuoc },
-  { nhan: "Bảo hiểm", lay: (d) => d.giam_tru_bao_hiem },
-  { nhan: "Tổng giảm trừ", lay: (d) => d.tong_giam_tru },
-  { nhan: "Thu nhập tính thuế", lay: (d) => d.thu_nhap_tinh_thue },
-];
+/** Ba cột đầu dính trái — kéo ngang 28 cột mà mất tên người thì bảng vô dụng. */
+const DINH_TRAI: Record<string, { left: number; minWidth: number }> = {
+  stt: { left: 0, minWidth: 56 },
+  ma_nv: { left: 56, minWidth: 96 },
+  ho_ten: { left: 152, minWidth: 200 },
+};
 
-const COT_THUE: Array<{ nhan: string; lay: (d: DongBangTinhThueDto) => number }> = [
-  { nhan: "Thuế lũy tiến", lay: (d) => d.thue_luy_tien },
-  { nhan: "Thuế toàn phần", lay: (d) => d.thue_toan_phan },
-  { nhan: "Tổng thuế TNCN", lay: (d) => d.tong_thue_tncn },
-  { nhan: "Thực nhận", lay: (d) => d.thuc_nhan },
-];
+/** Đặt cứng để dòng header thứ hai biết phải dính ở đâu; đo theo nội dung sẽ lệch khi đổi cỡ chữ. */
+const CAO_HEADER = 36;
+
+/**
+ * Bốn tông nền của bảng, mỗi tông một mã xám cho chế độ sáng và một cho chế độ tối — app có cả
+ * light lẫn dark (`theme/displaySettings.ts`), đặt cứng `grey.100` kiểu chỉ-nghĩ-cho-nền-trắng thì
+ * sang chế độ tối thành mấy khối gần trắng nuốt mất chữ.
+ *
+ * Nền phải ĐỤC (không dùng `action.hover` trong suốt): ba cột dính trái và dòng tổng dính đáy đều
+ * có nội dung cuộn qua bên dưới, nền trong là nhìn xuyên thấy chữ chồng chữ.
+ */
+type Ton = "soc" | "header" | "tong" | "reChuot";
+type MaXam = "100" | "200" | "300" | "400" | "600" | "700" | "800" | "900";
+
+/**
+ * Thang bốn bậc, mỗi bậc phải PHÂN BIỆT được với bậc kề — đổi một tông là phải đẩy cả thang, nếu
+ * không hai thứ khác vai sẽ trùng màu (sọc `grey.50` từng quá nhạt, nâng lên `100` thì đụng ngay
+ * nền header cũ, nên header lên `200` và dòng tổng lên `300`).
+ * Thang chế độ tối giữ nguyên — nó không bị nhạt, và `grey.500` trở xuống thì chữ trắng hết đọc nổi.
+ */
+const TONG_NEN: Record<Ton, { sang: MaXam; toi: MaXam }> = {
+  soc: { sang: "100", toi: "900" },
+  header: { sang: "200", toi: "800" },
+  tong: { sang: "300", toi: "700" },
+  reChuot: { sang: "400", toi: "600" },
+};
+
+const nen = (t: Ton) => (theme: Theme) =>
+  theme.palette.grey[TONG_NEN[t][theme.palette.mode === "dark" ? "toi" : "sang"]];
+
+type LopO = "head" | "body" | "tong";
+
+/**
+ * Ô dính trái (ba cột đầu) và/hoặc dính đáy (dòng tổng). Ô dính PHẢI có nền đục, nếu không nội dung
+ * đang cuộn qua sẽ hiện xuyên qua nó.
+ *
+ * Thứ tự `zIndex`: header trên hết (3/5) → dòng tổng (2/4) → thân bảng (0/1); trong mỗi tầng thì ô
+ * dính trái cao hơn ô thường một bậc để lúc cuộn ngang nó nằm trên các ô trôi qua.
+ */
+function sxO(khoa: string, lop: LopO, soc = false) {
+  const d = DINH_TRAI[khoa];
+  // Tô nền vào TỪNG Ô chứ không vào `<TableRow>`: ba ô dính trái vốn đã phải có nền đục riêng, tô ở
+  // hàng thì chúng vẫn trắng trơ giữa dải sọc. Tô ở ô thì mọi ô cùng một đường, khỏi phải khớp hai
+  // nguồn màu.
+  const nenO =
+    lop === "head"
+      ? nen("header")
+      : lop === "tong"
+        ? nen("tong")
+        : soc
+          ? nen("soc")
+          : undefined;
+
+  return {
+    whiteSpace: "nowrap" as const,
+    // Vạch mảnh giữa mọi cột, vạch đậm ở ranh giới nhóm — không có thì 28 cột số dính thành một dải.
+    borderRight: CUOI_NHOM.has(khoa) ? "2px solid" : "1px solid",
+    borderRightColor: CUOI_NHOM.has(khoa) ? "text.secondary" : "divider",
+    ...(nenO ? { bgcolor: nenO } : {}),
+    ...(lop === "head" ? { zIndex: 3 } : {}),
+    // Dòng tổng dính đáy khung: cuộn tới đâu vẫn thấy tổng, khỏi phải kéo xuống cuối để đối chiếu.
+    ...(lop === "tong" ? { position: "sticky" as const, bottom: 0, zIndex: 2 } : {}),
+    ...(d
+      ? {
+          position: "sticky" as const,
+          left: d.left,
+          minWidth: d.minWidth,
+          zIndex: lop === "head" ? 5 : lop === "tong" ? 4 : 1,
+          bgcolor: nenO ?? "background.paper",
+        }
+      : {}),
+  };
+}
+
+function veO(c: CotBang, d: DongBangTinhThueDto, i: number) {
+  if (c.kieu === "stt") return i + 1;
+  // `left` của cột "Họ và tên" cộng cứng từ bề rộng hai cột trước, nên ô "Mã NV" KHÔNG được phép nở
+  // ra theo nội dung. Mã thực tế là `NV0001`, nhưng cột cho phép tới 24 ký tự — mã dài bất thường mà
+  // nở ra thì ba cột dính trái xô lệch nhau. Cắt bớt kèm chú thích chứ không để đẩy cột.
+  if (c.khoa === "ma_nv") {
+    const ma = c.chu?.(d) ?? "";
+    return (
+      <Tooltip title={ma}>
+        <Box sx={{ width: 64, overflow: "hidden", textOverflow: "ellipsis" }}>{ma}</Box>
+      </Tooltip>
+    );
+  }
+  if (c.kieu === "trong")
+    return (
+      <Box component="span" sx={{ color: "text.disabled" }}>
+        —
+      </Box>
+    );
+
+  const noiDung = c.kieu === "tien" && c.lay ? tienVn(c.lay(d)) : (c.chu?.(d) ?? "");
+  const ghiChu = c.ghiChu?.(d);
+  if (!ghiChu) return noiDung;
+  return (
+    <Tooltip title={ghiChu}>
+      <Box component="span" sx={{ borderBottom: "1px dotted", cursor: "help" }}>
+        {noiDung}
+      </Box>
+    </Tooltip>
+  );
+}
 
 export default function BangTinhThuePanel() {
   const { selectedPeriodId, thangChon } = useCurrentPayrollPeriod();
@@ -351,17 +445,47 @@ export default function BangTinhThuePanel() {
         <Table size="small" stickyHeader>
           <TableHead>
             <TableRow>
-              <TableCell>Người nộp thuế</TableCell>
-              <TableCell>Loại lao động</TableCell>
-              <TableCell align="right">Số NPT</TableCell>
-              {COT_TIEN.map((c) => (
-                <TableCell key={c.nhan} align="right">
-                  {c.nhan}
-                </TableCell>
-              ))}
-              <TableCell>Phương pháp</TableCell>
-              {COT_THUE.map((c) => (
-                <TableCell key={c.nhan} align="right">
+              {HEADER_TREN.map((g) =>
+                g.nhom ? (
+                  <TableCell
+                    key={g.nhom}
+                    align="center"
+                    colSpan={g.cot.length}
+                    sx={{
+                      ...sxO(g.cot[g.cot.length - 1].khoa, "head"),
+                      top: 0,
+                      height: CAO_HEADER,
+                      fontWeight: 700,
+                      textTransform: "uppercase",
+                      letterSpacing: 0.4,
+                    }}
+                  >
+                    {g.nhom}
+                  </TableCell>
+                ) : (
+                  <TableCell
+                    key={g.cot[0].khoa}
+                    rowSpan={2}
+                    align={g.cot[0].kieu === "chu" || g.cot[0].kieu === "stt" ? "left" : "right"}
+                    sx={{
+                      ...sxO(g.cot[0].khoa, "head"),
+                      top: 0,
+                      height: CAO_HEADER * 2,
+                      fontWeight: 700,
+                    }}
+                  >
+                    {g.cot[0].nhan}
+                  </TableCell>
+                ),
+              )}
+            </TableRow>
+            <TableRow>
+              {COT_CON.map((c) => (
+                <TableCell
+                  key={c.khoa}
+                  align={c.kieu === "chu" ? "left" : "right"}
+                  sx={{ ...sxO(c.khoa, "head"), top: CAO_HEADER, height: CAO_HEADER }}
+                >
                   {c.nhan}
                 </TableCell>
               ))}
@@ -370,13 +494,13 @@ export default function BangTinhThuePanel() {
           <TableBody>
             {isLoading ? (
               <TableRow>
-                <TableCell colSpan={4 + COT_TIEN.length + COT_THUE.length} align="center" sx={{ py: 4 }}>
+                <TableCell colSpan={COT.length} align="center" sx={{ py: 4 }}>
                   <CircularProgress size={24} />
                 </TableCell>
               </TableRow>
             ) : danhSach.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={4 + COT_TIEN.length + COT_THUE.length} align="center" sx={{ py: 4 }}>
+                <TableCell colSpan={COT.length} align="center" sx={{ py: 4 }}>
                   <Typography color="text.secondary">
                     Không có dòng nào khớp bộ lọc trong tháng này.
                   </Typography>
@@ -384,44 +508,46 @@ export default function BangTinhThuePanel() {
               </TableRow>
             ) : (
               <>
-                {danhSach.map((d) => (
-                  <TableRow key={d.id} hover>
-                    <TableCell>
-                      <Typography variant="body2">{d.ho_ten}</Typography>
-                      <Typography variant="caption" color="text.secondary">
-                        {d.ma_nv ?? "Vãng lai"}
-                        {d.mst_ca_nhan ? ` · MST ${d.mst_ca_nhan}` : ""}
-                        {d.cu_tru ? "" : " · không cư trú"}
-                      </Typography>
-                    </TableCell>
-                    <TableCell>{NHAN_LOAI_LAO_DONG[d.loai_lao_dong]}</TableCell>
-                    <TableCell align="right">{d.so_nguoi_phu_thuoc}</TableCell>
-                    {COT_TIEN.map((c) => (
-                      <TableCell key={c.nhan} align="right">
-                        {tienVn(c.lay(d))}
-                      </TableCell>
-                    ))}
-                    <TableCell>{NHAN_PHUONG_PHAP_TINH[d.phuong_phap_tinh]}</TableCell>
-                    {COT_THUE.map((c) => (
-                      <TableCell key={c.nhan} align="right">
-                        {tienVn(c.lay(d))}
+                {danhSach.map((d, i) => (
+                  <TableRow
+                    key={d.id}
+                    // KHÔNG dùng prop `hover` của MUI: nó tô nền lên `<tr>`, mà mọi ô ở đây đều có
+                    // nền đục riêng (sọc + ô dính) nên nền của hàng không hiện ra. Tô thẳng vào `td`.
+                    sx={{ "&:hover td": { bgcolor: nen("reChuot") } }}
+                  >
+                    {COT.map((c) => (
+                      <TableCell
+                        key={c.khoa}
+                        align={c.kieu === "chu" || c.kieu === "stt" ? "left" : "right"}
+                        sx={sxO(c.khoa, "body", i % 2 === 1)}
+                      >
+                        {veO(c, d, i)}
                       </TableCell>
                     ))}
                   </TableRow>
                 ))}
-                <TableRow sx={{ "& td": { fontWeight: 600, bgcolor: "action.hover" } }}>
-                  <TableCell>TỔNG CỘNG</TableCell>
-                  <TableCell>{danhSach.length} người</TableCell>
-                  <TableCell align="right">{congCot((d) => d.so_nguoi_phu_thuoc)}</TableCell>
-                  {COT_TIEN.map((c) => (
-                    <TableCell key={c.nhan} align="right">
-                      {tienVn(congCot(c.lay))}
-                    </TableCell>
-                  ))}
-                  <TableCell />
-                  {COT_THUE.map((c) => (
-                    <TableCell key={c.nhan} align="right">
-                      {tienVn(congCot(c.lay))}
+                <TableRow>
+                  {COT.map((c) => (
+                    <TableCell
+                      key={c.khoa}
+                      align={c.kieu === "chu" || c.kieu === "stt" ? "left" : "right"}
+                      sx={{
+                        ...sxO(c.khoa, "tong"),
+                        fontWeight: 700,
+                        fontSize: "0.82rem",
+                        // Vạch đậm cắt ngang: dòng tổng phải đọc ra là một khối khác, không phải
+                        // "một dòng dữ liệu nữa" nằm lẫn ở cuối bảng.
+                        borderTop: "2px solid",
+                        borderTopColor: "text.primary",
+                      }}
+                    >
+                      {c.khoa === "stt"
+                        ? "TỔNG"
+                        : c.khoa === "ma_nv"
+                          ? `${danhSach.length} người`
+                          : c.kieu === "tien" && c.lay
+                            ? tienVn(congCot(c.lay))
+                            : ""}
                     </TableCell>
                   ))}
                 </TableRow>
@@ -430,6 +556,14 @@ export default function BangTinhThuePanel() {
           </TableBody>
         </Table>
       </TableContainer>
+
+      <Typography variant="caption" color="text.secondary" component="p" sx={{ mt: 1 }}>
+        Cột <b>[4] Không tính thuế</b> và nhóm <b>Quy đổi NET [14]–[16]</b> đang để trống: khoản
+        không chịu thuế hiện gộp hết vào <b>[5] Miễn thuế</b>, và phần mềm chưa quy đổi lương NET ra
+        GROSS. Ba cột <b>[10] Y tế</b>, <b>[11] Giáo dục</b>, <b>[12] Khác</b> luôn bằng 0 vì chưa
+        có chỗ nhập số. Bộ phận, Chức vụ, Số HĐ đọc theo hồ sơ hiện tại — tháng đã chốt vẫn giữ
+        nguyên mọi con số tiền của lúc chốt.
+      </Typography>
 
       <XacNhanXoaDialog
         open={hoiChot}

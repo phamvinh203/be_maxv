@@ -5,6 +5,7 @@ import type {
   PhuongPhapTinhThue,
   TrangThaiToKhai,
 } from "../../types/toKhaiThue";
+import { LOAI_HD } from "../../_shared/constants";
 
 /**
  * Nhãn tiếng Việt cho các mã enum của cụm Tờ khai thuế TNCN — MỘT chỗ duy nhất cho cả 4 màn.
@@ -57,6 +58,43 @@ export const MAU_TRANG_THAI_TO_KHAI: Record<
   EXPORTED: "warning",
   SUBMITTED: "success",
 };
+
+/**
+ * Loại hợp đồng — dùng LẠI danh sách của cụm hồ sơ nhân viên, không chép nhãn sang đây: hai nơi
+ * gọi cùng một mã hợp đồng bằng hai tên khác nhau là lỗi người đọc phát hiện sau cùng.
+ * Máy chủ trả chữ tự do nên mã lạ thì hiện nguyên mã, không nuốt thành trống.
+ */
+const NHAN_LOAI_HD = new Map(LOAI_HD.map((o) => [o.value as string, o.label]));
+
+export function nhanLoaiHopDong(ma: string | null): string {
+  if (!ma) return "—";
+  return NHAN_LOAI_HD.get(ma) ?? ma;
+}
+
+/** Máy chủ lưu `gross` | `net` chữ thường; bảng hiện chữ hoa cho dễ quét mắt. */
+export function nhanKieuLuong(ma: string | null): string {
+  if (!ma) return "—";
+  return ma.toLowerCase() === "net" ? "NET" : ma.toLowerCase() === "gross" ? "GROSS" : ma;
+}
+
+/**
+ * "Diện thuế" của bảng tính thuế — gộp phương pháp tính với kiểu lương hợp đồng thành MỘT nhãn,
+ * đúng năm diện kế toán dùng khi đọc bảng:
+ *
+ *   Lũy tiến · NET lũy tiến · Toàn phần · NET toàn phần · Miễn thuế
+ *
+ * Cam kết 08 và Dưới ngưỡng đều về "Miễn thuế" vì cùng một kết quả: tháng đó không khấu trừ đồng nào.
+ * Tiền tố NET chỉ nói hợp đồng ký NET — số quy đổi ở các cột [14]–[16] là việc của đợt sau.
+ */
+export function nhanDienThue(
+  phuongPhap: PhuongPhapTinhThue,
+  kieuLuong: string | null,
+): string {
+  if (phuongPhap === "CAM_KET_08" || phuongPhap === "DUOI_NGUONG") return "Miễn thuế";
+  const net = kieuLuong?.toLowerCase() === "net";
+  const goc = phuongPhap === "LUY_TIEN" ? "lũy tiến" : "toàn phần";
+  return net ? `NET ${goc}` : goc.charAt(0).toUpperCase() + goc.slice(1);
+}
 
 /** Tên người nhận kèm mã nhân viên, hoặc ghi rõ là người vãng lai. */
 export function tenNguoiNhan(hoTen: string, maNv: string | null): string {

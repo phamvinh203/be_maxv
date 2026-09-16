@@ -211,6 +211,18 @@ export interface DongBangTinhThueDto {
   ho_ten: string;
   mst_ca_nhan: string | null;
   so_cccd: string | null;
+  /**
+   * Năm cột mô tả nhân sự — máy chủ đọc SỐNG từ hồ sơ + hợp đồng hiệu lực trong kỳ, KHÔNG nằm
+   * trong ảnh chụp đã chốt. Tháng đã chốt vì thế hiện phòng ban/chức vụ hiện tại, không phải lúc
+   * chốt; mọi con số tiền thì vẫn là số đóng băng.
+   */
+  so_hop_dong: string | null;
+  /** Chữ tự do: `khong_xac_dinh` | `xac_dinh` | `thu_viec` | `thoi_vu` | `khoan`. */
+  loai_hop_dong: string | null;
+  /** `gross` | `net`. */
+  kieu_luong: string | null;
+  bo_phan: string | null;
+  chuc_vu: string | null;
   loai_lao_dong: LoaiLaoDongThue;
   cu_tru: boolean;
   so_nguoi_phu_thuoc: number;
