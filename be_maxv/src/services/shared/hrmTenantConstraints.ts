@@ -524,7 +524,11 @@ SELECT p.year AS nam, p.month AS thang, count(*) AS so_dong,
        ) AS quy_da_xuat
 FROM hrm_tax_calculation_lines l
 JOIN hrm_payroll_periods p ON p.id = l."periodId"
-WHERE l.ma_nv IS NULL
+WHERE l.loai_lao_dong = 'VANG_LAI'
+  -- Chỉ so dòng CÓ giấy tờ (RVW-738). Khóa đã lưu do JS hạ chữ, vế phải do lower() của CSDL hạ: với dòng chỉ có
+  -- họ tên, cluster locale C chỉ hạ được chữ ASCII nên hai bên lệch nhau ở Đ/Â/chữ hoa có dấu, mục này báo mãi
+  -- không hết. Bỏ chúng cũng không sót: nhóm không có giấy tờ thì khóa v1 và v2 dựng ra giống hệt nhau.
+  AND (NULLIF(btrim(l.so_cccd), '') IS NOT NULL OR NULLIF(btrim(l.mst_ca_nhan), '') IS NOT NULL)
   AND l."recipientKey" <> ${sqlKhoaVangLai('l.so_cccd', 'l.mst_ca_nhan', 'l.ho_ten')}
 GROUP BY p.year, p.month
 ORDER BY p.year, p.month`;

@@ -688,7 +688,7 @@
   5. Không làm schema tiền dùng chung như review gợi ý: `amount` (nguyên đồng, > 0) và trần/ngưỡng danh mục (không âm, cho số lẻ như cột) là hai luật khác nhau.
 - Liên kết: RVW-721…727 · E-dltl-029 · E-tkt-003, 004, 005, 007, 008, 012, 015, 017, 018 · TC-tkt-020, 063, 067/068, 075, 087, 110 · KR-tkt-06, 23 · ADR-013 · AC-tkt-018/019.
 - Kiểm chứng: `tsc --noEmit` exit 0 · `eslint` các file đã sửa 0 lỗi (1 cảnh báo `any` có sẵn) · 12 file unit liên quan 115/115 · Phase B lượt 3 `hrmToKhaiThueApi.test.ts` 154 test, 141 pass, 0 đỏ, 13 bỏ qua (143 ca lá: 130 đạt); 237 lượt gọi, 5xx duy nhất là `E-tkt-015` cố ý · `npm test` 1186 ca, 1169 pass, 4 đỏ = đúng TC-hrm-301/316 + 2 nhóm cha có từ trước, 13 bỏ qua.
-- Commit: chưa commit
+- Commit: `aa1dd15`
 
 ## [2026-09-15 16:30] backend-engineer — fix RVW-732 · RVW-734 · RVW-735 · RVW-736 (sau lượt review lại)
 
@@ -708,4 +708,26 @@
   4. RVW-733 (DB giả nên truyền `tx` riêng) chưa làm theo quyết định.
 - Liên kết: RVW-732, 734, 735, 736 · E-dltl-030 · TC-tkt-061, 066 · KR-tkt-23 · ADR-013.
 - Kiểm chứng: `tsc --noEmit` exit 0 · `eslint` các file đã sửa 0 lỗi (cảnh báo có sẵn) · 13 file unit liên quan 144/144 · Phase B lượt 4 `hrmToKhaiThueApi.test.ts` 156 test, 143 pass, 0 đỏ, 13 bỏ qua (145 ca lá: 132 đạt); 240 lượt gọi, 5xx duy nhất là `E-tkt-015` cố ý · `npm test` 1191 ca, 1174 pass, 4 đỏ = đúng TC-hrm-301/316 + 2 nhóm cha có từ trước, 13 bỏ qua.
+- Commit: `aa1dd15`
+
+## [2026-09-16 09:06] backend-engineer — áp ràng buộc HRM lên tenant thật (RVW-727, RVW-732)
+- Nhiệm vụ: chạy trình tự chuyển tiếp ADR-013 "Sửa đổi 2026-09-15" mục 4 trên DB localhost để bật index chống trùng khoản vãng lai v2.
+- Đã sửa: không đụng mã nguồn. Tài liệu: `docs/hrm/review-findings.md` (điền hash `aa1dd15` cho 11 mục FIXED RVW-721…727, 732, 734, 735, 736; ghi kết quả áp index ở RVW-727 và RVW-732) · `docs/hrm/work-log.md`:691, :711 (điền hash) · `docs/hrm/CONTEXT_SUMMARY.md`:68.
+- Đã chạy: `npm run hrm:ra-soat` — 1 tenant `maxv_0106861880_app` (localhost:5432), sạch, 0 dòng cần dọn, gồm cả 2 mục mới `khoan-ngoai-trung-v2` và `bang-thue-khoa-vang-lai-cu` ⇒ không phải mở lại hay chốt lại tháng nào, các cảnh báo tác dụng phụ của RVW-737 không phát sinh trên DB này. `npm run hrm:constraints` (chủ dự án tự chạy) — áp 12 mục, 5 mục đã có sẵn, 0 tenant vướng dữ liệu, 0 lỗi.
+- Kiểm chứng: đọc `pg_indexes` của `hrm_other_income_records` — có `hrm_oir_chong_trung_v2` UNIQUE trên (`periodId`, COALESCE(`ma_nv`, `'VL:'||lower(` CCCD, MST rồi họ tên `)`), danh mục, ngày chi trả, tiền gộp); không còn index v1 `hrm_oir_chong_trung`. Không chạy lại test vì không sửa mã nguồn.
+- Liên kết: RVW-727 · RVW-732 · ADR-013 "Sửa đổi 2026-09-15" mục 4.
+- Commit: chưa commit
+
+## [2026-09-16 09:24] backend-engineer — fix RVW-738 · RVW-739
+- Nhiệm vụ: sửa 2 gợi ý còn lại của lượt review thứ 3 mà chủ dự án chọn làm ngay.
+- Đã sửa:
+  - `be_maxv/src/services/shared/hrmTenantConstraints.ts`:527-531 — RVW-738: câu quét `bang-thue-khoa-vang-lai-cu` lọc `loai_lao_dong = 'VANG_LAI'` (thay `ma_nv IS NULL`, không báo nhầm khi hồ sơ bị xóa cứng) và chỉ soi dòng có CCCD hoặc MST; luật so sánh giữ nguyên `sqlKhoaVangLai`.
+  - `be_maxv/src/constants/hrm/to_khai_thue/taxSeedData.ts`:48 — RVW-739: `satisfies Required<Omit<Prisma.TaxPolicyCreateManyInput, 'id' | 'createdAt' | 'updatedAt'>>`.
+  - `be_maxv/src/__tests__/hrm/hrmToKhaiThueApi.test.ts`:2053 — khẳng định thêm `soDong === 1` sau khi gắn CCCD cho dòng vãng lai T9.
+  - Tài liệu: `docs/hrm/review-findings.md` (FIXED RVW-738, 739) · ADR-013 mục 4 bước 1 · dev-notes Mục 1.12 bảng rà soát · CONTEXT_SUMMARY.md:68.
+- Điểm đáng ghi:
+  1. Dòng vãng lai chỉ có họ tên bị bỏ khỏi câu quét là CÓ CHỦ Ý: khóa đã lưu do JS hạ chữ, vế phải do `lower()` của CSDL hạ; trên cluster locale `C` hai bên lệch ở chữ hoa ngoài ASCII nên mục báo mãi không hết, mà nhóm không giấy tờ thì khóa v1 và v2 vốn trùng nhau nên không bao giờ cần chốt lại.
+  2. `satisfies` mới là thứ bắt lỗi, không phải kiểu trả về: cột có `@default` là tùy chọn trong `CreateManyInput`.
+- Liên kết: RVW-738 · RVW-739 · ADR-013 "Sửa đổi 2026-09-15" mục 4.
+- Kiểm chứng: `tsc --noEmit` exit 0 · `eslint` 2 file sửa 0 lỗi 0 cảnh báo · kiểm chứng `satisfies` bằng cách bỏ tạm cột `lunchAllowanceTaxFreeCap` — `tsc` đỏ TS1360 đúng cột đó, khôi phục thì exit 0 · `npm test` 1191 test, 1174 đạt, 4 lỗi = đúng 4 lỗi cũ (TC-hrm-301/316 và 2 nhóm cha), 13 bỏ qua.
 - Commit: chưa commit

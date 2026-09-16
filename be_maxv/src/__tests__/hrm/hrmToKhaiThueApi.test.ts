@@ -2050,7 +2050,10 @@ test('Nhóm 11–12 — Cô lập tenant và biên dữ liệu', async (t) => {
     const dongVl = await dbA().taxCalculationLine.findFirstOrThrow({ where: { periodId: KY[9], ma_nv: null } });
     await dbA().taxCalculationLine.update({ where: { id: dongVl.id }, data: { so_cccd: '001203000009' } });
     try {
-      khop((await muc('bang-thue-khoa-vang-lai-cu'))?.mau[0] as Record<string, unknown>, { nam: 2026, thang: 9, quy_da_xuat: true });
+      const mucKhoaCu = await muc('bang-thue-khoa-vang-lai-cu');
+      // RVW-738: chỉ tháng 9 (dòng vừa gắn CCCD) bị báo; dòng vãng lai chỉ có họ tên không còn bị đem ra so nữa.
+      assert.equal(mucKhoaCu?.soDong, 1);
+      khop(mucKhoaCu?.mau[0] as Record<string, unknown>, { nam: 2026, thang: 9, quy_da_xuat: true });
     } finally {
       await dbA().taxCalculationLine.update({ where: { id: dongVl.id }, data: { so_cccd: dongVl.so_cccd } });
     }

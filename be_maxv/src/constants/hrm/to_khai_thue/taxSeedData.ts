@@ -44,7 +44,11 @@ export function veDuLieuChinhSach(
     voluntaryPensionMonthlyCap: cs.voluntaryPensionMonthlyCap,
     lunchAllowanceTaxFreeCap: cs.lunchAllowanceTaxFreeCap,
     legalBasisNote: cs.legalBasisNote,
-  };
+    // `satisfies` chứ không chỉ dựa kiểu trả về: cột có `@default` là tùy chọn trong `CreateManyInput`, nên thêm
+    // cột chính sách mà quên ánh xạ ở đây thì tsc vẫn xanh, còn dòng mốc 1900 âm thầm mang số mặc định 2026 (RVW-739).
+  } satisfies Required<
+    Omit<Prisma.TaxPolicyCreateManyInput, 'id' | 'createdAt' | 'updatedAt'>
+  >;
 }
 
 /**

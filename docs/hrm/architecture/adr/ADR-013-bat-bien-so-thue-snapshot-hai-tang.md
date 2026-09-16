@@ -146,7 +146,7 @@ Bỏ. Một dòng mỗi tháng chỉ để giữ `status` + `lockedByUserId` + `
 Tính dòng nay nằm TRONG giao dịch chốt (bản đầu tính ngoài giao dịch cho giao dịch ngắn): kỳ đã khóa sổ nên phần lương chỉ đọc snapshot. Đổi lại không còn ca "khoản ghi chen giữa lúc tính và lúc khóa" mà data-model Mục 5.3 từng chấp nhận — thực tế ca đó còn để lọt cả lệnh ghi SAU khi tháng đã chốt.
 
 **4. Bước chuyển tiếp khi đổi cách gộp người (RVW-732).** Dòng chốt từ nay ghim `engineVersion = 'v2'` (vãng lai theo CCCD → MST → họ tên); dòng `'v1'` gộp theo họ tên. Tờ khai quý gộp người qua 3 tháng theo `recipientKey`, nên quý có cả tháng chốt ở v1 lẫn v2 sẽ đếm một cộng tác viên có CCCD thành hai người ở [16]/[19]. Trình tự bắt buộc trước khi áp index v2 lên tenant đang chạy:
-1. `npm run hrm:ra-soat` — mục `bang-thue-khoa-vang-lai-cu` liệt kê tháng đã chốt còn dòng vãng lai mang khóa kiểu cũ (kèm cờ quý đã xuất); mục `khoan-ngoai-trung-v2` liệt kê khoản sẽ vướng index mới.
+1. `npm run hrm:ra-soat` — mục `bang-thue-khoa-vang-lai-cu` liệt kê tháng đã chốt còn dòng vãng lai mang khóa kiểu cũ (kèm cờ quý đã xuất; chỉ soi dòng có CCCD hoặc MST — dòng chỉ có họ tên thì khóa v1 trùng khóa v2, RVW-738); mục `khoan-ngoai-trung-v2` liệt kê khoản sẽ vướng index mới.
 2. Tháng thuộc quý CHƯA xuất: Mở lại rồi Chốt lại để tính lại theo v2. Quý đã xuất đã đóng băng bộ số nên chỉ ghi nhận.
 3. Dọn khoản trùng (nếu có), rồi `npm run hrm:constraints`. Index v2 vướng dữ liệu thì tenant vẫn giữ index v1.
 
