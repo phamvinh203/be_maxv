@@ -1890,6 +1890,82 @@ test('Nhóm 9 — Xuất tờ khai, tải lại, đánh dấu đã nộp, lịch
     await chotThang(veOwnerA, KY[6], 'TC-tkt-084');
   });
 
+  // RVW-731 — hai ca dưới dựng THỨ TỰ TẤT ĐỊNH bằng một giao dịch giữ khóa hàng, thay vì bắn song song rồi chấp
+  // nhận cả hai kết quả. Ca đua KR-tkt-21 ở dưới luôn rơi vào nhánh "mở lại thắng", nên bỏ `FOR SHARE` khỏi
+  // `khoaThangTrongQuy` nó vẫn xanh — hai ca này mới thật sự ghim lớp bảo vệ đó.
+  const nghi = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+  await t.test('RVW-731a — mở lại T5 CHƯA commit: lệnh xuất Q2 phải chờ khóa hàng, commit xong thì trả 400 E-tkt-010', async () => {
+    let nhaGiaoDich!: () => void;
+    let baoDaGiu!: () => void;
+    const daGiu = new Promise<void>((res) => { baoDaGiu = res; });
+    const giu = dbA().$transaction(
+      async (tx) => {
+        // Xóa dòng khóa T5 y như `unlockTaxSheet` làm, nhưng GIỮ giao dịch: dòng khóa bị khóa ghi, chưa commit.
+        await tx.$executeRaw`DELETE FROM "hrm_payroll_module_locks" WHERE "periodId" = ${KY[5]} AND "module" = 'TAX_SHEET'`;
+        baoDaGiu();
+        await new Promise<void>((res) => { nhaGiaoDich = res; });
+      },
+      { timeout: 30_000, maxWait: 10_000 },
+    );
+    await daGiu;
+
+    let xuatXong = false;
+    const xuat = goi('RVW-731a', 'POST export Q2 trong lúc mở lại chưa commit', 'POST', `${TKT}/05-kk-tncn/export`, {
+      ve: veOwnerA,
+      payload: { nam: 2026, quy: 2, format: 'excel' },
+    }).then((r) => { xuatXong = true; return r; });
+    await nghi(300);
+    // Đọc thường ở READ COMMITTED KHÔNG thấy lệnh xóa chưa commit, nên nếu bước xuất không giữ `FOR SHARE` thì
+    // nó đã xuất xong ở đây — tức là xuất một quý mà một tháng đang bị mở lại.
+    assert.equal(xuatXong, false, 'lệnh xuất phải chờ khóa hàng của dòng khóa T5');
+
+    nhaGiaoDich();
+    await giu;
+    kiemLoi(await xuat, 400, 'E-tkt-010');
+    assert.equal(await dbA().hrm_to_khai_tncn05.count({ where: { nam: 2026, ky_so: 2 } }), 0, 'không được để lại dòng tờ khai nửa vời');
+    await chotThang(veOwnerA, KY[5], 'RVW-731a');
+  });
+
+  await t.test('RVW-731b — xuất Q2 CHƯA commit: lệnh mở lại T5 phải chờ, commit xong thì trả 403 E-tkt-009 và dòng khóa còn nguyên', async () => {
+    // Đọc quý một lượt để dòng tờ khai được sinh ra — không có dòng thì lệnh giả lập xuất bên dưới không khớp gì.
+    assert.equal((await toKhaiQuy(veKeToanA, 2, 'RVW-731b')).trangThai, 'READY_TO_EXPORT');
+    let nhaGiaoDich!: () => void;
+    let baoDaGiu!: () => void;
+    const daGiu = new Promise<void>((res) => { baoDaGiu = res; });
+    const giu = dbA().$transaction(
+      async (tx) => {
+        // Giữ đúng khóa ĐỌC mà bước xuất giữ trên dòng khóa tháng.
+        await tx.$queryRaw`SELECT "periodId" FROM "hrm_payroll_module_locks" WHERE "module" = 'TAX_SHEET' AND "periodId" = ${KY[5]} FOR SHARE`;
+        baoDaGiu();
+        await new Promise<void>((res) => { nhaGiaoDich = res; });
+        const { count } = await tx.hrm_to_khai_tncn05.updateMany({ where: { nam: 2026, ky_so: 2 }, data: { trang_thai: 'EXPORTED' } });
+        assert.equal(count, 1, 'phải có đúng 1 dòng tờ khai Q2 để giả lập bước xuất');
+      },
+      { timeout: 30_000, maxWait: 10_000 },
+    );
+    await daGiu;
+
+    let moXong = false;
+    const mo = goi('RVW-731b', 'POST unlock T5 trong lúc xuất chưa commit', 'POST', `${TKT}/tax-calculation/unlock`, {
+      ve: veOwnerA,
+      payload: { periodId: KY[5], lyDo: LY_DO_MO_LAI },
+    }).then((r) => { moXong = true; return r; });
+    await nghi(300);
+    assert.equal(moXong, false, 'lệnh mở lại phải chờ khóa đọc trên dòng khóa T5');
+
+    nhaGiaoDich();
+    await giu;
+    kiemLoi(await mo, 403, 'E-tkt-009');
+    assert.equal(
+      await dbA().payrollModuleLock.count({ where: { periodId: KY[5], module: 'TAX_SHEET' } }),
+      1,
+      'giao dịch mở lại phải lùi trọn vẹn, dòng khóa T5 còn nguyên',
+    );
+    // Trả trạng thái quý về như trước để ca đua KR-tkt-21 ở dưới chạy đúng bối cảnh.
+    await dbA().hrm_to_khai_tncn05.updateMany({ where: { nam: 2026, ky_so: 2 }, data: { trang_thai: 'READY_TO_EXPORT' } });
+  });
+
   await t.test('KR-tkt-21 — xuất Q2 ĐÚNG lúc mở lại T5: chỉ một bên thắng, trạng thái cuối nhất quán', async () => {
     const [xuat, mo] = await Promise.all([
       goi('KR-tkt-21', 'POST export Q2 song song', 'POST', `${TKT}/05-kk-tncn/export`, {
@@ -2067,7 +2143,18 @@ test('Nhóm 11–12 — Cô lập tenant và biên dữ liệu', async (t) => {
     delete banSao.updatedAt;
     const trung = await dbA().otherIncomeRecord.create({ data: banSao as Prisma.OtherIncomeRecordUncheckedCreateInput });
     try {
-      assert.equal((await muc('khoan-ngoai-trung-v2'))?.soDong, 1);
+      const mucTrung = await muc('khoan-ngoai-trung-v2');
+      assert.equal(mucTrung?.soDong, 1);
+      // RVW-737: câu quét trả kèm tháng và hai cờ trạng thái để người vận hành biết nhóm trùng này còn sửa được không.
+      const kyTrung = await dbA().payrollPeriod.findUniqueOrThrow({ where: { id: goc.periodId } });
+      const khoaThangTrung = await dbA().payrollModuleLock.findUnique({
+        where: { periodId_module: { periodId: goc.periodId, module: 'TAX_SHEET' } },
+      });
+      khop(mucTrung?.mau[0] as Record<string, unknown>, {
+        nam: kyTrung.year,
+        thang: kyTrung.month,
+        thang_da_chot: khoaThangTrung !== null,
+      });
       const ap = await applyTenantConstraints(DB_A);
       assert.ok(
         ap.vuongDuLieu.some((v) => v.ten.includes('chong trung v2') && v.sqlstate === '23505'),

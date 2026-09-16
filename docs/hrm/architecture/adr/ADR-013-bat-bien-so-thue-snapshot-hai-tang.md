@@ -145,9 +145,28 @@ Bỏ. Một dòng mỗi tháng chỉ để giữ `status` + `lockedByUserId` + `
 
 Tính dòng nay nằm TRONG giao dịch chốt (bản đầu tính ngoài giao dịch cho giao dịch ngắn): kỳ đã khóa sổ nên phần lương chỉ đọc snapshot. Đổi lại không còn ca "khoản ghi chen giữa lúc tính và lúc khóa" mà data-model Mục 5.3 từng chấp nhận — thực tế ca đó còn để lọt cả lệnh ghi SAU khi tháng đã chốt.
 
-**4. Bước chuyển tiếp khi đổi cách gộp người (RVW-732).** Dòng chốt từ nay ghim `engineVersion = 'v2'` (vãng lai theo CCCD → MST → họ tên); dòng `'v1'` gộp theo họ tên. Tờ khai quý gộp người qua 3 tháng theo `recipientKey`, nên quý có cả tháng chốt ở v1 lẫn v2 sẽ đếm một cộng tác viên có CCCD thành hai người ở [16]/[19]. Trình tự bắt buộc trước khi áp index v2 lên tenant đang chạy:
-1. `npm run hrm:ra-soat` — mục `bang-thue-khoa-vang-lai-cu` liệt kê tháng đã chốt còn dòng vãng lai mang khóa kiểu cũ (kèm cờ quý đã xuất; chỉ soi dòng có CCCD hoặc MST — dòng chỉ có họ tên thì khóa v1 trùng khóa v2, RVW-738); mục `khoan-ngoai-trung-v2` liệt kê khoản sẽ vướng index mới.
-2. Tháng thuộc quý CHƯA xuất: Mở lại rồi Chốt lại để tính lại theo v2. Quý đã xuất đã đóng băng bộ số nên chỉ ghi nhận.
-3. Dọn khoản trùng (nếu có), rồi `npm run hrm:constraints`. Index v2 vướng dữ liệu thì tenant vẫn giữ index v1.
+**4. Bước chuyển tiếp khi đổi cách gộp người (RVW-732, viết lại theo RVW-737).** Dòng chốt từ nay ghim `engineVersion = 'v2'` (vãng lai theo CCCD → MST → họ tên); dòng `'v1'` gộp theo họ tên. Tờ khai quý gộp người qua 3 tháng theo `recipientKey`, nên quý có cả tháng chốt ở v1 lẫn v2 sẽ đếm một cộng tác viên có CCCD thành hai người ở [16]/[19].
 
+Trước khi áp index v2 lên tenant đang chạy, chạy `npm run hrm:ra-soat` để lấy danh sách:
+
+- Mục `bang-thue-khoa-vang-lai-cu` — tháng đã chốt còn dòng vãng lai mang khóa kiểu cũ, kèm cờ quý đã xuất. Chỉ soi dòng có CCCD hoặc MST; dòng chỉ có họ tên thì khóa v1 trùng khóa v2 (RVW-738).
+- Mục `khoan-ngoai-trung-v2` — khoản sẽ vướng index mới, kèm năm, tháng, cờ tháng đã chốt và cờ quý đã xuất.
+
+Sau đó làm THEO TỪNG THÁNG có tên trong hai mục trên và thuộc quý CHƯA xuất — không gộp nhiều tháng vào một lượt, vì mỗi lần mở lại đều có tác dụng phụ nêu ở dưới:
+
+1. Ghi lại số hiện tại: `ghi_de` của tờ khai quý (`GET /05-kk-tncn`) và KPI tháng (`GET /tax-calculation`: `tongNguoiLaoDong`, `tongThuNhapChiuThue`, `tongThueTncn`, kèm thuế từng nhân viên nội bộ).
+2. Mở lại Bảng tính thuế của tháng đó.
+3. Dọn khoản trùng của tháng (nếu có). Bước này phải đứng TRƯỚC bước chốt lại: tháng đã chốt thì sửa hay xóa khoản đều bị chặn 403 `E-tkt-007`, làm sai thứ tự là phải mở lại lần hai.
+4. Chốt lại.
+5. So số với bước 1. Lệch ở dòng nhân viên nội bộ thì DỪNG và chuyển kế toán xem trước khi đi tiếp.
+6. Nhập lại các ô ghi đè đã chép ở bước 1.
+
+Làm xong mọi tháng mới chạy `npm run hrm:constraints`. Index v2 còn vướng dữ liệu thì tenant giữ nguyên index v1, các ràng buộc khác vẫn áp bình thường.
+
+Hai tác dụng phụ của "mở lại rồi chốt lại" — đây là lý do phải ghi số trước và so số sau:
+
+- **Mất ghi đè chỉ tiêu.** Mở lại một tháng xóa luôn dòng tờ khai chưa xuất của cả quý, kèm mọi ô kế toán đã ghi đè và lý do; chốt lại thì tờ khai sinh lại với `ghi_de` rỗng và không có cảnh báo nào (`taxSheet.service.ts::unlockTaxSheet`). `ISSUE-tkt-003` đang mở về đúng hành vi này.
+- **Nhân viên nội bộ cũng bị tính lại.** Phần lương đọc snapshot đã khóa sổ nên không đổi, nhưng số người phụ thuộc, công tắc `tinh_tncn`, loại hợp đồng và họ tên/MST/CCCD đều lấy theo hồ sơ HIỆN HÀNH. Hồ sơ đã sửa kể từ lần chốt đầu (ví dụ đăng ký người phụ thuộc lùi kỳ) thì thuế của nhân viên nội bộ đổi theo, không chỉ dòng vãng lai.
+
+**Khoản trùng nằm trong quý ĐÃ xuất thì KHÔNG dọn.** Không có đường API nào xóa được (mở lại tháng bị chặn 403 `E-tkt-009`) và cũng không nên xóa: số đã nộp cho cơ quan thuế phải giữ nguyên. Tenant đó cứ giữ index v1 — `npm run hrm:constraints` sẽ báo `vuongDuLieu` ở mục index v2 mỗi lượt chạy, đây là kết quả ĐÚNG, không phải lỗi hạ tầng. Hệ quả phải chấp nhận: riêng tenant đó, hai cộng tác viên trùng họ tên nhưng khác CCCD vẫn bị chặn 409 khi nhập cùng ngày, cùng loại, cùng số tiền (lỗi gốc của RVW-727) cho tới khi có quyết định khác của chủ dự án. TUYỆT ĐỐI không sửa bằng SQL tay trên dòng đã chốt.
 **5. Chứng từ thuế không bị xóa theo kỳ lương (RVW-735).** Xóa kỳ lương `DRAFT` mà kỳ còn khoản thu nhập ngoài lương ⇒ 409 `E-dltl-030`: khoản ngoài lương có thể đã phát hành chứng từ khấu trừ cho cá nhân, phải xóa từng khoản có chủ đích.

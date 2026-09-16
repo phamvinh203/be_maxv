@@ -731,3 +731,21 @@
 - Liên kết: RVW-738 · RVW-739 · ADR-013 "Sửa đổi 2026-09-15" mục 4.
 - Kiểm chứng: `tsc --noEmit` exit 0 · `eslint` 2 file sửa 0 lỗi 0 cảnh báo · kiểm chứng `satisfies` bằng cách bỏ tạm cột `lunchAllowanceTaxFreeCap` — `tsc` đỏ TS1360 đúng cột đó, khôi phục thì exit 0 · `npm test` 1191 test, 1174 đạt, 4 lỗi = đúng 4 lỗi cũ (TC-hrm-301/316 và 2 nhóm cha), 13 bỏ qua.
 - Commit: chưa commit
+
+## [2026-09-16 10:03] backend-engineer — fix RVW-737 · RVW-733 · RVW-731 · RVW-730 · RVW-729
+- Nhiệm vụ: dọn nốt các finding còn mở của cụm `to_khai_thue` (trừ RVW-728 cần quyết định).
+- Đã sửa:
+  - `docs/hrm/architecture/adr/ADR-013-bat-bien-so-thue-snapshot-hai-tang.md` mục 4 — RVW-737: viết lại thành trình tự THEO TỪNG THÁNG 6 bước (ghi lại ghi đè + KPI, mở lại, dọn khoản trùng, chốt lại, so số, nhập lại ghi đè); nêu 2 tác dụng phụ của "mở lại rồi chốt lại"; thêm nhánh "khoản trùng nằm trong quý đã xuất thì giữ index v1, cấm sửa SQL tay".
+  - `be_maxv/src/services/shared/hrmTenantConstraints.ts`:502 — RVW-737: `SQL_QUET_KHOAN_NGOAI_TRUNG` `JOIN hrm_payroll_periods`, trả thêm `nam`, `thang`, `thang_da_chot`, `quy_da_xuat`.
+  - `be_maxv/src/scripts/hrm/ra-soat-hrm.ts`:97, :102, :119 — RVW-737: nhãn "dòng" thành "dòng kết quả" (mỗi dòng của 2 mục thuế là một NHÓM trùng, không phải một bản ghi).
+  - `be_maxv/src/__tests__/_hoTro/giaoDichGia.ts` (mới) — RVW-733: `bocNgoaiGiaoDich()` + `soatNgoaiGiaoDich()`; nối vào 3 DB giả `hrmOtherIncomeGiaoDich.test.ts`:30, `hrmTaxSheetLock.test.ts`:50, `kyLuongGhiTrongGiaoDich.test.ts`:44.
+  - `be_maxv/src/__tests__/hrm/hrmToKhaiThueApi.test.ts`:1893 — RVW-731: 2 ca `RVW-731a`/`RVW-731b` dựng thứ tự tất định bằng giao dịch Prisma giữ khóa hàng; :2059 khẳng định 3 cột ngữ cảnh mới của câu quét khoản trùng.
+  - `be_maxv/src/services/client/hrm/to_khai_thue/taxSheet.service.ts`:112 — RVW-730: bỏ `as unknown as Array<Record<string, unknown>>`.
+  - `be_maxv/src/services/client/hrm/to_khai_thue/otherIncomeTax.ts`:51, :148 — RVW-729: xóa 2 hằng mặc định, nhánh `WITHHOLDING_FLAT` ném lỗi khi danh mục thiếu tỷ lệ/ngưỡng; ca kiểm `hrmOtherIncomeTax.test.ts`:159.
+- Điểm đáng ghi:
+  1. RVW-731 dùng một giao dịch Prisma đang mở để giữ khóa hàng thay vì hai kết nối `pg` rời như đề xuất — cùng ngữ nghĩa khóa, không thêm phụ thuộc vào bộ kiểm thử.
+  2. RVW-728 KHÔNG làm trong đợt này: cả hai vế đều cần quyết định (thêm cột chụp thông tin người nộp thuế — Architect; có được ghi đè người ký lúc đánh dấu đã nộp không — BA). Giữ OPEN kèm ghi chú.
+  3. Chưa làm đề xuất 4 của RVW-737 (tùy chọn — cờ cảnh báo khi 3 tháng trong quý khác `engineVersion`).
+- Liên kết: RVW-729 · RVW-730 · RVW-731 · RVW-733 · RVW-737 · ADR-013 mục 4 · KR-tkt-21.
+- Kiểm chứng: `tsc --noEmit` exit 0 · `eslint src` 0 lỗi · `npm test` 1194 test, 1177 đạt, 4 lỗi = đúng 4 lỗi cũ (TC-hrm-301/316 và 2 nhóm cha), 13 bỏ qua. Ba lần kiểm chứng bằng cách phá tạm mã rồi khôi phục: gỡ `FOR SHARE` khỏi `khoaThangTrongQuy` thì ca RVW-731a đỏ · đổi `tx.otherIncomeRecord.create` thành `db....` thì ca RVW-733 đỏ · đổi tên trường `grossIncome` thì tsc đỏ TS2339 (RVW-730).
+- Commit: chưa commit

@@ -48,9 +48,6 @@ export interface KetQuaTinhThue {
   explain: string;
 }
 
-const MAC_DINH_TY_LE = 10;
-const MAC_DINH_NGUONG = 5_000_000;
-
 function dinhDang(n: number): string {
   return n.toLocaleString('vi-VN');
 }
@@ -146,8 +143,15 @@ function tinhTheoNhom(dm: ThamSoDanhMuc, dv: DauVaoTinhThue): KetQuaTinhThue {
       };
 
     case 'WITHHOLDING_FLAT': {
-      const tyLe = dm.withholdingRate ?? MAC_DINH_TY_LE;
-      const nguong = dm.withholdingThreshold ?? MAC_DINH_NGUONG;
+      // KHÔNG tự điền mặc định ở đây (RVW-729): `incomeCategory.service.ts` LUÔN điền tỷ lệ và ngưỡng cho
+      // nhóm này (AC-tkt-002), nên thiếu là dữ liệu danh mục hỏng chứ không phải ca nghiệp vụ. Giữ bản sao thứ
+      // hai của tham số thuế ở engine thì hôm luật đổi ngưỡng mà sót một chỗ sẽ không có test nào đỏ (NFR-tkt-004).
+      const { withholdingRate: tyLe, withholdingThreshold: nguong } = dm;
+      if (tyLe === null || nguong === null) {
+        throw new Error(
+          `Danh mục nhóm WITHHOLDING_FLAT thiếu tỷ lệ hoặc ngưỡng khấu trừ (tỷ lệ ${tyLe}, ngưỡng ${nguong}) — dữ liệu danh mục hỏng, xem AC-tkt-002.`,
+        );
+      }
       const khong = (
         loai: KetQuaTinhThue['taxDeductionType'],
         explain: string,

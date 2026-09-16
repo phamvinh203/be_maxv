@@ -7,6 +7,7 @@ import {
   updateOtherIncome,
 } from '../../services/client/hrm/to_khai_thue/otherIncomeRecord.service';
 import { ToKhaiThueError } from '../../helpers/hrm/toKhaiThueErrors';
+import { bocNgoaiGiaoDich, soatNgoaiGiaoDich } from '../_hoTro/giaoDichGia';
 
 /**
  * RVW-722 — thêm / sửa / xóa khoản ngoài lương đua với Chốt tháng. Trước đây khóa `TAX_SHEET` được kiểm bằng
@@ -19,6 +20,7 @@ import { ToKhaiThueError } from '../../helpers/hrm/toKhaiThueErrors';
 
 function taoDb(tc: { khoaThang?: boolean; coKy?: boolean } = {}) {
   const nhatKy: string[] = [];
+  let dangGiaoDich = false;
   const hang = (data: any) => ({
     id: 'oir-1',
     periodId: 'p-9',
@@ -31,10 +33,13 @@ function taoDb(tc: { khoaThang?: boolean; coKy?: boolean } = {}) {
     nhatKy,
     $transaction: async (fn: (tx: unknown) => unknown) => {
       nhatKy.push('BEGIN');
+      dangGiaoDich = true;
       try {
         return await fn(db);
       } finally {
+        dangGiaoDich = false;
         nhatKy.push('END');
+        soatNgoaiGiaoDich(nhatKy);
       }
     },
     $queryRaw: async (strings: TemplateStringsArray) => {
@@ -82,7 +87,8 @@ function taoDb(tc: { khoaThang?: boolean; coKy?: boolean } = {}) {
       },
     },
   };
-  return db;
+  // Service nhận bản BỌC, còn `tx` là `db` gốc (RVW-733).
+  return bocNgoaiGiaoDich(db, nhatKy, () => dangGiaoDich);
 }
 
 const KHOAN = {
