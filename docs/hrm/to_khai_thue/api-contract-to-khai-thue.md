@@ -355,14 +355,26 @@ interface BangTinhThueTongHopDto {
   };
   kpi: { tongNguoiLaoDong: number; tongThuNhapChiuThue: number;
          tongGiamTruGiaCanh: number; tongThueTncn: number };
-  danhSach: DongBangTinhThueDto[];        // 25 trường (gồm id + thu_nhap_khau_tru_rieng), khớp data-model Mục 3.4
+  danhSach: DongBangTinhThueDto[];        // 30 trường (25 cột snapshot + id + 5 cột mô tả nhân sự)
 }
 ```
 
-`DongBangTinhThueDto` = đúng các cột của `hrm_tax_calculation_lines` (bỏ `periodId`/`taxPolicyId`/`engineVersion`/`lockedByUserId`/`lockedAt`/`createdAt`), giữ **nguyên tên Vietnamese-snake** khớp `types/toKhaiThue.ts:77-104`.
+`DongBangTinhThueDto` = đúng các cột của `hrm_tax_calculation_lines` (bỏ `periodId`/`taxPolicyId`/`engineVersion`/`lockedByUserId`/`lockedAt`/`createdAt`), giữ **nguyên tên Vietnamese-snake** khớp `types/toKhaiThue.ts`, **cộng thêm 5 cột mô tả nhân sự** dưới đây.
 
 - **`id` = `recipientKey`** (không phải uuid của dòng snapshot — uuid đó đổi mỗi lần chốt lại): ổn định cả khi tháng chuyển Nháp sang Đã chốt, nên giao diện giữ được dòng đang chọn. `[làm rõ 2026-09-15]`
 - **`thu_nhap_khau_tru_rieng`** `[MỚI 2026-09-15 — quyết định tách 2 phần]`: phần thu nhập đã khấu trừ riêng, nằm trong `thu_nhap_ngoai` nhưng không vào nền lũy tiến. `types/toKhaiThue.ts` phía giao diện **chưa có** trường này.
+- **5 cột mô tả nhân sự** `[MỚI 2026-09-16 — bố cục bảng 28 cột, đợt 1]`: `so_hop_dong`, `loai_hop_dong` (chữ tự do `khong_xac_dinh|xac_dinh|thu_viec|thoi_vu|khoan`), `kieu_luong` (`gross|net`), `bo_phan` (tên phòng ban, tra hụt thì trả mã), `chuc_vu` — tất cả `string | null`, vãng lai không có hồ sơ thì cả 5 đều `null`.
+
+> 🔴 **5 cột mô tả đọc SỐNG ở cả hai nhánh**, KHÔNG nằm trong ảnh chụp: `hrm_tax_calculation_lines` chưa có cột cho chúng. Hệ quả: tháng **đã chốt** hiện phòng ban/chức vụ/hợp đồng **hiện tại** của người đó, không phải lúc chốt — mọi con số **tiền** thì vẫn nguyên từ snapshot. Chúng cố ý **không** nằm trong `DongBangTinhThueTinh` vì kiểu đó đi thẳng vào `createMany` lúc chốt, thêm trường là Prisma ném lỗi cột lạ. Đóng băng cụm này để sau, chung migration với các cột `[4]`, `[10]`–`[12]`, `[14]`–`[16]` của đợt 2.
+
+**Bố cục bảng 28 cột trên giao diện** `[2026-09-16]` — bảy cột chưa có nguồn, giao diện hiện dấu gạch chứ không hiện 0:
+
+| Cột | Trạng thái |
+|---|---|
+| `[4]` Không tính thuế | **Chưa có** — mọi khoản không chịu thuế hiện gộp hết vào `[5] thu_nhap_mien_thue`; chưa chốt luật tách |
+| `[10]` Y tế · `[11]` Giáo dục · `[12]` Khác | **Luôn 0** — chưa chốt nguồn nhập liệu. `[13] = [7]+[8]+[9]+0+0+0` nên vẫn khớp `tong_giam_tru` |
+| `[14]`–`[16]` Quy đổi NET | **Chưa có** — chưa có engine quy đổi NET sang GROSS. `kieu_luong` mới chỉ được *ghi lại*, không tham gia tính toán ở bất kỳ engine nào |
+| "Diện thuế" | Suy ra ở giao diện từ `phuong_phap_tinh` × `kieu_luong`: Lũy tiến · NET lũy tiến · Toàn phần · NET toàn phần · Miễn thuế (gộp `CAM_KET_08` + `DUOI_NGUONG`). **Không** phải trường của API |
 
 **Hai nguồn dữ liệu, một hình dạng phản hồi:**
 

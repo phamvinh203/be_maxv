@@ -830,3 +830,35 @@
 - Liên kết: RVW-747, 756, 757, 758, 759, 760 · review-findings mục "Review lại 2026-09-16 — phần sửa RVW-740…750".
 - Kiểm chứng: `npx tsc -b --noEmit` 0 lỗi · `npx eslint .` 0 lỗi 0 cảnh báo · `npm run build` thành công.
 - Commit: chưa commit
+
+## [2026-09-16 16:20] backend-engineer + frontend-engineer — bố cục bảng tính thuế 28 cột (đợt 1/2)
+- Nhiệm vụ: dựng lại bảng của màn Bảng tính thuế theo bố cục kế toán yêu cầu — header hai tầng, đánh số cột [1]–[18].
+- Đã sửa:
+  - `be_maxv/src/services/client/hrm/to_khai_thue/taxSheet.service.ts`:208 — thêm `MoTaNhanSu` + `layMoTaNhanSu()` (join `hrm_hop_dong` hiệu lực trong kỳ + `hrm_phong_ban`), nạp một lượt trong `Promise.all` của `getTaxSheet`, `veDongDto()` nhận thêm tham số mô tả. `DongBangTinhThueDto` = 25 cột snapshot + `id` + 5 cột mô tả.
+  - `hdđt_maxv/src/features/hrm/types/toKhaiThue.ts`:213 — thêm `so_hop_dong`, `loai_hop_dong`, `kieu_luong`, `bo_phan`, `chuc_vu`.
+  - `hdđt_maxv/src/features/hrm/components/to_khai_thue/nhan.ts`:76 — `nhanLoaiHopDong()`, `nhanKieuLuong()`, `nhanDienThue()`.
+  - `hdđt_maxv/.../bang_tinh_thue/cotBangTinhThue.ts` — **file mới**: một danh sách 28 cột lá dùng chung cho cả màn hình lẫn Excel.
+  - `hdđt_maxv/.../bang_tinh_thue/BangTinhThuePanel.tsx` — dựng lại bảng từ spec cột: header hai tầng (`rowSpan`/`colSpan` sinh tự động), ba cột đầu dính trái, dòng tổng sinh từ cùng spec.
+  - `hdđt_maxv/.../bang_tinh_thue/bangTinhThueExcel.ts` — đọc chung spec cột, header hai tầng có merge; bỏ ba danh sách cột chép tay cũ.
+- Điểm đáng ghi:
+  1. 5 cột mô tả CỐ Ý không vào `DongBangTinhThueTinh`: kiểu đó đi thẳng vào `createMany` lúc chốt, thêm trường là Prisma lỗi cột lạ. Hệ quả chấp nhận có chủ đích: tháng đã chốt hiện bộ phận/chức vụ hiện tại, số tiền vẫn từ snapshot.
+  2. Bảy cột `[4]`, `[10]`–`[12]`, `[14]`–`[16]` chưa có nguồn — `[10]`–`[12]` để 0 (vẫn là số hạng của `[13]`), còn lại hiện dấu gạch + chú thích chân bảng. Đây là ranh giới đợt 1.
+  3. Cột "Khấu trừ riêng" mất chỗ trong bố cục mới nhưng vẫn nằm trong công thức `[17]`; giữ lại dạng chú thích rê chuột trên ô `[17]` để dòng vãng lai không trông như cộng sai.
+  4. Excel trước đây chép danh sách cột ba lần (tiêu đề / dữ liệu / tổng) — nay sinh từ một spec, thêm cột giữa bảng không còn làm lệch file.
+- Còn lại cho đợt 2: engine quy đổi NET sang GROSS (`[14]`–`[16]`), luật tách `[4]` khỏi `[5]`, nguồn nhập `[10]`–`[12]`, và migration đóng băng cả cụm vào `hrm_tax_calculation_lines`.
+- Kiểm chứng: `be_maxv npm run typecheck` 0 lỗi · `be_maxv npm test` 1182/1199 pass, 4 fail đều ở `hrmSettingsShiftsHolidaysApi.test.ts` (TC-hrm-301, TC-hrm-316) — đã đối chiếu baseline bằng `git stash`, fail y hệt trước khi sửa, không phải regression · `hdđt_maxv npx tsc --noEmit` 0 lỗi · `npm run lint` 0 lỗi · `npm run build` thành công.
+- Chưa mở trên trình duyệt để soi mắt — bảng 28 cột có dính trái + header hai tầng nên cần nhìn thật trước khi coi là xong.
+- Commit: chưa commit
+
+## [2026-09-16 17:05] frontend-engineer — bảng tính thuế: viền cột, kẻ sọc, dòng tổng nổi
+- Nhiệm vụ: chủ dự án phản hồi bảng 28 cột nhìn không phân được cột nào với cột nào, dòng tổng chìm.
+- Đã sửa:
+  - `hdđt_maxv/.../bang_tinh_thue/cotBangTinhThue.ts` — thêm `CUOI_NHOM` (suy từ `HEADER_TREN`) để biết chỗ vẽ vạch đậm.
+  - `hdđt_maxv/.../bang_tinh_thue/BangTinhThuePanel.tsx` — gộp `sxDinh` cũ thành `sxO(khoa, lop, soc)`: vạch mảnh giữa mọi cột, vạch đậm 2px cuối mỗi nhóm, nền header/sọc/tổng/rê-chuột, dòng tổng dính đáy khung + viền trên 2px.
+- Điểm đáng ghi:
+  1. 🔴 Bản styling đợt trước đặt cứng `grey.100`/`grey.200`/`background.default` — SAI vì app có dark mode (`theme/displaySettings.ts` nhận light/dark/system), chế độ tối sẽ ra mấy khối gần trắng nuốt chữ. Nay đổi thành `nen(ton)` trả hàm theo `theme.palette.mode`, mỗi tông một mã xám cho sáng và một cho tối.
+  2. Bỏ prop `hover` của MUI, tự tô `&:hover td`: prop đó tô nền lên `<tr>`, mà mọi ô ở đây đều có nền đục riêng (sọc + ô dính) nên nền hàng không hiện ra.
+  3. Nền tô vào TỪNG Ô chứ không vào hàng — ba ô dính trái vốn phải có nền đục riêng, tô ở hàng thì chúng trắng trơ giữa dải sọc.
+  4. Chủ dự án soi thật thấy sọc `grey.50` quá nhạt → nâng cả thang chế độ sáng lên một bậc (sọc 100 · header 200 · tổng 300 · rê chuột 400). Phải đẩy cả thang chứ không riêng sọc, nếu không sọc `100` trùng luôn nền header. Thang chế độ tối giữ nguyên 900/800/700/600 — nó không bị nhạt, và từ `grey.500` trở xuống thì chữ trắng hết đọc nổi.
+- Kiểm chứng: `npx tsc --noEmit` 0 lỗi · `npm run lint` 0 lỗi · `npm run build` thành công. **Chưa soi mắt trên trình duyệt** — trình duyệt trong phiên làm việc có cookie riêng nên dừng ở màn đăng nhập, không tự nhập tài khoản.
+- Commit: chưa commit
