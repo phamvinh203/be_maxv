@@ -11,6 +11,7 @@
 import type { PrismaClient } from "../../../../generated/tenant";
 import { vnDayEnd, vnDayStart, vnDayString } from "../../../../utils/ngayVn";
 import * as GDTService from "../../hddt/gdt.service";
+import { normalizeDetailDates } from "../../hddt/gdt.service";
 import { khoangCuaKy, nhanKy, type Ky } from "../domain/kySoThue";
 import {
   chonTheoKyGoc,
@@ -352,8 +353,23 @@ export async function danhDauKy(db: PrismaClient, ky: Ky): Promise<KetQuaDanhDau
   return ketQua;
 }
 
-/** Ba giá trị hợp lệ của cột "Chỉ tiêu tăng giảm"; rỗng = kế toán chưa chọn, hoặc xóa lựa chọn cũ. */
-export type ChiTieuTangGiam = "" | "tang" | "giam";
+/**
+ * Ba giá trị hợp lệ của cột "Chỉ tiêu tăng giảm" — khớp số chỉ tiêu trên mẫu 01/GTGT: `"37"` = Điều
+ * chỉnh giảm, `"38"` = Điều chỉnh tăng, rỗng = kế toán chưa chọn hoặc xóa lựa chọn cũ.
+ */
+export type ChiTieuTangGiam = "" | "37" | "38";
+
+/**
+ * Diễn giải giá trị ĐỌC từ DB sang mã hiện hành — chỗ DUY NHẤT xử lý dữ liệu cũ (`"tang"`/`"giam"`,
+ * lưu trước khi đổi mã). KHÔNG UPDATE DB: `chi_tieu_tang_giam` không có CHECK constraint nên bản ghi
+ * cũ chỉ chuyển hẳn sang mã mới khi kế toán lưu một giá trị khác giá trị đang hiển thị (Task 2 quyết
+ * định 3d). Giá trị khác (đã là mã mới, null, rỗng, rác) giữ nguyên/rỗng — hàm không tự "sửa" DB.
+ */
+export function dienGiaiChiTieuTangGiam(raw: string | null | undefined): string {
+  if (raw === "tang") return "38";
+  if (raw === "giam") return "37";
+  return raw ?? "";
+}
 
 const DAI_TOI_DA_GHI_CHU = 512;
 
@@ -378,7 +394,7 @@ export function locQuyetDinh(raw: unknown): QuyetDinhKeKhai {
   const out: QuyetDinhKeKhai = {};
 
   if (typeof o.keKhai === "boolean") out.keKhai = o.keKhai;
-  if (o.chiTieuTangGiam === "" || o.chiTieuTangGiam === "tang" || o.chiTieuTangGiam === "giam") {
+  if (o.chiTieuTangGiam === "" || o.chiTieuTangGiam === "37" || o.chiTieuTangGiam === "38") {
     out.chiTieuTangGiam = o.chiTieuTangGiam;
   }
   if (typeof o.ghiChu === "string") out.ghiChu = o.ghiChu.slice(0, DAI_TOI_DA_GHI_CHU);
@@ -523,9 +539,71 @@ export async function layBangKeTheoKy(
     datas.push({
       ...row,
       keKhai: gan.ke_khai,
-      chiTieuTangGiam: gan.chi_tieu_tang_giam ?? "",
+      chiTieuTangGiam: dienGiaiChiTieuTangGiam(gan.chi_tieu_tang_giam),
     });
   }
 
   return { total: datas.length, datas, thayThe: kq.thayThe };
+}
+
+/** Số id mỗi lượt đọc cột `detail` theo lô — cùng ngưỡng với `traKyDangGiu` (dưới trần 65.535 tham số). */
+const CO_LO_DOC_DETAIL = 1000;
+
+/**
+ * Đọc cột `detail` (JSON chi tiết hóa đơn, đã chuẩn hóa ngày qua `normalizeDetailDates`) theo `id`,
+ * theo lô để không vượt trần tham số Postgres. `null` = hóa đơn chưa từng "Tải chi tiết"/"Đồng bộ".
+ */
+async function locChiTietTheoId(
+  db: PrismaClient,
+  chieu: Chieu,
+  ids: readonly string[],
+): Promise<Map<string, Record<string, unknown> | null>> {
+  const ra = new Map<string, Record<string, unknown> | null>();
+  for (const lo of chiaLo(ids, CO_LO_DOC_DETAIL)) {
+    const rows =
+      chieu === "purchase"
+        ? await db.vct60view.findMany({ where: { id: { in: lo } }, select: { id: true, detail: true } })
+        : await db.vct50view.findMany({ where: { id: { in: lo } }, select: { id: true, detail: true } });
+    for (const r of rows) {
+      ra.set(
+        r.id,
+        r.detail != null && typeof r.detail === "object"
+          ? normalizeDetailDates(r.detail as Record<string, unknown>)
+          : null,
+      );
+    }
+  }
+  return ra;
+}
+
+/** Một dòng bảng kê kèm chi tiết GDT gốc của chính hóa đơn đó. */
+export interface DongBangKeChiTiet extends DongBangKe {
+  chiTiet: Record<string, unknown> | null;
+}
+
+/**
+ * Bảng kê của một kỳ, một chiều, KÈM chi tiết từng hóa đơn — phục vụ xuất Excel sheet
+ * "Chi tiết mua vào/bán ra" (api-contract Mục 2, ADR-001).
+ *
+ * Gọi NGUYÊN `layBangKeTheoKy` rồi gắn `chiTiet` theo `id` của đúng các dòng nó trả — KHÔNG lọc lại,
+ * KHÔNG lọc thêm, để tập hóa đơn của sheet "Chi tiết..." trùng tuyệt đối sheet "HĐ..." (cùng một
+ * response, cùng một lần gọi `layBangKeTheoKy`). Mọi phần tử `datas` đều có key `chiTiet` (object
+ * hoặc `null`), không thiếu, không thừa.
+ */
+export async function layBangKeChiTietTheoKy(
+  db: PrismaClient,
+  ky: Ky,
+  chieu: Chieu,
+): Promise<{ total: number; datas: DongBangKeChiTiet[]; thayThe: unknown[] }> {
+  const bangKe = await layBangKeTheoKy(db, ky, chieu);
+  const chiTietTheoId = await locChiTietTheoId(
+    db,
+    chieu,
+    bangKe.datas.map((d) => String(d.id ?? "")),
+  );
+  const datas: DongBangKeChiTiet[] = bangKe.datas.map((d) => ({
+    ...d,
+    chiTiet: chiTietTheoId.get(String(d.id ?? "")) ?? null,
+  }));
+  return { total: datas.length, datas, thayThe: bangKe.thayThe };
 }

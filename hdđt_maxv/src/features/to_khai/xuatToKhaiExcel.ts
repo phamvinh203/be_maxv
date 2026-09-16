@@ -1,19 +1,106 @@
 import type { Workbook } from "exceljs";
+import { addStyledSheet } from "../hddt/exportXlsx";
 import { CELL_BORDER, HEADER_FILL, HEADER_HEIGHT } from "../hddt/xlsxStyle";
+import { buildReplacedByMap, toDetailRows, type ReplacedByMap } from "../hddt/detailRow";
+import { detailColumns, type InvoiceColumn } from "../hddt/templates";
+import { getDanhMucTraCuuGoc, type DanhMucTraCuuGoc } from "../hddt/api/traCuuGoc";
+import type { DetailRow, InvoiceDirection } from "../hddt/types";
 import { HANG_GTGT01, maChiTieu } from "../_shared/to_khai/gtgt01Layout";
 import type { BanToKhai } from "./api/gtgt01";
-import { nhanKy, type Ky } from "./ky";
+import { getBangKeChiTiet, type BangKeChiTietResult } from "./api/toKhai";
+import { nhanKy, toKhaiRowsFromBangKe, type Ky } from "./ky";
+import { overviewToKhai } from "./templates/cotBangKe";
 import { luuVeMay } from "../../lib/downloadFile";
+import { getErrorMessage } from "../../lib/errors";
 
 /**
  * Xuất tờ khai đang xem ra Excel — bố cục bám mẫu in: STT, chỉ tiêu (thụt lề theo cấp), giá trị,
- * thuế, kèm cột đánh dấu ô nào kế toán đã sửa tay.
+ * thuế, kèm cột đánh dấu ô nào kế toán đã sửa tay. Kèm 4 sheet bảng kê + chi tiết hóa đơn của kỳ
+ * (Mục 2.6 `architecture/api-contract.md`).
  *
  * Cột "Ghi chú" tồn tại vì file này đi ra ngoài cho người khác soát: nhìn con số không biết máy
  * tính ra hay người sửa, mà đó đúng là câu hỏi đầu tiên người soát sẽ hỏi.
  *
- * Dùng lại ba hằng định dạng của `hddt/exportXlsx.ts`, không khai bản riêng.
+ * Dùng lại ba hằng định dạng của `hddt/xlsxStyle.ts`, không khai bản riêng.
  */
+
+const NHAN_CHIEU: Record<InvoiceDirection, string> = { purchase: "mua vào", sold: "bán ra" };
+const TEN_SHEET_HD: Record<InvoiceDirection, string> = {
+  purchase: "HĐ mua vào",
+  sold: "HĐ bán ra",
+};
+const TEN_SHEET_CHI_TIET: Record<InvoiceDirection, string> = {
+  purchase: "Chi tiết mua vào",
+  sold: "Chi tiết bán ra",
+};
+
+/**
+ * Cột STT đầu sheet "Chi tiết..." — RIÊNG cho `to_khai`, KHÔNG đụng `detailColumns`/module `hddt`
+ * (tab "Chi tiết hoá đơn" của HĐĐT giữ nguyên, không có cột này). AC-to-khai-gtgt01-007 đòi một cột
+ * STT thật để kế toán lọc/tra theo STT, không phải bóc tiền tố từ cột "Tên file hóa đơn" (RVW-T12).
+ * Đọc `r.stt` (STT hóa đơn CHA, do `toDetailRows` gán khi bung dòng hàng) — KHÔNG dùng tham số thứ
+ * hai của `value` (đó là số thứ tự DÒNG chi tiết trong sheet, không phải STT hóa đơn).
+ */
+const COT_STT_CHI_TIET: InvoiceColumn<DetailRow> = {
+  key: "stt",
+  header: "STT",
+  width: 8,
+  value: (r) => r.stt,
+};
+
+/** Gọi API chi tiết theo kỳ, gắn tên chiều vào lỗi để toast báo đúng chiều nào hỏng (E-to-khai-gtgt01-001). */
+async function taiChiTietTheoChieu(ky: Ky, chieu: InvoiceDirection): Promise<BangKeChiTietResult> {
+  try {
+    return await getBangKeChiTiet(ky, chieu);
+  } catch (err) {
+    throw new Error(
+      `Không tải được dữ liệu hóa đơn ${NHAN_CHIEU[chieu]}: ${getErrorMessage(err, "lỗi không rõ")}`,
+      { cause: err },
+    );
+  }
+}
+
+/**
+ * Thêm sheet "HĐ..." của MỘT chiều. Nguồn `ketQua.datas` là CÙNG response với sheet "Chi tiết..."
+ * của chiều đó (`themSheetChiTiet`, gọi rời để giữ đúng thứ tự sheet — xem `xuatToKhaiGtgt01`) nên
+ * không thể lệch tập hóa đơn (BR-to-khai-gtgt01-001).
+ */
+function themSheetHd(
+  wb: Workbook,
+  ky: Ky,
+  chieu: InvoiceDirection,
+  ketQua: BangKeChiTietResult,
+  replacedBy: ReplacedByMap,
+): void {
+  const rows = toKhaiRowsFromBangKe(ketQua.datas, chieu, ky, replacedBy);
+  addStyledSheet(wb, TEN_SHEET_HD[chieu], overviewToKhai(chieu), rows);
+}
+
+/**
+ * Thêm sheet "Chi tiết..." của MỘT chiều — CÙNG `ketQua`/`replacedBy` với `themSheetHd` của chiều
+ * đó nên STT dòng chi tiết = STT dòng cha ở sheet "HĐ..." (cùng vị trí trong CÙNG mảng `datas`,
+ * FR-to-khai-gtgt01-004). Hóa đơn `chiTiet === null` (chưa tải chi tiết) dùng chính dòng bảng kê
+ * làm "detail": `InvoiceRaw` đã cùng tên field GDT (`khmshdon`/`khhdon`/...) nên `toDetailRows` đọc
+ * được, chỉ không có mảng `hdhhdvu` -> ra đúng 1 dòng, cột hàng hóa để trống
+ * (FR-to-khai-gtgt01-011, AC-to-khai-gtgt01-014).
+ */
+function themSheetChiTiet(
+  wb: Workbook,
+  chieu: InvoiceDirection,
+  ketQua: BangKeChiTietResult,
+  replacedBy: ReplacedByMap,
+  danhMucNcc?: DanhMucTraCuuGoc,
+): void {
+  const detailRows = ketQua.datas.flatMap((d, i) =>
+    toDetailRows(d.chiTiet ?? d, i + 1, replacedBy, danhMucNcc),
+  );
+  addStyledSheet(
+    wb,
+    TEN_SHEET_CHI_TIET[chieu],
+    [COT_STT_CHI_TIET, ...detailColumns(chieu)],
+    detailRows,
+  );
+}
 
 /** Thụt lề cột "Chỉ tiêu" theo cấp — Excel không có padding nên chèn khoảng trắng. */
 const THUT_LE = "    ";
@@ -106,6 +193,16 @@ export async function xuatToKhaiGtgt01(
   ban: BanToKhai,
   donVi: { mst: string; tenCongTy: string },
 ): Promise<void> {
+  // Tải bảng kê + chi tiết CẢ HAI chiều TRƯỚC khi dựng file — chỉ ghi workbook khi cả hai lượt
+  // thành công (Mục 2.6.3 api-contract.md); một lượt lỗi thì ném ngay, không tải file dở dang.
+  // Danh mục NCC (cho cột "URL tra cứu") không quan trọng bằng — lỗi thì lùi về registry FE của
+  // `traCuuNcc`, không chặn cả lượt xuất.
+  const [muaVao, banRa, danhMucNcc] = await Promise.all([
+    taiChiTietTheoChieu(ky, "purchase"),
+    taiChiTietTheoChieu(ky, "sold"),
+    getDanhMucTraCuuGoc().catch(() => undefined),
+  ]);
+
   // Lazy-load exceljs (~1MB) — chỉ tải khi người dùng thực sự bấm Xuất, không nằm trong chunk route.
   const { Workbook: LopWorkbook } = await import("exceljs");
   const wb = new LopWorkbook();
@@ -164,6 +261,16 @@ export async function xuatToKhaiGtgt01(
   ws.getColumn(5).width = 30;
 
   if (ban.phuLuc) themSheetPhuLuc(wb, ky, ban.phuLuc);
+
+  // Thứ tự sheet theo Mục 2.6.4 api-contract.md / FR-to-khai-gtgt01-001: 01-GTGT, PL 204-2025
+  // (nếu có), HĐ mua vào, HĐ bán ra, Chi tiết mua vào, Chi tiết bán ra — CẢ HAI sheet "HĐ..." thêm
+  // trước, rồi mới tới CẢ HAI sheet "Chi tiết...", KHÔNG xen kẽ theo chiều (RVW-T09).
+  const replacedByMuaVao = buildReplacedByMap(muaVao.thayThe);
+  const replacedByBanRa = buildReplacedByMap(banRa.thayThe);
+  themSheetHd(wb, ky, "purchase", muaVao, replacedByMuaVao);
+  themSheetHd(wb, ky, "sold", banRa, replacedByBanRa);
+  themSheetChiTiet(wb, "purchase", muaVao, replacedByMuaVao, danhMucNcc);
+  themSheetChiTiet(wb, "sold", banRa, replacedByBanRa, danhMucNcc);
 
   const buf = await wb.xlsx.writeBuffer();
   const blob = new Blob([buf], {

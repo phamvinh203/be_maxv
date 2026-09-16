@@ -112,9 +112,9 @@ export function overviewToKhai(direction: InvoiceDirection): InvoiceColumn<ToKha
     {
       // Hai cột nghiệp vụ đọc từ bảng đánh dấu `tokhai_ky_hoa_don` — lượt "Kê khai" ghi vào đó.
       // Sửa được ngay tại dòng qua `cell` (xem `components/OQuyetDinh.tsx`); `value` vẫn giữ vì
-      // `InvoiceColumn` bắt buộc field này (dùng khi cột không có `cell` riêng) — trả mã thô
-      // "tang"/"giam", KHÔNG phải nhãn hiển thị (nhãn chỉ có ở `CHI_TIEU_OPTIONS` trong
-      // `components/OQuyetDinh.tsx`).
+      // `InvoiceColumn` bắt buộc field này (dùng khi cột không có `cell` riêng, vd sheet Excel) —
+      // trả mã thô "37"/"38" (đúng số chỉ tiêu mẫu 01/GTGT), KHÔNG phải nhãn hiển thị (nhãn chỉ có
+      // ở `CHI_TIEU_OPTIONS` trong `components/OQuyetDinh.tsx`).
       key: "chiTieuTangGiam",
       header: "Chỉ tiêu tăng giảm",
       width: 18,

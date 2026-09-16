@@ -70,6 +70,7 @@ export default function ToKhaiGtgt01Editor({ ky, ban, onDoiKy, dangTai, loi }: P
   // thay vì im lặng bỏ qua, xem RVW-T01.
   const [oLoi, setOLoi] = useState<Set<string>>(new Set());
   const [dangTaiXml, setDangTaiXml] = useState(false);
+  const [dangXuatExcel, setDangXuatExcel] = useState(false);
   const [xacNhanTinhLai, setXacNhanTinhLai] = useState(false);
   const tinh = useTinhToKhai();
   const luu = useLuuGhiDe();
@@ -174,13 +175,25 @@ export default function ToKhaiGtgt01Editor({ ky, ban, onDoiKy, dangTai, loi }: P
 
   const congTy = useActiveCompany();
 
-  /** Xuất file cần `await` (dựng workbook) — bọc catch để lỗi ghi file không văng ra ngoài lặng lẽ. */
-  const bamXuatExcel = () => {
+  /**
+   * Xuất file: khóa nút ngay khi bấm (chặn bấm lần 2 trong lúc đang tải 2 lượt bảng kê chi tiết),
+   * mở lại trong `finally`. Lỗi tải dữ liệu (một trong hai chiều) -> toast nêu đúng chiều hỏng, do
+   * `xuatToKhaiGtgt01` ném TRƯỚC khi dựng/tải file (xem `xuatToKhaiExcel.ts`), nên không tải file
+   * dở dang (E-to-khai-gtgt01-001).
+   */
+  const bamXuatExcel = async () => {
     if (!ban) return;
-    void xuatToKhaiGtgt01(ky, ban, {
-      mst: congTy?.maSoThue ?? "",
-      tenCongTy: congTy?.tenDonVi ?? "",
-    }).catch((err) => toast.error(getErrorMessage(err, "Không xuất được file Excel.")));
+    setDangXuatExcel(true);
+    try {
+      await xuatToKhaiGtgt01(ky, ban, {
+        mst: congTy?.maSoThue ?? "",
+        tenCongTy: congTy?.tenDonVi ?? "",
+      });
+    } catch (err) {
+      toast.error(getErrorMessage(err, "Không xuất được file Excel."));
+    } finally {
+      setDangXuatExcel(false);
+    }
   };
 
   /** Tải XML để nạp vào HTKK. File đã có phụ lục giảm thuế nhưng CHƯA ký số — HTKK ký rồi nộp. */
@@ -383,12 +396,19 @@ export default function ToKhaiGtgt01Editor({ ky, ban, onDoiKy, dangTai, loi }: P
               <Button
                 size="small"
                 variant="outlined"
-                startIcon={<FileDownloadRounded fontSize="small" />}
+                startIcon={
+                  dangXuatExcel ? (
+                    <CircularProgress size={14} />
+                  ) : (
+                    <FileDownloadRounded fontSize="small" />
+                  )
+                }
                 onClick={bamXuatExcel}
                 // `dangChay`: đang có lượt lưu/tính bay tới server thì số trên `ban` (closure hiện
                 // tại) còn CŨ hơn cái người dùng vừa gõ — xuất ngay lúc này ra file mang số sai.
                 // `chuaLuu`: cùng lý do — còn ô sửa tay CHƯA LƯU XONG thì tuyệt đối không cho xuất.
-                disabled={!ban || dangChay || chuaLuu}
+                // `dangXuatExcel`: đang tải 2 lượt bảng kê chi tiết — chặn bấm lần 2.
+                disabled={!ban || dangChay || chuaLuu || dangXuatExcel}
                 sx={{ textTransform: "none" }}
               >
                 Xuất Excel

@@ -86,7 +86,7 @@ interface SheetOptions<T> {
  * workbook. Lõi dùng chung cho sheet Tổng quát và Chi tiết.
  * Cột `webOnly` (đèn "T. thái tải", các nút thao tác…) bị loại — chỉ có nghĩa trên màn hình.
  */
-function addStyledSheet<T>(
+export function addStyledSheet<T>(
   wb: Workbook,
   sheetName: string,
   allCols: InvoiceColumn<T>[],

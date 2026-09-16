@@ -125,9 +125,11 @@ export function buildInvoiceParams(direction: InvoiceDirection, query: InvoiceQu
 
 /**
  * Chuẩn hóa danh sách hóa đơn thô -> gộp field đối tác (mstDoiTac/tenDoiTac) theo chiều hóa đơn.
- * Dùng: nội bộ file này — `getInvoices` và `getSavedInvoices`.
+ * Dùng: `getInvoices`/`getSavedInvoices` (nội bộ file này) và `to_khai/api/toKhai.ts`
+ * (`getBangKe`/`getBangKeChiTiet` — bảng kê tờ khai đọc DB qua route khác, cũng cần gộp field này để
+ * cột "MST/Tên người bán/mua" trên bảng kê + sheet Excel không trống).
  */
-function mapInvoiceDatas(
+export function mapInvoiceDatas(
   direction: InvoiceDirection,
   datas: Array<Record<string, unknown>> | undefined,
 ): InvoiceRaw[] {

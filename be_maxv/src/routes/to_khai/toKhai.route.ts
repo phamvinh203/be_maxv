@@ -1,5 +1,6 @@
 import { FastifyInstance } from "fastify";
 import {
+  bangKeChiTietTheoKy,
   bangKeTheoKy,
   keKhaiKy,
   phuSongKy,
@@ -41,6 +42,13 @@ export default async function (fastify: FastifyInstance) {
     handler: keKhaiKy,
   });
   fastify.get("/hoa-don", { preHandler: guard(), handler: bangKeTheoKy });
+  // Bảng kê kèm chi tiết từng hóa đơn (dùng xuất Excel) — đọc `detail` của toàn bộ hóa đơn kỳ vào
+  // RAM, cùng mức trần với `/gtgt01/tinh`.
+  fastify.get("/hoa-don/chi-tiet", {
+    preHandler: guard(),
+    ...gioiHanTheoNguoiDung(20, "1 minute"),
+    handler: bangKeChiTietTheoKy,
+  });
   fastify.patch("/hoa-don/:chieu/:id", { preHandler: guard(), handler: suaQuyetDinh });
 
   // Tờ khai 01/GTGT.

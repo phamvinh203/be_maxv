@@ -18,11 +18,14 @@ import { getErrorMessage } from "../../../lib/errors";
 
 const SX_O = { fontSize: 13, width: "100%" } as const;
 
-/** Lựa chọn cột "Chỉ tiêu tăng giảm" — có mục rỗng để kế toán xóa lựa chọn cũ. */
+/**
+ * Lựa chọn cột "Chỉ tiêu tăng giảm" — có mục rỗng để kế toán xóa lựa chọn cũ. Mã khớp đúng số chỉ
+ * tiêu mẫu 01/GTGT ([37] Điều chỉnh giảm, [38] Điều chỉnh tăng).
+ */
 const CHI_TIEU_OPTIONS: { value: ChiTieuTangGiam; label: string }[] = [
   { value: "", label: "—" },
-  { value: "tang", label: "Tăng" },
-  { value: "giam", label: "Giảm" },
+  { value: "37", label: "37 — Giảm" },
+  { value: "38", label: "38 — Tăng" },
 ];
 
 /** Gọi PATCH cho một dòng; lỗi thì báo toast chứ không nuốt — người dùng phải biết là chưa lưu. */
