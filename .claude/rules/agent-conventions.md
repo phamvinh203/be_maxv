@@ -19,10 +19,10 @@ paths:
 | Tester QA | `tester-qa` | 2 (Phase A) · 4 (Phase B) | sonnet | Read, Write, Edit, Bash, Glob, Grep, Skill | ✅ hoạt động |
 | Backend Engineer | `backend-engineer` | 3 | sonnet | Read, Write, Edit, Bash, Glob, Grep, Skill | ✅ hoạt động |
 | Code Reviewer | `code-reviewer` | 5 | opus | Read, Glob, Grep, Bash, Write, Edit, Skill (ghi duy nhất `docs/<feature>/review-findings.md`) | ✅ hoạt động |
-| Frontend Engineer | `frontend-engineer` | (sau backend, khi kích hoạt) | sonnet | Read, Write, Edit, Bash, Glob, Grep, Skill | ⏸️ tạm ngừng |
+| Frontend Engineer | `frontend-engineer` | 3 (sau backend pass review) | sonnet | Read, Write, Edit, Bash, Glob, Grep, Skill | ✅ hoạt động |
 | DevOps Engineer | `devops-engineer` | (6, khi kích hoạt) | sonnet | Read, Write, Edit, Bash, Glob, Grep, Skill | ⏸️ tạm ngừng |
 
-> ⏸️ `frontend-engineer` và `devops-engineer` tạm ngừng theo luồng Backend-First mới — chỉ kích hoạt khi user yêu cầu rõ ràng. Lưu vết bắt buộc: backend-engineer append `docs/<feature>/work-log.md` sau mỗi phiên; code-reviewer ghi `docs/<feature>/review-findings.md` (format xem CLAUDE.md).
+> ⏸️ `devops-engineer` tạm ngừng — chỉ kích hoạt khi user yêu cầu rõ ràng. Lưu vết bắt buộc: backend-engineer và frontend-engineer append `docs/<feature>/work-log.md` sau mỗi phiên; code-reviewer ghi `docs/<feature>/review-findings.md` (format xem CLAUDE.md).
 
 ### Agent review chuyên biệt (được skill spawn, không nằm trong pipeline)
 
@@ -58,7 +58,7 @@ Chỉ dùng đúng một chuỗi, ghi trong `docs/<feature>/CONTEXT_SUMMARY.md`:
 Status: Ready for Implementation
 ```
 
-BA set chuỗi này ở Phase 2.5. `backend-engineer` chờ đúng chuỗi này ở bước 0 (frontend-engineer ⏸️ tạm ngừng — khi kích hoạt lại cũng chờ đúng chuỗi này). Không phát sinh biến thể (`Ready for Backend`, `Ready for FE`...) — lệch chuỗi = gate treo vĩnh viễn.
+BA set chuỗi này ở Phase 2.5. `backend-engineer` và `frontend-engineer` chờ đúng chuỗi này ở bước 0. Không phát sinh biến thể (`Ready for Backend`, `Ready for FE`...) — lệch chuỗi = gate treo vĩnh viễn.
 
 ## Path convention
 

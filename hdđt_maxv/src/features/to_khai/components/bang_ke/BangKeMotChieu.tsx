@@ -15,8 +15,7 @@ import CircularProgress from "@mui/material/CircularProgress";
 import InboxRounded from "@mui/icons-material/InboxRounded";
 import { overviewToKhai } from "../../templates/cotBangKe";
 import { useBangKeQuery } from "../../api/toKhaiQueries";
-import { nhanKy, type Ky, type ToKhaiRow } from "../../ky";
-import { toDisplayRow } from "../../../hddt/invoiceRow";
+import { nhanKy, toKhaiRowsFromBangKe, type Ky, type ToKhaiRow } from "../../ky";
 import { buildReplacedByMap } from "../../../hddt/detailRow";
 import { useElementHeight } from "../../../hddt/hooks/useElementHeight";
 import { columnCellSx, headerAlign, renderCell, tongCotSo, totalsRow } from "../../../hddt/templates";
@@ -50,18 +49,10 @@ export default function BangKeMotChieu({
     [bangKe.data],
   );
 
-  const rows: ToKhaiRow[] = useMemo(() => {
-    const nhan = nhanKy(ky);
-    return (bangKe.data?.datas ?? []).map((row) => ({
-      ...toDisplayRow(row, direction, replacedBy),
-      chieu: direction,
-      keKhai: row.keKhai,
-      chiTieuTangGiam: row.chiTieuTangGiam,
-      nam: String(ky.nam),
-      kyKeKhai: nhan,
-      ky,
-    }));
-  }, [bangKe.data, direction, replacedBy, ky]);
+  const rows: ToKhaiRow[] = useMemo(
+    () => toKhaiRowsFromBangKe(bangKe.data?.datas ?? [], direction, ky, replacedBy),
+    [bangKe.data, direction, replacedBy, ky],
+  );
 
   const tong = useMemo(() => tongCotSo(columns, rows), [columns, rows]);
   const safePage = clampPage(page, rows.length, rowsPerPage);

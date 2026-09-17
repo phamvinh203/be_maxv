@@ -235,16 +235,100 @@ function veDongTuSnapshot(l: DongDaChot): DongBangTinhThueTinh {
 }
 
 /**
+ * Năm cột MÔ TẢ nhân sự của bảng (Số HĐ, Loại HĐ, Kiểu lương, Bộ phận, Chức vụ) — nhãn để đọc và
+ * lọc, KHÔNG phải số pháp lý.
+ *
+ * 🔴 CỐ Ý không nằm trong `DongBangTinhThueTinh`: mọi field ở đó đi THẲNG vào `createMany` snapshot
+ * (xem `lockTaxSheet`), thêm field là Prisma ném lỗi cột lạ.
+ *
+ * Đọc SỐNG ở cả hai nhánh nháp/đã chốt vì `hrm_tax_calculation_lines` chưa có cột cho chúng — nên
+ * tháng ĐÃ CHỐT hiện phòng ban/chức vụ HIỆN TẠI của người đó, không phải lúc chốt. Số tiền vẫn
+ * nguyên từ snapshot. Đóng băng cụm này để sau, chung migration với các cột [4][10]–[12][14]–[16].
+ */
+export interface MoTaNhanSu {
+  so_hop_dong: string | null;
+  loai_hop_dong: string | null;
+  /** `gross` | `net` của hợp đồng hiệu lực trong kỳ. */
+  kieu_luong: string | null;
+  bo_phan: string | null;
+  chuc_vu: string | null;
+}
+
+/** Cá nhân vãng lai không có hồ sơ nhân viên ⇒ năm cột mô tả đều trống, không bịa giá trị. */
+const MO_TA_TRONG: MoTaNhanSu = {
+  so_hop_dong: null,
+  loai_hop_dong: null,
+  kieu_luong: null,
+  bo_phan: null,
+  chuc_vu: null,
+};
+
+async function layMoTaNhanSu(
+  db: PrismaClient,
+  ky: KyLuong,
+  maNv: string[],
+): Promise<Map<string, MoTaNhanSu>> {
+  if (maNv.length === 0) return new Map();
+
+  const [nhanVien, phongBan] = await Promise.all([
+    db.hrm_nhan_vien.findMany({
+      // KHÔNG lọc `status`/`da_xoa` — cùng lý do với `tinhDongTrucTiep`: người đã nghỉ vẫn có dòng thuế.
+      where: { ma_nv: { in: maNv } },
+      select: {
+        ma_nv: true,
+        ma_pb: true,
+        chuc_vu: true,
+        hop_dong: {
+          // Cùng cách lọc "hợp đồng hiệu lực trong kỳ" với engine lương (A-02).
+          where: {
+            ngay_bat_dau: { lte: ky.endDate },
+            OR: [
+              { ngay_ket_thuc: null },
+              { ngay_ket_thuc: { gte: ky.startDate } },
+            ],
+          },
+          orderBy: { ngay_bat_dau: 'desc' },
+          take: 1,
+          select: { so_hd: true, loai_hd: true, kieu_luong: true },
+        },
+      },
+    }),
+    db.hrm_phong_ban.findMany({ select: { ma_pb: true, ten_pb: true } }),
+  ]);
+
+  const tenPb = new Map(phongBan.map((p) => [p.ma_pb, p.ten_pb]));
+  return new Map(
+    nhanVien.map((n) => {
+      const hd = n.hop_dong[0];
+      return [
+        n.ma_nv,
+        {
+          so_hop_dong: hd?.so_hd ?? null,
+          loai_hop_dong: hd?.loai_hd ?? null,
+          kieu_luong: hd?.kieu_luong ?? null,
+          // Phòng ban đã xóa mềm vẫn còn dòng nên tra được tên; tra hụt thì hiện mã còn hơn hiện trống.
+          bo_phan: n.ma_pb ? (tenPb.get(n.ma_pb) ?? n.ma_pb) : null,
+          chuc_vu: n.chuc_vu,
+        },
+      ];
+    }),
+  );
+}
+
+/**
  * Dòng trả ra API. `id` = khóa người nhận: ổn định cả khi tháng chuyển Nháp → Đã chốt (id dòng
  * snapshot là uuid mới mỗi lần chốt), nên giao diện giữ được trạng thái chọn/mở rộng dòng.
  */
 export type DongBangTinhThueDto = Omit<DongBangTinhThueTinh, 'recipientKey'> & {
   id: string;
-};
+} & MoTaNhanSu;
 
-function veDongDto(d: DongBangTinhThueTinh): DongBangTinhThueDto {
+function veDongDto(
+  d: DongBangTinhThueTinh,
+  moTa: MoTaNhanSu | undefined,
+): DongBangTinhThueDto {
   const { recipientKey: id, ...con } = d;
-  return { id, ...con };
+  return { id, ...con, ...(moTa ?? MO_TA_TRONG) };
 }
 
 export async function getTaxSheet(db: PrismaClient, query: TaxSheetQuery) {
@@ -274,9 +358,12 @@ export async function getTaxSheet(db: PrismaClient, query: TaxSheetQuery) {
     );
   }
 
-  const [daXuat, hoTen] = await Promise.all([
+  const [daXuat, hoTen, moTaNhanSu] = await Promise.all([
     khoa ? quyDaXuatToKhai(db, ky.year, ky.month) : Promise.resolve(false),
     layHoTenNguoiDung([khoa?.lockedByUserId]),
+    layMoTaNhanSu(db, ky, [
+      ...new Set(dong.flatMap((d) => (d.ma_nv ? [d.ma_nv] : []))),
+    ]),
   ]);
 
   // KPI tính trên TOÀN BỘ kỳ, KHÔNG theo bộ lọc — nếu không, người dùng lọc một nhóm rồi tưởng đó
@@ -302,7 +389,7 @@ export async function getTaxSheet(db: PrismaClient, query: TaxSheetQuery) {
           v?.toLowerCase().includes(tuKhoa),
         ),
     )
-    .map(veDongDto);
+    .map((d) => veDongDto(d, d.ma_nv ? moTaNhanSu.get(d.ma_nv) : undefined));
 
   return {
     periodId: ky.id,

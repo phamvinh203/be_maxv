@@ -1,10 +1,17 @@
-import type { InvoiceDirection } from "../hddt/types";
+import type { InvoiceDirection, InvoiceRaw } from "../hddt/types";
 import type { DisplayRow } from "../hddt/types";
+import { toDisplayRow } from "../hddt/invoiceRow";
+import type { ReplacedByMap } from "../hddt/detailRow";
 
 export type KyLoai = "thang" | "quy";
 
-/** Giá trị cột "Chỉ tiêu tăng giảm" — rỗng = kế toán chưa chọn. */
-export type ChiTieuTangGiam = "" | "tang" | "giam";
+/**
+ * Giá trị cột "Chỉ tiêu tăng giảm" — rỗng = kế toán chưa chọn; "37"/"38" khớp đúng số chỉ tiêu trên
+ * mẫu 01/GTGT (chỉ tiêu [37] = Điều chỉnh giảm, [38] = Điều chỉnh tăng). Chỉ là nhãn ghi chú per-hóa
+ * đơn, KHÔNG cộng dồn vào số chỉ tiêu [37]/[38] của tờ khai (BR-to-khai-gtgt01-002). BE diễn giải mã
+ * cũ "tang"/"giam" sang "38"/"37" ngay khi đọc nên FE không nhận giá trị cũ nữa.
+ */
+export type ChiTieuTangGiam = "" | "37" | "38";
 
 export interface Ky {
   nam: number;
@@ -32,6 +39,30 @@ export type { InvoiceDirection };
 /** "T7/2026" | "Q3/2026". */
 export function nhanKy(ky: Ky): string {
   return `${ky.kyLoai === "thang" ? "T" : "Q"}${ky.kySo}/${ky.nam}`;
+}
+
+/**
+ * Bảng kê (BE) -> hàng hiển thị/Excel. DÙNG CHUNG cho `BangKeMotChieu` (bảng web) và
+ * `xuatToKhaiExcel` (sheet "HĐ...") — tách ra một hàm thuần để hai nơi không thể ánh xạ lệch nhau.
+ * Giữ NGUYÊN thứ tự `datas` (không lọc/sắp xếp) vì STT ở cả bảng web lẫn Excel đều là vị trí trong
+ * mảng này.
+ */
+export function toKhaiRowsFromBangKe(
+  datas: (InvoiceRaw & { keKhai: boolean; chiTieuTangGiam: ChiTieuTangGiam })[],
+  direction: InvoiceDirection,
+  ky: Ky,
+  replacedBy?: ReplacedByMap,
+): ToKhaiRow[] {
+  const nhan = nhanKy(ky);
+  return datas.map((row) => ({
+    ...toDisplayRow(row, direction, replacedBy),
+    chieu: direction,
+    keKhai: row.keKhai,
+    chiTieuTangGiam: row.chiTieuTangGiam,
+    nam: String(ky.nam),
+    kyKeKhai: nhan,
+    ky,
+  }));
 }
 
 export function soKyToiDa(kyLoai: KyLoai): number {

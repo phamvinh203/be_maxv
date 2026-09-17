@@ -105,6 +105,29 @@ export async function bangKeTheoKy(
 }
 
 /**
+ * GET /to-khai/hoa-don/chi-tiet?nam&kyLoai&kySo&chieu — bảng kê của kỳ KÈM chi tiết từng hóa đơn
+ * (cột `detail`), phục vụ xuất Excel sheet "Chi tiết mua vào/bán ra". Cùng hình dạng
+ * `{ total, datas, thayThe }` với `/hoa-don`, mỗi dòng `datas[]` thêm đúng một field
+ * `chiTiet: object | null` — xem api-contract Mục 2 / ADR-001.
+ */
+export async function bangKeChiTietTheoKy(
+  request: FastifyRequest<{ Querystring: KyInput & { chieu?: string } }>,
+  reply: FastifyReply,
+) {
+  const db = await resolveTenantDb(request);
+  try {
+    const ky = docKy(request.query);
+    const chieu = docChieu(request.query.chieu);
+    return reply.send(await KeKhai.layBangKeChiTietTheoKy(db, ky, chieu));
+  } catch (err) {
+    request.log.error(err);
+    return reply.status(400).send({
+      message: thongDiepLoiAnToan(err, "Không đọc được chi tiết hóa đơn của kỳ."),
+    });
+  }
+}
+
+/**
  * PATCH /to-khai/hoa-don/:chieu/:id — sửa quyết định kê khai của MỘT hóa đơn (cột "Kê khai/không
  * kê khai" và "Chỉ tiêu tăng giảm" trên bảng kê).
  *

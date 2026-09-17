@@ -1,4 +1,5 @@
 import { apiFetch } from "../../../lib/http";
+import { mapInvoiceDatas } from "../../hddt/api/gdt";
 import type { InvoiceDirection, InvoiceRaw, ReplacementRow } from "../../hddt/types";
 import { kyToQuery, type ChiTieuTangGiam, type Ky } from "../ky";
 
@@ -52,9 +53,42 @@ export async function postKeKhai(ky: Ky): Promise<KetQuaKeKhai> {
   });
 }
 
-/** Hóa đơn đã được gán vào kỳ, theo chiều. */
+/**
+ * Hóa đơn đã được gán vào kỳ, theo chiều. Đi qua `mapInvoiceDatas` (cùng hàm `getSavedInvoices` bên
+ * HĐĐT dùng) để gộp field đối tác `mstDoiTac`/`tenDoiTac` — BE trả thẳng `nbmst/nbten`/`nmmst/nmten`
+ * theo chiều, thiếu bước này thì cột "MST/Tên người bán/mua" trên bảng kê trống (bug user báo,
+ * 2026-09-16; `toDisplayRow` chỉ đọc `mstDoiTac`/`tenDoiTac`, không tự suy từ field gốc).
+ */
 export async function getBangKe(ky: Ky, chieu: InvoiceDirection): Promise<BangKeResult> {
-  return apiFetch<BangKeResult>(`/to-khai/hoa-don?${kyToQuery(ky)}&chieu=${chieu}`);
+  const raw = await apiFetch<BangKeResult>(`/to-khai/hoa-don?${kyToQuery(ky)}&chieu=${chieu}`);
+  return { ...raw, datas: mapInvoiceDatas(chieu, raw.datas) as BangKeResult["datas"] };
+}
+
+/**
+ * Như `BangKeResult`, kèm thêm `chiTiet` (payload GDT gốc) của CHÍNH từng hóa đơn — nguồn cho 2
+ * sheet "HĐ..."/"Chi tiết..." khi xuất Excel tờ khai (cùng tập + thứ tự hóa đơn với `BangKeResult`,
+ * xem `architecture/api-contract.md` Mục 2.4).
+ */
+export interface BangKeChiTietResult extends Omit<BangKeResult, "datas"> {
+  datas: (BangKeResult["datas"][number] & {
+    /** `null` = hóa đơn chưa tải chi tiết. */
+    chiTiet: Record<string, unknown> | null;
+  })[];
+}
+
+/**
+ * Như `getBangKe`, kèm `chiTiet` từng hóa đơn — dùng khi xuất Excel 4 sheet của tờ khai. Đi qua
+ * CÙNG `mapInvoiceDatas` với `getBangKe` (không nhân đôi logic gộp field đối tác) nên sheet "HĐ..."
+ * và bảng kê web không thể lệch nhau về 2 cột này.
+ */
+export async function getBangKeChiTiet(
+  ky: Ky,
+  chieu: InvoiceDirection,
+): Promise<BangKeChiTietResult> {
+  const raw = await apiFetch<BangKeChiTietResult>(
+    `/to-khai/hoa-don/chi-tiet?${kyToQuery(ky)}&chieu=${chieu}`,
+  );
+  return { ...raw, datas: mapInvoiceDatas(chieu, raw.datas) as BangKeChiTietResult["datas"] };
 }
 
 /** Độ phủ đồng bộ của một chiều trong kỳ. */
